@@ -1,0 +1,158 @@
+[TITLE]
+;;Project Title/Notes
+Todcreek (v0) — 1-subcatchment demo using lookup tables
+
+[OPTIONS]
+;;Option             Value
+FLOW_UNITS           CMS
+INFILTRATION         GREEN_AMPT
+FLOW_ROUTING         DYNWAVE
+START_DATE           05/23/1984
+START_TIME           00:00:00
+REPORT_START_DATE    05/23/1984
+REPORT_START_TIME    00:00:00
+END_DATE             05/28/1984
+END_TIME             00:00:00
+DRY_DAYS             0
+REPORT_STEP          00:05:00
+WET_STEP             00:01:00
+DRY_STEP             00:05:00
+ROUTING_STEP         00:00:10
+ALLOW_PONDING        NO
+INERTIAL_DAMPING     PARTIAL
+VARIABLE_STEP        0.75
+MIN_SURFAREA         0
+NORMAL_FLOW_LIMITED  BOTH
+SKIP_STEADY_STATE    NO
+
+[EVAPORATION]
+;;Data Source    Parameters
+CONSTANT         0.0
+
+[RAINGAGES]
+;;Name           Format    Interval SCF      Source
+RG1              INTENSITY 0:05     1.0      TIMESERIES TS_RAIN
+[TIMESERIES]
+;;Name           Date       Time      Value
+TS_RAIN          05/23/1984 00:00     0
+TS_RAIN          05/25/1984 09:00     0.003866
+TS_RAIN          05/25/1984 09:05     0.034791
+TS_RAIN          05/25/1984 09:10     0.096642
+TS_RAIN          05/25/1984 09:15     0.189419
+TS_RAIN          05/25/1984 09:20     0.313121
+TS_RAIN          05/25/1984 09:25     0.467748
+TS_RAIN          05/25/1984 09:30     0.653301
+TS_RAIN          05/25/1984 09:35     0.869779
+TS_RAIN          05/25/1984 09:40     1.117183
+TS_RAIN          05/25/1984 09:45     1.395513
+TS_RAIN          05/25/1984 09:50     1.704767
+TS_RAIN          05/25/1984 09:55     2.044948
+TS_RAIN          05/25/1984 10:00     2.416054
+TS_RAIN          05/25/1984 10:05     2.818085
+TS_RAIN          05/25/1984 10:10     3.251042
+TS_RAIN          05/25/1984 10:15     3.714924
+TS_RAIN          05/25/1984 10:20     4.209732
+TS_RAIN          05/25/1984 10:25     4.735465
+TS_RAIN          05/25/1984 10:30     5.292124
+TS_RAIN          05/25/1984 10:35     5.879708
+TS_RAIN          05/25/1984 10:40     6.498218
+TS_RAIN          05/25/1984 10:45     7.147653
+TS_RAIN          05/25/1984 10:50     7.828014
+TS_RAIN          05/25/1984 10:55     8.539300
+TS_RAIN          05/25/1984 11:00     9.281512
+TS_RAIN          05/25/1984 11:05     10.054649
+TS_RAIN          05/25/1984 11:10     10.858711
+TS_RAIN          05/25/1984 11:15     11.693700
+TS_RAIN          05/25/1984 11:20     12.559613
+TS_RAIN          05/25/1984 11:25     12.212008
+TS_RAIN          05/25/1984 11:30     11.370108
+TS_RAIN          05/25/1984 11:35     10.567819
+TS_RAIN          05/25/1984 11:40     9.804187
+TS_RAIN          05/25/1984 11:45     9.078257
+TS_RAIN          05/25/1984 11:50     8.389075
+TS_RAIN          05/25/1984 11:55     7.735687
+TS_RAIN          05/25/1984 12:00     7.117137
+TS_RAIN          05/25/1984 12:05     6.532472
+TS_RAIN          05/25/1984 12:10     5.980737
+TS_RAIN          05/25/1984 12:15     5.460977
+TS_RAIN          05/25/1984 12:20     4.972238
+TS_RAIN          05/25/1984 12:25     4.513566
+TS_RAIN          05/25/1984 12:30     4.084006
+TS_RAIN          05/25/1984 12:35     3.682603
+TS_RAIN          05/25/1984 12:40     3.308403
+TS_RAIN          05/25/1984 12:45     2.960451
+TS_RAIN          05/25/1984 12:50     2.637794
+TS_RAIN          05/25/1984 12:55     2.339476
+TS_RAIN          05/25/1984 13:00     2.064543
+TS_RAIN          05/25/1984 13:05     1.812040
+TS_RAIN          05/25/1984 13:10     1.581014
+TS_RAIN          05/25/1984 13:15     1.370509
+TS_RAIN          05/25/1984 13:20     1.179571
+TS_RAIN          05/25/1984 13:25     1.007246
+TS_RAIN          05/25/1984 13:30     0.852579
+TS_RAIN          05/25/1984 13:35     0.714615
+TS_RAIN          05/25/1984 13:40     0.592400
+TS_RAIN          05/25/1984 13:45     0.484981
+TS_RAIN          05/25/1984 13:50     0.391401
+TS_RAIN          05/25/1984 13:55     0.310706
+TS_RAIN          05/25/1984 14:00     0.241943
+TS_RAIN          05/25/1984 14:05     0.184157
+TS_RAIN          05/25/1984 14:10     0.136393
+TS_RAIN          05/25/1984 14:15     0.097696
+TS_RAIN          05/25/1984 14:20     0.067113
+TS_RAIN          05/25/1984 14:25     0.043688
+TS_RAIN          05/25/1984 14:30     0.026467
+TS_RAIN          05/25/1984 14:35     0.014496
+TS_RAIN          05/25/1984 14:40     0.006821
+TS_RAIN          05/25/1984 14:45     0.002486
+TS_RAIN          05/25/1984 14:50     0.000537
+TS_RAIN          05/25/1984 14:55     0.000020
+TS_RAIN          05/27/1984 23:55     0
+[SUBCATCHMENTS]
+;;Name           Raingage         Outlet         Area    %Imperv  Width   %Slope  CurbLen SnowPack
+S1               RG1              J1             1858.754  25.24    8622.7   23.455   0
+
+[SUBAREAS]
+;;Subcatchment   N-Imperv N-Perv  S-Imperv S-Perv  %Zero  RouteTo        PctRouted
+S1               0.0150   0.2970   0.0013  0.0030  11.1   OUTLET         100
+
+[INFILTRATION]
+;;Subcatchment   Suction  Ksat    IMDmax
+S1               90.82  8.902  0.251
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth  InitDepth  SurDepth  Aponded
+J1               100        10        0          0         0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated   Route To
+O1               90         FREE
+
+[CONDUITS]
+;;Name           From Node  To Node   Length  Roughness  InOffset  OutOffset  InitFlow  MaxFlow
+C1               J1         O1        1000    0.013      0         0          0         0
+
+[XSECTIONS]
+;;Link           Shape        Geom1  Geom2  Geom3  Geom4  Barrels
+C1               CIRCULAR     1.0    0      0      0      1
+
+[REPORT]
+;;Reporting Options
+INPUT      NO
+SUBCATCHMENTS ALL
+NODES      ALL
+LINKS      ALL
+
+[COORDINATES]
+;;Node           X-Coord  Y-Coord
+J1               466451.365      5378924.085
+O1               466951.365      5378424.085
+
+[POLYGONS]
+;;Subcatchment   X-Coord  Y-Coord
+S1               465951.365 5378424.085
+S1               466951.365 5378424.085
+S1               466951.365 5379424.085
+S1               465951.365 5379424.085
+S1               465951.365 5378424.085
+
