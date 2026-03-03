@@ -14,9 +14,11 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 
 ## Architecture (Orchestration + MCP + Verification)
 
-> Add the figure file at: `docs/figs/openclaw_swmm_pipeline.png`
+<p align="center">
+  <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+</p>
 
-![OpenClaw + SWMM agentic modelling pipeline with verification layer](docs/figs/openclaw_swmm_pipeline.png)
+> If the figure looks odd in dark mode, the white background/padding above is intentional for readability.
 
 **Layers (left → right):**
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
@@ -122,6 +124,8 @@ cd skills/swmm-gis/scripts/mcp && npm install && npm start
 
 ## Citation
 
-If you use this repository in academic work, please cite:
+### APA (repository)
+Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
 
-> Zhang, Z., & Valeo, C. *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw.* (manuscript in preparation)
+### APA (manuscript, if needed)
+Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw* [Manuscript in preparation].
