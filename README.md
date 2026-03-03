@@ -3,7 +3,7 @@
 **Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw**
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
-License: **MIT**
+License: **PolyForm Noncommercial 1.0.0** (see `LICENSE`)
 
 A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 
@@ -58,6 +58,12 @@ This repository is designed so that automation is *auditable*:
 - **SWMM GUI (manual) ↔ workflow equivalence (where applicable):** supports sanity-check comparisons when reproducing a GUI workflow
 - **Continuity / mass balance verification:** continuity tables are parsed from `.rpt` and surfaced as diagnostics
 - **Preprocessing consistency checks (GIS/DEM):** pour point methods are deterministic and outputs can be re-generated
+
+## License (non-commercial)
+
+Free for **non-commercial research and education**. **Commercial use requires a separate license from the authors.**
+
+See `LICENSE` for full terms.
 
 ## Requirements
 
