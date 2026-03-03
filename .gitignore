@@ -14,5 +14,10 @@ node_modules/
 *.pdf
 runs/
 
+# Docs / figures (keep tracked)
+!docs/
+!docs/figs/
+!docs/figs/*.png
+
 # OS
 .DS_Store

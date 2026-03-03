@@ -1,17 +1,30 @@
 # agentic-swmm-workflow
 
-**Agentic SWMM Workflow (SWMM MCP + SWMM Skills)**
+**Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw**
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-This repository provides a reproducible, agentic workflow for **EPA SWMM** that separates:
+A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 
-1) **GIS/Preprocess** (e.g., pour point selection from DEM)
-2) **SWMM execution** (run `swmm5`, extract peak flow + continuity diagnostics, write `manifest.json`)
-3) **Publication-grade plotting** (SI units, inverted hyetograph axis, fixed styling)
+- **Automated run management** (standard run directory, inputs/outputs, `manifest.json` provenance)
+- **Built-in verification checks** (continuity/mass balance, equivalence checks across interfaces)
+- **Publication-grade plotting** (consistent styling for rainfall–runoff figures)
+- Optional **agentic orchestration** via **OpenClaw Skills** exposed as **MCP (Model Context Protocol) servers**
 
-The workflow is implemented as **OpenClaw Skills** and exposed as **MCP (Model Context Protocol) servers**.
+## Architecture (Orchestration + MCP + Verification)
+
+> Add the figure file at: `docs/figs/openclaw_swmm_pipeline.png`
+
+![OpenClaw + SWMM agentic modelling pipeline with verification layer](docs/figs/openclaw_swmm_pipeline.png)
+
+**Layers (left → right):**
+- **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
+- **Skills layer:** SOP-style Skills (how the agent should run each tool safely/reproducibly)
+- **MCP layer:** tool interfaces (GIS / SWMM / Plot)
+- **Engine layer:** SWMM engine (`swmm5`)
+- **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots)
+- **Verification layer:** checks for equivalence + continuity + preprocessing consistency
 
 ## What’s included
 
@@ -22,7 +35,7 @@ The workflow is implemented as **OpenClaw Skills** and exposed as **MCP (Model C
 - `skills/swmm-runner/`
   - Reproducible `swmm5` wrapper
   - Extracts peak flow/time and SWMM continuity tables from `.rpt`
-  - Writes `manifest.json` (with input SHA256 + engine version)
+  - Writes `manifest.json` (includes input SHA256 + engine version)
   - MCP server: `swmm-runner-mcp`
 
 - `skills/swmm-plot/`
@@ -30,26 +43,34 @@ The workflow is implemented as **OpenClaw Skills** and exposed as **MCP (Model C
   - MCP server: `swmm-plot-mcp`
 
 - `examples/todcreek/model_chicago5min.inp`
-  - A minimal example SWMM input used for demonstration.
+  - Minimal example SWMM input used for demonstration.
+
+## Verification (what this repo aims to guarantee)
+
+This repository is designed so that automation is *auditable*:
+
+- **SWMM CLI ↔ SWMM MCP equivalence:** MCP-run results should match direct `swmm5` runs (same INP, same engine, same outputs within expected tolerances)
+- **SWMM GUI (manual) ↔ workflow equivalence (where applicable):** supports sanity-check comparisons when reproducing a GUI workflow
+- **Continuity / mass balance verification:** continuity tables are parsed from `.rpt` and surfaced as diagnostics
+- **Preprocessing consistency checks (GIS/DEM):** pour point methods are deterministic and outputs can be re-generated
 
 ## Requirements
 
-### SWMM
-- `swmm5` available on your `PATH` (EPA SWMM engine).
+### Core (no OpenClaw required)
+- `swmm5` available on your `PATH` (EPA SWMM engine)
+- Python 3.x
 
-### Python
-Recommended:
-- Python 3
+Recommended Python packages (vary by modules used):
 - `swmmtoolbox` (reads `.out` for plotting/time-series comparisons)
 - `matplotlib`, `numpy`
-- `rasterio` (for DEM I/O)
-- `pysheds` (for flow accumulation method)
+- `rasterio` (DEM I/O)
+- `pysheds` (flow accumulation)
 
-### Node.js
-- Node 18+
-- Each MCP server directory contains its own `package.json` and dependencies.
+### Optional (agentic / MCP)
+- Node.js 18+ (each MCP server has its own `package.json`)
+- OpenClaw (only if you want the orchestrated “agentic” interface)
 
-## Quick start (CLI)
+## Quick start (CLI-only, no OpenClaw)
 
 ### 1) Run SWMM and write a manifest
 ```bash
@@ -80,7 +101,7 @@ python3 skills/swmm-gis/scripts/find_pour_point.py \
   --out-png runs/pour_point_preview.png
 ```
 
-## MCP servers
+## MCP servers (optional)
 
 Each skill includes an MCP server you can run via stdio:
 
@@ -99,11 +120,8 @@ cd skills/swmm-plot/scripts/mcp && npm install && npm start
 cd skills/swmm-gis/scripts/mcp && npm install && npm start
 ```
 
-## Notes on reproducibility
+## Citation
 
-- The runner writes `manifest.json` per run, including `inp_sha256` and SWMM version (when detectable).
-- Continuity errors are read from SWMM’s own `.rpt` continuity tables.
+If you use this repository in academic work, please cite:
 
----
-
-If you use this repository in academic work, please cite the corresponding manuscript by Zhang & Valeo.
+> Zhang, Z., & Valeo, C. *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw.* (manuscript in preparation)
