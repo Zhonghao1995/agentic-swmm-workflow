@@ -18,7 +18,6 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
   <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
 </p>
 
-> If the figure looks odd in dark mode, the white background/padding above is intentional for readability.
 
 **Layers (left → right):**
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
