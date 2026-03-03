@@ -18,6 +18,7 @@ runs/
 !docs/
 !docs/figs/
 !docs/figs/*.png
+!docs/figs/*.pdf
 
 # OS
 .DS_Store

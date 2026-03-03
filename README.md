@@ -15,8 +15,12 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 ## Architecture (Orchestration + MCP + Verification)
 
 <p align="center">
-  <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
+    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+  </a>
 </p>
+
+*(Click the figure to open the PDF version.)*
 
 
 **Layers (left → right):**
