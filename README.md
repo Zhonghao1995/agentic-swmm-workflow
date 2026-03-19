@@ -131,4 +131,4 @@ cd skills/swmm-gis/scripts/mcp && npm install && npm start
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
 
 ### APA (manuscript, if needed)
-Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw* [Manuscript in preparation].
+Zhang, Z., & Valeo, C. (2026). Agentic modelling pipeline: Reproducible rapid stormwater modelling management system with OpenClaw [Preprint]. EarthArXiv. https://doi.org/10.31223/X5F47G
