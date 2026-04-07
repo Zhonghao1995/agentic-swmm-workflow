@@ -4,6 +4,7 @@
  * - swmm_sensitivity_scan
  * - swmm_calibrate
  * - swmm_validate
+ * - swmm_parameter_scout
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -17,11 +18,12 @@ import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const py = path.resolve(__dirname, "../swmm_calibrate.py");
+const calibratePy = path.resolve(__dirname, "../swmm_calibrate.py");
+const scoutPy = path.resolve(__dirname, "../parameter_scout.py");
 
-function runPy(args) {
+function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [py, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));
@@ -48,18 +50,23 @@ const Common = z.object({
   dryRun: z.boolean().default(false),
 });
 
-const SensitivityArgs = Common.extend({
-  parameterSets: z.string(),
-});
-
-const CalibrateArgs = Common.extend({
-  parameterSets: z.string(),
-  bestParamsOut: z.string().optional(),
-});
-
-const ValidateArgs = Common.extend({
-  bestParams: z.string(),
-  trialName: z.string().default("validation"),
+const SensitivityArgs = Common.extend({ parameterSets: z.string() });
+const CalibrateArgs = Common.extend({ parameterSets: z.string(), bestParamsOut: z.string().optional() });
+const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
+const ScoutArgs = z.object({
+  baseInp: z.string(),
+  patchMap: z.string(),
+  baseParams: z.string(),
+  scanSpec: z.string(),
+  observed: z.string(),
+  runRoot: z.string(),
+  summaryJson: z.string(),
+  swmmNode: z.string().default("O1"),
+  swmmAttr: z.string().default("Total_inflow"),
+  aggregate: z.enum(["none", "daily_mean"]).default("none"),
+  timestampCol: z.string().optional(),
+  flowCol: z.string().optional(),
+  timeFormat: z.string().optional(),
 });
 
 function commonArgs(a) {
@@ -80,7 +87,7 @@ function commonArgs(a) {
   return out;
 }
 
-const server = new Server({ name: "swmm-calibration-mcp", version: "0.1.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "swmm-calibration-mcp", version: "0.2.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -128,6 +135,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["baseInp", "patchMap", "bestParams", "observed", "runRoot", "summaryJson"]
       }
+    },
+    {
+      name: "swmm_parameter_scout",
+      description: "Rank one-parameter-at-a-time influence around a baseline and suggest direction plus a narrowed next range.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseInp: { type: "string" }, patchMap: { type: "string" }, baseParams: { type: "string" }, scanSpec: { type: "string" },
+          observed: { type: "string" }, runRoot: { type: "string" }, summaryJson: { type: "string" },
+          swmmNode: { type: "string", default: "O1" }, swmmAttr: { type: "string", default: "Total_inflow" },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" }
+        },
+        required: ["baseInp", "patchMap", "baseParams", "scanSpec", "observed", "runRoot", "summaryJson"]
+      }
     }
   ]
 }));
@@ -139,7 +161,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === "swmm_sensitivity_scan") {
     const a = SensitivityArgs.parse(args);
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
-    const stdout = await runPy(["sensitivity", ...commonArgs(a), "--parameter-sets", a.parameterSets]);
+    const stdout = await runPy(calibratePy, ["sensitivity", ...commonArgs(a), "--parameter-sets", a.parameterSets]);
     return { content: [{ type: "text", text: stdout }] };
   }
   if (name === "swmm_calibrate") {
@@ -147,14 +169,35 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
     const pyArgs = ["calibrate", ...commonArgs(a), "--parameter-sets", a.parameterSets];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
-    const stdout = await runPy(pyArgs);
+    const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
   if (name === "swmm_validate") {
     const a = ValidateArgs.parse(args);
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
     const pyArgs = ["validate", ...commonArgs(a), "--best-params", a.bestParams, "--trial-name", a.trialName];
-    const stdout = await runPy(pyArgs);
+    const stdout = await runPy(calibratePy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_parameter_scout") {
+    const a = ScoutArgs.parse(args);
+    fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
+    const pyArgs = [
+      "--base-inp", a.baseInp,
+      "--patch-map", a.patchMap,
+      "--base-params", a.baseParams,
+      "--scan-spec", a.scanSpec,
+      "--observed", a.observed,
+      "--run-root", a.runRoot,
+      "--summary-json", a.summaryJson,
+      "--swmm-node", a.swmmNode,
+      "--swmm-attr", a.swmmAttr,
+      "--aggregate", a.aggregate,
+    ];
+    if (a.timestampCol) pyArgs.push("--timestamp-col", a.timestampCol);
+    if (a.flowCol) pyArgs.push("--flow-col", a.flowCol);
+    if (a.timeFormat) pyArgs.push("--time-format", a.timeFormat);
+    const stdout = await runPy(scoutPy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
   throw new Error(`Unknown tool: ${name}`);
