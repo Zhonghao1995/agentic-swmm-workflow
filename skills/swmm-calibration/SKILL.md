@@ -19,6 +19,7 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
   - `sensitivity`
   - `calibrate`
   - `validate`
+- A minimal **parameter scout** that ranks which parameters matter most, suggests direction (`up` / `down` / `stay`), and proposes a narrowed next search range.
 - MCP wrapper so OpenClaw can call the workflow as tools.
 
 ## Scripts
@@ -26,6 +27,10 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
   - `sensitivity` → evaluate many candidate parameter sets and rank them
   - `calibrate` → evaluate candidate parameter sets and report the best one
   - `validate` → apply one chosen parameter set to a second event and score it
+- `scripts/parameter_scout.py`
+  - scan one parameter at a time around a baseline
+  - estimate which parameters are most influential under the current metric / time scale
+  - recommend direction and a narrower next search range
 - `scripts/obs_reader.py`
   - heuristically reads timestamp + flow series from text tables
 - `scripts/metrics.py`

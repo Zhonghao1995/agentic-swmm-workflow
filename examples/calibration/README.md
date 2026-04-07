@@ -1,0 +1,61 @@
+# Calibration example (MVP)
+
+This folder contains a **minimal example configuration** for the public calibration scaffold.
+
+## Files
+- `patch_map.json` → maps friendly parameter names to concrete SWMM INP row/field edits
+- `parameter_sets.json` → explicit candidate parameter sets for sensitivity / calibration demo
+- `observed_flow.csv` → tiny mock observed-flow file for wiring and dry-run tests
+- `best_params_validation.json` → sample parameter object for validation command examples
+
+## Real local observed-flow source
+A real Tod Creek observed-flow file exists in the larger local working project at:
+
+`/Users/zhonghao/.openclaw/workspace/projects/swmm-mcp/data/Todcreek/Flow/1984Rflow.dat`
+
+That file is **not automatically copied into this publish repo**, but it is the obvious next candidate for turning this MVP example into a real calibration case.
+
+## Recommended use
+### 1) Dry-run the wiring
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --parameter-sets examples/calibration/parameter_sets.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-demo \
+  --swmm-node O1 \
+  --objective nse \
+  --summary-json runs/calibration-demo/summary.json \
+  --best-params-out runs/calibration-demo/best_params.json \
+  --dry-run
+```
+
+### 2) Swap in real observed flow
+Once the observed-flow parser is tuned for `1984Rflow.dat`, replace `--observed` with the real file path and run without `--dry-run`.
+
+## Parameter scout example
+A minimal scout pass can rank one-parameter-at-a-time influence around a baseline parameter set.
+
+Expected extra inputs:
+- `base_params.json` → baseline parameter object
+- `scan_spec.json` → parameter name to tested values
+
+Example command:
+```bash
+python3 skills/swmm-calibration/scripts/parameter_scout.py \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --base-params examples/calibration/base_params.json \
+  --scan-spec examples/calibration/scan_spec.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/parameter-scout \
+  --summary-json runs/parameter-scout/summary.json \
+  --swmm-node O1
+```
+
+## Current limitations
+- The mock CSV here is only for demonstration.
+- Candidate parameter sets are explicit, not optimizer-generated.
+- The scout is one-parameter-at-a-time; it does not capture full parameter interaction.
+- The current parser expects a timestamp column and a flow column; special SWMM timeseries formats may need light pre-cleaning or parser extension.

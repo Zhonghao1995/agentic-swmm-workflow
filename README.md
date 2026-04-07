@@ -34,6 +34,9 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 
 ## What’s included
 
+If you are looking for the **larger local development workspace** (with many more files, experiments, runs, and Tod Creek data), see `docs/repo-map.md`.
+
+
 - `skills/swmm-gis/`
   - DEM-based pour point selection (`boundary_min_elev`, `boundary_max_accum`)
   - MCP server: `swmm-gis-mcp`
@@ -118,15 +121,24 @@ python3 skills/swmm-gis/scripts/find_pour_point.py \
 ```bash
 python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
   --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map path/to/patch_map.json \
-  --parameter-sets path/to/parameter_sets.json \
-  --observed path/to/observed_flow.csv \
+  --patch-map examples/calibration/patch_map.json \
+  --parameter-sets examples/calibration/parameter_sets.json \
+  --observed examples/calibration/observed_flow.csv \
   --run-root runs/calibration \
   --swmm-node O1 \
   --objective nse \
   --summary-json runs/calibration/summary.json \
-  --best-params-out runs/calibration/best_params.json
+  --best-params-out runs/calibration/best_params.json \
+  --dry-run
 ```
+
+The repository now includes a minimal demo configuration under `examples/calibration/`:
+- `patch_map.json`
+- `parameter_sets.json`
+- `observed_flow.csv`
+- `best_params_validation.json`
+
+Use `--dry-run` first to verify file wiring and trial-folder generation before pointing the scaffold at real observed-flow data.
 
 ## MCP servers (optional)
 
@@ -161,11 +173,18 @@ What it does today:
 - evaluates explicit candidate parameter sets against a base `.inp`
 - computes NSE, RMSE, bias, peak-flow error, and peak-timing error
 - writes trial folders plus JSON summaries for sensitivity, calibration, and validation runs
+- includes a minimal example config in `examples/calibration/`
+- includes a minimal parameter-scout script for identifying which parameters are worth tuning first and how to shrink the next search range
 
 What it does **not** pretend to do yet:
 - automatic global optimization out of the box
 - arbitrary INP structural edits
 - robust support for every historical field logger format without light cleanup
+
+Important context:
+- a real Tod Creek observed-flow file exists locally at `/Users/zhonghao/.openclaw/workspace/projects/swmm-mcp/data/Todcreek/Flow/1984Rflow.dat`
+- the richer local development project lives at `/Users/zhonghao/.openclaw/workspace/projects/swmm-mcp`
+- this public repo is intentionally the cleaner publishable subset, not the full lab-bench workspace
 
 This is deliberate: the scaffold is meant to be auditable and easy to extend into a fuller calibration layer.
 

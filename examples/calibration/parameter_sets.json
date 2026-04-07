@@ -1,0 +1,32 @@
+[
+  {
+    "name": "baseline_like",
+    "params": {
+      "pct_imperv_s1": 25.24,
+      "n_imperv_s1": 0.015,
+      "suction_s1": 90.82,
+      "ksat_s1": 8.902,
+      "imdmax_s1": 0.251
+    }
+  },
+  {
+    "name": "higher_imperv_lower_ksat",
+    "params": {
+      "pct_imperv_s1": 32.0,
+      "n_imperv_s1": 0.013,
+      "suction_s1": 85.0,
+      "ksat_s1": 6.5,
+      "imdmax_s1": 0.22
+    }
+  },
+  {
+    "name": "lower_imperv_higher_ksat",
+    "params": {
+      "pct_imperv_s1": 18.0,
+      "n_imperv_s1": 0.018,
+      "suction_s1": 96.0,
+      "ksat_s1": 10.5,
+      "imdmax_s1": 0.28
+    }
+  }
+]
