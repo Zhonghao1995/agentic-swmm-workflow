@@ -10,6 +10,7 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - **Automated run management** (standard run directory, inputs/outputs, `manifest.json` provenance)
 - **Built-in verification checks** (continuity/mass balance, equivalence checks across interfaces)
 - **Publication-grade plotting** (consistent styling for rainfall–runoff figures)
+- **Calibration / validation scaffold** for observed-vs-simulated scoring, explicit candidate parameter sets, and sensitivity ranking
 - Optional **agentic orchestration** via **OpenClaw Skills** exposed as **MCP (Model Context Protocol) servers**
 
 ## Architecture (Orchestration + MCP + Verification)
@@ -26,7 +27,7 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 **Layers (left → right):**
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
 - **Skills layer:** SOP-style Skills (how the agent should run each tool safely/reproducibly)
-- **MCP layer:** tool interfaces (GIS / SWMM / Plot)
+- **MCP layer:** tool interfaces (GIS / SWMM / Plot / Calibration)
 - **Engine layer:** SWMM engine (`swmm5`)
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots)
 - **Verification layer:** checks for equivalence + continuity + preprocessing consistency
@@ -46,6 +47,12 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - `skills/swmm-plot/`
   - Publication-style rainfall–runoff plots (SI; rain as mm/Δt; inverted rain axis; Arial 12; inward ticks; no title; optional day/window focus)
   - MCP server: `swmm-plot-mcp`
+
+- `skills/swmm-calibration/`
+  - Calibration / validation / sensitivity-analysis scaffold
+  - Reads observed flow from delimited text files, patches selected INP values, runs SWMM, and scores candidate parameter sets
+  - MCP server: `swmm-calibration-mcp`
+  - Current scope is intentionally MVP: explicit candidate parameter sets, simple line-oriented INP patching, and transparent limitations
 
 - `examples/todcreek/model_chicago5min.inp`
   - Minimal example SWMM input used for demonstration.
@@ -70,6 +77,7 @@ Recommended Python packages (vary by modules used):
 - `matplotlib`, `numpy`
 - `rasterio` (DEM I/O)
 - `pysheds` (flow accumulation)
+- `pandas` (observed-flow parsing and metric alignment)
 
 ### Optional (agentic / MCP)
 - Node.js 18+ (each MCP server has its own `package.json`)
@@ -106,6 +114,20 @@ python3 skills/swmm-gis/scripts/find_pour_point.py \
   --out-png runs/pour_point_preview.png
 ```
 
+### 4) Run an MVP calibration scan (explicit candidate sets)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map path/to/patch_map.json \
+  --parameter-sets path/to/parameter_sets.json \
+  --observed path/to/observed_flow.csv \
+  --run-root runs/calibration \
+  --swmm-node O1 \
+  --objective nse \
+  --summary-json runs/calibration/summary.json \
+  --best-params-out runs/calibration/best_params.json
+```
+
 ## MCP servers (optional)
 
 Each skill includes an MCP server you can run via stdio:
@@ -124,6 +146,28 @@ cd skills/swmm-plot/scripts/mcp && npm install && npm start
 ```bash
 cd skills/swmm-gis/scripts/mcp && npm install && npm start
 ```
+
+- Calibration MCP:
+```bash
+cd skills/swmm-calibration/scripts/mcp && npm install && npm start
+```
+
+## Calibration / validation scaffold (MVP)
+
+The repository now includes a first-pass calibration scaffold under `skills/swmm-calibration/`.
+
+What it does today:
+- reads observed flow from common delimited text formats (`csv`, `tsv`, whitespace-delimited `dat`)
+- evaluates explicit candidate parameter sets against a base `.inp`
+- computes NSE, RMSE, bias, peak-flow error, and peak-timing error
+- writes trial folders plus JSON summaries for sensitivity, calibration, and validation runs
+
+What it does **not** pretend to do yet:
+- automatic global optimization out of the box
+- arbitrary INP structural edits
+- robust support for every historical field logger format without light cleanup
+
+This is deliberate: the scaffold is meant to be auditable and easy to extend into a fuller calibration layer.
 
 ## Citation
 
