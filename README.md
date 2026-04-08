@@ -194,5 +194,5 @@ This is deliberate: the scaffold is meant to be auditable and easy to extend int
 ### APA (repository)
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
 
-### APA (manuscript, if needed)
-Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw* [Manuscript in preparation].
+### APA (manuscript / preprint)
+Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*. https://doi.org/10.31223/X5F47G
