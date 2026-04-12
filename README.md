@@ -27,11 +27,83 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 **Layers (left → right):**
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
 - **Skills layer:** SOP-style Skills (how the agent should run each tool safely/reproducibly)
-- **MCP layer:** tool interfaces (GIS / SWMM / Plot / Calibration)
 - **MCP layer:** tool interfaces (GIS / Params / Network / SWMM / Plot / Calibration)
 - **Engine layer:** SWMM engine (`swmm5`)
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
 - **Verification layer:** checks for equivalence + continuity + preprocessing consistency
+
+## Recommended usage pattern (SKILL + MCP + OpenClaw)
+
+Use this stack in a simple way:
+
+1. **SKILL (implementation layer)**
+   - Put real logic in Python scripts under `skills/*/scripts/`.
+2. **MCP (tool interface layer)**
+   - Expose stable callable tools from each skill (`scripts/mcp/server.js`).
+3. **OpenClaw (orchestration layer)**
+   - Let OpenClaw call MCP tools step-by-step and manage workflow/reporting.
+
+Recommendation:
+- For manual local testing: call Python scripts directly.
+- For agentic workflows and automation: prefer **MCP tools + OpenClaw**.
+- Keep helper internals script-only; only expose stable workflow entrypoints in MCP.
+
+## Repository skeleton
+
+```text
+agentic-swmm-workflow/
+├─ README.md
+├─ docs/
+│  ├─ figs/
+│  └─ repo-map.md
+├─ examples/
+│  ├─ todcreek/
+│  │  └─ model_chicago5min.inp
+│  └─ calibration/
+├─ skills/
+│  ├─ swmm-gis/
+│  │  ├─ SKILL.md
+│  │  └─ scripts/
+│  │     ├─ find_pour_point.py
+│  │     └─ mcp/server.js
+│  ├─ swmm-params/
+│  │  ├─ SKILL.md
+│  │  ├─ references/
+│  │  ├─ examples/
+│  │  └─ scripts/
+│  │     ├─ landuse_to_swmm_params.py
+│  │     ├─ soil_to_greenampt.py
+│  │     ├─ merge_swmm_params.py
+│  │     └─ mcp/server.js
+│  ├─ swmm-network/
+│  │  ├─ SKILL.md
+│  │  ├─ examples/
+│  │  └─ scripts/
+│  │     ├─ network_import.py
+│  │     ├─ network_qa.py
+│  │     ├─ network_to_inp.py
+│  │     ├─ schema/network_model.schema.json
+│  │     └─ mcp/server.js
+│  ├─ swmm-runner/
+│  │  ├─ SKILL.md
+│  │  └─ scripts/
+│  │     ├─ swmm_runner.py
+│  │     └─ mcp/server.js
+│  ├─ swmm-plot/
+│  │  ├─ SKILL.md
+│  │  └─ scripts/
+│  │     ├─ plot_rain_runoff_si.py
+│  │     └─ mcp/server.js
+│  └─ swmm-calibration/
+│     ├─ SKILL.md
+│     ├─ examples/
+│     └─ scripts/
+│        ├─ swmm_calibrate.py
+│        ├─ parameter_scout.py
+│        ├─ iterative_calibration.py
+│        └─ mcp/server.js
+└─ runs/ (generated artifacts)
+```
 
 ## What’s included
 
