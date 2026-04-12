@@ -1,0 +1,25 @@
+{
+  "title": "swmm-builder minimal assembled model",
+  "options": {
+    "FLOW_UNITS": "CMS",
+    "INFILTRATION": "GREEN_AMPT",
+    "FLOW_ROUTING": "DYNWAVE",
+    "START_DATE": "06/01/2025",
+    "START_TIME": "00:00:00",
+    "REPORT_START_DATE": "06/01/2025",
+    "REPORT_START_TIME": "00:00:00",
+    "END_DATE": "06/01/2025",
+    "END_TIME": "01:00:00",
+    "REPORT_STEP": "00:05:00",
+    "WET_STEP": "00:01:00",
+    "DRY_STEP": "01:00:00",
+    "ROUTING_STEP": "00:00:30"
+  },
+  "report": {
+    "INPUT": "NO",
+    "CONTROLS": "NO",
+    "SUBCATCHMENTS": "ALL",
+    "NODES": "ALL",
+    "LINKS": "ALL"
+  }
+}

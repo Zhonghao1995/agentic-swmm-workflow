@@ -1,0 +1,49 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "S1",
+        "slope_pct": 1.4
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-70, -40], [-20, -40], [-20, 10], [-70, 10], [-70, -40]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "S2",
+        "elev_mean_m": 103.2,
+        "elev_outlet_m": 101.0
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[5, 20], [55, 20], [55, 65], [5, 65], [5, 20]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "S3"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[80, -55], [145, -55], [145, -5], [80, -5], [80, -55]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "S4",
+        "outlet_hint": "OF1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[165, 10], [225, 10], [225, 65], [165, 65], [165, 10]]]
+      }
+    }
+  ]
+}
