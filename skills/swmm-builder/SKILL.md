@@ -16,6 +16,7 @@ Build a runnable SWMM `.inp` using explicit file inputs:
 The builder writes:
 - final SWMM INP text (`--out-inp`)
 - manifest JSON (`--out-manifest`) with source paths + SHA256 + key metadata
+- strict validation diagnostics for critical sections (`[OPTIONS]`, `[RAINGAGES]`, `[TIMESERIES]`, `[SUBCATCHMENTS]`, `[SUBAREAS]`, `[INFILTRATION]`, and current network sections)
 
 ## Inputs
 ### Subcatchments CSV schema (required)
@@ -36,9 +37,11 @@ Expected to match `skills/swmm-params/scripts/merge_swmm_params.py` output:
 - `sections.subcatchments` (`id`, `pct_imperv`)
 - `sections.subareas` (`id`, runoff/subarea fields)
 - `sections.infiltration` (`id`, Green-Ampt fields)
+- Required fields are now validated strictly with type/range checks (for example `%Imperv` and routing percentages must be `0..100`).
 
 ### Network JSON (required)
 Expected to match `skills/swmm-network` schema (`junctions`, `outfalls`, `conduits`, etc.).
+Builder now validates required network fields used to emit `[JUNCTIONS]`, `[OUTFALLS]`, `[CONDUITS]`, `[XSECTIONS]`, `[COORDINATES]`, and `[VERTICES]`.
 
 ### Climate references (required in MVP)
 Provide either:
@@ -48,6 +51,11 @@ Provide either:
 For `[RAINGAGES]`, provide either:
 - `--raingage-json` from `swmm-climate/build_raingage_section.py`, or
 - rely on default deterministic gage generation from rainfall `series_name`.
+
+Validation behavior:
+- Missing critical fields fail fast with explicit section-scoped errors.
+- `[TIMESERIES]` rows are validated for series-name consistency and basic token/time/value correctness.
+- Manifest includes `validation` plus `validation_diagnostics` metadata.
 
 ## Script
 - `scripts/build_swmm_inp.py`

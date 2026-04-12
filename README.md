@@ -143,7 +143,7 @@ For a larger local development map (extra experiments/runs/data), see `docs/repo
   - MCP server: `swmm-network-mcp`
 - `skills/swmm-builder/`
   - assembles full runnable INP from subcatchments + params + network + climate references
-  - writes manifest with input hashes and key metadata
+  - writes manifest with input hashes, validation results, and section diagnostics
   - MCP server: `swmm-builder-mcp`
 - `skills/swmm-runner/`
   - reproducible `swmm5` execution + run manifest
@@ -286,6 +286,9 @@ python3 skills/swmm-builder/scripts/build_swmm_inp.py \
   --out-inp runs/swmm-builder/example_model.inp \
   --out-manifest runs/swmm-builder/example_manifest.json
 ```
+Notes:
+- `swmm-builder` now fails fast on missing/invalid critical fields for `[OPTIONS]`, `[RAINGAGES]`, `[TIMESERIES]`, `[SUBCATCHMENTS]`, `[SUBAREAS]`, `[INFILTRATION]`, and current network sections.
+- Manifest includes `validation` and `validation_diagnostics` for audit/debug.
 
 ### 9) Import a pipe network (GeoJSON) and export SWMM sections
 ```bash
