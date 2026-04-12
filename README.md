@@ -49,116 +49,42 @@ The core idea is reproducibility: each run and build stage emits machine-readabl
 5. Produce publication-style rainfall-runoff plots.
 6. Optionally calibrate/validate with explicit sets or bounded search.
 
-## Minimal quickstart (CLI-only, no OpenClaw)
+## Quickstart (CLI-only, no OpenClaw)
 
-### Requirements
-
-- `swmm5` available on your `PATH`
-- Python 3.x
-- Recommended Python packages (module-dependent): `swmmtoolbox`, `matplotlib`, `numpy`, `pandas`, `rasterio`, `pysheds`
-
-### 1) Build a model deterministically (GIS + climate + params + builder)
+### Install (one line)
 
 ```bash
-RUN_ROOT=runs/quickstart
-mkdir -p "$RUN_ROOT"/{01_gis,02_params,03_climate,04_builder}
-
-python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
-  --subcatchments-geojson skills/swmm-gis/examples/subcatchments_demo.geojson \
-  --network-json skills/swmm-network/examples/basic-network.json \
-  --default-rain-gage RG1 \
-  --out-csv "$RUN_ROOT/01_gis/subcatchments_preprocessed.csv" \
-  --out-json "$RUN_ROOT/01_gis/subcatchments_preprocessed.json"
-
-python3 skills/swmm-params/scripts/landuse_to_swmm_params.py \
-  --input skills/swmm-params/examples/landuse_input.csv \
-  --output "$RUN_ROOT/02_params/landuse.json"
-
-python3 skills/swmm-params/scripts/soil_to_greenampt.py \
-  --input skills/swmm-params/examples/soil_input.csv \
-  --output "$RUN_ROOT/02_params/soil.json"
-
-python3 skills/swmm-params/scripts/merge_swmm_params.py \
-  --landuse-json "$RUN_ROOT/02_params/landuse.json" \
-  --soil-json "$RUN_ROOT/02_params/soil.json" \
-  --output "$RUN_ROOT/02_params/params.json"
-
-python3 skills/swmm-climate/scripts/format_rainfall.py \
-  --input skills/swmm-climate/examples/rainfall_event.csv \
-  --out-json "$RUN_ROOT/03_climate/rainfall.json" \
-  --out-timeseries "$RUN_ROOT/03_climate/timeseries.txt" \
-  --series-name TS_EVENT
-
-python3 skills/swmm-climate/scripts/build_raingage_section.py \
-  --rainfall-json "$RUN_ROOT/03_climate/rainfall.json" \
-  --gage-id RG1 \
-  --interval-min 5 \
-  --out-text "$RUN_ROOT/03_climate/raingage.txt" \
-  --out-json "$RUN_ROOT/03_climate/raingage.json"
-
-python3 skills/swmm-builder/scripts/build_swmm_inp.py \
-  --subcatchments-csv "$RUN_ROOT/01_gis/subcatchments_preprocessed.csv" \
-  --params-json "$RUN_ROOT/02_params/params.json" \
-  --network-json skills/swmm-network/examples/basic-network.json \
-  --rainfall-json "$RUN_ROOT/03_climate/rainfall.json" \
-  --raingage-json "$RUN_ROOT/03_climate/raingage.json" \
-  --config-json skills/swmm-builder/examples/options_config.json \
-  --out-inp "$RUN_ROOT/04_builder/model.inp" \
-  --out-manifest "$RUN_ROOT/04_builder/manifest.json"
+curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/install.sh | bash
 ```
 
-### 2) Run SWMM with run-level manifest/provenance
+### 1) Install local dependencies
 
 ```bash
-python3 skills/swmm-runner/scripts/swmm_runner.py run \
-  --inp runs/quickstart/04_builder/model.inp \
-  --run-dir runs/quickstart/05_runner \
-  --node O1
+bash scripts/install.sh --yes
+source .venv/bin/activate
 ```
 
-### 3) Verify continuity + peak diagnostics
+### 2) Run the acceptance pipeline
 
 ```bash
-python3 skills/swmm-runner/scripts/swmm_runner.py continuity \
-  --rpt runs/quickstart/05_runner/model.rpt
-
-python3 skills/swmm-runner/scripts/swmm_runner.py peak \
-  --rpt runs/quickstart/05_runner/model.rpt \
-  --node O1
+python3 scripts/acceptance/run_acceptance.py --run-id latest
 ```
 
-### 4) Produce a publication-style rainfall-runoff figure
+### 3) Check the acceptance report
+
+Open this file after the run finishes:
+
+`runs/acceptance/latest/acceptance_report.md`
+
+### 4) Make a rainfall-runoff plot from acceptance outputs
 
 ```bash
-mkdir -p runs/quickstart/06_plot
+mkdir -p runs/acceptance/latest/07_plot
 python3 skills/swmm-plot/scripts/plot_rain_runoff_si.py \
-  --inp runs/quickstart/05_runner/model.inp \
-  --out runs/quickstart/05_runner/model.out \
-  --out-png runs/quickstart/06_plot/fig_rain_runoff.png \
-  --focus-day 1984-05-25 \
-  --window-start 09:00 \
-  --window-end 15:00 \
-  --dt-min 5
+  --inp runs/acceptance/latest/04_builder/model.inp \
+  --out runs/acceptance/latest/05_runner/acceptance.out \
+  --out-png runs/acceptance/latest/07_plot/fig_rain_runoff.png
 ```
-
-### 5) Optional: run bounded calibration search (LHS)
-
-```bash
-python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
-  --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map examples/calibration/patch_map.json \
-  --search-space examples/calibration/search_space.json \
-  --observed examples/calibration/observed_flow.csv \
-  --run-root runs/calibration-search \
-  --summary-json runs/calibration-search/summary.json \
-  --ranking-json runs/calibration-search/ranking.json \
-  --strategy lhs \
-  --iterations 12 \
-  --seed 42 \
-  --dry-run
-```
-
-For explicit candidate sets, use `swmm_calibrate.py calibrate` with `examples/calibration/parameter_sets.json`. For one-parameter scouting, use `skills/swmm-calibration/scripts/parameter_scout.py`.
 
 ## Advanced modules and docs
 
