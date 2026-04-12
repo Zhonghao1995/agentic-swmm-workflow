@@ -273,6 +273,19 @@ python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
   --out-csv runs/swmm-gis/subcatchments_preprocessed.csv \
   --out-json runs/swmm-gis/subcatchments_preprocessed.json
 ```
+Optional DEM-assisted mode (uses per-subcatchment DEM stats when provided):
+```bash
+python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
+  --subcatchments-geojson skills/swmm-gis/examples/subcatchments_dem_assisted.geojson \
+  --network-json skills/swmm-network/examples/basic-network.json \
+  --dem-stats-json skills/swmm-gis/examples/subcatchments_dem_stats_demo.json \
+  --default-rain-gage RG1 \
+  --out-csv runs/swmm-gis/subcatchments_dem_assisted.csv \
+  --out-json runs/swmm-gis/subcatchments_dem_assisted.json
+```
+Notes:
+- If DEM stats are missing for a subcatchment, deterministic fallback methods are used.
+- Outputs now include method provenance fields such as `width_source`, `slope_source`, and `outlet_method`.
 
 ### 8) Assemble a runnable INP with `swmm-builder`
 ```bash

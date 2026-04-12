@@ -1,0 +1,21 @@
+{
+  "subcatchments": [
+    {
+      "subcatchment_id": "D1",
+      "dem_slope_pct": 2.8,
+      "dem_flow_length_m": 62.0
+    },
+    {
+      "subcatchment_id": "D2",
+      "dem_elev_max_m": 108.0,
+      "dem_elev_min_m": 101.0,
+      "dem_flow_length_m": 75.0
+    },
+    {
+      "subcatchment_id": "D3",
+      "dem_elev_mean_m": 104.5,
+      "dem_elev_outlet_m": 102.5,
+      "dem_flow_length_m": 85.0
+    }
+  ]
+}

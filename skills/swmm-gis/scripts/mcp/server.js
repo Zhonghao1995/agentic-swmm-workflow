@@ -49,6 +49,8 @@ const PreprocessArgs = z.object({
   outJson: z.string(),
   idField: z.string().default("subcatchment_id"),
   outletHintField: z.string().default("outlet_hint"),
+  demStatsJson: z.string().optional(),
+  demStatsIdField: z.string().default("subcatchment_id"),
   defaultSlopePct: z.number().positive().optional(),
   minSlopePct: z.number().positive().optional(),
   minWidthM: z.number().positive().optional(),
@@ -92,6 +94,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             outJson: { type: "string" },
             idField: { type: "string", default: "subcatchment_id" },
             outletHintField: { type: "string", default: "outlet_hint" },
+            demStatsJson: { type: "string" },
+            demStatsIdField: { type: "string", default: "subcatchment_id" },
             defaultSlopePct: { type: "number", minimum: 0.000001 },
             minSlopePct: { type: "number", minimum: 0.000001 },
             minWidthM: { type: "number", minimum: 0.000001 },
@@ -139,7 +143,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       "--out-json", a.outJson,
       "--id-field", a.idField,
       "--outlet-hint-field", a.outletHintField,
+      "--dem-stats-id-field", a.demStatsIdField,
     ];
+    if (a.demStatsJson !== undefined) args.push("--dem-stats-json", a.demStatsJson);
     if (a.defaultSlopePct !== undefined) args.push("--default-slope-pct", String(a.defaultSlopePct));
     if (a.minSlopePct !== undefined) args.push("--min-slope-pct", String(a.minSlopePct));
     if (a.minWidthM !== undefined) args.push("--min-width-m", String(a.minWidthM));

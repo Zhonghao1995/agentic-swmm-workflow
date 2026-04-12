@@ -9,6 +9,9 @@ from pathlib import Path
 from typing import Any
 
 
+FloatCandidate = tuple[str, dict[str, Any], str]
+
+
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -123,10 +126,11 @@ def geometry_metrics(geometry: dict[str, Any]) -> tuple[float, float, float, flo
     raise ValueError(f"Unsupported geometry type: {gtype}")
 
 
-def parse_optional_float(props: dict[str, Any], field: str) -> float | None:
-    raw = props.get(field)
+def parse_optional_float_value(raw: Any, *, context: str) -> float | None:
     if raw is None:
         return None
+    if isinstance(raw, bool):
+        raise ValueError(f"Invalid float in '{context}': {raw}")
     if isinstance(raw, (int, float)):
         return float(raw)
     text = str(raw).strip()
@@ -135,7 +139,104 @@ def parse_optional_float(props: dict[str, Any], field: str) -> float | None:
     try:
         return float(text)
     except ValueError as exc:
-        raise ValueError(f"Invalid float in property '{field}': {raw}") from exc
+        raise ValueError(f"Invalid float in '{context}': {raw}") from exc
+
+
+def parse_optional_float(mapping: dict[str, Any], field: str, *, mapping_name: str = "properties") -> float | None:
+    if field not in mapping:
+        return None
+    return parse_optional_float_value(mapping.get(field), context=f"{mapping_name}.{field}")
+
+
+def pick_first_float(candidates: list[FloatCandidate]) -> tuple[float, str] | None:
+    for mapping_name, mapping, field in candidates:
+        value = parse_optional_float(mapping, field, mapping_name=mapping_name)
+        if value is None:
+            continue
+        return value, f"{mapping_name}:{field}"
+    return None
+
+
+def normalize_non_blank(value: Any) -> str | None:
+    if value is None:
+        return None
+    token = str(value).strip()
+    return token or None
+
+
+def increment_count(counter: dict[str, int], key: str) -> None:
+    counter[key] = counter.get(key, 0) + 1
+
+
+def first_present_id(record: dict[str, Any], fields: list[str], *, context: str) -> str:
+    for field in fields:
+        value = normalize_non_blank(record.get(field))
+        if value is not None:
+            return value
+    raise ValueError(f"{context} missing id field; tried {fields}")
+
+
+def build_dem_stats_index(
+    dem_stats_json: Path | None,
+    *,
+    id_field: str,
+    dem_stats_id_field: str,
+) -> tuple[dict[str, dict[str, Any]], str | None]:
+    if dem_stats_json is None:
+        return {}, None
+
+    raw = load_json(dem_stats_json)
+    candidates = [dem_stats_id_field, id_field, "subcatchment_id", "id"]
+
+    records: list[tuple[str, dict[str, Any]]] = []
+
+    def append_record(record_id: str, record: dict[str, Any], *, context: str) -> None:
+        if not isinstance(record, dict):
+            raise ValueError(f"{context} must be an object")
+        rid = normalize_non_blank(record_id)
+        if rid is None:
+            rid = first_present_id(record, candidates, context=context)
+        records.append((rid, record))
+
+    if isinstance(raw, dict) and "subcatchments" in raw:
+        body = raw.get("subcatchments")
+        if isinstance(body, list):
+            for idx, entry in enumerate(body, start=1):
+                if not isinstance(entry, dict):
+                    raise ValueError(
+                        f"DEM stats entry {idx} in {dem_stats_json} must be an object"
+                    )
+                rid = first_present_id(entry, candidates, context=f"DEM stats entry {idx}")
+                records.append((rid, entry))
+        elif isinstance(body, dict):
+            for key, entry in body.items():
+                append_record(str(key), entry, context=f"DEM stats entry '{key}'")
+        else:
+            raise ValueError(
+                f"DEM stats file {dem_stats_json} field 'subcatchments' must be a list or object"
+            )
+    elif isinstance(raw, list):
+        for idx, entry in enumerate(raw, start=1):
+            if not isinstance(entry, dict):
+                raise ValueError(f"DEM stats entry {idx} in {dem_stats_json} must be an object")
+            rid = first_present_id(entry, candidates, context=f"DEM stats entry {idx}")
+            records.append((rid, entry))
+    elif isinstance(raw, dict) and all(isinstance(v, dict) for v in raw.values()):
+        for key, entry in raw.items():
+            append_record(str(key), entry, context=f"DEM stats entry '{key}'")
+    else:
+        raise ValueError(
+            "DEM stats JSON must be one of: list[object], "
+            "{'subcatchments': list|object}, or object keyed by subcatchment id"
+        )
+
+    out: dict[str, dict[str, Any]] = {}
+    for rid, entry in records:
+        if rid in out:
+            raise ValueError(f"Duplicate DEM stats id '{rid}' in {dem_stats_json}")
+        out[rid] = dict(entry)
+
+    return out, str(dem_stats_json)
 
 
 def build_node_index(network_json: Path) -> dict[str, tuple[float, float]]:
@@ -175,35 +276,289 @@ def nearest_node(
     return best_id, best_dist
 
 
-def estimate_width_m(area_m2: float, perimeter_m: float, min_width_m: float) -> float:
+def clamp_with_min(
+    value: float,
+    *,
+    min_value: float,
+    source: str,
+    metric: str,
+    diagnostics: list[str],
+) -> tuple[float, str]:
+    if value >= min_value:
+        return value, source
+    diagnostics.append(
+        f"{metric} from {source}={value:.6f} below min {min_value:.6f}; clamped."
+    )
+    return min_value, f"{source}|clamped_min"
+
+
+def resolve_dem_flow_length(
+    props: dict[str, Any],
+    dem_stats: dict[str, Any],
+    diagnostics: list[str],
+) -> tuple[float, str] | None:
+    dem_flow = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_flow_length_m"),
+            ("dem_stats", dem_stats, "flow_length_m"),
+            ("properties", props, "dem_flow_length_m"),
+            ("properties", props, "flow_length_m"),
+        ]
+    )
+    if dem_flow is None:
+        return None
+
+    value, source = dem_flow
+    if value <= 0:
+        diagnostics.append(f"Ignoring non-positive flow length from {source}={value:.6f}.")
+        return None
+    return value, source
+
+
+def estimate_width_m(
+    area_m2: float,
+    perimeter_m: float,
+    *,
+    min_width_m: float,
+    props: dict[str, Any],
+    dem_stats: dict[str, Any],
+    dem_flow_length: tuple[float, str] | None,
+    diagnostics: list[str],
+) -> tuple[float, str]:
+    width_direct = pick_first_float(
+        [
+            ("properties", props, "width_m"),
+            ("properties", props, "hydraulic_width_m"),
+            ("dem_stats", dem_stats, "dem_width_m"),
+            ("dem_stats", dem_stats, "width_m"),
+        ]
+    )
+    if width_direct is not None:
+        width, source = width_direct
+        if width > 0:
+            return clamp_with_min(
+                width,
+                min_value=min_width_m,
+                source=source,
+                metric="width_m",
+                diagnostics=diagnostics,
+            )
+        diagnostics.append(f"Ignoring non-positive width from {source}={width:.6f}.")
+
+    if dem_flow_length is not None:
+        flow_length_m, flow_source = dem_flow_length
+        width = area_m2 / max(flow_length_m, 1e-9)
+        width, width_source = clamp_with_min(
+            width,
+            min_value=min_width_m,
+            source=f"derived:area_m2/{flow_source}",
+            metric="width_m",
+            diagnostics=diagnostics,
+        )
+        return width, width_source
+
     # Deterministic surrogate: equivalent hydraulic width from area and perimeter.
-    width = 2.0 * area_m2 / max(perimeter_m, 1e-9)
-    return max(width, min_width_m)
+    width_geom = 2.0 * area_m2 / max(perimeter_m, 1e-9)
+    width_geom, width_source = clamp_with_min(
+        width_geom,
+        min_value=min_width_m,
+        source="derived:2*area_m2/perimeter_m",
+        metric="width_m",
+        diagnostics=diagnostics,
+    )
+    return width_geom, width_source
+
+
+def estimate_flow_length_m(
+    area_m2: float,
+    width_m: float,
+    *,
+    width_source: str,
+    dem_flow_length: tuple[float, str] | None,
+) -> tuple[float, str]:
+    if dem_flow_length is not None:
+        value, source = dem_flow_length
+        return value, source
+    return area_m2 / max(width_m, 1e-9), f"derived:area_m2/width_m ({width_source})"
 
 
 def estimate_slope_pct(
     props: dict[str, Any],
+    dem_stats: dict[str, Any],
     flow_length_m: float,
     *,
+    flow_length_source: str,
     default_slope_pct: float,
     min_slope_pct: float,
+    diagnostics: list[str],
 ) -> tuple[float, str]:
-    slope_direct = parse_optional_float(props, "slope_pct")
+    slope_direct = pick_first_float([("properties", props, "slope_pct")])
     if slope_direct is not None:
-        return max(slope_direct, min_slope_pct), "property:slope_pct"
+        slope, source = slope_direct
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=source,
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
 
-    elev_mean = parse_optional_float(props, "elev_mean_m")
-    elev_outlet = parse_optional_float(props, "elev_outlet_m")
+    dem_slope_direct = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_slope_pct"),
+            ("dem_stats", dem_stats, "raster_slope_pct"),
+            ("dem_stats", dem_stats, "mean_slope_pct"),
+            ("dem_stats", dem_stats, "slope_pct"),
+            ("properties", props, "dem_slope_pct"),
+            ("properties", props, "raster_slope_pct"),
+        ]
+    )
+    if dem_slope_direct is not None:
+        slope, source = dem_slope_direct
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=source,
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
+
+    dem_mean = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_elev_mean_m"),
+            ("dem_stats", dem_stats, "elev_mean_m"),
+            ("properties", props, "dem_elev_mean_m"),
+        ]
+    )
+    dem_outlet = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_elev_outlet_m"),
+            ("dem_stats", dem_stats, "elev_outlet_m"),
+            ("properties", props, "dem_elev_outlet_m"),
+        ]
+    )
+    if dem_mean is not None and dem_outlet is not None:
+        mean_value, mean_source = dem_mean
+        outlet_value, outlet_source = dem_outlet
+        slope = (mean_value - outlet_value) / max(flow_length_m, 1e-9) * 100.0
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=f"derived:({mean_source}-{outlet_source})/{flow_length_source}*100",
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
+
+    dem_max = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_elev_max_m"),
+            ("dem_stats", dem_stats, "elev_max_m"),
+            ("properties", props, "dem_elev_max_m"),
+        ]
+    )
+    dem_min = pick_first_float(
+        [
+            ("dem_stats", dem_stats, "dem_elev_min_m"),
+            ("dem_stats", dem_stats, "elev_min_m"),
+            ("properties", props, "dem_elev_min_m"),
+        ]
+    )
+    if dem_max is not None and dem_min is not None:
+        max_value, max_source = dem_max
+        min_value, min_source = dem_min
+        slope = (max_value - min_value) / max(flow_length_m, 1e-9) * 100.0
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=f"derived:({max_source}-{min_source})/{flow_length_source}*100",
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
+
+    if dem_mean is not None and dem_min is not None:
+        mean_value, mean_source = dem_mean
+        min_value, min_source = dem_min
+        slope = (mean_value - min_value) / max(flow_length_m, 1e-9) * 100.0
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=f"derived:({mean_source}-{min_source})/{flow_length_source}*100",
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
+
+    elev_mean = pick_first_float([("properties", props, "elev_mean_m")])
+    elev_outlet = pick_first_float([("properties", props, "elev_outlet_m")])
     if elev_mean is not None and elev_outlet is not None:
-        slope = (elev_mean - elev_outlet) / max(flow_length_m, 1e-9) * 100.0
-        return max(slope, min_slope_pct), "derived:(elev_mean_m-elev_outlet_m)/flow_length"
+        mean_value, mean_source = elev_mean
+        outlet_value, outlet_source = elev_outlet
+        slope = (mean_value - outlet_value) / max(flow_length_m, 1e-9) * 100.0
+        return clamp_with_min(
+            slope,
+            min_value=min_slope_pct,
+            source=f"derived:({mean_source}-{outlet_source})/{flow_length_source}*100",
+            metric="slope_pct",
+            diagnostics=diagnostics,
+        )
 
-    return max(default_slope_pct, min_slope_pct), "default"
+    return clamp_with_min(
+        default_slope_pct,
+        min_value=min_slope_pct,
+        source="default_slope_pct",
+        metric="slope_pct",
+        diagnostics=diagnostics,
+    )
+
+
+def link_outlet(
+    *,
+    subcatchment_id: str,
+    props: dict[str, Any],
+    outlet_hint_field: str,
+    centroid_x: float,
+    centroid_y: float,
+    node_index: dict[str, tuple[float, float]],
+) -> tuple[str, float, str, str, list[str]]:
+    diagnostics: list[str] = []
+    hint = str(props.get(outlet_hint_field) or "").strip()
+
+    if hint:
+        if hint in node_index:
+            nx, ny = node_index[hint]
+            outlet_distance = math.hypot(centroid_x - nx, centroid_y - ny)
+            return hint, outlet_distance, f"hint:{outlet_hint_field}", hint, diagnostics
+
+        diagnostics.append(
+            f"Feature '{subcatchment_id}' has unknown outlet hint '{hint}' in "
+            f"properties.{outlet_hint_field}; used nearest node fallback."
+        )
+        outlet, outlet_distance = nearest_node(centroid_x, centroid_y, node_index)
+        return (
+            outlet,
+            outlet_distance,
+            f"nearest_node_fallback:invalid_hint:{outlet_hint_field}",
+            hint,
+            diagnostics,
+        )
+
+    diagnostics.append(
+        f"Feature '{subcatchment_id}' has blank properties.{outlet_hint_field}; used nearest node fallback."
+    )
+    outlet, outlet_distance = nearest_node(centroid_x, centroid_y, node_index)
+    return outlet, outlet_distance, "nearest_node", "", diagnostics
+
+
+def is_dem_assisted_source(source: str) -> bool:
+    token = source.lower()
+    return "dem_stats" in token or "dem_" in token or "raster" in token
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Preprocess subcatchment polygons into builder-ready CSV with deterministic width/slope/outlet linking."
+        description=(
+            "Preprocess subcatchment polygons into builder-ready CSV with deterministic "
+            "width/slope/outlet linking and optional DEM-assisted metrics."
+        )
     )
     ap.add_argument("--subcatchments-geojson", type=Path, required=True)
     ap.add_argument("--network-json", type=Path, required=True)
@@ -211,6 +566,8 @@ def main() -> None:
     ap.add_argument("--out-json", type=Path, required=True)
     ap.add_argument("--id-field", default="subcatchment_id")
     ap.add_argument("--outlet-hint-field", default="outlet_hint")
+    ap.add_argument("--dem-stats-json", type=Path, default=None)
+    ap.add_argument("--dem-stats-id-field", default="subcatchment_id")
     ap.add_argument("--default-slope-pct", type=float, default=1.0)
     ap.add_argument("--min-slope-pct", type=float, default=0.1)
     ap.add_argument("--min-width-m", type=float, default=10.0)
@@ -234,10 +591,21 @@ def main() -> None:
         raise ValueError("subcatchments GeoJSON has no features")
 
     node_index = build_node_index(args.network_json)
+    dem_stats_index, dem_stats_source = build_dem_stats_index(
+        args.dem_stats_json,
+        id_field=args.id_field,
+        dem_stats_id_field=args.dem_stats_id_field,
+    )
 
     seen_ids: set[str] = set()
+    used_dem_ids: set[str] = set()
+    diagnostics: list[dict[str, str]] = []
     csv_rows: list[dict[str, Any]] = []
     detail_rows: list[dict[str, Any]] = []
+
+    width_source_counts: dict[str, int] = {}
+    slope_source_counts: dict[str, int] = {}
+    outlet_method_counts: dict[str, int] = {}
 
     for idx, feature in enumerate(features):
         props = feature.get("properties") or {}
@@ -257,35 +625,59 @@ def main() -> None:
             raise ValueError(f"Duplicate subcatchment id '{subcatchment_id}'")
         seen_ids.add(subcatchment_id)
 
+        dem_stats = dem_stats_index.get(subcatchment_id, {})
+        if dem_stats:
+            used_dem_ids.add(subcatchment_id)
+
+        row_diagnostics: list[str] = []
+        if args.dem_stats_json is not None and not dem_stats:
+            row_diagnostics.append(
+                f"No DEM stats record matched id '{subcatchment_id}'; using deterministic fallback where needed."
+            )
+
         area_m2, cx, cy, perimeter_m = geometry_metrics(geom)
         area_ha = area_m2 / 10000.0
-        width_m = estimate_width_m(area_m2, perimeter_m, args.min_width_m)
-        flow_length_m = area_m2 / width_m
+
+        dem_flow_length = resolve_dem_flow_length(props, dem_stats, row_diagnostics)
+        width_m, width_source = estimate_width_m(
+            area_m2,
+            perimeter_m,
+            min_width_m=args.min_width_m,
+            props=props,
+            dem_stats=dem_stats,
+            dem_flow_length=dem_flow_length,
+            diagnostics=row_diagnostics,
+        )
+        flow_length_m, flow_length_source = estimate_flow_length_m(
+            area_m2,
+            width_m,
+            width_source=width_source,
+            dem_flow_length=dem_flow_length,
+        )
         slope_pct, slope_source = estimate_slope_pct(
             props,
+            dem_stats,
             flow_length_m,
+            flow_length_source=flow_length_source,
             default_slope_pct=args.default_slope_pct,
             min_slope_pct=args.min_slope_pct,
+            diagnostics=row_diagnostics,
         )
 
-        hint = str(props.get(args.outlet_hint_field) or "").strip()
-        if hint:
-            if hint not in node_index:
-                raise ValueError(
-                    f"Feature '{subcatchment_id}' has unknown outlet hint '{hint}' not found in network nodes"
-                )
-            outlet = hint
-            nx, ny = node_index[outlet]
-            outlet_distance = math.hypot(cx - nx, cy - ny)
-            outlet_method = f"hint:{args.outlet_hint_field}"
-        else:
-            outlet, outlet_distance = nearest_node(cx, cy, node_index)
-            outlet_method = "nearest_node"
+        outlet, outlet_distance, outlet_method, outlet_hint, outlet_diag = link_outlet(
+            subcatchment_id=subcatchment_id,
+            props=props,
+            outlet_hint_field=args.outlet_hint_field,
+            centroid_x=cx,
+            centroid_y=cy,
+            node_index=node_index,
+        )
+        row_diagnostics.extend(outlet_diag)
 
         if args.max_link_distance_m is not None and outlet_distance > args.max_link_distance_m:
             raise ValueError(
-                f"Feature '{subcatchment_id}' linked outlet '{outlet}' at distance {outlet_distance:.3f} m "
-                f"exceeding --max-link-distance-m={args.max_link_distance_m}"
+                f"Feature '{subcatchment_id}' linked outlet '{outlet}' via {outlet_method} at distance "
+                f"{outlet_distance:.3f} m exceeding --max-link-distance-m={args.max_link_distance_m}"
             )
 
         curb_length_m = parse_optional_float(props, "curb_length_m")
@@ -294,6 +686,19 @@ def main() -> None:
 
         snow_pack = str(props.get("snow_pack") or "").strip()
         rain_gage = str(props.get("rain_gage") or args.default_rain_gage).strip()
+
+        dem_assisted = bool(dem_stats) and (
+            is_dem_assisted_source(width_source)
+            or is_dem_assisted_source(flow_length_source)
+            or is_dem_assisted_source(slope_source)
+        )
+
+        increment_count(width_source_counts, width_source)
+        increment_count(slope_source_counts, slope_source)
+        increment_count(outlet_method_counts, outlet_method)
+
+        for message in row_diagnostics:
+            diagnostics.append({"id": subcatchment_id, "message": message})
 
         csv_row = {
             "subcatchment_id": subcatchment_id,
@@ -304,6 +709,15 @@ def main() -> None:
             "curb_length_m": round(curb_length_m, 6),
             "snow_pack": snow_pack,
             "rain_gage": rain_gage,
+            "area_source": "geometry:planar_polygon",
+            "width_source": width_source,
+            "flow_length_source": flow_length_source,
+            "slope_source": slope_source,
+            "outlet_method": outlet_method,
+            "outlet_distance_m": round(outlet_distance, 6),
+            "outlet_hint": outlet_hint,
+            "outlet_diagnostic": " | ".join(outlet_diag),
+            "dem_assisted": "yes" if dem_assisted else "no",
         }
         csv_rows.append(csv_row)
 
@@ -314,12 +728,25 @@ def main() -> None:
                 "perimeter_m": perimeter_m,
                 "centroid": {"x": cx, "y": cy},
                 "flow_length_m": flow_length_m,
+                "flow_length_source": flow_length_source,
                 "width_m": width_m,
+                "width_source": width_source,
                 "slope_pct": slope_pct,
                 "slope_source": slope_source,
                 "outlet": outlet,
                 "outlet_distance_m": outlet_distance,
                 "outlet_method": outlet_method,
+                "outlet_hint": outlet_hint,
+                "dem_stats_used": bool(dem_stats),
+                "dem_assisted": dem_assisted,
+                "diagnostics": row_diagnostics,
+                "sources": {
+                    "area": "geometry:planar_polygon",
+                    "width": width_source,
+                    "flow_length": flow_length_source,
+                    "slope": slope_source,
+                    "outlet": outlet_method,
+                },
             }
         )
 
@@ -335,8 +762,26 @@ def main() -> None:
         "curb_length_m",
         "snow_pack",
         "rain_gage",
+        "area_source",
+        "width_source",
+        "flow_length_source",
+        "slope_source",
+        "outlet_method",
+        "outlet_distance_m",
+        "outlet_hint",
+        "outlet_diagnostic",
+        "dem_assisted",
     ]
     write_csv(args.out_csv, csv_rows, csv_headers)
+
+    unmatched_dem_ids = sorted(set(dem_stats_index) - used_dem_ids)
+    for dem_id in unmatched_dem_ids:
+        diagnostics.append(
+            {
+                "id": dem_id,
+                "message": "DEM stats record did not match any subcatchment feature id.",
+            }
+        )
 
     report = {
         "ok": True,
@@ -344,24 +789,36 @@ def main() -> None:
         "inputs": {
             "subcatchments_geojson": str(args.subcatchments_geojson),
             "network_json": str(args.network_json),
+            "dem_stats_json": dem_stats_source,
         },
         "assumptions": {
             "planar_coordinates": True,
             "coordinate_units": "meters",
-            "width_formula": "width_m = max(min_width_m, 2 * area_m2 / perimeter_m)",
+            "width_priority": [
+                "properties.width_m / properties.hydraulic_width_m",
+                "DEM flow length -> area_m2 / flow_length_m",
+                "2 * area_m2 / perimeter_m",
+            ],
+            "flow_length_priority": [
+                "DEM flow length fields",
+                "area_m2 / width_m",
+            ],
             "slope_priority": [
                 "properties.slope_pct",
+                "DEM direct slope fields",
+                "(DEM elevation stats) / flow_length_m",
                 "(properties.elev_mean_m - properties.elev_outlet_m) / flow_length_m * 100",
                 "default_slope_pct",
             ],
             "outlet_link_priority": [
-                f"properties.{args.outlet_hint_field}",
-                "nearest network node",
+                f"properties.{args.outlet_hint_field} (if valid)",
+                "nearest network node fallback",
             ],
         },
         "parameters": {
             "id_field": args.id_field,
             "outlet_hint_field": args.outlet_hint_field,
+            "dem_stats_id_field": args.dem_stats_id_field,
             "default_slope_pct": args.default_slope_pct,
             "min_slope_pct": args.min_slope_pct,
             "min_width_m": args.min_width_m,
@@ -373,7 +830,16 @@ def main() -> None:
             "feature_count": len(features),
             "subcatchment_count": len(detail_rows),
             "network_node_count": len(node_index),
+            "dem_stats_count": len(dem_stats_index),
+            "dem_stats_matched_count": len(used_dem_ids),
+            "diagnostic_count": len(diagnostics),
         },
+        "method_counts": {
+            "width_source": width_source_counts,
+            "slope_source": slope_source_counts,
+            "outlet_method": outlet_method_counts,
+        },
+        "diagnostics": diagnostics,
         "subcatchments": detail_rows,
         "outputs": {
             "builder_csv": str(args.out_csv),
@@ -389,6 +855,9 @@ def main() -> None:
                 "out_json": str(args.out_json),
                 "subcatchment_count": len(detail_rows),
                 "network_node_count": len(node_index),
+                "dem_stats_count": len(dem_stats_index),
+                "dem_stats_matched_count": len(used_dem_ids),
+                "diagnostic_count": len(diagnostics),
             },
             indent=2,
         )
