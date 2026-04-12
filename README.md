@@ -304,6 +304,25 @@ python3 skills/swmm-network/scripts/network_to_inp.py \
   --out runs/swmm-network/imported-network.inp
 ```
 
+### 10) Step-1 acceptance run (end-to-end publish pipeline)
+```bash
+python3 scripts/acceptance/run_acceptance.py --run-id latest
+```
+
+This command executes:
+- sample inputs -> `swmm-gis` preprocess
+- `swmm-params` mapping + merge
+- `swmm-climate` formatting + raingage build
+- `swmm-builder` INP assembly
+- `swmm-runner` execution
+- QA checks (network QA + runner continuity/peak parse)
+
+Artifacts are written under `runs/acceptance/<run-id>/`, including:
+- built INP
+- runner `.rpt` and `.out`
+- `manifest.json`
+- `acceptance_report.json` and `acceptance_report.md`
+
 ## MCP servers (optional)
 
 Each skill includes an MCP server you can run via stdio:

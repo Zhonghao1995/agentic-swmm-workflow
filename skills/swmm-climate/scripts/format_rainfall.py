@@ -92,7 +92,8 @@ def render_timeseries_lines(series_name: str, records: list[RainRecord]) -> list
     ]
     for rec in records:
         lines.append(
-            f"{series_name:<18} {rec.timestamp.strftime('%Y-%m-%d')} {rec.timestamp.strftime('%H:%M')} {format_number(rec.rainfall_mm_per_hr)}"
+            # SWMM expects calendar dates in mm/dd/yyyy format in [TIMESERIES].
+            f"{series_name:<18} {rec.timestamp.strftime('%m/%d/%Y')} {rec.timestamp.strftime('%H:%M')} {format_number(rec.rainfall_mm_per_hr)}"
         )
     return lines
 
