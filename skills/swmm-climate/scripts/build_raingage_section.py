@@ -46,10 +46,33 @@ def build_raingage_text(
     return "\n".join(lines) + "\n"
 
 
+def parse_series_by_station(climate_obj: Any) -> dict[str, str]:
+    stations = climate_obj.get("stations")
+    if not isinstance(stations, list):
+        return {}
+    out: dict[str, str] = {}
+    for idx, item in enumerate(stations, start=1):
+        if not isinstance(item, dict):
+            continue
+        station_id = str(item.get("station_id") or "").strip()
+        series_name = str(item.get("series_name") or "").strip()
+        if not station_id or not series_name:
+            continue
+        if station_id in out:
+            raise ValueError(f"Rainfall JSON has duplicate station_id '{station_id}' in stations[{idx}]")
+        out[station_id] = series_name
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build a deterministic SWMM [RAINGAGES] helper snippet.")
     ap.add_argument("--gage-id", default="RG1")
     ap.add_argument("--series-name", default=None)
+    ap.add_argument(
+        "--station-id",
+        default=None,
+        help="Optional station ID when --rainfall-json contains multiple stations.",
+    )
     ap.add_argument("--rainfall-json", type=Path, default=None, help="Optional JSON from format_rainfall.py")
     ap.add_argument("--rain-format", default="INTENSITY", choices=["INTENSITY", "VOLUME", "CUMULATIVE"])
     ap.add_argument("--interval-min", type=int, default=5)
@@ -61,7 +84,34 @@ def main() -> None:
     series_name = args.series_name
     if args.rainfall_json is not None:
         climate = load_json(args.rainfall_json)
-        json_series = str(climate.get("series_name") or "").strip()
+        series_by_station = parse_series_by_station(climate)
+
+        json_series = ""
+        if args.station_id is not None:
+            requested_station = str(args.station_id).strip()
+            if not requested_station:
+                raise ValueError("--station-id cannot be blank when provided")
+            if not series_by_station:
+                raise ValueError(
+                    "--station-id was provided, but rainfall JSON does not contain a stations[] mapping"
+                )
+            if requested_station not in series_by_station:
+                known = ", ".join(sorted(series_by_station.keys()))
+                raise ValueError(
+                    f"Station '{requested_station}' not found in rainfall JSON stations[]; known stations: {known}"
+                )
+            json_series = series_by_station[requested_station]
+        elif len(series_by_station) == 1:
+            json_series = next(iter(series_by_station.values()))
+        else:
+            json_series = str(climate.get("series_name") or "").strip()
+            if not json_series and len(series_by_station) > 1:
+                known = ", ".join(sorted(series_by_station.keys()))
+                raise ValueError(
+                    "Rainfall JSON contains multiple stations. Provide --station-id or --series-name. "
+                    f"Known stations: {known}"
+                )
+
         if series_name is None:
             series_name = json_series
         elif json_series and json_series != series_name:
@@ -95,6 +145,7 @@ def main() -> None:
             },
         },
         "source_rainfall_json": str(args.rainfall_json) if args.rainfall_json is not None else None,
+        "source_station_id": args.station_id,
         "outputs": {
             "text": str(args.out_text),
         },

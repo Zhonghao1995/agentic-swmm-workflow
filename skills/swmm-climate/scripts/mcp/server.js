@@ -31,31 +31,65 @@ server.tool(
   'Convert rainfall CSV into SWMM timeseries text + JSON metadata.',
   {
     inputCsvPath: z.string(),
+    additionalInputCsvPaths: z.array(z.string()).optional(),
+    inputGlobPatterns: z.array(z.string()).optional(),
     outputJsonPath: z.string(),
     outputTimeseriesPath: z.string(),
     seriesName: z.string().optional(),
+    seriesNameTemplate: z.string().optional(),
     timestampColumn: z.string().optional(),
     valueColumn: z.string().optional(),
+    stationColumn: z.string().optional(),
+    defaultStationId: z.string().optional(),
     timestampFormat: z.string().optional(),
+    windowStart: z.string().optional(),
+    windowEnd: z.string().optional(),
+    valueUnits: z.string().optional(),
+    unitPolicy: z.enum(['strict', 'convert_to_mm_per_hr']).optional(),
+    timestampPolicy: z.enum(['strict', 'sort']).optional(),
   },
   async ({
     inputCsvPath,
+    additionalInputCsvPaths,
+    inputGlobPatterns,
     outputJsonPath,
     outputTimeseriesPath,
     seriesName,
+    seriesNameTemplate,
     timestampColumn,
     valueColumn,
+    stationColumn,
+    defaultStationId,
     timestampFormat,
+    windowStart,
+    windowEnd,
+    valueUnits,
+    unitPolicy,
+    timestampPolicy,
   }) => {
     const args = [
-      '--input', inputCsvPath,
       '--out-json', outputJsonPath,
       '--out-timeseries', outputTimeseriesPath,
     ];
+    const allInputs = [inputCsvPath, ...(additionalInputCsvPaths || [])];
+    for (const csvPath of allInputs) {
+      args.push('--input', csvPath);
+    }
+    for (const pattern of inputGlobPatterns || []) {
+      args.push('--input-glob', pattern);
+    }
     if (seriesName) args.push('--series-name', seriesName);
+    if (seriesNameTemplate) args.push('--series-name-template', seriesNameTemplate);
     if (timestampColumn) args.push('--timestamp-column', timestampColumn);
     if (valueColumn) args.push('--value-column', valueColumn);
+    if (stationColumn) args.push('--station-column', stationColumn);
+    if (defaultStationId) args.push('--default-station-id', defaultStationId);
     if (timestampFormat) args.push('--timestamp-format', timestampFormat);
+    if (windowStart) args.push('--window-start', windowStart);
+    if (windowEnd) args.push('--window-end', windowEnd);
+    if (valueUnits) args.push('--value-units', valueUnits);
+    if (unitPolicy) args.push('--unit-policy', unitPolicy);
+    if (timestampPolicy) args.push('--timestamp-policy', timestampPolicy);
 
     const out = runPython(formatScript, args);
     return {
@@ -76,15 +110,17 @@ server.tool(
     outJsonPath: z.string(),
     gageId: z.string().optional(),
     seriesName: z.string().optional(),
+    stationId: z.string().optional(),
     rainfallJsonPath: z.string().optional(),
     rainFormat: z.enum(['INTENSITY', 'VOLUME', 'CUMULATIVE']).optional(),
     intervalMin: z.number().int().positive().optional(),
     scf: z.number().positive().optional(),
   },
-  async ({ outTextPath, outJsonPath, gageId, seriesName, rainfallJsonPath, rainFormat, intervalMin, scf }) => {
+  async ({ outTextPath, outJsonPath, gageId, seriesName, stationId, rainfallJsonPath, rainFormat, intervalMin, scf }) => {
     const args = ['--out-text', outTextPath, '--out-json', outJsonPath];
     if (gageId) args.push('--gage-id', gageId);
     if (seriesName) args.push('--series-name', seriesName);
+    if (stationId) args.push('--station-id', stationId);
     if (rainfallJsonPath) args.push('--rainfall-json', rainfallJsonPath);
     if (rainFormat) args.push('--rain-format', rainFormat);
     if (intervalMin) args.push('--interval-min', String(intervalMin));

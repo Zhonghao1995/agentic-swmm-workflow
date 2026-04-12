@@ -263,6 +263,39 @@ python3 skills/swmm-climate/scripts/build_raingage_section.py \
   --out-text runs/swmm-climate/example_raingage.txt \
   --out-json runs/swmm-climate/example_raingage.json
 ```
+Multi-station from one file:
+```bash
+python3 skills/swmm-climate/scripts/format_rainfall.py \
+  --input skills/swmm-climate/examples/rainfall_multi_station.csv \
+  --station-column station_id \
+  --series-name-template 'TS_EVENT_{station_safe}' \
+  --out-json runs/swmm-climate/example_multi_station.json \
+  --out-timeseries runs/swmm-climate/example_multi_station.txt
+
+python3 skills/swmm-climate/scripts/build_raingage_section.py \
+  --rainfall-json runs/swmm-climate/example_multi_station.json \
+  --station-id RG1 \
+  --gage-id RG1 \
+  --interval-min 5 \
+  --out-text runs/swmm-climate/example_multi_station_rg1_raingage.txt \
+  --out-json runs/swmm-climate/example_multi_station_rg1_raingage.json
+```
+Batch inputs + event slicing window:
+```bash
+python3 skills/swmm-climate/scripts/format_rainfall.py \
+  --input skills/swmm-climate/examples/rainfall_batch_rg1.csv \
+  --input skills/swmm-climate/examples/rainfall_batch_rg2.csv \
+  --series-name TS_BATCH \
+  --window-start '2025-06-01 00:05' \
+  --window-end '2025-06-01 00:15' \
+  --out-json runs/swmm-climate/example_batch_windowed.json \
+  --out-timeseries runs/swmm-climate/example_batch_windowed.txt
+```
+Validation and units notes:
+- Accepted `--value-units`: `mm_per_hr`/`mm/hr` and `in_per_hr`/`in/hr`.
+- `--unit-policy strict` (default) rejects non-`mm_per_hr`; `--unit-policy convert_to_mm_per_hr` converts supported units.
+- Duplicate timestamps are rejected per station/series.
+- `--timestamp-policy strict` (default) enforces monotonic timestamps per station.
 
 ### 7) Preprocess subcatchment polygons for builder input
 ```bash
@@ -387,8 +420,8 @@ cd skills/swmm-params/scripts/mcp && npm install && npm start
 - `build_inp`
 
 `swmm-climate-mcp` exposes:
-- `format_rainfall`
-- `build_raingage_section`
+- `format_rainfall` (single or multi-station, batch inputs, event windows, unit/timestamp validation policies)
+- `build_raingage_section` (supports `stationId` when rainfall JSON contains multiple stations)
 
 `swmm-gis-mcp` exposes:
 - `gis_find_pour_point`
