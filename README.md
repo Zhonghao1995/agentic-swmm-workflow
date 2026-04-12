@@ -5,14 +5,13 @@
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
+## What this project does
 
-- **Automated run management** (standard run directory, inputs/outputs, `manifest.json` provenance)
-- **Built-in verification checks** (continuity/mass balance, equivalence checks across interfaces)
-- **Publication-grade plotting** (consistent styling for rainfall–runoff figures)
-- **Calibration / validation scaffold** for observed-vs-simulated scoring, explicit candidate sets, bounded search (`random` / `lhs` / adaptive), and parameter scouting
-- **Deterministic preprocessing + assembly layers** for GIS, climate, parameter mapping, network import, and full INP build
-- Optional **agentic orchestration** via **OpenClaw Skills** exposed as **MCP (Model Context Protocol) servers**
+Stormwater modeling is often fragmented: preprocessing is manual, runs are hard to audit, and figures are hard to reproduce consistently.
+
+This project provides a deterministic, script-first workflow around **EPA SWMM** that takes you from GIS/climate/parameter inputs to a runnable model, verified outputs, and publication-ready plots.
+
+The core idea is reproducibility: each run and build stage emits machine-readable artifacts (including `manifest.json`) so results can be traced, checked, and repeated.
 
 ## Architecture (Orchestration + MCP + Verification)
 
@@ -32,194 +31,118 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
 - **Verification layer:** checks for equivalence + continuity + preprocessing consistency
 
-## Recommended usage pattern (SKILL + MCP + OpenClaw)
+## Capabilities
 
-Use this stack in a simple way:
+- **Automated run management + provenance:** standardized run folders and `manifest.json` outputs from build/run stages.
+- **Verification checks:** continuity/mass-balance diagnostics, parsed peak metrics, and interface-equivalence support.
+- **Publication-grade plotting:** consistent rainfall-runoff figure generation from SWMM outputs.
+- **Calibration scaffold:** explicit candidate-set calibration, bounded search (`random`, `lhs`, `adaptive`), and one-parameter scout tools.
+- **Deterministic preprocessing + assembly:** GIS, climate formatting, parameter mapping, network import/QA/export, and full INP build.
+- **Optional orchestration:** direct CLI use or OpenClaw + MCP servers for agentic workflow coordination.
 
-1. **SKILL (implementation layer)**
-   - Put real logic in Python scripts under `skills/*/scripts/`.
-2. **MCP (tool interface layer)**
-   - Expose stable callable tools from each skill (`scripts/mcp/server.js`).
-3. **OpenClaw (orchestration layer)**
-   - Let OpenClaw call MCP tools step-by-step and manage workflow/reporting.
+## End-to-end flow
 
-Recommendation:
-- For manual local testing: call Python scripts directly.
-- For agentic workflows and automation: prefer **MCP tools + OpenClaw**.
-- Keep helper internals script-only; only expose stable workflow entrypoints in MCP.
+1. Prepare deterministic inputs (GIS polygons, rainfall series, mapped soil/landuse parameters, and network schema/import).
+2. Assemble a runnable SWMM `.inp` with `swmm-builder` and emit a build manifest.
+3. Execute SWMM with `swmm-runner` and emit run-level manifest + parsed diagnostics.
+4. Verify continuity and extracted peak behavior.
+5. Produce publication-style rainfall-runoff plots.
+6. Optionally calibrate/validate with explicit sets or bounded search.
 
-## Repository skeleton
+## Minimal quickstart (CLI-only, no OpenClaw)
 
-```text
-agentic-swmm-workflow/
-├─ README.md
-├─ docs/
-│  ├─ figs/
-│  └─ repo-map.md
-├─ examples/
-│  ├─ todcreek/
-│  │  └─ model_chicago5min.inp
-│  └─ calibration/
-├─ skills/
-│  ├─ swmm-gis/
-│  │  ├─ SKILL.md
-│  │  ├─ examples/
-│  │  │  └─ subcatchments_demo.geojson
-│  │  └─ scripts/
-│  │     ├─ find_pour_point.py
-│  │     ├─ preprocess_subcatchments.py
-│  │     └─ mcp/server.js
-│  ├─ swmm-climate/
-│  │  ├─ SKILL.md
-│  │  ├─ examples/
-│  │  │  └─ rainfall_event.csv
-│  │  └─ scripts/
-│  │     ├─ format_rainfall.py
-│  │     ├─ build_raingage_section.py
-│  │     └─ mcp/server.js
-│  ├─ swmm-params/
-│  │  ├─ SKILL.md
-│  │  ├─ references/
-│  │  ├─ examples/
-│  │  └─ scripts/
-│  │     ├─ landuse_to_swmm_params.py
-│  │     ├─ soil_to_greenampt.py
-│  │     ├─ merge_swmm_params.py
-│  │     └─ mcp/server.js
-│  ├─ swmm-network/
-│  │  ├─ SKILL.md
-│  │  ├─ examples/
-│  │  └─ scripts/
-│  │     ├─ network_import.py
-│  │     ├─ network_qa.py
-│  │     ├─ network_to_inp.py
-│  │     ├─ schema/network_model.schema.json
-│  │     └─ mcp/server.js
-│  ├─ swmm-builder/
-│  │  ├─ SKILL.md
-│  │  ├─ examples/
-│  │  └─ scripts/
-│  │     ├─ build_swmm_inp.py
-│  │     └─ mcp/server.js
-│  ├─ swmm-runner/
-│  │  ├─ SKILL.md
-│  │  └─ scripts/
-│  │     ├─ swmm_runner.py
-│  │     └─ mcp/server.js
-│  ├─ swmm-plot/
-│  │  ├─ SKILL.md
-│  │  └─ scripts/
-│  │     ├─ plot_rain_runoff_si.py
-│  │     └─ mcp/server.js
-│  └─ swmm-calibration/
-│     ├─ SKILL.md
-│     ├─ examples/
-│     └─ scripts/
-│        ├─ swmm_calibrate.py
-│        ├─ parameter_scout.py
-│        ├─ iterative_calibration.py
-│        └─ mcp/server.js
-└─ runs/ (generated artifacts)
+### Requirements
+
+- `swmm5` available on your `PATH`
+- Python 3.x
+- Recommended Python packages (module-dependent): `swmmtoolbox`, `matplotlib`, `numpy`, `pandas`, `rasterio`, `pysheds`
+
+### 1) Build a model deterministically (GIS + climate + params + builder)
+
+```bash
+RUN_ROOT=runs/quickstart
+mkdir -p "$RUN_ROOT"/{01_gis,02_params,03_climate,04_builder}
+
+python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
+  --subcatchments-geojson skills/swmm-gis/examples/subcatchments_demo.geojson \
+  --network-json skills/swmm-network/examples/basic-network.json \
+  --default-rain-gage RG1 \
+  --out-csv "$RUN_ROOT/01_gis/subcatchments_preprocessed.csv" \
+  --out-json "$RUN_ROOT/01_gis/subcatchments_preprocessed.json"
+
+python3 skills/swmm-params/scripts/landuse_to_swmm_params.py \
+  --input skills/swmm-params/examples/landuse_input.csv \
+  --output "$RUN_ROOT/02_params/landuse.json"
+
+python3 skills/swmm-params/scripts/soil_to_greenampt.py \
+  --input skills/swmm-params/examples/soil_input.csv \
+  --output "$RUN_ROOT/02_params/soil.json"
+
+python3 skills/swmm-params/scripts/merge_swmm_params.py \
+  --landuse-json "$RUN_ROOT/02_params/landuse.json" \
+  --soil-json "$RUN_ROOT/02_params/soil.json" \
+  --output "$RUN_ROOT/02_params/params.json"
+
+python3 skills/swmm-climate/scripts/format_rainfall.py \
+  --input skills/swmm-climate/examples/rainfall_event.csv \
+  --out-json "$RUN_ROOT/03_climate/rainfall.json" \
+  --out-timeseries "$RUN_ROOT/03_climate/timeseries.txt" \
+  --series-name TS_EVENT
+
+python3 skills/swmm-climate/scripts/build_raingage_section.py \
+  --rainfall-json "$RUN_ROOT/03_climate/rainfall.json" \
+  --gage-id RG1 \
+  --interval-min 5 \
+  --out-text "$RUN_ROOT/03_climate/raingage.txt" \
+  --out-json "$RUN_ROOT/03_climate/raingage.json"
+
+python3 skills/swmm-builder/scripts/build_swmm_inp.py \
+  --subcatchments-csv "$RUN_ROOT/01_gis/subcatchments_preprocessed.csv" \
+  --params-json "$RUN_ROOT/02_params/params.json" \
+  --network-json skills/swmm-network/examples/basic-network.json \
+  --rainfall-json "$RUN_ROOT/03_climate/rainfall.json" \
+  --raingage-json "$RUN_ROOT/03_climate/raingage.json" \
+  --config-json skills/swmm-builder/examples/options_config.json \
+  --out-inp "$RUN_ROOT/04_builder/model.inp" \
+  --out-manifest "$RUN_ROOT/04_builder/manifest.json"
 ```
 
-## What’s included
+### 2) Run SWMM with run-level manifest/provenance
 
-For a larger local development map (extra experiments/runs/data), see `docs/repo-map.md`.
-
-- `skills/swmm-gis/`
-  - DEM pour point selection
-  - subcatchment polygon preprocessing (area/width/slope/outlet linking)
-  - MCP server: `swmm-gis-mcp`
-- `skills/swmm-climate/`
-  - rainfall CSV -> SWMM `[TIMESERIES]` formatting
-  - `[RAINGAGES]` helper snippet builder
-  - MCP server: `swmm-climate-mcp`
-- `skills/swmm-params/`
-  - landuse + soil deterministic mapping to SWMM hydrology parameters
-  - merged params JSON for builder
-  - MCP server: `swmm-params-mcp`
-- `skills/swmm-network/`
-  - network schema, importer, QA, and INP section export
-  - MCP server: `swmm-network-mcp`
-- `skills/swmm-builder/`
-  - assembles full runnable INP from subcatchments + params + network + climate references
-  - writes manifest with input hashes, validation results, and section diagnostics
-  - MCP server: `swmm-builder-mcp`
-- `skills/swmm-runner/`
-  - reproducible `swmm5` execution + run manifest
-  - continuity and peak extraction tools
-  - MCP server: `swmm-runner-mcp`
-- `skills/swmm-plot/`
-  - rainfall-runoff figure generation
-  - MCP server: `swmm-plot-mcp`
-- `skills/swmm-calibration/`
-  - calibration/validation/sensitivity scaffold
-  - MCP server: `swmm-calibration-mcp`
-
-## Verification (what this repo aims to guarantee)
-
-This repository is designed so that automation is *auditable*:
-
-- **SWMM CLI ↔ SWMM MCP equivalence:** MCP-run results should match direct `swmm5` runs (same INP, same engine, same outputs within expected tolerances)
-- **SWMM GUI (manual) ↔ workflow equivalence (where applicable):** supports sanity-check comparisons when reproducing a GUI workflow
-- **Continuity / mass balance verification:** continuity tables are parsed from `.rpt` and surfaced as diagnostics
-- **Preprocessing consistency checks (GIS/DEM):** pour point methods are deterministic and outputs can be re-generated
-
-## Requirements
-
-### Core (no OpenClaw required)
-- `swmm5` available on your `PATH` (EPA SWMM engine)
-- Python 3.x
-
-Recommended Python packages (vary by modules used):
-- `swmmtoolbox` (reads `.out` for plotting/time-series comparisons)
-- `matplotlib`, `numpy`
-- `rasterio` (DEM I/O)
-- `pysheds` (flow accumulation)
-- `pandas` (observed-flow parsing and metric alignment)
-
-### Optional (agentic / MCP)
-- Node.js 18+ (each MCP server has its own `package.json`)
-- OpenClaw (only if you want the orchestrated “agentic” interface)
-
-## Quick start (CLI-only, no OpenClaw)
-
-### 1) Run SWMM and write a manifest
 ```bash
 python3 skills/swmm-runner/scripts/swmm_runner.py run \
-  --inp examples/todcreek/model_chicago5min.inp \
-  --run-dir runs/demo \
+  --inp runs/quickstart/04_builder/model.inp \
+  --run-dir runs/quickstart/05_runner \
   --node O1
 ```
 
-### 2) Plot rainfall–runoff (publication spec)
+### 3) Verify continuity + peak diagnostics
+
 ```bash
+python3 skills/swmm-runner/scripts/swmm_runner.py continuity \
+  --rpt runs/quickstart/05_runner/model.rpt
+
+python3 skills/swmm-runner/scripts/swmm_runner.py peak \
+  --rpt runs/quickstart/05_runner/model.rpt \
+  --node O1
+```
+
+### 4) Produce a publication-style rainfall-runoff figure
+
+```bash
+mkdir -p runs/quickstart/06_plot
 python3 skills/swmm-plot/scripts/plot_rain_runoff_si.py \
-  --inp runs/demo/model.inp \
-  --out runs/demo/model.out \
-  --out-png runs/demo/fig_rain_runoff.png \
+  --inp runs/quickstart/05_runner/model.inp \
+  --out runs/quickstart/05_runner/model.out \
+  --out-png runs/quickstart/06_plot/fig_rain_runoff.png \
   --focus-day 1984-05-25 \
   --window-start 09:00 \
   --window-end 15:00 \
   --dt-min 5
 ```
 
-### 3) Run an MVP calibration dry-run (explicit candidate sets)
-```bash
-python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
-  --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map examples/calibration/patch_map.json \
-  --parameter-sets examples/calibration/parameter_sets.json \
-  --observed examples/calibration/observed_flow.csv \
-  --run-root runs/calibration \
-  --swmm-node O1 \
-  --objective nse \
-  --summary-json runs/calibration/summary.json \
-  --best-params-out runs/calibration/best_params.json \
-  --dry-run
-```
+### 5) Optional: run bounded calibration search (LHS)
 
-### 3b) Run bounded calibration search (LHS, reproducible seed)
 ```bash
 python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
   --base-inp examples/todcreek/model_chicago5min.inp \
@@ -235,259 +158,39 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
   --dry-run
 ```
 
-Adaptive refinement variant:
-```bash
-python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
-  --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map examples/calibration/patch_map.json \
-  --search-space examples/calibration/search_space.json \
-  --observed examples/calibration/observed_flow.csv \
-  --run-root runs/calibration-search-adaptive \
-  --summary-json runs/calibration-search-adaptive/summary.json \
-  --strategy adaptive \
-  --iterations 8 \
-  --rounds 3 \
-  --seed 42 \
-  --dry-run
+For explicit candidate sets, use `swmm_calibrate.py calibrate` with `examples/calibration/parameter_sets.json`. For one-parameter scouting, use `skills/swmm-calibration/scripts/parameter_scout.py`.
+
+## Advanced modules and docs
+
+- Each module has a focused skill doc (`skills/<module>/SKILL.md`) with implementation details and extra examples.
+- For a larger local repo map (including runs/data), see `docs/repo-map.md`.
+- For one-command end-to-end acceptance execution, use `scripts/acceptance/run_acceptance.py --run-id latest`.
+- For orchestration, each module exposes an MCP server at `skills/<module>/scripts/mcp/server.js` (optional OpenClaw integration).
+
+## Repository skeleton
+
+```text
+agentic-swmm-workflow/
+├─ README.md
+├─ docs/
+│  ├─ figs/openclaw_swmm_pipeline.{png,pdf}
+│  └─ repo-map.md
+├─ examples/
+│  ├─ todcreek/model_chicago5min.inp
+│  └─ calibration/
+├─ scripts/
+│  └─ acceptance/run_acceptance.py
+├─ skills/
+│  ├─ swmm-gis/
+│  ├─ swmm-climate/
+│  ├─ swmm-params/
+│  ├─ swmm-network/
+│  ├─ swmm-builder/
+│  ├─ swmm-runner/
+│  ├─ swmm-plot/
+│  └─ swmm-calibration/
+└─ runs/ (generated artifacts)
 ```
-
-### 4) Run a parameter scout pass
-```bash
-python3 skills/swmm-calibration/scripts/parameter_scout.py \
-  --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map examples/calibration/patch_map.json \
-  --base-params examples/calibration/base_params.json \
-  --scan-spec examples/calibration/scan_spec.json \
-  --observed examples/calibration/observed_flow.csv \
-  --run-root runs/parameter-scout \
-  --summary-json runs/parameter-scout/summary.json \
-  --swmm-node O1
-```
-
-### 5) Build first-pass subcatchment parameters (land use + soil)
-```bash
-python3 skills/swmm-params/scripts/landuse_to_swmm_params.py \
-  --input skills/swmm-params/examples/landuse_input.csv \
-  --output runs/swmm-params/example_landuse.json
-
-python3 skills/swmm-params/scripts/soil_to_greenampt.py \
-  --input skills/swmm-params/examples/soil_input.csv \
-  --output runs/swmm-params/example_soil.json
-
-python3 skills/swmm-params/scripts/merge_swmm_params.py \
-  --landuse-json runs/swmm-params/example_landuse.json \
-  --soil-json runs/swmm-params/example_soil.json \
-  --output runs/swmm-params/example_builder_params.json
-```
-
-### 6) Format rainfall for SWMM `[TIMESERIES]` and `[RAINGAGES]`
-```bash
-python3 skills/swmm-climate/scripts/format_rainfall.py \
-  --input skills/swmm-climate/examples/rainfall_event.csv \
-  --out-json runs/swmm-climate/example_rainfall.json \
-  --out-timeseries runs/swmm-climate/example_timeseries.txt \
-  --series-name TS_EVENT
-
-python3 skills/swmm-climate/scripts/build_raingage_section.py \
-  --rainfall-json runs/swmm-climate/example_rainfall.json \
-  --gage-id RG1 \
-  --interval-min 5 \
-  --out-text runs/swmm-climate/example_raingage.txt \
-  --out-json runs/swmm-climate/example_raingage.json
-```
-Multi-station from one file:
-```bash
-python3 skills/swmm-climate/scripts/format_rainfall.py \
-  --input skills/swmm-climate/examples/rainfall_multi_station.csv \
-  --station-column station_id \
-  --series-name-template 'TS_EVENT_{station_safe}' \
-  --out-json runs/swmm-climate/example_multi_station.json \
-  --out-timeseries runs/swmm-climate/example_multi_station.txt
-
-python3 skills/swmm-climate/scripts/build_raingage_section.py \
-  --rainfall-json runs/swmm-climate/example_multi_station.json \
-  --station-id RG1 \
-  --gage-id RG1 \
-  --interval-min 5 \
-  --out-text runs/swmm-climate/example_multi_station_rg1_raingage.txt \
-  --out-json runs/swmm-climate/example_multi_station_rg1_raingage.json
-```
-Batch inputs + event slicing window:
-```bash
-python3 skills/swmm-climate/scripts/format_rainfall.py \
-  --input skills/swmm-climate/examples/rainfall_batch_rg1.csv \
-  --input skills/swmm-climate/examples/rainfall_batch_rg2.csv \
-  --series-name TS_BATCH \
-  --window-start '2025-06-01 00:05' \
-  --window-end '2025-06-01 00:15' \
-  --out-json runs/swmm-climate/example_batch_windowed.json \
-  --out-timeseries runs/swmm-climate/example_batch_windowed.txt
-```
-Validation and units notes:
-- Accepted `--value-units`: `mm_per_hr`/`mm/hr` and `in_per_hr`/`in/hr`.
-- `--unit-policy strict` (default) rejects non-`mm_per_hr`; `--unit-policy convert_to_mm_per_hr` converts supported units.
-- Duplicate timestamps are rejected per station/series.
-- `--timestamp-policy strict` (default) enforces monotonic timestamps per station.
-
-### 7) Preprocess subcatchment polygons for builder input
-```bash
-python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
-  --subcatchments-geojson skills/swmm-gis/examples/subcatchments_demo.geojson \
-  --network-json skills/swmm-network/examples/basic-network.json \
-  --default-rain-gage RG1 \
-  --out-csv runs/swmm-gis/subcatchments_preprocessed.csv \
-  --out-json runs/swmm-gis/subcatchments_preprocessed.json
-```
-Optional DEM-assisted mode (uses per-subcatchment DEM stats when provided):
-```bash
-python3 skills/swmm-gis/scripts/preprocess_subcatchments.py \
-  --subcatchments-geojson skills/swmm-gis/examples/subcatchments_dem_assisted.geojson \
-  --network-json skills/swmm-network/examples/basic-network.json \
-  --dem-stats-json skills/swmm-gis/examples/subcatchments_dem_stats_demo.json \
-  --default-rain-gage RG1 \
-  --out-csv runs/swmm-gis/subcatchments_dem_assisted.csv \
-  --out-json runs/swmm-gis/subcatchments_dem_assisted.json
-```
-Notes:
-- If DEM stats are missing for a subcatchment, deterministic fallback methods are used.
-- Outputs now include method provenance fields such as `width_source`, `slope_source`, and `outlet_method`.
-
-### 8) Assemble a runnable INP with `swmm-builder`
-```bash
-python3 skills/swmm-builder/scripts/build_swmm_inp.py \
-  --subcatchments-csv runs/swmm-gis/subcatchments_preprocessed.csv \
-  --params-json runs/swmm-params/example_builder_params.json \
-  --network-json skills/swmm-network/examples/basic-network.json \
-  --rainfall-json runs/swmm-climate/example_rainfall.json \
-  --raingage-json runs/swmm-climate/example_raingage.json \
-  --config-json skills/swmm-builder/examples/options_config.json \
-  --out-inp runs/swmm-builder/example_model.inp \
-  --out-manifest runs/swmm-builder/example_manifest.json
-```
-Notes:
-- `swmm-builder` now fails fast on missing/invalid critical fields for `[OPTIONS]`, `[RAINGAGES]`, `[TIMESERIES]`, `[SUBCATCHMENTS]`, `[SUBAREAS]`, `[INFILTRATION]`, and current network sections.
-- Manifest includes `validation` and `validation_diagnostics` for audit/debug.
-
-### 9) Import a pipe network (GeoJSON) and export SWMM sections
-```bash
-python3 skills/swmm-network/scripts/network_import.py \
-  --conduits skills/swmm-network/examples/import-conduits.geojson \
-  --junctions skills/swmm-network/examples/import-junctions.geojson \
-  --outfalls skills/swmm-network/examples/import-outfalls.geojson \
-  --mapping skills/swmm-network/examples/import-mapping.json \
-  --out runs/swmm-network/imported-network.json
-
-python3 skills/swmm-network/scripts/network_qa.py \
-  runs/swmm-network/imported-network.json
-
-python3 skills/swmm-network/scripts/network_to_inp.py \
-  runs/swmm-network/imported-network.json \
-  --out runs/swmm-network/imported-network.inp
-```
-
-### 10) Step-1 acceptance run (end-to-end publish pipeline)
-```bash
-python3 scripts/acceptance/run_acceptance.py --run-id latest
-```
-
-This command executes:
-- sample inputs -> `swmm-gis` preprocess
-- `swmm-params` mapping + merge
-- `swmm-climate` formatting + raingage build
-- `swmm-builder` INP assembly
-- `swmm-runner` execution
-- QA checks (network QA + runner continuity/peak parse)
-
-Artifacts are written under `runs/acceptance/<run-id>/`, including:
-- built INP
-- runner `.rpt` and `.out`
-- `manifest.json`
-- `acceptance_report.json` and `acceptance_report.md`
-
-## MCP servers (optional)
-
-Each skill includes an MCP server you can run via stdio:
-
-- Builder MCP:
-```bash
-cd skills/swmm-builder/scripts/mcp && npm install && npm start
-```
-
-- Climate MCP:
-```bash
-cd skills/swmm-climate/scripts/mcp && npm install && npm start
-```
-
-- SWMM runner MCP:
-```bash
-cd skills/swmm-runner/scripts/mcp && npm install && npm start
-```
-
-- Plot MCP:
-```bash
-cd skills/swmm-plot/scripts/mcp && npm install && npm start
-```
-
-- GIS MCP:
-```bash
-cd skills/swmm-gis/scripts/mcp && npm install && npm start
-```
-
-- Calibration MCP:
-```bash
-cd skills/swmm-calibration/scripts/mcp && npm install && npm start
-```
-
-- Network MCP:
-```bash
-cd skills/swmm-network/scripts/mcp && npm install && npm start
-```
-
-- Params MCP:
-```bash
-cd skills/swmm-params/scripts/mcp && npm install && npm start
-```
-
-`swmm-builder-mcp` exposes:
-- `build_inp`
-
-`swmm-climate-mcp` exposes:
-- `format_rainfall` (single or multi-station, batch inputs, event windows, unit/timestamp validation policies)
-- `build_raingage_section` (supports `stationId` when rainfall JSON contains multiple stations)
-
-`swmm-gis-mcp` exposes:
-- `gis_find_pour_point`
-- `gis_preprocess_subcatchments`
-
-`swmm-calibration-mcp` exposes:
-- `swmm_parameter_scout`
-- `swmm_sensitivity_scan`
-- `swmm_calibrate`
-- `swmm_calibrate_search`
-- `swmm_validate`
-
-`swmm-network-mcp` exposes:
-- `import_network`
-- `qa`
-- `export_inp`
-- `summary`
-
-`swmm-params-mcp` exposes:
-- `map_landuse`
-- `map_soil`
-- `merge_params`
-
-## Calibration / validation scaffold (MVP)
-
-`skills/swmm-calibration/` provides an auditable MVP scaffold:
-- observed-flow parsing (`csv`, `tsv`, whitespace-delimited `dat`)
-- candidate-set evaluation against a base `.inp`
-- bounded search candidate generation (`random`, `lhs`, `adaptive`)
-- NSE/RMSE/bias/peak error metrics
-- one-parameter scout and iterative runner
-- JSON summaries with per-trial status/reason diagnostics and ranking tables
-
-Current limits are intentional: bounded search only (no advanced global optimizer yet) and no complex structural INP edits.
 
 ## Citation
 
