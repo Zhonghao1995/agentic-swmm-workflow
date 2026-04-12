@@ -3,6 +3,7 @@
  * Tools:
  * - swmm_sensitivity_scan
  * - swmm_calibrate
+ * - swmm_calibrate_search
  * - swmm_validate
  * - swmm_parameter_scout
  */
@@ -43,15 +44,32 @@ const Common = z.object({
   swmmNode: z.string().default("O1"),
   swmmAttr: z.string().default("Total_inflow"),
   objective: z.enum(["nse", "rmse", "bias", "peak_flow_error", "peak_timing_error"]).default("nse"),
+  aggregate: z.enum(["none", "daily_mean"]).default("none"),
+  obsStart: z.string().optional(),
+  obsEnd: z.string().optional(),
   timestampCol: z.string().optional(),
   flowCol: z.string().optional(),
   timeFormat: z.string().optional(),
   summaryJson: z.string(),
+  rankingJson: z.string().optional(),
+  printRanking: z.boolean().default(false),
+  rankingTop: z.number().int().positive().default(10),
   dryRun: z.boolean().default(false),
 });
 
 const SensitivityArgs = Common.extend({ parameterSets: z.string() });
 const CalibrateArgs = Common.extend({ parameterSets: z.string(), bestParamsOut: z.string().optional() });
+const SearchArgs = Common.extend({
+  searchSpace: z.string(),
+  strategy: z.enum(["random", "lhs", "adaptive"]).default("lhs"),
+  iterations: z.number().int().positive().default(12),
+  rounds: z.number().int().positive().default(1),
+  seed: z.number().int().default(42),
+  eliteFraction: z.number().min(0.000001).max(1).default(0.3),
+  refineMargin: z.number().min(0).max(1).default(0.1),
+  minSpanFraction: z.number().min(0.000001).max(1).default(0.1),
+  bestParamsOut: z.string().optional(),
+});
 const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
 const ScoutArgs = z.object({
   baseInp: z.string(),
@@ -78,16 +96,22 @@ function commonArgs(a) {
     "--swmm-node", a.swmmNode,
     "--swmm-attr", a.swmmAttr,
     "--objective", a.objective,
+    "--aggregate", a.aggregate,
     "--summary-json", a.summaryJson,
+    "--ranking-top", String(a.rankingTop),
   ];
+  if (a.obsStart) out.push("--obs-start", a.obsStart);
+  if (a.obsEnd) out.push("--obs-end", a.obsEnd);
   if (a.timestampCol) out.push("--timestamp-col", a.timestampCol);
   if (a.flowCol) out.push("--flow-col", a.flowCol);
   if (a.timeFormat) out.push("--time-format", a.timeFormat);
+  if (a.rankingJson) out.push("--ranking-json", a.rankingJson);
+  if (a.printRanking) out.push("--print-ranking");
   if (a.dryRun) out.push("--dry-run");
   return out;
 }
 
-const server = new Server({ name: "swmm-calibration-mcp", version: "0.2.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "swmm-calibration-mcp", version: "0.3.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -100,8 +124,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           baseInp: { type: "string" }, patchMap: { type: "string" }, parameterSets: { type: "string" },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "nse" },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
           timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
-          summaryJson: { type: "string" }, dryRun: { type: "boolean", default: false }
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }
         },
         required: ["baseInp", "patchMap", "parameterSets", "observed", "runRoot", "summaryJson"]
       }
@@ -115,10 +143,40 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           baseInp: { type: "string" }, patchMap: { type: "string" }, parameterSets: { type: "string" },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "nse" },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
           timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
-          summaryJson: { type: "string" }, dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" }
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" }
         },
         required: ["baseInp", "patchMap", "parameterSets", "observed", "runRoot", "summaryJson"]
+      }
+    },
+    {
+      name: "swmm_calibrate_search",
+      description: "Run bounded reproducible calibration search (random, LHS, or adaptive multi-round refinement).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
+          swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "nse" },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
+          timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" },
+          strategy: { type: "string", enum: ["random", "lhs", "adaptive"], default: "lhs" },
+          iterations: { type: "integer", default: 12 },
+          rounds: { type: "integer", default: 1 },
+          seed: { type: "integer", default: 42 },
+          eliteFraction: { type: "number", default: 0.3 },
+          refineMargin: { type: "number", default: 0.1 },
+          minSpanFraction: { type: "number", default: 0.1 }
+        },
+        required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
       }
     },
     {
@@ -130,8 +188,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           baseInp: { type: "string" }, patchMap: { type: "string" }, bestParams: { type: "string" },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "nse" },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
           timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
-          summaryJson: { type: "string" }, dryRun: { type: "boolean", default: false }, trialName: { type: "string", default: "validation" }
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }, trialName: { type: "string", default: "validation" }
         },
         required: ["baseInp", "patchMap", "bestParams", "observed", "runRoot", "summaryJson"]
       }
@@ -168,6 +230,25 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const a = CalibrateArgs.parse(args);
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
     const pyArgs = ["calibrate", ...commonArgs(a), "--parameter-sets", a.parameterSets];
+    if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    const stdout = await runPy(calibratePy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_calibrate_search") {
+    const a = SearchArgs.parse(args);
+    fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
+    const pyArgs = [
+      "search",
+      ...commonArgs(a),
+      "--search-space", a.searchSpace,
+      "--strategy", a.strategy,
+      "--iterations", String(a.iterations),
+      "--rounds", String(a.rounds),
+      "--seed", String(a.seed),
+      "--elite-fraction", String(a.eliteFraction),
+      "--refine-margin", String(a.refineMargin),
+      "--min-span-fraction", String(a.minSpanFraction),
+    ];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };

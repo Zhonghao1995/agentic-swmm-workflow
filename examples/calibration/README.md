@@ -5,6 +5,7 @@ This folder contains a **minimal example configuration** for the public calibrat
 ## Files
 - `patch_map.json` → maps friendly parameter names to concrete SWMM INP row/field edits
 - `parameter_sets.json` → explicit candidate parameter sets for sensitivity / calibration demo
+- `search_space.json` → bounded search-space spec for internal randomized / LHS / adaptive search
 - `observed_flow.csv` → tiny mock observed-flow file for wiring and dry-run tests
 - `best_params_validation.json` → sample parameter object for validation command examples
 
@@ -34,6 +35,38 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
 ### 2) Swap in real observed flow
 Once the observed-flow parser is tuned for `1984Rflow.dat`, replace `--observed` with the real file path and run without `--dry-run`.
 
+### 3) Run bounded search (LHS)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search-demo \
+  --summary-json runs/calibration-search-demo/summary.json \
+  --ranking-json runs/calibration-search-demo/ranking.json \
+  --strategy lhs \
+  --iterations 10 \
+  --seed 42 \
+  --dry-run
+```
+
+### 4) Run bounded search (adaptive refinement)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search-adaptive-demo \
+  --summary-json runs/calibration-search-adaptive-demo/summary.json \
+  --strategy adaptive \
+  --iterations 6 \
+  --rounds 3 \
+  --seed 42 \
+  --dry-run
+```
+
 ## Parameter scout example
 A minimal scout pass can rank one-parameter-at-a-time influence around a baseline parameter set.
 
@@ -56,6 +89,13 @@ python3 skills/swmm-calibration/scripts/parameter_scout.py \
 
 ## Current limitations
 - The mock CSV here is only for demonstration.
-- Candidate parameter sets are explicit, not optimizer-generated.
+- Internal search is bounded (`random` / `lhs` / simple adaptive LHS) and does not yet use advanced global optimizers.
 - The scout is one-parameter-at-a-time; it does not capture full parameter interaction.
 - The current parser expects a timestamp column and a flow column; special SWMM timeseries formats may need light pre-cleaning or parser extension.
+
+## New summary diagnostics
+`summary.json` now includes richer diagnostics for each trial:
+- `status` (`ok`, `invalid`, `failed`, `dry_run`)
+- `reason_code` + `reason_detail` for failed/invalid runs
+- `diagnostics` with timing, overlap fraction, and observed/simulated counts
+- `ranking_table` for quick machine-readable ranking

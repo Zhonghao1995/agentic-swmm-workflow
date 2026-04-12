@@ -19,6 +19,10 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
   - `sensitivity`
   - `calibrate`
   - `validate`
+- Bounded internal search for calibration candidate generation:
+  - `search --strategy random`
+  - `search --strategy lhs`
+  - `search --strategy adaptive` (multi-round LHS refinement around elite trials)
 - A minimal **parameter scout** that ranks which parameters matter most, suggests direction (`up` / `down` / `stay`), and proposes a narrowed next search range.
 - MCP wrapper so OpenClaw can call the workflow as tools.
 
@@ -27,6 +31,7 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
   - `sensitivity` → evaluate many candidate parameter sets and rank them
   - `calibrate` → evaluate candidate parameter sets and report the best one
   - `validate` → apply one chosen parameter set to a second event and score it
+  - `search` → generate bounded candidate sets internally (random / LHS / adaptive) and score them
 - `scripts/parameter_scout.py`
   - scan one parameter at a time around a baseline
   - estimate which parameters are most influential under the current metric / time scale
@@ -42,7 +47,9 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
 1. Prepare a **base SWMM INP** for the event.
 2. Prepare an **observed flow file** with at least one timestamp column and one flow column.
 3. Define a **patch map JSON** that explains where each calibration parameter lives in the INP.
-4. Prepare a **parameter sets JSON** (explicit candidate sets for MVP).
+4. Prepare either:
+   - a **parameter sets JSON** (explicit candidate sets), or
+   - a **search-space JSON** (`min/max/type/precision`) for internal bounded search.
 5. Run one of:
    - `sensitivity`
    - `calibrate`
@@ -51,7 +58,7 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
 
 ## MVP assumptions / limitations
 - This is intentionally a **transparent scaffold**, not a black-box optimizer.
-- Candidate parameter sets are currently supplied explicitly via JSON. The tool does **not** yet generate Latin Hypercube / DE samples internally.
+- Internal search currently supports bounded random, LHS-like sampling, and simple adaptive LHS refinement. It does not yet include advanced optimizers (e.g., DE/CMA-ES/Bayesian).
 - INP patching is line-oriented and works best for one-line table records with stable object names.
 - Observed-flow parsing uses heuristics. If your file is messy, give explicit column names and time format whenever possible.
 - Simulated flow is read either from:
@@ -91,6 +98,14 @@ Interpretation:
 ]
 ```
 
+## Search-space JSON idea
+```json
+{
+  "pct_imperv_s1": {"min": 15.0, "max": 40.0, "type": "float", "precision": 3},
+  "n_imperv_s1": {"min": 0.01, "max": 0.03, "type": "float", "precision": 4}
+}
+```
+
 ## CLI examples
 ### Sensitivity scan
 ```bash
@@ -127,8 +142,38 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py validate \
   --swmm-node O1
 ```
 
+### Internal bounded search (LHS)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search \
+  --summary-json runs/calibration-search/summary.json \
+  --ranking-json runs/calibration-search/ranking.json \
+  --strategy lhs \
+  --iterations 12 \
+  --seed 42
+```
+
+### Internal bounded search (adaptive multi-round)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search-adaptive \
+  --summary-json runs/calibration-search-adaptive/summary.json \
+  --strategy adaptive \
+  --iterations 8 \
+  --rounds 3 \
+  --seed 42
+```
+
 ## Recommended near-term extensions
-- Add internal search strategies (Latin Hypercube, random search, differential evolution)
+- Add stronger optimizers after bounded search (differential evolution / CMA-ES / Bayesian)
 - Add multi-event calibration/validation
 - Add observed-vs-simulated overlay plots to the calibration script
 - Extend patch-map selectors beyond simple one-line object rows

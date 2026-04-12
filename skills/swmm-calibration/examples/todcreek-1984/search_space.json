@@ -1,0 +1,32 @@
+{
+  "pct_imperv_s1": {
+    "min": 15.0,
+    "max": 40.0,
+    "type": "float",
+    "precision": 3
+  },
+  "n_imperv_s1": {
+    "min": 0.01,
+    "max": 0.03,
+    "type": "float",
+    "precision": 4
+  },
+  "suction_s1": {
+    "min": 70.0,
+    "max": 120.0,
+    "type": "float",
+    "precision": 3
+  },
+  "ksat_s1": {
+    "min": 4.0,
+    "max": 14.0,
+    "type": "float",
+    "precision": 3
+  },
+  "imdmax_s1": {
+    "min": 0.15,
+    "max": 0.35,
+    "type": "float",
+    "precision": 4
+  }
+}

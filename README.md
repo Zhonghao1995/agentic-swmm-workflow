@@ -10,7 +10,7 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - **Automated run management** (standard run directory, inputs/outputs, `manifest.json` provenance)
 - **Built-in verification checks** (continuity/mass balance, equivalence checks across interfaces)
 - **Publication-grade plotting** (consistent styling for rainfall–runoff figures)
-- **Calibration / validation scaffold** for observed-vs-simulated scoring, explicit candidate parameter sets, and parameter scouting
+- **Calibration / validation scaffold** for observed-vs-simulated scoring, explicit candidate sets, bounded search (`random` / `lhs` / adaptive), and parameter scouting
 - **Deterministic preprocessing + assembly layers** for GIS, climate, parameter mapping, network import, and full INP build
 - Optional **agentic orchestration** via **OpenClaw Skills** exposed as **MCP (Model Context Protocol) servers**
 
@@ -216,6 +216,38 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
   --objective nse \
   --summary-json runs/calibration/summary.json \
   --best-params-out runs/calibration/best_params.json \
+  --dry-run
+```
+
+### 3b) Run bounded calibration search (LHS, reproducible seed)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search \
+  --summary-json runs/calibration-search/summary.json \
+  --ranking-json runs/calibration-search/ranking.json \
+  --strategy lhs \
+  --iterations 12 \
+  --seed 42 \
+  --dry-run
+```
+
+Adaptive refinement variant:
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --search-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/calibration-search-adaptive \
+  --summary-json runs/calibration-search-adaptive/summary.json \
+  --strategy adaptive \
+  --iterations 8 \
+  --rounds 3 \
+  --seed 42 \
   --dry-run
 ```
 
@@ -431,6 +463,7 @@ cd skills/swmm-params/scripts/mcp && npm install && npm start
 - `swmm_parameter_scout`
 - `swmm_sensitivity_scan`
 - `swmm_calibrate`
+- `swmm_calibrate_search`
 - `swmm_validate`
 
 `swmm-network-mcp` exposes:
@@ -449,11 +482,12 @@ cd skills/swmm-params/scripts/mcp && npm install && npm start
 `skills/swmm-calibration/` provides an auditable MVP scaffold:
 - observed-flow parsing (`csv`, `tsv`, whitespace-delimited `dat`)
 - candidate-set evaluation against a base `.inp`
+- bounded search candidate generation (`random`, `lhs`, `adaptive`)
 - NSE/RMSE/bias/peak error metrics
 - one-parameter scout and iterative runner
-- JSON summaries for sensitivity, calibration, and validation
+- JSON summaries with per-trial status/reason diagnostics and ranking tables
 
-Current limits are intentional: no automatic global optimizer and no complex structural INP edits yet.
+Current limits are intentional: bounded search only (no advanced global optimizer yet) and no complex structural INP edits.
 
 ## Citation
 

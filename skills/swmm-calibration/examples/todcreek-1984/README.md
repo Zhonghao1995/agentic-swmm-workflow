@@ -18,6 +18,7 @@ This folder is the local real-case config layer for `skills/swmm-calibration`.
 - `base_params.json`: current baseline parameter values for `S1`
 - `scan_spec.json`: one-parameter-at-a-time scout values
 - `parameter_sets.json`: a small explicit trial set for calibration MVP
+- `search_space.json`: bounded search-space config for internal random/LHS/adaptive search
 
 ## Example commands
 
@@ -51,8 +52,29 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
   --obs-end 1984-05-28
 ```
 
+### Bounded search pass (adaptive multi-round)
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp projects/swmm-mcp/todcreek/runs/run_1984-05-25/model.inp \
+  --patch-map skills/swmm-calibration/examples/todcreek-1984/patch_map.json \
+  --search-space skills/swmm-calibration/examples/todcreek-1984/search_space.json \
+  --observed projects/swmm-mcp/data/Todcreek/Flow/1984Rflow.dat \
+  --run-root runs/swmm-calibration/todcreek-1984-search \
+  --summary-json runs/swmm-calibration/todcreek-1984-search/summary.json \
+  --ranking-json runs/swmm-calibration/todcreek-1984-search/ranking.json \
+  --swmm-node O1 \
+  --aggregate daily_mean \
+  --obs-start 1984-05-23 \
+  --obs-end 1984-05-28 \
+  --strategy adaptive \
+  --iterations 8 \
+  --rounds 3 \
+  --seed 42
+```
+
 ## Notes
 - `swmm_calibrate.py` supports `--aggregate daily_mean` for this case to compare daily observed data against simulated daily means.
 - `swmm_calibrate.py` and `parameter_scout.py` also support `--obs-start/--obs-end` so event-window calibration can be explicit instead of relying on accidental overlap with a longer observed record.
+- `summary.json` now includes per-trial `status`, `reason_code`, `reason_detail`, and a machine-readable `ranking_table`.
 - If `summary.json` shows a very small `metrics.count`, that is usually a window mismatch, not a math bug. Check the base INP start/end dates against the observed series range.
 - This folder is local-development config, not the cleaned publish-repo example layer.
