@@ -1,0 +1,6 @@
+texture,suction_mm,ksat_mm_per_hr,imdmax,notes
+sandy loam,90,13,0.30,"Typical sandy loam; starting defaults for SWMM GA (calibrate later)"
+loam,110,5,0.25,"Typical loam"
+silt loam,130,2.5,0.20,"Typical silt loam"
+water,0,0,0.00,"Open water / lake: treat as no infiltration (also set landuse imperv=100%)"
+-,110,5,0.25,"Fallback when texture missing: assume loam"

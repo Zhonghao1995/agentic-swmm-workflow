@@ -1,0 +1,23 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "node_id": "J1",
+        "inv_el": 100.0,
+        "max_d": 3.0
+      },
+      "geometry": { "type": "Point", "coordinates": [0.0, 0.0] }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "node_id": "J2",
+        "inv_el": 99.2,
+        "max_d": 3.0
+      },
+      "geometry": { "type": "Point", "coordinates": [100.0, 0.0] }
+    }
+  ]
+}

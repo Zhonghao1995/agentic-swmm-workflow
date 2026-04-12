@@ -1,0 +1,7 @@
+landuse_class,imperv_pct,n_imperv,n_perv,dstore_imperv_in,dstore_perv_in,zero_imperv_pct,route_to,pct_routed,notes
+Commercial,85,0.013,0.25,0.05,0.10,30,OUTLET,100,"Highly impervious; adjust if zoning includes parking/green space"
+Public,55,0.015,0.25,0.05,0.10,25,OUTLET,100,"Mixed (buildings+roads+lawns)"
+Recreation and Open Space,15,0.015,0.30,0.05,0.12,10,OUTLET,100,"Parks/fields: mostly pervious"
+Natural Park Zone,5,0.015,0.35,0.05,0.15,5,OUTLET,100,"Forest/natural"
+Rural,25,0.015,0.30,0.05,0.12,10,OUTLET,100,"Rural: mixed pervious with some imperv"
+DEFAULT,25,0.015,0.30,0.05,0.12,10,OUTLET,100,"Fallback"

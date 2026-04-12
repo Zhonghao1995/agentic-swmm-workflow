@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://h2ox.me/schemas/swmm-network-model.schema.json",
+  "title": "SWMM Network Model",
+  "type": "object",
+  "required": ["junctions", "outfalls", "conduits"],
+  "properties": {
+    "meta": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "junctions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/junction" }
+    },
+    "outfalls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/outfall" }
+    },
+    "conduits": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/conduit" }
+    }
+  },
+  "$defs": {
+    "coordinate": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "junction": {
+      "type": "object",
+      "required": ["id", "invert_elev", "max_depth", "coordinates"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "invert_elev": { "type": "number" },
+        "max_depth": { "type": "number", "minimum": 0 },
+        "init_depth": { "type": "number", "default": 0 },
+        "sur_depth": { "type": "number", "default": 0 },
+        "aponded": { "type": "number", "default": 0 },
+        "coordinates": { "$ref": "#/$defs/coordinate" }
+      },
+      "additionalProperties": true
+    },
+    "outfall": {
+      "type": "object",
+      "required": ["id", "invert_elev", "type", "coordinates"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "invert_elev": { "type": "number" },
+        "type": { "type": "string", "enum": ["FREE", "NORMAL", "FIXED", "TIDAL", "TIMESERIES"] },
+        "stage_data": { "type": ["string", "number", "null"] },
+        "gated": { "type": "boolean", "default": false },
+        "route_to": { "type": ["string", "null"] },
+        "coordinates": { "$ref": "#/$defs/coordinate" }
+      },
+      "additionalProperties": true
+    },
+    "vertex": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "xsection": {
+      "type": "object",
+      "required": ["shape", "geom1"],
+      "properties": {
+        "shape": { "type": "string" },
+        "geom1": { "type": "number" },
+        "geom2": { "type": "number", "default": 0 },
+        "geom3": { "type": "number", "default": 0 },
+        "geom4": { "type": "number", "default": 0 },
+        "barrels": { "type": "integer", "minimum": 1, "default": 1 }
+      },
+      "additionalProperties": true
+    },
+    "conduit": {
+      "type": "object",
+      "required": ["id", "from_node", "to_node", "length", "roughness", "xsection"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "from_node": { "type": "string", "minLength": 1 },
+        "to_node": { "type": "string", "minLength": 1 },
+        "length": { "type": "number", "exclusiveMinimum": 0 },
+        "roughness": { "type": "number", "exclusiveMinimum": 0 },
+        "in_offset": { "type": "number", "default": 0 },
+        "out_offset": { "type": "number", "default": 0 },
+        "init_flow": { "type": "number", "default": 0 },
+        "max_flow": { "type": ["number", "null"], "default": null },
+        "xsection": { "$ref": "#/$defs/xsection" },
+        "vertices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/vertex" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

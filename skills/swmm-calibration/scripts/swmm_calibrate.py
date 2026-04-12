@@ -12,7 +12,7 @@ import pandas as pd
 from swmmtoolbox import swmmtoolbox
 
 from inp_patch import patch_inp_text
-from metrics import compute_metrics, score_from_metrics
+from metrics import align_series, compute_metrics, score_from_metrics
 from obs_reader import read_series
 
 
@@ -36,18 +36,23 @@ def ensure_named_trial(item: dict, idx: int) -> dict:
     return out
 
 
-def extract_simulated_series(out_path: Path, swmm_node: str, swmm_attr: str) -> pd.DataFrame:
+def extract_simulated_series(out_path: Path, swmm_node: str, swmm_attr: str, aggregate: str) -> pd.DataFrame:
     label = f"node,{swmm_node},{swmm_attr}"
     series = swmmtoolbox.extract(str(out_path), label)
     if isinstance(series, pd.Series):
         df = series.reset_index()
         df.columns = ["timestamp", "flow"]
-        return df
     if isinstance(series, pd.DataFrame):
         df = series.reset_index()
         df.columns = ["timestamp", "flow"]
-        return df[["timestamp", "flow"]]
-    raise TypeError(f"Unexpected series type from swmmtoolbox: {type(series)}")
+        df = df[["timestamp", "flow"]]
+    if not isinstance(series, (pd.Series, pd.DataFrame)):
+        raise TypeError(f"Unexpected series type from swmmtoolbox: {type(series)}")
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    if aggregate == "daily_mean":
+        df = df.set_index("timestamp").resample("D").mean(numeric_only=True).reset_index()
+    return df
 
 
 def run_swmm(inp: Path, run_dir: Path, rpt_name: str = "model.rpt", out_name: str = "model.out") -> tuple[int, Path, Path]:
@@ -60,9 +65,31 @@ def run_swmm(inp: Path, run_dir: Path, rpt_name: str = "model.rpt", out_name: st
     return proc.returncode, rpt, out
 
 
+def describe_series(df: pd.DataFrame) -> dict[str, Any]:
+    if df.empty:
+        return {"count": 0, "start": None, "end": None}
+    ts = pd.to_datetime(df["timestamp"])
+    return {
+        "count": int(len(df)),
+        "start": ts.min().isoformat(),
+        "end": ts.max().isoformat(),
+    }
+
+
+def filter_series_window(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
+    out = df.copy()
+    out["timestamp"] = pd.to_datetime(out["timestamp"])
+    if start:
+        out = out[out["timestamp"] >= pd.Timestamp(start)]
+    if end:
+        out = out[out["timestamp"] <= pd.Timestamp(end)]
+    return out.reset_index(drop=True)
+
+
 def evaluate_trial(base_inp: Path, patch_map: dict, trial: dict, observed_path: Path, run_root: Path,
-                   swmm_node: str, swmm_attr: str, objective: str,
+                   swmm_node: str, swmm_attr: str, objective: str, aggregate: str,
                    timestamp_col: str | None, flow_col: str | None, time_format: str | None,
+                   obs_start: str | None, obs_end: str | None,
                    dry_run: bool = False) -> dict:
     trial_name = trial["name"]
     trial_dir = run_root / trial_name
@@ -72,6 +99,7 @@ def evaluate_trial(base_inp: Path, patch_map: dict, trial: dict, observed_path: 
     patched_inp.write_text(patched_text, encoding="utf-8")
 
     observed = read_series(observed_path, timestamp_col=timestamp_col, flow_col=flow_col, time_format=time_format)
+    observed = filter_series_window(observed, obs_start, obs_end)
 
     result = {
         "trial": trial_name,
@@ -93,10 +121,19 @@ def evaluate_trial(base_inp: Path, patch_map: dict, trial: dict, observed_path: 
         result["error"] = "swmm5 execution failed"
         return result
 
-    simulated = extract_simulated_series(out, swmm_node=swmm_node, swmm_attr=swmm_attr)
+    simulated = extract_simulated_series(out, swmm_node=swmm_node, swmm_attr=swmm_attr, aggregate=aggregate)
+    aligned = align_series(observed, simulated)
     metrics = compute_metrics(observed, simulated)
+    result["observed_series"] = describe_series(observed)
+    result["simulated_series"] = describe_series(simulated)
+    result["aligned_series"] = describe_series(aligned.rename(columns={"flow_obs": "flow"}))
     result["metrics"] = metrics.to_dict()
     result["objective"] = score_from_metrics(metrics, objective)
+    if len(observed) > 0 and metrics.count < len(observed):
+        result["warning"] = (
+            "Low overlap between observed and simulated timestamps. "
+            "Check whether the base INP simulation window matches the observed record window."
+        )
     return result
 
 
@@ -109,8 +146,9 @@ def cmd_sensitivity(args: argparse.Namespace) -> None:
     trials = [ensure_named_trial(t, i + 1) for i, t in enumerate(ensure_param_sets(load_json(args.parameter_sets)))]
     results = [evaluate_trial(
         args.base_inp, patch_map, trial, args.observed, args.run_root,
-        args.swmm_node, args.swmm_attr, args.objective,
+        args.swmm_node, args.swmm_attr, args.objective, args.aggregate,
         args.timestamp_col, args.flow_col, args.time_format,
+        args.obs_start, args.obs_end,
         dry_run=args.dry_run,
     ) for trial in trials]
     ranked = rank_results(results)
@@ -125,8 +163,9 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
     trials = [ensure_named_trial(t, i + 1) for i, t in enumerate(ensure_param_sets(load_json(args.parameter_sets)))]
     results = [evaluate_trial(
         args.base_inp, patch_map, trial, args.observed, args.run_root,
-        args.swmm_node, args.swmm_attr, args.objective,
+        args.swmm_node, args.swmm_attr, args.objective, args.aggregate,
         args.timestamp_col, args.flow_col, args.time_format,
+        args.obs_start, args.obs_end,
         dry_run=args.dry_run,
     ) for trial in trials]
     ranked = rank_results(results)
@@ -145,8 +184,9 @@ def cmd_validate(args: argparse.Namespace) -> None:
     trial = {"name": args.trial_name, "params": params_obj}
     result = evaluate_trial(
         args.base_inp, patch_map, trial, args.observed, args.run_root,
-        args.swmm_node, args.swmm_attr, args.objective,
+        args.swmm_node, args.swmm_attr, args.objective, args.aggregate,
         args.timestamp_col, args.flow_col, args.time_format,
+        args.obs_start, args.obs_end,
         dry_run=args.dry_run,
     )
     payload = {"mode": "validate", "objective": args.objective, "result": result}
@@ -169,9 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--swmm-node", default="O1")
         sp.add_argument("--swmm-attr", default="Total_inflow")
         sp.add_argument("--objective", default="nse", choices=["nse", "rmse", "bias", "peak_flow_error", "peak_timing_error"])
+        sp.add_argument("--aggregate", choices=["none", "daily_mean"], default="none")
         sp.add_argument("--timestamp-col", default=None)
         sp.add_argument("--flow-col", default=None)
         sp.add_argument("--time-format", default=None)
+        sp.add_argument("--obs-start", default=None, help="Inclusive observed-series window start, e.g. 1984-05-23")
+        sp.add_argument("--obs-end", default=None, help="Inclusive observed-series window end, e.g. 1984-05-28")
         sp.add_argument("--summary-json", required=True, type=Path)
         sp.add_argument("--dry-run", action="store_true")
 

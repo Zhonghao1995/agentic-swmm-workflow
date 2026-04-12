@@ -1,0 +1,14 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "node_id": "OF1",
+        "inv_el": 98.5,
+        "out_type": "FREE"
+      },
+      "geometry": { "type": "Point", "coordinates": [200.0, 0.0] }
+    }
+  ]
+}

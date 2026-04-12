@@ -1,0 +1,35 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "link_id": "C1",
+        "from_id": "J1",
+        "to_id": "J2",
+        "len_m": 100.0,
+        "n_val": 0.013,
+        "diam_m": 0.6
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[0.0, 0.0], [50.0, 10.0], [100.0, 0.0]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "link_id": "C2",
+        "from_id": "J2",
+        "to_id": "OF1",
+        "len_m": 100.0,
+        "n_val": 0.013,
+        "diam_m": 0.75
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[100.0, 0.0], [200.0, 0.0]]
+      }
+    }
+  ]
+}

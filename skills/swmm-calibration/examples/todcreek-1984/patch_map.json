@@ -1,0 +1,27 @@
+{
+  "pct_imperv_s1": {
+    "section": "[SUBCATCHMENTS]",
+    "object": "S1",
+    "field_index": 4
+  },
+  "n_imperv_s1": {
+    "section": "[SUBAREAS]",
+    "object": "S1",
+    "field_index": 1
+  },
+  "suction_s1": {
+    "section": "[INFILTRATION]",
+    "object": "S1",
+    "field_index": 1
+  },
+  "ksat_s1": {
+    "section": "[INFILTRATION]",
+    "object": "S1",
+    "field_index": 2
+  },
+  "imdmax_s1": {
+    "section": "[INFILTRATION]",
+    "object": "S1",
+    "field_index": 3
+  }
+}

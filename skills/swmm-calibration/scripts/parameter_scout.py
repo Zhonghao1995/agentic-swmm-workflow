@@ -13,6 +13,16 @@ from inp_patch import patch_inp_text
 from obs_reader import read_series
 
 
+def filter_series_window(df: pd.DataFrame, start: str | None, end: str | None) -> pd.DataFrame:
+    out = df.copy()
+    out['timestamp'] = pd.to_datetime(out['timestamp'])
+    if start:
+        out = out[out['timestamp'] >= pd.Timestamp(start)]
+    if end:
+        out = out[out['timestamp'] <= pd.Timestamp(end)]
+    return out.reset_index(drop=True)
+
+
 def load_json(path: str | Path):
     return json.loads(Path(path).read_text())
 
@@ -90,12 +100,15 @@ def main() -> None:
     ap.add_argument('--timestamp-col', default=None)
     ap.add_argument('--flow-col', default=None)
     ap.add_argument('--time-format', default=None)
+    ap.add_argument('--obs-start', default=None, help='Inclusive observed-series window start, e.g. 1984-05-23')
+    ap.add_argument('--obs-end', default=None, help='Inclusive observed-series window end, e.g. 1984-05-28')
     args = ap.parse_args()
 
     patch_map = load_json(args.patch_map)
     base_params = load_json(args.base_params)
     scan_spec = load_json(args.scan_spec)
     observed = read_series(args.observed, timestamp_col=args.timestamp_col, flow_col=args.flow_col, time_format=args.time_format)
+    observed = filter_series_window(observed, args.obs_start, args.obs_end)
 
     out = {'parameters': []}
     for pname, values in scan_spec.items():

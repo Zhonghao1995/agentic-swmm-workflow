@@ -1,0 +1,79 @@
+{
+  "meta": {
+    "name": "basic-demo-network",
+    "flow_units": "CMS"
+  },
+  "junctions": [
+    {
+      "id": "J1",
+      "invert_elev": 100.0,
+      "max_depth": 3.0,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": { "x": 0.0, "y": 0.0 }
+    },
+    {
+      "id": "J2",
+      "invert_elev": 99.2,
+      "max_depth": 3.0,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": { "x": 100.0, "y": 0.0 }
+    }
+  ],
+  "outfalls": [
+    {
+      "id": "OF1",
+      "invert_elev": 98.5,
+      "type": "FREE",
+      "gated": false,
+      "route_to": null,
+      "coordinates": { "x": 200.0, "y": 0.0 }
+    }
+  ],
+  "conduits": [
+    {
+      "id": "C1",
+      "from_node": "J1",
+      "to_node": "J2",
+      "length": 100.0,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.6,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [
+        { "x": 50.0, "y": 10.0 }
+      ]
+    },
+    {
+      "id": "C2",
+      "from_node": "J2",
+      "to_node": "OF1",
+      "length": 100.0,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.75,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      }
+    }
+  ]
+}

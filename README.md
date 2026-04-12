@@ -11,6 +11,7 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - **Built-in verification checks** (continuity/mass balance, equivalence checks across interfaces)
 - **Publication-grade plotting** (consistent styling for rainfall–runoff figures)
 - **Calibration / validation scaffold** for observed-vs-simulated scoring, explicit candidate parameter sets, and parameter scouting
+- **Deterministic preprocessing layers** for parameter mapping (land use / soil) and pipe-network import
 - Optional **agentic orchestration** via **OpenClaw Skills** exposed as **MCP (Model Context Protocol) servers**
 
 ## Architecture (Orchestration + MCP + Verification)
@@ -27,6 +28,7 @@ A reproducible, automation-friendly workflow for **EPA SWMM** that supports:
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
 - **Skills layer:** SOP-style Skills (how the agent should run each tool safely/reproducibly)
 - **MCP layer:** tool interfaces (GIS / SWMM / Plot / Calibration)
+- **MCP layer:** tool interfaces (GIS / Params / Network / SWMM / Plot / Calibration)
 - **Engine layer:** SWMM engine (`swmm5`)
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
 - **Verification layer:** checks for equivalence + continuity + preprocessing consistency
@@ -45,6 +47,18 @@ If you are looking for the **larger local development workspace** (with many mor
   - Writes `manifest.json` (includes input SHA256 + engine version)
   - MCP server: `swmm-runner-mcp`
 
+- `skills/swmm-params/`
+  - Deterministic mapping:
+    - land use class -> SWMM `[SUBCATCHMENTS]` + `[SUBAREAS]` defaults
+    - soil texture/type -> SWMM `[INFILTRATION]` Green-Ampt defaults
+  - Merge step emits builder-ready JSON (`sections` + `by_subcatchment`)
+  - MCP server: `swmm-params-mcp`
+
+- `skills/swmm-network/`
+  - Pipe-system JSON schema + QA + INP export
+  - Importer (`import_network`) for GeoJSON/CSV-driven network ingestion via field mapping
+  - MCP server: `swmm-network-mcp`
+
 - `skills/swmm-plot/`
   - Publication-style rainfall–runoff plots (SI; rain as mm/Δt; inverted rain axis; Arial 12; inward ticks; no title; optional day/window focus)
   - MCP server: `swmm-plot-mcp`
@@ -53,6 +67,7 @@ If you are looking for the **larger local development workspace** (with many mor
   - Calibration / validation / sensitivity-analysis scaffold
   - Parameter scout for ranking which parameters matter first and which direction to move them
   - Reads observed flow from delimited text files, patches selected INP values, runs SWMM, and scores candidate parameter sets
+  - Supports observed-window filtering (`--obs-start`, `--obs-end`) and optional simulated-series aggregation (`--aggregate daily_mean`)
   - MCP server: `swmm-calibration-mcp`
   - Current scope is intentionally MVP: explicit candidate parameter sets, one-parameter-at-a-time scout, simple line-oriented INP patching, and transparent limitations
 
@@ -139,6 +154,39 @@ python3 skills/swmm-calibration/scripts/parameter_scout.py \
   --swmm-node O1
 ```
 
+### 5) Build first-pass subcatchment parameters (land use + soil)
+```bash
+python3 skills/swmm-params/scripts/landuse_to_swmm_params.py \
+  --input skills/swmm-params/examples/landuse_input.csv \
+  --output runs/swmm-params/example_landuse.json
+
+python3 skills/swmm-params/scripts/soil_to_greenampt.py \
+  --input skills/swmm-params/examples/soil_input.csv \
+  --output runs/swmm-params/example_soil.json
+
+python3 skills/swmm-params/scripts/merge_swmm_params.py \
+  --landuse-json runs/swmm-params/example_landuse.json \
+  --soil-json runs/swmm-params/example_soil.json \
+  --output runs/swmm-params/example_builder_params.json
+```
+
+### 6) Import a pipe network (GeoJSON) and export SWMM sections
+```bash
+python3 skills/swmm-network/scripts/network_import.py \
+  --conduits skills/swmm-network/examples/import-conduits.geojson \
+  --junctions skills/swmm-network/examples/import-junctions.geojson \
+  --outfalls skills/swmm-network/examples/import-outfalls.geojson \
+  --mapping skills/swmm-network/examples/import-mapping.json \
+  --out runs/swmm-network/imported-network.json
+
+python3 skills/swmm-network/scripts/network_qa.py \
+  runs/swmm-network/imported-network.json
+
+python3 skills/swmm-network/scripts/network_to_inp.py \
+  runs/swmm-network/imported-network.json \
+  --out runs/swmm-network/imported-network.inp
+```
+
 ## MCP servers (optional)
 
 Each skill includes an MCP server you can run via stdio:
@@ -163,11 +211,32 @@ cd skills/swmm-gis/scripts/mcp && npm install && npm start
 cd skills/swmm-calibration/scripts/mcp && npm install && npm start
 ```
 
+- Network MCP:
+```bash
+cd skills/swmm-network/scripts/mcp && npm install && npm start
+```
+
+- Params MCP:
+```bash
+cd skills/swmm-params/scripts/mcp && npm install && npm start
+```
+
 `swmm-calibration-mcp` exposes:
 - `swmm_parameter_scout`
 - `swmm_sensitivity_scan`
 - `swmm_calibrate`
 - `swmm_validate`
+
+`swmm-network-mcp` exposes:
+- `import_network`
+- `qa`
+- `export_inp`
+- `summary`
+
+`swmm-params-mcp` exposes:
+- `map_landuse`
+- `map_soil`
+- `merge_params`
 
 ## Calibration / validation scaffold (MVP)
 
@@ -178,6 +247,9 @@ What it does today:
 - evaluates explicit candidate parameter sets against a base `.inp`
 - computes NSE, RMSE, bias, peak-flow error, and peak-timing error
 - runs a minimal one-parameter-at-a-time scout to identify promising parameters and narrower next ranges
+- supports optional event-window filtering (`--obs-start`, `--obs-end`)
+- supports optional simulated-series aggregation (`--aggregate daily_mean`)
+- includes an iterative MVP runner (`scripts/iterative_calibration.py`) for scout -> candidate generation -> calibrate flow
 - writes trial folders plus JSON summaries for parameter scouting, sensitivity, calibration, and validation runs
 - includes a minimal example config in `examples/calibration/`
 
