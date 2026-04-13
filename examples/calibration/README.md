@@ -7,7 +7,6 @@ This folder contains a **minimal example configuration** for the public calibrat
 - `parameter_sets.json` → explicit candidate parameter sets for sensitivity / calibration demo
 - `search_space.json` → bounded search-space spec for internal randomized / LHS / adaptive search
 - `observed_flow.csv` → tiny mock observed-flow file for wiring and dry-run tests
-- `best_params_validation.json` → sample parameter object for validation command examples
 
 ## Real local observed-flow source
 A real Tod Creek observed-flow file exists in the larger local working project at:
