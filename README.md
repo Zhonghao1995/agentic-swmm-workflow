@@ -18,6 +18,19 @@ Implemented agentic capabilities already include:
 
 The same workflow also runs directly from CLI for deterministic, script-first execution without requiring an orchestrator.
 
+## Where teams usually get stuck
+
+- **Problem:** Workflows are fragmented across GIS, climate, parameter, and engine tools.  
+  **Our response is:** module-level Skills and MCP interfaces define clear handoffs and reduce manual transfer errors.
+- **Problem:** Provenance is weak, so reruns and audits are hard.  
+  **Our response is:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
+- **Problem:** Model issues are often discovered late (continuity imbalance, interface mismatch).  
+  **Our response is:** verification checks run with execution and surface continuity and consistency diagnostics early.
+- **Problem:** Calibration is often ad hoc and hard to reproduce.  
+  **Our response is:** calibration is encoded as explicit candidate sets and bounded search loops with reproducible outputs.
+- **Problem:** Plotting and reporting quality varies across runs.  
+  **Our response is:** fixed plotting scripts generate consistent rainfall-runoff figures from SWMM outputs.
+
 ## Architecture (Orchestration + MCP + Verification)
 
 <p align="center">
@@ -44,19 +57,6 @@ The same workflow also runs directly from CLI for deterministic, script-first ex
 - **Calibration scaffold:** explicit candidate-set calibration, bounded search (`random`, `lhs`, `adaptive`), and one-parameter scout tools.
 - **Deterministic preprocessing + assembly:** GIS, climate formatting, parameter mapping, network import/QA/export, and full INP build.
 - **Optional orchestration:** direct CLI use or OpenClaw + MCP servers for agentic workflow coordination.
-
-## Current pain points and project response
-
-- **Pain point: fragmented workflows across GIS, climate, parameter, and engine tools.**  
-  **Project response:** module-level skills and MCP interfaces define explicit handoffs and reduce manual transfer errors.
-- **Pain point: weak provenance and low auditability of model runs.**  
-  **Project response:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
-- **Pain point: silent model issues discovered late (continuity imbalance, interface mismatch).**  
-  **Project response:** verification checks run alongside execution and surface continuity and consistency diagnostics early.
-- **Pain point: ad hoc, non-reproducible calibration practice.**  
-  **Project response:** calibration is encoded as explicit candidate sets and bounded search loops with reproducible outputs.
-- **Pain point: inconsistent plotting and reporting for publications.**  
-  **Project response:** fixed plotting scripts generate consistent rainfall-runoff figures from SWMM outputs.
 
 ## End-to-end flow
 
