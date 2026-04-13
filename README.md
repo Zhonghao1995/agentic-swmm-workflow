@@ -8,6 +8,7 @@ License: **MIT**
 ## What this project does
 
 `agentic-swmm-workflow` is an **agentic SWMM pipeline built on OpenClaw** for reproducible stormwater modeling.
+This framework can use either OpenClaw or Hermes as the orchestration layer.
 
 Implemented agentic capabilities already include:
 - **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
