@@ -7,11 +7,16 @@ License: **MIT**
 
 ## What this project does
 
-Stormwater modeling is often fragmented: preprocessing is manual, runs are hard to audit, and figures are hard to reproduce consistently.
+`agentic-swmm-workflow` is an **agentic SWMM pipeline built on OpenClaw** for reproducible stormwater modeling.
 
-This project provides a deterministic, script-first workflow around **EPA SWMM** that takes you from GIS/climate/parameter inputs to a runnable model, verified outputs, and publication-ready plots.
+Implemented agentic capabilities already include:
+- **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
+- **MCP servers** for each module, enabling tool-level orchestration in OpenClaw.
+- **Manifest-driven provenance** (`manifest.json`) across build, run, and calibration stages.
+- **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
+- **Calibration loop support** with explicit candidate sets and bounded search (`random`, `lhs`, `adaptive`).
 
-The core idea is reproducibility: each run and build stage emits machine-readable artifacts (including `manifest.json`) so results can be traced, checked, and repeated.
+The same workflow also runs directly from CLI for deterministic, script-first execution without requiring an orchestrator.
 
 ## Architecture (Orchestration + MCP + Verification)
 
@@ -39,6 +44,19 @@ The core idea is reproducibility: each run and build stage emits machine-readabl
 - **Calibration scaffold:** explicit candidate-set calibration, bounded search (`random`, `lhs`, `adaptive`), and one-parameter scout tools.
 - **Deterministic preprocessing + assembly:** GIS, climate formatting, parameter mapping, network import/QA/export, and full INP build.
 - **Optional orchestration:** direct CLI use or OpenClaw + MCP servers for agentic workflow coordination.
+
+## Current pain points and project response
+
+- **Pain point: fragmented workflows across GIS, climate, parameter, and engine tools.**  
+  **Project response:** module-level skills and MCP interfaces define explicit handoffs and reduce manual transfer errors.
+- **Pain point: weak provenance and low auditability of model runs.**  
+  **Project response:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
+- **Pain point: silent model issues discovered late (continuity imbalance, interface mismatch).**  
+  **Project response:** verification checks run alongside execution and surface continuity and consistency diagnostics early.
+- **Pain point: ad hoc, non-reproducible calibration practice.**  
+  **Project response:** calibration is encoded as explicit candidate sets and bounded search loops with reproducible outputs.
+- **Pain point: inconsistent plotting and reporting for publications.**  
+  **Project response:** fixed plotting scripts generate consistent rainfall-runoff figures from SWMM outputs.
 
 ## End-to-end flow
 
@@ -117,6 +135,14 @@ agentic-swmm-workflow/
 │  └─ swmm-calibration/
 └─ runs/ (generated artifacts)
 ```
+
+## Collaboration
+
+We welcome co-developers and research collaborators working on agentic hydrologic/stormwater modeling with OpenClaw and SWMM.
+
+Contact:
+- zhonghaoz@uvic.ca
+- valeo@uvic.ca
 
 ## Citation
 
