@@ -12,7 +12,8 @@ node_modules/
 *.log
 *.png
 *.pdf
-runs/
+runs/*
+!runs/README.md
 
 # Docs / figures (keep tracked)
 !docs/
