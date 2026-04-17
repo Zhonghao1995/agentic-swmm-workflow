@@ -34,6 +34,7 @@ This project is useful if you are:
 
 Implemented capabilities already include:
 - **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
+- A top-level **`swmm-end-to-end` orchestration skill** for OpenClaw-facing build/run/QA flows.
 - **MCP servers** for each module, enabling tool-level orchestration in OpenClaw.
 - **Manifest-driven provenance** (`manifest.json`) across build, run, and calibration stages.
 - **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
@@ -116,7 +117,8 @@ agentic-swmm-workflow/
 │  ├─ todcreek/model_chicago5min.inp
 │  └─ calibration/
 ├─ scripts/
-│  └─ acceptance/run_acceptance.py
+│  ├─ acceptance/run_acceptance.py
+│  └─ real_cases/run_todcreek_minimal.py
 ├─ skills/
 │  ├─ swmm-gis/
 │  ├─ swmm-climate/
@@ -125,7 +127,8 @@ agentic-swmm-workflow/
 │  ├─ swmm-builder/
 │  ├─ swmm-runner/
 │  ├─ swmm-plot/
-│  └─ swmm-calibration/
+│  ├─ swmm-calibration/
+│  └─ swmm-end-to-end/
 └─ runs/ (generated artifacts)
 ```
 
@@ -133,6 +136,18 @@ For more detail:
 - See `docs/repo-map.md` for a broader repo walkthrough.
 - See `skills/<module>/SKILL.md` for module-specific behavior and examples.
 - Each module can expose an MCP server at `skills/<module>/scripts/mcp/server.js` for optional OpenClaw integration.
+
+## OpenClaw orchestration
+
+If you want one OpenClaw-facing entrypoint instead of manually choosing module skills, start with:
+
+`skills/swmm-end-to-end/SKILL.md`
+
+That top-level skill defines:
+- when to use the full modular path,
+- when to fall back to the Tod Creek minimal real-data runner,
+- which QA gates must pass before a run is considered usable, and
+- when to stop instead of inventing missing network/subcatchment inputs.
 
 ## Where collaborators can help
 

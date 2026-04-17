@@ -10,12 +10,14 @@ Purpose:
 - package the workflow as reusable **Skills + MCP scaffolds**
 - keep the public-facing examples small and auditable
 - support a paper-friendly reproducible architecture story
+- provide a top-level `swmm-end-to-end` orchestration skill for OpenClaw-facing runs
 
 Key folders:
 - `skills/swmm-gis/` → DEM outlet selection
 - `skills/swmm-runner/` → reproducible SWMM execution + manifests
 - `skills/swmm-plot/` → publication plotting
 - `skills/swmm-calibration/` → calibration / validation / sensitivity scaffold
+- `skills/swmm-end-to-end/` → top-level orchestration contract across module skills
 - `examples/todcreek/` → minimal example INP
 - `examples/calibration/` → minimal calibration example inputs
 - `docs/` → figures and repo documentation
