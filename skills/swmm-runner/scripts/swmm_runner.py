@@ -40,19 +40,46 @@ def run_swmm(inp: Path, rpt: Path, out: Path, stdout_path: Path, stderr_path: Pa
 
 def parse_peak_from_rpt(rpt: Path, node: str) -> dict:
     text = rpt.read_text(errors='ignore')
+    lines = text.splitlines()
 
-    # Prefer Node Inflow Summary line (has time of max) if present
-    # Example: O1  OUTFALL  ...  MaxTotal  0  10:31  ...
+    def extract_section(title: str) -> str:
+        start_idx = None
+        for i, line in enumerate(lines):
+            if title.lower() in line.lower():
+                start_idx = i + 1
+                break
+        if start_idx is None:
+            return ""
+
+        block: list[str] = []
+        for line in lines[start_idx:]:
+            if line.strip().startswith("*****") and block:
+                break
+            block.append(line)
+        return "\n".join(block)
+
+    # Prefer Node Inflow Summary because it includes time of maximum total inflow.
+    inflow_block = extract_section("Node Inflow Summary")
     mt = re.search(
-        rf"^\s*{re.escape(node)}\s+OUTFALL\s+\S+\s+\S+\s+(\d+\.\d+)\s+\d+\s+(\d\d):(\d\d)",
-        text,
+        rf"^\s*{re.escape(node)}\s+\S+\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+\d+\s+(\d\d):(\d\d)",
+        inflow_block,
         re.M,
     )
     if mt:
-        return {"node": node, "peak": float(mt.group(1)), "time_hhmm": f"{mt.group(2)}:{mt.group(3)}", "source": "Node Inflow Summary"}
+        return {
+            "node": node,
+            "peak": float(mt.group(2)),
+            "time_hhmm": f"{mt.group(3)}:{mt.group(4)}",
+            "source": "Node Inflow Summary",
+        }
 
-    # Fallback: Outfall Loading Summary max flow (no time)
-    m = re.search(rf"^\s*{re.escape(node)}\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s+(\d+\.\d+)\s*$", text, re.M)
+    # Fallback to Outfall Loading Summary for outfalls when no timed inflow entry exists.
+    outfall_block = extract_section("Outfall Loading Summary")
+    m = re.search(
+        rf"^\s*{re.escape(node)}\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s+([-+]?\d+(?:\.\d+)?)\s*$",
+        outfall_block,
+        re.M,
+    )
     if m:
         return {"node": node, "peak": float(m.group(3)), "time_hhmm": None, "source": "Outfall Loading Summary"}
 
