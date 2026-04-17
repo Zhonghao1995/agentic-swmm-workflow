@@ -5,10 +5,26 @@
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-## What this project does
+## What this project is
 
-`agentic-swmm-workflow` is an **agentic SWMM pipeline** for reproducible stormwater modeling.
-This framework can use either **OpenClaw** or **Hermes** as the orchestration layer.
+`agentic-swmm-workflow` is a **reproducible, agentic SWMM workflow** for stormwater modeling.
+It is designed not just to let an LLM call SWMM, but to make **model assembly, execution, checking, and reporting auditable and repeatable**.
+
+This framework can use either **OpenClaw** or **Hermes** as the orchestration layer, while still supporting direct **CLI-first deterministic execution**.
+
+## Why this project is different
+
+Many AI + SWMM demos focus on natural-language interaction with a model.
+This repository focuses on a different problem: **how to make agentic hydrologic modeling reproducible, inspectable, and safe enough for research workflows**.
+
+Key differentiators include:
+- **End-to-end workflow framing:** GIS, climate, parameters, network assembly, model build, run, plotting, and calibration are organized as one coherent pipeline.
+- **Manifest-driven provenance:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
+- **Verification by design:** continuity/mass-balance diagnostics, preprocessing consistency checks, and extracted peak checks are built into execution.
+- **Deterministic CLI equivalence:** the same workflow can be run without an orchestrator for script-first, reproducible execution.
+- **Research-oriented outputs:** standardized folders, parsed diagnostics, and publication-style plots support auditability and downstream reporting.
+
+## Current capabilities
 
 Implemented agentic capabilities already include:
 - **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
@@ -16,21 +32,20 @@ Implemented agentic capabilities already include:
 - **Manifest-driven provenance** (`manifest.json`) across build, run, and calibration stages.
 - **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
 - **Calibration loop support** with explicit candidate sets and bounded search (`random`, `lhs`, `adaptive`).
-
-The same workflow also runs directly from CLI for deterministic, script-first execution without requiring an orchestrator.
+- **Direct CLI execution** for deterministic, script-first runs without requiring an orchestrator.
 
 ## Where teams usually get stuck
 
 - **Problem:** Workflows are fragmented across GIS, climate, parameter, and engine tools.  
-  **Our response is:** module-level Skills and MCP interfaces define clear handoffs and reduce manual transfer errors.
+  **Our response:** module-level Skills and MCP interfaces define clear handoffs and reduce manual transfer errors.
 - **Problem:** Provenance is weak, so reruns and audits are hard.  
-  **Our response is:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
+  **Our response:** build/run/calibration stages emit standardized artifacts and `manifest.json` records for traceable reruns.
 - **Problem:** Model issues are often discovered late (continuity imbalance, interface mismatch).  
-  **Our response is:** verification checks run with execution and surface continuity and consistency diagnostics early.
+  **Our response:** verification checks run with execution and surface continuity and consistency diagnostics early.
 - **Problem:** Calibration is often ad hoc and hard to reproduce.  
-  **Our response is:** calibration is encoded as explicit candidate sets and bounded search loops with reproducible outputs.
+  **Our response:** calibration is encoded as explicit candidate sets and bounded search loops with reproducible outputs.
 - **Problem:** Plotting and reporting quality varies across runs.  
-  **Our response is:** fixed plotting scripts generate consistent rainfall-runoff figures from SWMM outputs.
+  **Our response:** fixed plotting scripts generate consistent rainfall-runoff figures from SWMM outputs.
 
 ## Architecture (Orchestration + Skills + MCP + Verification)
 
@@ -44,26 +59,17 @@ The same workflow also runs directly from CLI for deterministic, script-first ex
 
 **Layers (left → right):**
 - **Orchestrator layer:** OpenClaw (optional; coordinates tools/steps)
-- **Skills layer:** SOP-style Skills (how the agent should run each tool safely/reproducibly)
+- **Skills layer:** SOP-style Skills (how the agent should run each tool safely and reproducibly)
 - **MCP layer:** tool interfaces (GIS / Climate / Params / Network / Builder / SWMM / Plot / Calibration)
 - **Engine layer:** SWMM engine (`swmm5`)
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
-- **Verification layer:** checks for equivalence + continuity + preprocessing consistency
-
-## Capabilities
-
-- **Automated run management + provenance:** standardized run folders and `manifest.json` outputs from build/run stages.
-- **Verification checks:** continuity/mass-balance diagnostics, parsed peak metrics, and interface-equivalence support.
-- **Publication-grade plotting:** consistent rainfall-runoff figure generation from SWMM outputs.
-- **Calibration scaffold:** explicit candidate-set calibration, bounded search (`random`, `lhs`, `adaptive`), and one-parameter scout tools.
-- **Deterministic preprocessing + assembly:** GIS, climate formatting, parameter mapping, network import/QA/export, and full INP build.
-- **Optional orchestration:** direct CLI use or OpenClaw + MCP servers for agentic workflow coordination.
+- **Verification layer:** checks for equivalence, continuity, and preprocessing consistency
 
 ## End-to-end flow
 
 1. Prepare deterministic inputs (GIS polygons, rainfall series, mapped soil/landuse parameters, and network schema/import).
 2. Assemble a runnable SWMM `.inp` with `swmm-builder` and emit a build manifest.
-3. Execute SWMM with `swmm-runner` and emit run-level manifest + parsed diagnostics.
+3. Execute SWMM with `swmm-runner` and emit run-level manifest plus parsed diagnostics.
 4. Verify continuity and extracted peak behavior.
 5. Produce publication-style rainfall-runoff plots.
 6. Optionally calibrate/validate with explicit sets or bounded search.
@@ -139,7 +145,7 @@ agentic-swmm-workflow/
 
 ## Collaboration
 
-We welcome co-developers and research collaborators working on agentic hydrologic/stormwater modeling with OpenClaw and SWMM.
+We welcome co-developers and research collaborators working on agentic hydrologic and stormwater modeling with OpenClaw and SWMM.
 
 Contact:
 - zhonghaoz@uvic.ca
