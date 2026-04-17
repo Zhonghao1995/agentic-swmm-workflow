@@ -1,18 +1,21 @@
 # agentic-swmm-workflow
 
 **Agentic SWMM for reproducible stormwater modeling**  
-*OpenClaw + MCP + SWMM + verification-first workflow*
+*OpenClaw or Hermes + MCP + SWMM + verification-first workflow*
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-`agentic-swmm-workflow` is an open-source framework for building **reproducible, agentic SWMM workflows**.
+`agentic-swmm-workflow` is an open-source framework for building **reproducible, agentic SWMM workflows** with **OpenClaw** or **Hermes** as the recommended orchestration layer.
 It helps researchers and developers move from scattered scripts and manual clicks to a pipeline that is **structured, auditable, and easier to rerun**.
+
+At the core of this project is a simple idea: **use OpenClaw or Hermes to operate a modular SWMM workflow through Skills and MCP tools, while keeping the underlying modeling steps deterministic and inspectable**.
 
 Unlike a simple chat-to-SWMM wrapper, this repository focuses on the full workflow: **prepare inputs, assemble models, run SWMM, verify outputs, plot results, and calibrate with traceable artifacts**.
 
 ## Why people star this project
 
+- **OpenClaw and Hermes ready:** the workflow is designed to be operated through modern agentic runtimes rather than only through ad hoc scripts.
 - **End-to-end workflow:** GIS, climate, parameters, network assembly, model build, run, plotting, and calibration in one repo.
 - **Reproducible by default:** build/run/calibration stages emit standardized artifacts and `manifest.json` provenance.
 - **Verification-first:** continuity, mass-balance, preprocessing consistency, and parsed peak checks are built into execution.
