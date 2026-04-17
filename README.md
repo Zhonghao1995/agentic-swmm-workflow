@@ -149,6 +149,10 @@ That top-level skill defines:
 - which QA gates must pass before a run is considered usable, and
 - when to stop instead of inventing missing network/subcatchment inputs.
 
+For the exact MCP tool-call sequence behind that skill, see:
+
+`docs/openclaw-execution-path.md`
+
 ## Where collaborators can help
 
 Contributions are especially welcome in:

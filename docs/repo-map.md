@@ -20,7 +20,7 @@ Key folders:
 - `skills/swmm-end-to-end/` → top-level orchestration contract across module skills
 - `examples/todcreek/` → minimal example INP
 - `examples/calibration/` → minimal calibration example inputs
-- `docs/` → figures and repo documentation
+- `docs/` → figures, repo documentation, and OpenClaw execution-path notes
 
 ## Working project (larger local development directory)
 Path:

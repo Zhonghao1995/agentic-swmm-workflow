@@ -48,6 +48,27 @@ Execution order:
 8. optional `swmm-plot`
 9. optional `swmm-calibration`
 
+Exact MCP call chain for the full modular path:
+1. `swmm-gis-mcp.gis_preprocess_subcatchments`
+2. `swmm-params-mcp.map_landuse`
+3. `swmm-params-mcp.map_soil`
+4. `swmm-params-mcp.merge_params`
+5. `swmm-climate-mcp.format_rainfall`
+6. `swmm-climate-mcp.build_raingage_section`
+7. `swmm-network-mcp.import_network` if raw network files must be imported
+8. `swmm-network-mcp.qa`
+9. `swmm-builder-mcp.build_inp`
+10. `swmm-runner-mcp.swmm_run`
+11. `swmm-runner-mcp.swmm_continuity`
+12. `swmm-runner-mcp.swmm_peak`
+13. optional `swmm-plot-mcp.plot_rain_runoff_si`
+14. optional calibration tools:
+   - `swmm-calibration-mcp.swmm_sensitivity_scan`
+   - `swmm-calibration-mcp.swmm_calibrate`
+   - `swmm-calibration-mcp.swmm_calibrate_search`
+   - `swmm-calibration-mcp.swmm_validate`
+   - `swmm-calibration-mcp.swmm_parameter_scout`
+
 ### Mode B: Prepared-input build
 Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
 
@@ -56,6 +77,14 @@ Execution order:
 2. `swmm-runner`
 3. QA checks
 4. optional plotting / calibration
+
+Exact MCP call chain for prepared inputs:
+1. `swmm-builder-mcp.build_inp`
+2. `swmm-runner-mcp.swmm_run`
+3. `swmm-runner-mcp.swmm_continuity`
+4. `swmm-runner-mcp.swmm_peak`
+5. optional `swmm-plot-mcp.plot_rain_runoff_si`
+6. optional calibration tools
 
 ### Mode C: Minimal real-data Tod Creek fallback
 Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
@@ -68,6 +97,11 @@ Characteristics:
 - simple junction/outfall/conduit layout
 - real DEM / land use / soil / rainfall inputs
 - useful as a real-data smoke test, not as the final watershed architecture
+
+This fallback is a script path, not a module-MCP path.
+OpenClaw should choose it only when:
+- the user explicitly accepts a simplified real-data smoke test, or
+- full modular inputs are incomplete and the goal is to verify the repo can run with real data.
 
 ## Required decisions before execution
 The orchestrator should decide these items explicitly:
@@ -107,6 +141,71 @@ The run requires:
 - Fail fast on missing critical inputs.
 - Do not silently invent a drainage network for a supposed full build.
 - If full modular inputs are incomplete but Tod Creek real-data fallback is available, say so explicitly and switch only if that matches the user’s intent.
+
+## Artifact handoff contract
+The top-level skill should pass artifacts between MCP tools using explicit run-local paths.
+
+Recommended stage layout:
+- `runs/<case>/01_gis/subcatchments.csv`
+- `runs/<case>/01_gis/subcatchments.json`
+- `runs/<case>/02_params/landuse.json`
+- `runs/<case>/02_params/soil.json`
+- `runs/<case>/02_params/merged_params.json`
+- `runs/<case>/03_climate/rainfall.json`
+- `runs/<case>/03_climate/timeseries.txt`
+- `runs/<case>/03_climate/raingage.json`
+- `runs/<case>/03_climate/raingage.txt`
+- `runs/<case>/04_network/network.json`
+- `runs/<case>/04_network/network_qa.json`
+- `runs/<case>/05_builder/model.inp`
+- `runs/<case>/05_builder/manifest.json`
+- `runs/<case>/06_runner/model.rpt`
+- `runs/<case>/06_runner/model.out`
+- `runs/<case>/06_runner/manifest.json`
+- `runs/<case>/07_qa/continuity.json`
+- `runs/<case>/07_qa/peak.json`
+- optional `runs/<case>/08_plot/...`
+- optional `runs/<case>/09_calibration/...`
+
+## MCP execution notes
+### GIS stage
+- Use `gis_preprocess_subcatchments` only when a subcatchment polygon dataset already exists.
+- Do not claim GIS preprocessing can replace watershed delineation or pipe-network generation.
+
+### Params stage
+- `map_landuse` and `map_soil` should target the same subcatchment ID universe.
+- `merge_params` should be treated as the single params handoff into `build_inp`.
+
+### Climate stage
+- `format_rainfall` should create both JSON metadata and timeseries text.
+- `build_raingage_section` should run after rainfall formatting so `series_name` or `rainfall_json` stays consistent.
+
+### Network stage
+- Use `import_network` only when raw conduits/junctions/outfalls exist.
+- If `network.json` already exists, skip import and run `qa` directly.
+- If no trustworthy network source exists, stop the full modular path.
+
+### Builder stage
+- `build_inp` is the only handoff into `swmm_run`.
+- Treat builder validation failures as hard stops for the full modular path.
+
+### Runner and QA stage
+- `swmm_run` creates the canonical `manifest.json`.
+- `swmm_continuity` and `swmm_peak` are mandatory QA steps, not optional metrics.
+- Prefer the fixed `swmm_peak` parser path that reads the correct summary block.
+
+### Calibration stage
+- Do not enter calibration unless the user requested it or the workflow explicitly includes it.
+- Require an observed flow file before any calibration tool is called.
+
+## OpenClaw prompt-level instruction
+When OpenClaw uses this skill, it should:
+- choose one operating mode first,
+- announce the chosen mode,
+- create a case run directory,
+- call only the MCP tools required for that mode,
+- stop immediately on missing critical inputs instead of hallucinating replacements,
+- summarize which concrete artifacts were produced.
 
 ## QA gates
 Minimum QA checks for a successful run:
