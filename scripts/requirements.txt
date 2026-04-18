@@ -1,4 +1,7 @@
 pandas
 numpy
 matplotlib
+rasterio
+pyshp
+pysheds
 swmmtoolbox

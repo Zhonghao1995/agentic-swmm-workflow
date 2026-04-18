@@ -61,18 +61,57 @@ Implemented capabilities already include:
 
 ## Quickstart
 
-### Install (one line)
+### One-command install (macOS / Linux)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/install.sh | bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-### Install local dependencies
+This bootstrap command:
+- clones or updates the repository into `./agentic-swmm-workflow`,
+- installs missing system dependencies where supported,
+- installs Python and MCP dependencies, and
+- installs or builds the SWMM engine if `swmm5` is not already available.
+
+On macOS / Linux, the installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when a local `swmm5` command is missing.
+
+### One-command install (Windows PowerShell, run as Administrator)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
+```
+
+This bootstrap command:
+- clones or updates the repository into `.\agentic-swmm-workflow`,
+- installs Chocolatey if needed,
+- installs Git, Python, Node.js LTS, and SWMM,
+- installs Python and MCP dependencies, and
+- creates a `swmm5` command shim when the Windows SWMM installer exposes a different executable name.
+
+### Install after clone
 
 ```bash
 bash scripts/install.sh --yes
 source .venv/bin/activate
 ```
+
+On Windows after cloning:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Yes
+.\.venv\Scripts\Activate.ps1
+```
+
+### Python requirements
+
+The Python install now covers both the acceptance path and the real-data Tod Creek smoke test, including:
+- `pandas`
+- `numpy`
+- `matplotlib`
+- `rasterio`
+- `pyshp`
+- `pysheds`
+- `swmmtoolbox`
 
 ### Run the acceptance pipeline
 
@@ -117,6 +156,10 @@ agentic-swmm-workflow/
 │  ├─ todcreek/model_chicago5min.inp
 │  └─ calibration/
 ├─ scripts/
+│  ├─ bootstrap.sh
+│  ├─ bootstrap.ps1
+│  ├─ install.sh
+│  ├─ install.ps1
 │  ├─ acceptance/run_acceptance.py
 │  └─ real_cases/run_todcreek_minimal.py
 ├─ skills/
