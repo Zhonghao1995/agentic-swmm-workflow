@@ -66,7 +66,7 @@ Implemented capabilities already include:
 The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
 
 <p align="center">
-  <img src="docs/figs/audit_comparison_example.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
+  <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
 </p>
 
 For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
