@@ -14,6 +14,7 @@ Use one top-level OpenClaw skill to call the existing SWMM module tools in a sta
 - Keep calculations in Python scripts behind MCP tools.
 - Keep artifacts in a run-local directory.
 - Stop on missing critical inputs instead of fabricating them.
+- Always run the experiment audit layer after success, failure, or early stop.
 
 ## Full modular path
 
@@ -137,6 +138,32 @@ Calibration preconditions:
 - observed flow parses
 - user explicitly requested calibration or the workflow includes it
 
+### Stage 10: Experiment audit
+
+Tool:
+- `swmm-experiment-audit` CLI
+
+Command:
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>
+```
+
+With a comparison target:
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/audit_run.py \
+  --run-dir runs/<case> \
+  --compare-to runs/<baseline-case>
+```
+
+Outputs:
+- `runs/<case>/experiment_provenance.json`
+- `runs/<case>/comparison.json`
+- `runs/<case>/experiment_note.md`
+
+Run this stage even when an earlier stage fails or stops early. The audit record should preserve partial evidence and missing artifacts instead of fabricating a complete run.
+
 ## Prepared-input path
 
 Use this when the case already has:
@@ -152,6 +179,7 @@ Call order:
 4. `swmm-runner-mcp.swmm_peak`
 5. optional plotting
 6. optional calibration
+7. `swmm-experiment-audit` CLI
 
 ## Tod Creek minimal real-data fallback
 
@@ -171,8 +199,14 @@ This fallback currently uses:
 - copied outlet point
 - simplified one-subcatchment + one-conduit topology
 
+After running the fallback script, audit it with:
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/audit_run.py \
+  --run-dir runs/real-todcreek-minimal \
+  --workflow-mode "minimal real-data fallback"
+```
+
 ## What should come next
 
-The next implementation step is not a brand-new MCP server by default.
-
-The next step is to connect OpenClaw prompts and runtime behavior to this exact execution path so `swmm-end-to-end` becomes operational rather than only descriptive.
+The next implementation step is to connect OpenClaw prompts and runtime behavior to this exact execution path so `swmm-end-to-end` consistently runs the audit layer after every build/run/QA attempt.

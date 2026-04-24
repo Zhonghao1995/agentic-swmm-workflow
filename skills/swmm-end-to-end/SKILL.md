@@ -16,8 +16,10 @@ description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. U
   - `swmm-runner`
   - `swmm-plot`
   - `swmm-calibration`
+  - `swmm-experiment-audit`
 - Clear stop conditions so the agent does not pretend a full model was built when critical inputs are still missing.
 - A minimal real-data fallback path for Tod Creek via `scripts/real_cases/run_todcreek_minimal.py`.
+- A mandatory audit handoff that consolidates artifacts, metrics, QA, and comparison records after success or failure.
 
 ## When to use this skill
 Use this skill when the user asks for:
@@ -47,6 +49,7 @@ Execution order:
 7. QA checks
 8. optional `swmm-plot`
 9. optional `swmm-calibration`
+10. `swmm-experiment-audit`
 
 Exact MCP call chain for the full modular path:
 1. `swmm-gis-mcp.gis_preprocess_subcatchments`
@@ -68,6 +71,8 @@ Exact MCP call chain for the full modular path:
    - `swmm-calibration-mcp.swmm_calibrate_search`
    - `swmm-calibration-mcp.swmm_validate`
    - `swmm-calibration-mcp.swmm_parameter_scout`
+15. `swmm-experiment-audit` via CLI:
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
 
 ### Mode B: Prepared-input build
 Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
@@ -77,6 +82,7 @@ Execution order:
 2. `swmm-runner`
 3. QA checks
 4. optional plotting / calibration
+5. `swmm-experiment-audit`
 
 Exact MCP call chain for prepared inputs:
 1. `swmm-builder-mcp.build_inp`
@@ -85,12 +91,17 @@ Exact MCP call chain for prepared inputs:
 4. `swmm-runner-mcp.swmm_peak`
 5. optional `swmm-plot-mcp.plot_rain_runoff_si`
 6. optional calibration tools
+7. `swmm-experiment-audit` via CLI:
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
 
 ### Mode C: Minimal real-data Tod Creek fallback
 Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
 
 Script:
 - `scripts/real_cases/run_todcreek_minimal.py`
+
+Audit command after the script returns:
+- `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"`
 
 Characteristics:
 - one subcatchment
@@ -141,6 +152,7 @@ The run requires:
 - Fail fast on missing critical inputs.
 - Do not silently invent a drainage network for a supposed full build.
 - If full modular inputs are incomplete but Tod Creek real-data fallback is available, say so explicitly and switch only if that matches the user’s intent.
+- Always call `swmm-experiment-audit` after the attempt, even when the run fails or stops early. The audit record should reflect partial evidence rather than invent missing outputs.
 
 ## Artifact handoff contract
 The top-level skill should pass artifacts between MCP tools using explicit run-local paths.
@@ -166,6 +178,9 @@ Recommended stage layout:
 - `runs/<case>/07_qa/peak.json`
 - optional `runs/<case>/08_plot/...`
 - optional `runs/<case>/09_calibration/...`
+- `runs/<case>/experiment_provenance.json`
+- `runs/<case>/comparison.json`
+- `runs/<case>/experiment_note.md`
 
 ## MCP execution notes
 ### GIS stage
@@ -198,6 +213,13 @@ Recommended stage layout:
 - Do not enter calibration unless the user requested it or the workflow explicitly includes it.
 - Require an observed flow file before any calibration tool is called.
 
+### Audit stage
+- Run `swmm-experiment-audit` after success, failure, or early stop.
+- Use the run directory as the single audit input.
+- Pass `--compare-to <baseline-run-dir>` when the user requests baseline/scenario or before/after comparison.
+- The audit must write `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
+- Do not include chat transcripts or conversational content in audit outputs.
+
 ## OpenClaw prompt-level instruction
 When OpenClaw uses this skill, it should:
 - choose one operating mode first,
@@ -205,7 +227,8 @@ When OpenClaw uses this skill, it should:
 - create a case run directory,
 - call only the MCP tools required for that mode,
 - stop immediately on missing critical inputs instead of hallucinating replacements,
-- summarize which concrete artifacts were produced.
+- call `swmm-experiment-audit` on the run directory,
+- summarize which concrete artifacts and audit records were produced.
 
 ## QA gates
 Minimum QA checks for a successful run:
@@ -226,6 +249,9 @@ At minimum, the orchestrator should leave behind:
 - run `.out`
 - `manifest.json`
 - a short machine-readable QA summary
+- `experiment_provenance.json`
+- `comparison.json`
+- Obsidian-compatible `experiment_note.md`
 
 If plotting is requested, also produce:
 - rainfall-runoff figure artifact

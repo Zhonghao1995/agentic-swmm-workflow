@@ -37,6 +37,7 @@ Implemented capabilities already include:
 - A top-level **`swmm-end-to-end` orchestration skill** for OpenClaw-facing build/run/QA flows.
 - **MCP servers** for each module, enabling tool-level orchestration in OpenClaw.
 - **Manifest-driven provenance** (`manifest.json`) across build, run, and calibration stages.
+- An **experiment audit layer** that consolidates run artifacts into `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
 - **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
 - **Calibration loop support** with explicit candidate sets and bounded search (`random`, `lhs`, `adaptive`).
 - **Direct CLI execution** for deterministic, script-first runs without requiring an orchestrator.
@@ -125,6 +126,14 @@ Open:
 
 `runs/acceptance/latest/acceptance_report.md`
 
+### Audit a run
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/acceptance/latest
+```
+
+Add `--obsidian-dir <vault-folder>` to write a copy of the note into Obsidian.
+
 ### Make a rainfall-runoff plot from acceptance outputs
 
 ```bash
@@ -171,6 +180,7 @@ agentic-swmm-workflow/
 │  ├─ swmm-runner/
 │  ├─ swmm-plot/
 │  ├─ swmm-calibration/
+│  ├─ swmm-experiment-audit/
 │  └─ swmm-end-to-end/
 └─ runs/ (generated artifacts)
 ```
