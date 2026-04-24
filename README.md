@@ -1,15 +1,17 @@
 # agentic-swmm-workflow
 
 **Agentic SWMM for reproducible stormwater modeling**  
-*OpenClaw or Hermes + MCP + SWMM + verification-first workflow*
+*OpenClaw or Hermes + MCP + SWMM + Obsidian-compatible audit + verification-first workflow*
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
 `agentic-swmm-workflow` is an open-source framework for building **reproducible, agentic SWMM workflows** with **OpenClaw** or **Hermes** as the recommended orchestration layer.
 It helps researchers and developers move from scattered scripts and manual clicks to a pipeline that is **structured, auditable, and easier to rerun**.
+The audit layer produces Obsidian-compatible experiment notes and can also be run directly from the CLI.
 
 At the core of this project is a simple idea: **use OpenClaw or Hermes to operate a modular SWMM workflow through Skills and MCP tools, while keeping the underlying modeling steps deterministic and inspectable**.
+OpenClaw can trigger the audit layer after a run, while the generated Markdown note supports Obsidian as a second-brain review layer.
 
 Unlike a simple chat-to-SWMM wrapper, this repository focuses on the full workflow: **prepare inputs, assemble models, run SWMM, verify outputs, plot results, and calibrate with traceable artifacts**.
 
@@ -36,8 +38,7 @@ Implemented capabilities already include:
 - **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
 - A top-level **`swmm-end-to-end` orchestration skill** for OpenClaw-facing build/run/QA flows.
 - **MCP servers** for each module, enabling tool-level orchestration in OpenClaw.
-- **Manifest-driven provenance** (`manifest.json`) across build, run, and calibration stages.
-- An **experiment audit layer** that consolidates run artifacts into `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
+- **Manifest-driven provenance and audit notes:** stages emit `manifest.json`, while the audit layer consolidates artifacts into `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
 - **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
 - **Calibration loop support** with explicit candidate sets and bounded search (`random`, `lhs`, `adaptive`).
 - **Direct CLI execution** for deterministic, script-first runs without requiring an orchestrator.
@@ -60,18 +61,12 @@ Implemented capabilities already include:
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
 - **Verification layer:** checks for equivalence, continuity, and preprocessing consistency
 
-## Experiment audit example
+## Experiment Audit Example
 
-The audit layer consolidates workflow traces, artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. In this example, it flags a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
+The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
 
 <p align="center">
   <img src="docs/figs/audit_comparison_example.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
-</p>
-
-It also records the stage-level execution trace, including return codes, durations, and log paths.
-
-<p align="center">
-  <img src="docs/figs/audit_workflow_trace_example.png" alt="Experiment audit workflow trace with command logs and return codes" width="900" />
 </p>
 
 For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
