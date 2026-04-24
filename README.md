@@ -1,7 +1,7 @@
 # agentic-swmm-workflow
 
 **Agentic SWMM for reproducible stormwater modeling**  
-*OpenClaw or Hermes + MCP + SWMM + Obsidian-compatible audit + verification-first workflow*
+*OpenClaw or Hermes + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
