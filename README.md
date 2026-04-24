@@ -60,6 +60,22 @@ Implemented capabilities already include:
 - **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
 - **Verification layer:** checks for equivalence, continuity, and preprocessing consistency
 
+## Experiment audit example
+
+The audit layer consolidates workflow traces, artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. In this example, it flags a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
+
+<p align="center">
+  <img src="docs/figs/audit_comparison_example.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
+</p>
+
+It also records the stage-level execution trace, including return codes, durations, and log paths.
+
+<p align="center">
+  <img src="docs/figs/audit_workflow_trace_example.png" alt="Experiment audit workflow trace with command logs and return codes" width="900" />
+</p>
+
+For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
+
 ## Quickstart
 
 ### One-command install (macOS / Linux)
