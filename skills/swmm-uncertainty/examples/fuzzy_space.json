@@ -1,0 +1,30 @@
+{
+  "version": "0.1",
+  "parameters": {
+    "pct_imperv_s1": {
+      "type": "triangular",
+      "lower": 15.0,
+      "upper": 40.0,
+      "baseline": "from_model",
+      "precision": 3,
+      "source": "User-defined land-cover uncertainty around the current model value."
+    },
+    "n_imperv_s1": {
+      "type": "trapezoidal",
+      "lower": 0.01,
+      "upper": 0.03,
+      "core_width": 0.004,
+      "baseline": "from_model",
+      "precision": 4,
+      "source": "Baseline-centered plausible roughness plateau."
+    },
+    "ksat_s1": {
+      "type": "triangular",
+      "lower": 4.0,
+      "upper": 14.0,
+      "baseline": "from_model",
+      "precision": 3,
+      "source": "Soil hydraulic conductivity epistemic uncertainty."
+    }
+  }
+}

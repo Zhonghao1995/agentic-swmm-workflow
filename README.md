@@ -203,6 +203,7 @@ agentic-swmm-workflow/
 │  ├─ swmm-runner/
 │  ├─ swmm-plot/
 │  ├─ swmm-calibration/
+│  ├─ swmm-uncertainty/
 │  ├─ swmm-experiment-audit/
 │  └─ swmm-end-to-end/
 └─ runs/ (generated artifacts)
@@ -212,6 +213,23 @@ For more detail:
 - See `docs/repo-map.md` for a broader repo walkthrough.
 - See `skills/<module>/SKILL.md` for module-specific behavior and examples.
 - Each module can expose an MCP server at `skills/<module>/scripts/mcp/server.js` for optional OpenClaw integration.
+
+### Fuzzy uncertainty propagation
+
+`skills/swmm-uncertainty/` adds a CLI-first framework for epistemic parameter uncertainty. Users define triangular or trapezoidal membership functions in `fuzzy_space.json`; compact triangular specs use the current model parameter value as the default peak. The tool resolves alpha-cut intervals, samples parameter combinations, runs SWMM, and summarizes output envelopes by alpha level.
+
+Dry-run example:
+
+```bash
+python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --fuzzy-space skills/swmm-uncertainty/examples/fuzzy_space.json \
+  --config skills/swmm-uncertainty/examples/uncertainty_config.json \
+  --run-root runs/uncertainty-demo \
+  --summary-json runs/uncertainty-demo/uncertainty_summary.json \
+  --dry-run
+```
 
 ## OpenClaw orchestration
 

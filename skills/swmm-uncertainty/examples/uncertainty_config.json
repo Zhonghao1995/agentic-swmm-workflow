@@ -1,0 +1,16 @@
+{
+  "alpha_levels": [0.0, 0.25, 0.5, 0.75, 1.0],
+  "sampling": {
+    "method": "lhs",
+    "samples_per_alpha": 6,
+    "seed": 42
+  },
+  "outputs": {
+    "swmm_node": "O1",
+    "metrics": [
+      "peak_flow",
+      "runoff_continuity_error_percent",
+      "flow_routing_continuity_error_percent"
+    ]
+  }
+}

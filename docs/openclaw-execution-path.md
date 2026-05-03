@@ -138,6 +138,36 @@ Calibration preconditions:
 - observed flow parses
 - user explicitly requested calibration or the workflow includes it
 
+### Stage 9b: Optional fuzzy uncertainty propagation
+
+Current implementation:
+- `skills/swmm-uncertainty/scripts/uncertainty_propagate.py`
+
+Future MCP wrapper:
+- `swmm-uncertainty-mcp.swmm_uncertainty_run`
+
+Inputs:
+- base SWMM INP
+- calibration-style `patch_map.json`
+- user-defined `fuzzy_space.json`
+- `uncertainty_config.json`
+
+Outputs:
+- `runs/<case>/09_uncertainty/fuzzy_space.resolved.json`
+- `runs/<case>/09_uncertainty/alpha_intervals.json`
+- `runs/<case>/09_uncertainty/parameter_sets.json`
+- `runs/<case>/09_uncertainty/uncertainty_summary.json`
+
+Use this stage when:
+- the user explicitly requests uncertainty propagation,
+- the workflow needs to quantify epistemic parameter uncertainty,
+- membership functions are defined as triangular or trapezoidal fuzzy numbers.
+
+The default compact triangular interpretation is:
+- `lower` and `upper` come from the user,
+- the current model value is resolved from the base INP and used as the triangle peak,
+- the baseline must lie inside `[lower, upper]`.
+
 ### Stage 10: Experiment audit
 
 Tool:
@@ -179,7 +209,8 @@ Call order:
 4. `swmm-runner-mcp.swmm_peak`
 5. optional plotting
 6. optional calibration
-7. `swmm-experiment-audit` CLI
+7. optional fuzzy uncertainty propagation
+8. `swmm-experiment-audit` CLI
 
 ## Tod Creek minimal real-data fallback
 

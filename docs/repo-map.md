@@ -17,9 +17,11 @@ Key folders:
 - `skills/swmm-runner/` → reproducible SWMM execution + manifests
 - `skills/swmm-plot/` → publication plotting
 - `skills/swmm-calibration/` → calibration / validation / sensitivity scaffold
+- `skills/swmm-uncertainty/` → fuzzy alpha-cut parameter uncertainty propagation
 - `skills/swmm-end-to-end/` → top-level orchestration contract across module skills
 - `examples/todcreek/` → minimal example INP
 - `examples/calibration/` → minimal calibration example inputs
+- `skills/swmm-uncertainty/examples/` → fuzzy membership and uncertainty propagation examples
 - `docs/` → figures, repo documentation, and OpenClaw execution-path notes
 
 ## Working project (larger local development directory)
