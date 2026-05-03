@@ -75,6 +75,10 @@ For agent-orchestrated runs, use a high-reasoning coding model and inspect the g
 
 The repository includes a compact Tecnopolo prepared-input benchmark derived from a public Zenodo SWMM dataset. It verifies that the workflow can execute and audit an external **40-subcatchment** SWMM model, compare `swmm-runner` outputs against direct `swmm5` execution, check both an outfall and an internal junction, and generate rainfall-runoff figures.
 
+<p align="center">
+  <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
+</p>
+
 ```bash
 python3 scripts/benchmarks/run_tecnopolo_199401.py
 ```
