@@ -71,6 +71,16 @@ The audit layer consolidates artifacts, QA checks, and metric provenance into an
 
 For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
 
+## External multi-subcatchment benchmark
+
+The repository includes a compact Tecnopolo prepared-input benchmark derived from a public Zenodo SWMM dataset. It verifies that the workflow can execute and audit an external **40-subcatchment** SWMM model, compare `swmm-runner` outputs against direct `swmm5` execution, check both an outfall and an internal junction, and generate rainfall-runoff figures.
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_199401.py
+```
+
+See `examples/tecnopolo/README.md` for the validation details, expected peak-flow checks, reproducibility notes, and the boundary that this benchmark validates the prepared-input path rather than raw GIS-to-INP construction.
+
 ## Quickstart
 
 ### One-command install (macOS / Linux)
@@ -174,12 +184,14 @@ agentic-swmm-workflow/
 │  └─ repo-map.md
 ├─ examples/
 │  ├─ todcreek/model_chicago5min.inp
+│  ├─ tecnopolo/
 │  └─ calibration/
 ├─ scripts/
 │  ├─ bootstrap.sh
 │  ├─ bootstrap.ps1
 │  ├─ install.sh
 │  ├─ install.ps1
+│  ├─ benchmarks/run_tecnopolo_199401.py
 │  ├─ acceptance/run_acceptance.py
 │  └─ real_cases/run_todcreek_minimal.py
 ├─ skills/

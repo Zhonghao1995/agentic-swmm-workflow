@@ -31,6 +31,24 @@ import numpy as np
 from swmmtoolbox import extract
 
 
+def parse_timeseries_file(path: Path) -> tuple[list[datetime], list[float]]:
+    times: list[datetime] = []
+    vals: list[float] = []
+    for raw in path.read_text(errors='ignore').splitlines():
+        s = raw.strip()
+        if not s or s.startswith(';'):
+            continue
+        parts = s.split()
+        if len(parts) < 3:
+            continue
+        dt = datetime.strptime(parts[0] + ' ' + parts[1], '%m/%d/%Y %H:%M')
+        times.append(dt)
+        vals.append(float(parts[2]))
+    if not times:
+        raise SystemExit(f'No timeseries values found in {path}')
+    return times, vals
+
+
 def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[datetime], list[float]]:
     """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes."""
     times: list[datetime] = []
@@ -49,6 +67,8 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
             parts = s.split()
             if parts[0] != ts_name:
                 continue
+            if len(parts) >= 3 and parts[1].upper() == 'FILE':
+                return parse_timeseries_file(inp_path.parent / parts[2].strip('"'))
             dt = datetime.strptime(parts[1] + ' ' + parts[2], '%m/%d/%Y %H:%M')
             times.append(dt)
             vals.append(float(parts[3]))
@@ -62,7 +82,7 @@ def main():
     ap.add_argument('--inp', required=True, type=Path)
     ap.add_argument('--out', dest='out_file', required=True, type=Path)
     ap.add_argument('--rain-ts', default='TS_RAIN')
-    ap.add_argument('--rain-kind', choices=['intensity_mm_per_hr', 'depth_mm_per_dt'], default='depth_mm_per_dt',
+    ap.add_argument('--rain-kind', choices=['intensity_mm_per_hr', 'depth_mm_per_dt', 'cumulative_depth_mm'], default='depth_mm_per_dt',
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
     ap.add_argument('--node', default='O1')
@@ -99,6 +119,10 @@ def main():
     if args.rain_kind == 'intensity_mm_per_hr':
         rain_plot = rain_v
         rain_ylabel = 'Rainfall intensity (mm/h)'
+    elif args.rain_kind == 'cumulative_depth_mm':
+        rain_plot = np.diff(rain_v, prepend=rain_v[0])
+        rain_plot = np.where(rain_plot < 0, 0.0, rain_plot)
+        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
     else:
         # values are assumed intensity mm/hr by our generator; convert to mm per dt for bar area readability
         rain_plot = rain_v * (args.dt_min / 60.0)

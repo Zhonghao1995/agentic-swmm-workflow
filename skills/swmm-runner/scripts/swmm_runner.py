@@ -102,7 +102,12 @@ def parse_continuity_blocks(text: str) -> dict:
         return None
 
     def scan_table(start_idx: int, max_lines: int = 200) -> list[str]:
-        return lines[start_idx : min(len(lines), start_idx + max_lines)]
+        block: list[str] = []
+        for s in lines[start_idx : min(len(lines), start_idx + max_lines)]:
+            block.append(s)
+            if "Continuity Error (%)" in s:
+                break
+        return block
 
     def parse_table(tbl_lines: list[str]) -> dict:
         d = {}
