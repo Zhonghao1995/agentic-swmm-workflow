@@ -15,7 +15,7 @@ OpenClaw can trigger the audit layer after a run, while the generated Markdown n
 
 Unlike a simple chat-to-SWMM wrapper, this repository focuses on the full workflow: **prepare inputs, assemble models, run SWMM, verify outputs, plot results, and calibrate with traceable artifacts**.
 
-## Why people star this project
+## Why this project matters
 
 - **OpenClaw and Hermes ready:** the workflow is designed to be operated through modern agentic runtimes rather than only through ad hoc scripts.
 - **End-to-end workflow:** GIS, climate, parameters, network assembly, model build, run, plotting, and calibration in one repo.
