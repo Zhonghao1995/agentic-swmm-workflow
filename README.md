@@ -5,11 +5,24 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
-  <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
-  <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
-  <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="OpenClaw or Hermes ready" />
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml">
+    <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
+  </a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
+    <img src="https://img.shields.io/github/v/release/Zhonghao1995/agentic-swmm-workflow?label=release&color=1F6FEB" alt="latest release" />
+  </a>
+  <a href="#try-it-in-one-command">
+    <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
+  </a>
+  <a href="https://github.com/USEPA/Stormwater-Management-Model">
+    <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
+  </a>
+  <a href="#openclaw--hermes-orchestration">
+    <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="OpenClaw or Hermes ready" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+  </a>
 </p>
 
 **Agentic SWMM for reproducible stormwater modeling**  
