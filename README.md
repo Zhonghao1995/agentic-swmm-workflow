@@ -33,32 +33,53 @@
 
 **A five-minute, one-command, auditable EPA SWMM workflow for agentic environmental modelling.**
 
-`agentic-swmm-workflow` helps researchers and developers install SWMM, run reproducible benchmark workflows, verify outputs, audit evidence, organize experiment memory in Obsidian, and extend SWMM modelling through modular Skills and MCP-ready tools.
+`agentic-swmm-workflow` helps researchers and developers install SWMM, run reproducible benchmark workflows, verify outputs, audit evidence, organize experiment memory in Obsidian, and extend SWMM modelling through modular Skills and MCP-ready tools. When connected to OpenClaw, Hermes Agent, or a compatible agent runtime, the workflow can also be driven from natural-language modelling requests while keeping the underlying SWMM execution deterministic and explainable.
 
-This project is not a loose collection of Python scripts or a simple chat-to-SWMM wrapper. It is an agent-ready modelling workflow: the agent coordinates the stages, while SWMM execution, generated files, QA checks, provenance, plots, experiment notes, and memory handoff remain reproducible, inspectable, and supported by explicit artifacts.
+This project is not a loose collection of Python scripts or a simple chat-to-SWMM wrapper. It is an agent-ready modelling workflow: the user or agent can describe the modelling goal in natural language, the agent coordinates the required stages, and the actual SWMM execution, generated files, QA checks, provenance, plots, experiment notes, and memory handoff remain reproducible, inspectable, and supported by explicit artifacts.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
 ## Try it in one command
 
+Choose the path that matches what you want to do.
+
 ### Docker reproducible run
+
+Use this when you want the most reproducible path and do not want to install Python packages, SWMM5, Node, or GIS dependencies locally. This runs the deterministic Agentic SWMM execution environment inside Docker and writes generated artifacts to `./agentic-swmm-runs/`.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/docker-bootstrap.sh)"
 ```
 
-### macOS / Linux
+Requirements: Docker Desktop or Docker Engine.
+
+### macOS / Linux local install
+
+Use this when you want a local development environment. The installer clones or updates the repository, installs Python and MCP dependencies, and installs or builds `swmm5` if it is missing.
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-### Windows PowerShell
+### Windows PowerShell local install
+
+Use this on Windows when you want a local development environment. Run PowerShell as Administrator. The installer sets up Git, Python, Node.js, SWMM, Python/MCP dependencies, and a `swmm5` command shim when needed.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
+
+### Which command should I use?
+
+| Goal | Recommended path |
+| --- | --- |
+| Reproduce the core workflow without configuring your machine | Docker reproducible run |
+| Develop or modify the Python/MCP tools locally | macOS / Linux or Windows local install |
+| Use OpenClaw or Hermes to drive the workflow from natural language | Local install first, then connect the agent runtime |
+| Only inspect generated artifacts and audit notes | Docker reproducible run |
+
+Docker mode reproduces the deterministic execution environment: Python tools, SWMM5, benchmark runners, QA checks, plots, manifests, and audit notes. OpenClaw or Hermes remains an optional orchestration layer and is not required to reproduce the core benchmark artifacts.
 
 ## Why this project exists
 
