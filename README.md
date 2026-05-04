@@ -1,5 +1,16 @@
 # Agentic SWMM Workflow
 
+<p align="center">
+  <img src="docs/figs/agentic_swmm_logo.png" alt="Agentic SWMM logo with agentic robot, stormwater system, and SWMM wordmark" width="900" />
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
+  <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
+  <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="OpenClaw or Hermes ready" />
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+</p>
+
 **Agentic SWMM for reproducible stormwater modeling**  
 *OpenClaw or Hermes + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
@@ -14,15 +25,13 @@ License: **MIT**
 
 ## Try it in one command
 
+Pick one command. The bootstrap clones or updates the repository, installs dependencies, and installs or builds `swmm5` when it is missing.
+
 ### macOS / Linux
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
-
-This command clones or updates the repository, installs missing system dependencies where supported, installs Python and MCP dependencies, and installs or builds the SWMM engine when `swmm5` is not already available.
-
-On macOS / Linux, the installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when a local `swmm5` command is missing.
 
 ### Windows PowerShell
 
@@ -32,9 +41,12 @@ Run PowerShell as Administrator:
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
 
-The Windows bootstrap clones or updates the repository, installs Chocolatey if needed, installs Git, Python, Node.js LTS, SWMM, Python/MCP dependencies, and creates a `swmm5` command shim when the Windows SWMM installer exposes a different executable name.
+The macOS / Linux installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when needed. The Windows bootstrap installs Chocolatey if needed, Git, Python, Node.js LTS, SWMM, Python/MCP dependencies, and a `swmm5` command shim when required.
 
-The Python environment installed by this repository covers the acceptance path and the Tod Creek smoke-test dependencies, including `pandas`, `numpy`, `matplotlib`, `rasterio`, `pyshp`, `pysheds`, and `swmmtoolbox`.
+The Python environment covers the acceptance path and Tod Creek smoke-test dependencies, including `pandas`, `numpy`, `matplotlib`, `rasterio`, `pyshp`, `pysheds`, and `swmmtoolbox`.
+
+<details>
+<summary>Install after cloning instead</summary>
 
 ### Install after clone
 
@@ -49,6 +61,8 @@ On Windows after cloning:
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Yes
 .\.venv\Scripts\Activate.ps1
 ```
+
+</details>
 
 ## Why this project exists
 
@@ -72,6 +86,43 @@ This repository provides a middle path:
 - **Verification-first workflow:** continuity, mass balance, preprocessing consistency, peak-flow parsing, and direct SWMM comparison are used before treating outputs as evidence.
 - **Research-facing outputs:** generated notes, plots, summaries, and audit files are suitable for experiment tracking and publication workflows.
 - **Works without an agent:** every core path can be run directly from the CLI.
+
+## How the workflow works
+
+<p align="center">
+  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
+    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+  </a>
+</p>
+
+*(Click the figure to open the PDF version.)*
+
+The workflow is organized into six layers:
+
+1. **Orchestrator layer** - optional OpenClaw or Hermes coordination.
+2. **Skills layer** - SOP-style instructions for safe and reproducible tool use.
+3. **MCP layer** - tool interfaces for GIS, climate, parameters, network, builder, runner, plot, calibration, and audit.
+4. **Engine layer** - deterministic EPA SWMM execution through `swmm5`.
+5. **Output layer** - standardized run folders with INP, RPT, OUT, plots, summaries, and manifests.
+6. **Verification layer** - continuity, peak-flow, preprocessing, and direct SWMM consistency checks.
+
+Agentic SWMM Workflow is not a chat-to-model-file wrapper. It is a reproducible and auditable modelling pipeline where agents coordinate the workflow, while SWMM execution, QA, provenance, and reporting remain deterministic and inspectable.
+
+## What the workflow produces
+
+Depending on the selected path, a run can produce:
+
+- generated or supplied SWMM input files such as `model.inp`,
+- SWMM report and binary outputs such as `.rpt` and `.out`,
+- build and run manifests such as `manifest.json`,
+- continuity and mass-balance QA summaries,
+- parsed peak-flow metrics from SWMM report sections,
+- rainfall-runoff figures,
+- calibration and validation summaries,
+- fuzzy uncertainty propagation summaries,
+- `experiment_provenance.json`,
+- `comparison.json`,
+- Obsidian-compatible `experiment_note.md`.
 
 ## Validation evidence
 
@@ -119,43 +170,6 @@ python3 scripts/real_cases/run_todcreek_minimal.py
 The current repository validates prepared-input and structured raw GIS-to-INP workflows.
 
 It does not yet claim full greenfield automatic watershed, subcatchment, and pipe-network generation directly from DEM, land use, soil, and drainage assets. That broader path needs separate delineation and parameterization evidence.
-
-## How the workflow works
-
-<p align="center">
-  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
-    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
-  </a>
-</p>
-
-*(Click the figure to open the PDF version.)*
-
-The workflow is organized into six layers:
-
-1. **Orchestrator layer** - optional OpenClaw or Hermes coordination.
-2. **Skills layer** - SOP-style instructions for safe and reproducible tool use.
-3. **MCP layer** - tool interfaces for GIS, climate, parameters, network, builder, runner, plot, calibration, and audit.
-4. **Engine layer** - deterministic EPA SWMM execution through `swmm5`.
-5. **Output layer** - standardized run folders with INP, RPT, OUT, plots, summaries, and manifests.
-6. **Verification layer** - continuity, peak-flow, preprocessing, and direct SWMM consistency checks.
-
-Agentic SWMM Workflow is not a chat-to-model-file wrapper. It is a reproducible and auditable modelling pipeline where agents coordinate the workflow, while SWMM execution, QA, provenance, and reporting remain deterministic and inspectable.
-
-## What the workflow produces
-
-Depending on the selected path, a run can produce:
-
-- generated or supplied SWMM input files such as `model.inp`,
-- SWMM report and binary outputs such as `.rpt` and `.out`,
-- build and run manifests such as `manifest.json`,
-- continuity and mass-balance QA summaries,
-- parsed peak-flow metrics from SWMM report sections,
-- rainfall-runoff figures,
-- calibration and validation summaries,
-- fuzzy uncertainty propagation summaries,
-- `experiment_provenance.json`,
-- `comparison.json`,
-- Obsidian-compatible `experiment_note.md`.
 
 ## Experiment audit example
 
