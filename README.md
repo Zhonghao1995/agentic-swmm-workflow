@@ -31,11 +31,11 @@
 **Agentic SWMM for reproducible stormwater modeling**  
 *[OpenClaw](https://github.com/openclaw/openclaw) or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
-**A five-minute, one-command, auditable, memory-informed EPA SWMM workflow for agentic environmental modelling.**
+**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-`agentic-swmm-workflow` helps researchers and developers install SWMM, run reproducible benchmark workflows, verify outputs, audit evidence, organize experiment memory in Obsidian, learn from audited modeling history, and extend SWMM modelling through modular Skills and MCP-ready tools. When connected to OpenClaw, Hermes Agent, or a compatible agent runtime, the workflow can also be driven from natural-language modelling requests while keeping the underlying SWMM execution deterministic and explainable.
+`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With OpenClaw, Hermes Agent, or a compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
 
-This project is not a loose collection of Python scripts or a simple chat-to-SWMM wrapper. It is a memory-informed, verification-first modeling system: the user or agent can describe the modelling goal in natural language, the agent coordinates the required stages, and SWMM execution, generated files, QA checks, provenance, plots, experiment notes, modeling memory, and controlled skill-refinement proposals remain reproducible, inspectable, and supported by explicit artifacts. The modeling-memory layer can propose refinements to orchestration, audit, QA, model-building, or parsing skills, but accepted updates require human review and benchmark verification.
+This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but the model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling memory remain visible as artifacts. The modeling-memory layer can notice repeated problems and propose skill refinements, but changes are accepted only after human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
@@ -72,23 +72,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.
 
 ## 2. Why this project exists
 
-Stormwater modelling is rarely a single command. A typical SWMM workflow may involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, output checking, plotting, calibration, uncertainty analysis, and reporting.
+Stormwater modelling is rarely one command. A typical SWMM project may involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, output checks, plots, calibration, uncertainty analysis, and reporting.
 
-These steps are often scattered across manual operations, scripts, notebooks, GIS software, and model files. That makes the workflow hard to rerun, hard to audit, and hard to trust.
+Those steps are often split across scripts, notebooks, GIS software, manual edits, and model files. Agentic AI can help coordinate them from natural language, but only if the evidence is kept visible. Generated files, assumptions, QA checks, warnings, and intermediate artifacts need to be recorded, not hidden behind a black box.
 
-Agentic AI can help coordinate these steps from natural-language instructions, but they also introduce a new risk: if generated files, assumptions, checks, and intermediate artifacts are not recorded, the modelling process becomes even harder to verify.
+Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
 
-Modelling practice also varies by person, project, catchment, data source, and research purpose. A useful agentic modelling system therefore needs more than automation: it needs a continuously updated project memory layer. Without that layer, an agent can rerun commands but cannot reliably carry forward what the modeller learned from previous assumptions, QA failures, missing evidence, parser issues, calibration limits, or successful practices.
+The memory layer matters because every modeller, catchment, dataset, and study goal is different. Each audited run can update Obsidian-ready notes and modeling-memory summaries, so the system can carry forward lessons about assumptions, failures, missing evidence, parser issues, and successful practices. Repeated patterns can become proposed skill refinements, but those proposals still require human review and benchmark verification.
 
-Agentic SWMM treats Obsidian-compatible notes, audit artifacts, and modeling-memory summaries as part of the modelling loop. Each audited run can update the project memory, and repeated patterns can generate controlled skill-refinement proposals for orchestration, audit, QA, building, or parsing. This lets a modeller develop project-specific skills over time, in a way that resembles human modelling memory, while keeping any proposed update subject to human review and benchmark verification.
-
-This repository provides a middle path:
-
-**natural-language agentic orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.**
-
-In practice, this means the workflow can install or run SWMM, prepare inputs, build models, execute simulations, check outputs, generate plots, record manifests, write audit notes, and update modeling memory without hiding the modelling evidence behind a black box.
-
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, easier to inspect, and easier to trust.**
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, inspect, remember, and trust.**
 
 ## 3. What makes it different
 
