@@ -42,75 +42,23 @@ License: **MIT**
 
 ## Try it in one command
 
-For reproducible `v0.3.0` results, Docker is the simplest path. It runs the fixed container image and writes artifacts to `./agentic-swmm-runs/`.
-
 ### Docker reproducible run
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/docker-bootstrap.sh)"
 ```
 
-This requires Docker only. Python, SWMM5, Node.js, MCP packages, and geospatial dependencies are already inside the image.
-
-<details>
-<summary>Advanced options</summary>
-
-Run a specific container command:
-
-```bash
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 tecnopolo
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 uncertainty-dryrun
-```
-
-The fixed `v0.3.0` image packages Agentic SWMM tag `v0.3.0` and EPA SWMM tag `v5.2.4`. OpenClaw or Hermes can still orchestrate runs on top of this environment, but they are not required to reproduce the core benchmark artifacts.
-
-Local developer install:
-
-#### macOS / Linux
+### macOS / Linux
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-#### Windows PowerShell
-
-Run PowerShell as Administrator:
+### Windows PowerShell
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
-
-The macOS / Linux installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when needed. The Windows bootstrap installs Chocolatey if needed, Git, Python, Node.js LTS, SWMM, Python/MCP dependencies, and a `swmm5` command shim when required.
-
-The Python environment covers the acceptance path and Tod Creek smoke-test dependencies, including `pandas`, `numpy`, `matplotlib`, `rasterio`, `pyshp`, `pysheds`, and `swmmtoolbox`.
-
-For manual Python dependency installation, use:
-
-```bash
-pip install -r requirements.txt
-```
-
-<details>
-<summary>Install after cloning instead</summary>
-
-### Install after clone
-
-```bash
-bash scripts/install.sh --yes
-source .venv/bin/activate
-```
-
-On Windows after cloning:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Yes
-.\.venv\Scripts\Activate.ps1
-```
-
-</details>
-
-</details>
 
 ## Why this project exists
 
