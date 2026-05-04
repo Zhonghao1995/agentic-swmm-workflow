@@ -84,17 +84,11 @@ The memory layer matters because every modeller, catchment, dataset, and study g
 
 ## 3. What makes it different
 
-- **Five-minute onboarding:** install the workflow and SWMM engine with one bootstrap command.
-- **Not just chat-to-SWMM:** agents coordinate the workflow, but model execution remains deterministic and inspectable.
-- **Modular Skills:** GIS, climate, parameters, network, builder, runner, plotting, calibration, uncertainty, audit, and end-to-end orchestration are separated into reusable modules.
-- **OpenClaw / Hermes ready:** the repository includes a public agent memory package and a top-level `swmm-end-to-end` orchestration skill for [OpenClaw](https://github.com/openclaw/openclaw), [Hermes Agent](https://github.com/NousResearch/hermes-agent), or compatible runtimes.
-- **MCP-ready tools:** modules expose tool-level interfaces for agent orchestration where available.
-- **Manifest-based provenance:** build, run, audit, and comparison stages emit traceable artifacts.
-- **Verification-first workflow:** continuity, mass balance, preprocessing consistency, peak-flow parsing, and direct SWMM comparison are used before treating outputs as evidence.
-- **Obsidian-compatible audit:** run artifacts can be converted into Markdown experiment notes for tracking project results, assumptions, evidence, and modelling memory over time.
-- **Modeling memory:** audited run histories can be summarized into recurring failure patterns, assumptions, missing evidence, QA issues, lessons learned, and controlled skill refinement proposals.
-- **Research-facing outputs:** generated notes, plots, summaries, and audit files are suitable for experiment tracking, collaboration, and publication workflows.
-- **Works without an agent:** every core path can be run directly from the CLI.
+- **One-command onboarding:** install the workflow and SWMM engine with the bootstrap script.
+- **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
+- **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
+- **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
+- **Research memory:** audits can produce Obsidian-ready notes, modelling-memory summaries, plots, and run records for collaboration and publication workflows.
 
 ## 4. How the workflow works
 
