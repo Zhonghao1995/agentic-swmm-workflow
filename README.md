@@ -85,6 +85,16 @@ python3 scripts/benchmarks/run_tecnopolo_199401.py
 
 See `examples/tecnopolo/README.md` for the validation details, expected peak-flow checks, reproducibility notes, and the boundary that this benchmark validates the prepared-input path rather than raw GIS-to-INP construction.
 
+## Raw GeoPackage-to-INP benchmark
+
+The TUFLOW SWMM Module 03 benchmark verifies the structured raw GIS path: public GeoPackage layers are extracted into junctions, outfalls, conduits, subcatchments, multi-raingage rainfall inputs, `network.json`, `subcatchments.csv`, parameter JSON, a generated `model.inp`, SWMM run outputs, continuity/peak QA, and an audit note.
+
+```bash
+python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
+```
+
+See `examples/tuflow-swmm-module03/README.md` for setup, expected artifacts, metrics, and the evidence boundary.
+
 ## Quickstart
 
 ### One-command install (macOS / Linux)
@@ -188,6 +198,7 @@ agentic-swmm-workflow/
 │  └─ repo-map.md
 ├─ examples/
 │  ├─ todcreek/model_chicago5min.inp
+│  ├─ tuflow-swmm-module03/
 │  ├─ tecnopolo/
 │  └─ calibration/
 ├─ scripts/
@@ -196,6 +207,7 @@ agentic-swmm-workflow/
 │  ├─ install.sh
 │  ├─ install.ps1
 │  ├─ benchmarks/run_tecnopolo_199401.py
+│  ├─ benchmarks/run_tuflow_swmm_module03_raw_path.py
 │  ├─ acceptance/run_acceptance.py
 │  └─ real_cases/run_todcreek_minimal.py
 ├─ skills/

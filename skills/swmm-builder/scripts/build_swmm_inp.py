@@ -362,11 +362,12 @@ def parse_timeseries_date(value: str, *, line_number: int) -> datetime:
     )
 
 
-def validate_timeseries_body(timeseries_body: list[str], *, expected_series_name: str) -> dict[str, Any]:
+def validate_timeseries_body(timeseries_body: list[str], *, expected_series_names: set[str]) -> dict[str, Any]:
     data_rows = 0
     comment_rows = 0
-    previous_ts: datetime | None = None
+    previous_ts_by_series: dict[str, datetime] = {}
     datetime_rows = 0
+    series_counts: dict[str, int] = {}
 
     for idx, raw_line in enumerate(timeseries_body, start=1):
         stripped = raw_line.strip()
@@ -382,9 +383,10 @@ def validate_timeseries_body(timeseries_body: list[str], *, expected_series_name
             )
 
         series_name = parts[0]
-        if series_name != expected_series_name:
+        if series_name not in expected_series_names:
             raise ValueError(
-                f"[TIMESERIES] line {idx} series '{series_name}' does not match raingage source series '{expected_series_name}'"
+                f"[TIMESERIES] line {idx} series '{series_name}' is not referenced by any raingage source series "
+                f"{sorted(expected_series_names)}"
             )
 
         if len(parts) == 4:
@@ -395,11 +397,13 @@ def validate_timeseries_body(timeseries_body: list[str], *, expected_series_name
             seconds = parse_clock_time(time_token, field="time", context=f"[TIMESERIES] line {idx}", max_hour=23)
             current_ts = dt_date.replace(hour=seconds // 3600, minute=(seconds % 3600) // 60, second=seconds % 60)
             datetime_rows += 1
+            previous_ts = previous_ts_by_series.get(series_name)
             if previous_ts is not None and current_ts < previous_ts:
                 raise ValueError(
-                    f"[TIMESERIES] line {idx} datetime {current_ts.isoformat()} is earlier than previous line datetime {previous_ts.isoformat()}"
+                    f"[TIMESERIES] line {idx} datetime {current_ts.isoformat()} for series '{series_name}' "
+                    f"is earlier than previous line datetime {previous_ts.isoformat()}"
                 )
-            previous_ts = current_ts
+            previous_ts_by_series[series_name] = current_ts
         else:
             time_token = parts[1]
             value_token = parts[2]
@@ -407,15 +411,20 @@ def validate_timeseries_body(timeseries_body: list[str], *, expected_series_name
 
         require_number(value_token, field="value", context=f"[TIMESERIES] line {idx}")
         data_rows += 1
+        series_counts[series_name] = series_counts.get(series_name, 0) + 1
 
     if data_rows == 0:
         raise ValueError("[TIMESERIES] must include at least one data row")
+    missing_series = sorted(expected_series_names - set(series_counts))
+    if missing_series:
+        raise ValueError(f"[TIMESERIES] missing data rows for raingage source series: {missing_series}")
 
     return {
         "rows_total": len(timeseries_body),
         "rows_data": data_rows,
         "rows_comments": comment_rows,
         "rows_with_datetime": datetime_rows,
+        "series_counts": series_counts,
     }
 
 
@@ -465,7 +474,7 @@ def load_climate(
     raingage_json_path: Path | None,
     explicit_timeseries_text: Path | None,
     default_gage_id: str,
-) -> tuple[dict[str, Any], list[str], Path, dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], list[str], Path, dict[str, Any]]:
     default_gage_id = require_non_blank_string(default_gage_id, field="default_gage_id", context="CLI")
 
     rainfall_obj: dict[str, Any] | None = None
@@ -509,15 +518,21 @@ def load_climate(
         raise ValueError(f"Timeseries text not found: {timeseries_path}")
 
     default_series_name = rainfall_series_name or "TS_RAIN"
-    gage: dict[str, Any]
+    gages: list[dict[str, Any]]
     if raingage_json_path is not None:
         gage_obj = require_object(load_json(raingage_json_path), context=f"Raingage JSON {raingage_json_path}")
-        gage = require_object(gage_obj.get("gage"), context=f"Raingage JSON {raingage_json_path} field 'gage'")
-        normalized_gage = normalize_raingage(
-            gage,
-            source_label=str(raingage_json_path),
-            rainfall_series_name=rainfall_series_name,
-        )
+        if "gages" in gage_obj:
+            raw_gages = require_list(gage_obj.get("gages"), context=f"Raingage JSON {raingage_json_path} field 'gages'")
+        else:
+            raw_gages = [require_object(gage_obj.get("gage"), context=f"Raingage JSON {raingage_json_path} field 'gage'")]
+        gages = [
+            normalize_raingage(
+                require_object(raw_gage, context=f"Raingage JSON {raingage_json_path} gage entry {idx}"),
+                source_label=f"{raingage_json_path} gages[{idx}]",
+                rainfall_series_name=rainfall_series_name if len(raw_gages) == 1 else None,
+            )
+            for idx, raw_gage in enumerate(raw_gages)
+        ]
     else:
         generated_gage = {
             "id": default_gage_id,
@@ -529,15 +544,27 @@ def load_climate(
                 "series_name": default_series_name,
             },
         }
-        normalized_gage = normalize_raingage(
-            generated_gage,
-            source_label="generated-default",
-            rainfall_series_name=rainfall_series_name,
-        )
+        gages = [
+            normalize_raingage(
+                generated_gage,
+                source_label="generated-default",
+                rainfall_series_name=rainfall_series_name,
+            )
+        ]
+
+    gage_ids: set[str] = set()
+    series_names: set[str] = set()
+    for gage in gages:
+        if gage["id"] in gage_ids:
+            raise ValueError(f"[RAINGAGES] duplicate gage id '{gage['id']}'")
+        if gage["source"]["series_name"] in series_names:
+            raise ValueError(f"[RAINGAGES] duplicate source series '{gage['source']['series_name']}'")
+        gage_ids.add(gage["id"])
+        series_names.add(gage["source"]["series_name"])
 
     timeseries_body = parse_timeseries_body(timeseries_path.read_text(encoding="utf-8"))
-    timeseries_stats = validate_timeseries_body(timeseries_body, expected_series_name=normalized_gage["source"]["series_name"])
-    return normalized_gage, timeseries_body, timeseries_path, timeseries_stats
+    timeseries_stats = validate_timeseries_body(timeseries_body, expected_series_names=series_names)
+    return gages, timeseries_body, timeseries_path, timeseries_stats
 
 
 def default_options() -> dict[str, Any]:
@@ -727,17 +754,18 @@ def format_interval_hhmm(interval_min: int) -> str:
     return f"{hh}:{mm:02d}"
 
 
-def emit_raingages(gage: dict[str, Any]) -> list[str]:
-    line = (
-        f"{str(gage['id']):<18} {str(gage['rain_format']):<10} "
-        f"{format_interval_hhmm(int(gage['interval_min'])):<10} {format_num(float(gage['scf'])):<8} "
-        f"TIMESERIES {str(gage['source']['series_name'])}"
-    )
-    return [
+def emit_raingages(gages: list[dict[str, Any]]) -> list[str]:
+    lines = [
         "[RAINGAGES]",
         ";;Name             Format     Interval   SCF      Source",
-        line,
     ]
+    for gage in gages:
+        lines.append(
+            f"{str(gage['id']):<18} {str(gage['rain_format']):<10} "
+            f"{format_interval_hhmm(int(gage['interval_min'])):<10} {format_num(float(gage['scf'])):<8} "
+            f"TIMESERIES {str(gage['source']['series_name'])}"
+        )
+    return lines
 
 
 def emit_subcatchments(
@@ -1054,7 +1082,7 @@ def render_inp(
     title: str,
     options: dict[str, Any],
     report: dict[str, Any],
-    gage: dict[str, Any],
+    gages: list[dict[str, Any]],
     timeseries_body: list[str],
     subcatchments: dict[str, dict[str, Any]],
     params_subcatchments: dict[str, dict[str, Any]],
@@ -1065,8 +1093,8 @@ def render_inp(
     blocks: list[list[str]] = [
         emit_title(title),
         emit_options(options),
-        emit_raingages(gage),
-        emit_subcatchments(subcatchments, params_subcatchments, default_gage_id=str(gage["id"])),
+        emit_raingages(gages),
+        emit_subcatchments(subcatchments, params_subcatchments, default_gage_id=str(gages[0]["id"])),
         emit_subareas(subcatchments, params_subareas),
         emit_infiltration(subcatchments, params_infiltration),
         emit_junctions(network),
@@ -1091,7 +1119,7 @@ def validate_ids(
     params_infiltration: dict[str, dict[str, Any]],
     network: dict[str, Any],
     *,
-    gage_id: str,
+    gage_ids: set[str],
 ) -> dict[str, list[str]]:
     sub_ids = set(subcatchments)
     subcatch_ids = set(params_subcatchments)
@@ -1110,7 +1138,7 @@ def validate_ids(
     missing_outlets = sorted([sid for sid, sc in subcatchments.items() if str(sc["outlet"]) not in node_ids])
 
     invalid_raingage_refs = sorted(
-        [f"{sid}:{sc['rain_gage']}" for sid, sc in subcatchments.items() if sc.get("rain_gage") and str(sc.get("rain_gage")) != gage_id]
+        [f"{sid}:{sc['rain_gage']}" for sid, sc in subcatchments.items() if sc.get("rain_gage") and str(sc.get("rain_gage")) not in gage_ids]
     )
 
     return {
@@ -1166,12 +1194,13 @@ def main() -> None:
     options = validate_and_merge_options(config)
     report = validate_and_merge_report(config)
 
-    gage, timeseries_body, timeseries_path, timeseries_stats = load_climate(
+    gages, timeseries_body, timeseries_path, timeseries_stats = load_climate(
         rainfall_json_path=args.rainfall_json,
         raingage_json_path=args.raingage_json,
         explicit_timeseries_text=args.timeseries_text,
         default_gage_id=args.default_gage_id,
     )
+    gage_ids = {str(gage["id"]) for gage in gages}
 
     validation = validate_ids(
         subcatchments,
@@ -1179,7 +1208,7 @@ def main() -> None:
         params_subareas,
         params_infiltration,
         network,
-        gage_id=str(gage["id"]),
+        gage_ids=gage_ids,
     )
     if any(validation.values()):
         summary = build_validation_summary(validation)
@@ -1192,7 +1221,7 @@ def main() -> None:
         title=title,
         options=options,
         report=report,
-        gage=gage,
+        gages=gages,
         timeseries_body=timeseries_body,
         subcatchments=subcatchments,
         params_subcatchments=params_subcatchments,
@@ -1254,9 +1283,10 @@ def main() -> None:
             "network_conduits": len(network.get("conduits", [])),
             "timeseries_rows": timeseries_stats["rows_data"],
         },
-        "raingage": gage,
+        "raingage": gages[0],
+        "raingages": gages,
         "timeseries": {
-            "series_name": gage["source"]["series_name"],
+            "series_names": [gage["source"]["series_name"] for gage in gages],
             "stats": timeseries_stats,
         },
         "validation": validation,

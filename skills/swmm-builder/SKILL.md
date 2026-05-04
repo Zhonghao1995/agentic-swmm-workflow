@@ -52,6 +52,31 @@ For `[RAINGAGES]`, provide either:
 - `--raingage-json` from `swmm-climate/build_raingage_section.py`, or
 - rely on default deterministic gage generation from rainfall `series_name`.
 
+`--raingage-json` supports both the original single-gage form and a multi-gage form:
+
+```json
+{
+  "gages": [
+    {
+      "id": "RG1",
+      "rain_format": "VOLUME",
+      "interval_min": 5,
+      "scf": 1.0,
+      "source": {"kind": "TIMESERIES", "series_name": "TS_RG1"}
+    },
+    {
+      "id": "RG2",
+      "rain_format": "VOLUME",
+      "interval_min": 5,
+      "scf": 1.0,
+      "source": {"kind": "TIMESERIES", "series_name": "TS_RG2"}
+    }
+  ]
+}
+```
+
+The timeseries text must include rows for every referenced `series_name`, and each subcatchment `rain_gage` must reference one of the emitted gage IDs.
+
 Validation behavior:
 - Missing critical fields fail fast with explicit section-scoped errors.
 - `[TIMESERIES]` rows are validated for series-name consistency and basic token/time/value correctness.
