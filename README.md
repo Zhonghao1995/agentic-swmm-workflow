@@ -70,8 +70,6 @@ Use this on Windows when you want a local development environment. Run PowerShel
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
 
-Docker mode reproduces the deterministic execution environment: Python tools, SWMM5, benchmark runners, QA checks, plots, manifests, and audit notes. OpenClaw or Hermes remains an optional orchestration layer and is not required to reproduce the core benchmark artifacts.
-
 ## Why this project exists
 
 Stormwater modelling is rarely a single command. A typical SWMM workflow may involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, output checking, plotting, calibration, uncertainty analysis, and reporting.
