@@ -6,6 +6,13 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 - No unreleased changes yet.
 
+## v0.4.1 - README and memory-loading guidance polish
+
+- Streamlined the README introduction to explain the memory-informed, verification-first workflow in plainer language.
+- Moved detailed validation and benchmark evidence into `docs/validation-evidence.md` so the README stays focused.
+- Clarified that `memory/modeling-memory/` is generated project memory, not startup instruction memory.
+- Clarified the optional OpenClaw/Hermes loading path for `skills/swmm-modeling-memory/` and `memory/modeling-memory/` after multiple audited runs exist.
+
 ## v0.4.0 - Modeling memory and controlled skill refinement
 
 - Added GitHub Actions lightweight CI for syntax checks, uncertainty unit tests, and fuzzy uncertainty dry-run coverage.
