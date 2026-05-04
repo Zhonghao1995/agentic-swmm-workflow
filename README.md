@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
   <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
   <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
   <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="OpenClaw or Hermes ready" />
@@ -44,6 +45,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.
 The macOS / Linux installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when needed. The Windows bootstrap installs Chocolatey if needed, Git, Python, Node.js LTS, SWMM, Python/MCP dependencies, and a `swmm5` command shim when required.
 
 The Python environment covers the acceptance path and Tod Creek smoke-test dependencies, including `pandas`, `numpy`, `matplotlib`, `rasterio`, `pyshp`, `pysheds`, and `swmmtoolbox`.
+
+For manual Python dependency installation, use:
+
+```bash
+pip install -r requirements.txt
+```
 
 <details>
 <summary>Install after cloning instead</summary>
@@ -394,6 +401,8 @@ Planned or actively explored directions include:
 - deeper reproducibility and equivalence testing.
 
 ## Citation
+
+GitHub citation metadata is provided in `CITATION.cff`.
 
 ### APA (repository)
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow

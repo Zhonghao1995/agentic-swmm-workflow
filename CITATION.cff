@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Agentic SWMM Workflow"
+authors:
+  - family-names: Zhang
+    given-names: Zhonghao
+  - family-names: Valeo
+    given-names: Caterina
+year: 2026
+version: "0.3.0"
+license: MIT
+repository-code: "https://github.com/Zhonghao1995/agentic-swmm-workflow"
+preferred-citation:
+  type: article
+  title: "Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw"
+  authors:
+    - family-names: Zhang
+      given-names: Zhonghao
+    - family-names: Valeo
+      given-names: Caterina
+  year: 2026
+  doi: "10.31223/X5F47G"
