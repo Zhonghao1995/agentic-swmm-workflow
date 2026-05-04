@@ -41,6 +41,9 @@ jobs:
           fi
           echo "ref=$source_ref" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -72,6 +75,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64,linux/arm64
           build-args: |
             AGENTIC_SWMM_REF=${{ steps.source.outputs.ref }}
             SWMM_REF=v5.2.4
