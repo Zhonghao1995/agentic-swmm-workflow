@@ -44,7 +44,7 @@ License: **MIT**
 
 Choose the path that matches what you want to do.
 
-### Docker reproducible run
+### Method 1. Docker (Recommend)
 
 Use this when you want the most reproducible path and do not want to install Python packages, SWMM5, Node, or GIS dependencies locally. This runs the deterministic Agentic SWMM execution environment inside Docker and writes generated artifacts to `./agentic-swmm-runs/`.
 
@@ -54,7 +54,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swm
 
 Requirements: Docker Desktop or Docker Engine.
 
-### macOS / Linux local install
+### Method 2. MacOS / Linux local install
 
 Use this when you want a local development environment. The installer clones or updates the repository, installs Python and MCP dependencies, and installs or builds `swmm5` if it is missing.
 
@@ -62,22 +62,13 @@ Use this when you want a local development environment. The installer clones or 
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-### Windows PowerShell local install
+### Method 3. Windows PowerShell local install
 
 Use this on Windows when you want a local development environment. Run PowerShell as Administrator. The installer sets up Git, Python, Node.js, SWMM, Python/MCP dependencies, and a `swmm5` command shim when needed.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
-
-### Which command should I use?
-
-| Goal | Recommended path |
-| --- | --- |
-| Reproduce the core workflow without configuring your machine | Docker reproducible run |
-| Develop or modify the Python/MCP tools locally | macOS / Linux or Windows local install |
-| Use OpenClaw or Hermes to drive the workflow from natural language | Local install first, then connect the agent runtime |
-| Only inspect generated artifacts and audit notes | Docker reproducible run |
 
 Docker mode reproduces the deterministic execution environment: Python tools, SWMM5, benchmark runners, QA checks, plots, manifests, and audit notes. OpenClaw or Hermes remains an optional orchestration layer and is not required to reproduce the core benchmark artifacts.
 
