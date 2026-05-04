@@ -116,7 +116,7 @@ The workflow is organized into six layers:
 
 Agentic SWMM Workflow is not a chat-to-model-file wrapper. It is a reproducible and auditable modelling pipeline where agents coordinate the workflow, while SWMM execution, QA, provenance, and reporting remain deterministic and inspectable.
 
-## What the workflow produces
+## What the Agentic SWMM workflow produces
 
 Depending on the selected path, a run can produce:
 
@@ -192,7 +192,7 @@ python3 scripts/benchmarks/run_tecnopolo_199401.py
 
 </details>
 
-### Additional runnable paths
+### 3. Additional runnable paths
 
 The repository also includes an acceptance pipeline for regression checks and a minimal Tod Creek real-data fallback path for environments where the Tod Creek example inputs are available.
 
@@ -206,7 +206,7 @@ python3 scripts/real_cases/run_todcreek_minimal.py
 
 </details>
 
-### Evidence boundary
+### 4. Evidence boundary
 
 The current repository is strongest as a reproducible agentic workflow for prepared-input SWMM execution, structured raw GIS-to-INP benchmarks, QA, audit, plotting, calibration support, and uncertainty extension. It also provides a practical path for users to get running quickly and then grow toward richer case-specific modelling.
 
@@ -341,36 +341,6 @@ For the exact MCP tool-call sequence behind that skill, see:
 docs/openclaw-execution-path.md
 ```
 
-## Research extensions
-
-The core repository focuses on reproducible SWMM execution, QA, audit, plotting, and agent orchestration. Research-facing modules for uncertainty and calibration build on the same run-directory, manifest, and Obsidian-compatible audit conventions.
-
-### Fuzzy uncertainty propagation
-
-`skills/swmm-uncertainty/` provides a framework for epistemic parameter uncertainty. Users can define triangular or trapezoidal membership functions, resolve alpha-cut intervals, sample parameter combinations, run SWMM, and summarize output envelopes by alpha level. It is designed as a research extension that can be audited alongside normal SWMM runs.
-
-<details>
-<summary>Dry-run example</summary>
-
-```bash
-python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py \
-  --base-inp examples/todcreek/model_chicago5min.inp \
-  --patch-map examples/calibration/patch_map.json \
-  --fuzzy-space skills/swmm-uncertainty/examples/fuzzy_space.json \
-  --config skills/swmm-uncertainty/examples/uncertainty_config.json \
-  --run-root runs/uncertainty-demo \
-  --summary-json runs/uncertainty-demo/uncertainty_summary.json \
-  --dry-run
-```
-
-</details>
-
-### Calibration support
-
-`skills/swmm-calibration/` supports explicit candidate sets, bounded search, sensitivity scans, validation, and parameter scouting. It reuses manifest and run-directory conventions so calibration evidence can be audited alongside normal SWMM runs.
-
-See `examples/calibration/README.md` for the compact calibration example.
-
 ## Where collaborators can help
 
 Contributions are especially welcome in:
@@ -388,16 +358,11 @@ Contact:
 - zhonghaoz@uvic.ca
 - valeo@uvic.ca
 
-## Roadmap
+## Ongoing research extensions (Fuzzy uncertainty propagation and Calibration support)
 
-Planned or actively explored directions include:
-- improved benchmark and acceptance cases,
-- richer calibration agents and search strategies,
-- stronger report generation and experiment summaries,
-- broader GIS and data-ingestion tooling,
-- greenfield DEM/land-use/soil/drainage-asset-to-INP case studies,
-- cleaner onboarding for external contributors,
-- deeper reproducibility and equivalence testing.
+`skills/swmm-uncertainty/` provides a framework for epistemic parameter uncertainty. Users can define triangular or trapezoidal membership functions, resolve alpha-cut intervals, sample parameter combinations, run SWMM, and summarize output envelopes by alpha level. It is designed as a research extension that can be audited alongside normal SWMM runs. `skills/swmm-calibration/` supports explicit candidate sets, bounded search, sensitivity scans, validation, and parameter scouting. It reuses manifest and run-directory conventions so calibration evidence can be audited alongside normal SWMM runs.
+
+See `examples/calibration/README.md` for the compact calibration example.
 
 ## Citation
 
