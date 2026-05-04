@@ -144,7 +144,28 @@ The result is a workflow where OpenClaw or Hermes can help execute the modelling
 
 This repository includes two external benchmark paths that test different evidence boundaries.
 
-### 1. Prepared-input SWMM benchmark
+### 1. Raw GeoPackage-to-INP benchmark
+
+The TUFLOW SWMM Module 03 benchmark validates the structured raw GIS path. This is the stronger agentic workflow demonstration because it starts from public GeoPackage model layers and rebuilds the SWMM-ready structure before running QA and audit.
+
+It converts public GeoPackage layers into SWMM-ready artifacts, including junctions, outfalls, conduits, subcatchments, raingages, multi-raingage rainfall inputs, `network.json`, `subcatchments.csv`, parameter JSON, a generated `model.inp`, SWMM outputs, QA summaries, and audit notes.
+
+<p align="center">
+  <img src="docs/figs/tuflow_swmm_module03_raw_layers.png" alt="TUFLOW SWMM Module 03 raw GeoPackage layers converted into Agentic SWMM subcatchments, conduits, junctions, and outfall" width="900" />
+</p>
+
+See `examples/tuflow-swmm-module03/README.md` for download instructions, expected artifacts, metrics, and the raw GeoPackage evidence boundary.
+
+<details>
+<summary>Run this benchmark</summary>
+
+```bash
+python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
+```
+
+</details>
+
+### 2. Prepared-input SWMM benchmark
 
 The Tecnopolo benchmark validates the prepared-input path using an external **40-subcatchment** SWMM model derived from a public Zenodo dataset.
 
@@ -161,23 +182,6 @@ See `examples/tecnopolo/README.md` for validation details, expected peak-flow ch
 
 ```bash
 python3 scripts/benchmarks/run_tecnopolo_199401.py
-```
-
-</details>
-
-### 2. Raw GeoPackage-to-INP benchmark
-
-The TUFLOW SWMM Module 03 benchmark validates the structured raw GIS path.
-
-It converts public GeoPackage layers into SWMM-ready artifacts, including junctions, outfalls, conduits, subcatchments, raingages, multi-raingage rainfall inputs, `network.json`, `subcatchments.csv`, parameter JSON, a generated `model.inp`, SWMM outputs, QA summaries, and audit notes.
-
-See `examples/tuflow-swmm-module03/README.md` for download instructions, expected artifacts, metrics, and the raw GeoPackage evidence boundary.
-
-<details>
-<summary>Run this benchmark</summary>
-
-```bash
-python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
 ```
 
 </details>
