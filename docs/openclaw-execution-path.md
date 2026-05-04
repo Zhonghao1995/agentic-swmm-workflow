@@ -16,6 +16,25 @@ Use one top-level OpenClaw skill to call the existing SWMM module tools in a sta
 - Stop on missing critical inputs instead of fabricating them.
 - Always run the experiment audit layer after success, failure, or early stop.
 
+## Memory layer
+
+Before loading the `swmm-end-to-end` skill, OpenClaw or Hermes should load the project memory files in:
+
+```text
+openclaw/memory/
+```
+
+Recommended order:
+
+1. `openclaw/memory/identification_memory.md`
+2. `openclaw/memory/soul.md`
+3. `openclaw/memory/operational_memory.md`
+4. `openclaw/memory/modeling_workflow_memory.md`
+5. `openclaw/memory/evidence_memory.md`
+6. `openclaw/memory/user_bridge_memory.md`
+
+This memory layer gives a public OpenClaw/Hermes user stable project identity, modelling posture, evidence boundaries, and first-run behavior before the agent starts calling SWMM module tools. It is not a new runtime, does not depend on the maintainer's private local workspace, and should not bypass this execution path.
+
 ## Full modular path
 
 Use this only when the case has all required input classes:

@@ -1,12 +1,13 @@
 ---
 name: swmm-end-to-end
-description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. Use when Zhonghao wants one agent-facing skill that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
+description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. Use when a repository user wants one agent-facing skill that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
 ---
 
 # SWMM End-to-End Orchestration
 
 ## What this skill provides
 - A top-level orchestration contract for OpenClaw.
+- A stable handoff point for OpenClaw/Hermes project memory in `openclaw/memory/`.
 - A deterministic execution order across the existing module skills:
   - `swmm-gis`
   - `swmm-climate`
@@ -30,6 +31,18 @@ Use this skill when the user asks for:
 - a bounded orchestration layer without rewriting the underlying scripts.
 
 Do **not** use this skill when the user clearly wants only one module in isolation, such as only rainfall formatting or only calibration metrics.
+
+## Recommended public memory preload
+Before using this skill in OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `openclaw/memory/`:
+
+1. `identification_memory.md`
+2. `soul.md`
+3. `operational_memory.md`
+4. `modeling_workflow_memory.md`
+5. `evidence_memory.md`
+6. `user_bridge_memory.md`
+
+Those files define the public project identity, agent posture, evidence boundaries, and first-run user behavior. This skill remains the execution contract; the memory files should shape decisions and communication, not replace tool calls or depend on the maintainer's private local workspace.
 
 ## Supported operating modes
 ### Mode A: Full modular build
