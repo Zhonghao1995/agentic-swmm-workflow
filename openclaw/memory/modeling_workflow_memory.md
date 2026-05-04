@@ -22,7 +22,8 @@ When a user asks to build or verify a SWMM model, guide the session in this orde
 10. Run calibration only if observed data and intent exist.
 11. Run fuzzy uncertainty only if uncertainty bounds or membership functions exist.
 12. Run experiment audit.
-13. Report readiness and evidence boundaries.
+13. Optionally run modeling-memory summarization.
+14. Report readiness and evidence boundaries.
 
 Do not skip directly to SWMM execution unless the required prepared inputs already exist.
 
@@ -185,7 +186,21 @@ runs/<case>/experiment_note.md
 
 The audit record should preserve partial evidence. It should not pretend missing stages were completed.
 
-## Step 13: Final readiness report
+## Step 13: Optional modeling-memory summarization
+
+Run modeling-memory summarization when multiple audited runs exist or when the user wants lessons learned, failure-pattern extraction, or skill-improvement proposals.
+
+Use:
+
+```bash
+python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
+  --runs-dir runs \
+  --out-dir memory/modeling-memory
+```
+
+Treat generated skill update proposals as proposals only. Do not modify existing skills unless a human accepts the proposal after benchmark verification.
+
+## Step 14: Final readiness report
 
 End with a concise readiness report:
 
@@ -195,6 +210,7 @@ End with a concise readiness report:
 - produced artifacts,
 - QA results,
 - audit files,
+- modeling-memory files if generated,
 - missing inputs or failed checks,
 - whether the result is runnable, checked, audited, calibrated, validated, or only a smoke test.
 

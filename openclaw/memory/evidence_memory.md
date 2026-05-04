@@ -55,6 +55,10 @@ Use precise language:
 - "Audited" means provenance and comparison files were written.
 - "Validated" requires independent evidence beyond a successful run.
 
+## Controlled skill evolution
+
+Skill update proposals are not evidence of correctness. A skill refinement should only be accepted after human review and benchmark verification.
+
 ## Known boundary
 
 The repository supports prepared-input and structured raw GIS-to-INP validation paths. It should not claim complete greenfield watershed and pipe-network generation from arbitrary DEM, soil, land use, and drainage data unless that evidence has been produced for the case.

@@ -1,0 +1,649 @@
+{
+  "comparison_status_counts": {
+    "mismatch": 1,
+    "not_requested": 8
+  },
+  "failure_pattern_counts": {
+    "comparison_mismatch": 1,
+    "continuity_parse_missing": 3,
+    "missing_inp": 2,
+    "no_detected_failure": 5,
+    "partial_run": 3,
+    "peak_flow_parse_missing": 2
+  },
+  "failure_record_count": 4,
+  "generated_at_utc": "2026-05-04T17:31:26+00:00",
+  "qa_status_counts": {
+    "pass": 9
+  },
+  "record_count": 9,
+  "records": [
+    {
+      "artifacts_found": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "model_inp",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "Acceptance pipeline peak parser check",
+      "comparison_status": "mismatch",
+      "evidence_boundary_notes": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "failure_patterns": [
+        "comparison_mismatch"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": {
+          "network_conduits": 2,
+          "network_junctions": 2,
+          "network_outfalls": 1,
+          "subcatchments": 4,
+          "timeseries_rows": 9
+        },
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": -1.16,
+            "runoff_quantity": -1.16
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OF1",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OF1",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "00:25",
+              "unit": "CMS",
+              "value": 0.007
+            }
+          },
+          "time_hhmm": "00:25",
+          "unit": "CMS",
+          "value": 0.007
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "Audit the acceptance pipeline artifacts and compare corrected peak-flow provenance against the previous run.",
+      "qa_status": "pass",
+      "run_dir": "runs/acceptance/codex-check-peakfix",
+      "run_id": "codex-check-peakfix",
+      "swmm_return_code": 0,
+      "warnings": [
+        "The recorded Git working tree was not clean at run time.",
+        "baseline peak-flow record does not match the value parsed from its source report section.",
+        "Peak flow changed while the SWMM input hash is unchanged; check parser version, metric source, or report records."
+      ],
+      "workflow_mode": "acceptance_step1"
+    },
+    {
+      "artifacts_found": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "model_inp",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "codex-status-20260503",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": {
+          "network_conduits": 2,
+          "network_junctions": 2,
+          "network_outfalls": 1,
+          "subcatchments": 4,
+          "timeseries_rows": 9
+        },
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": -1.16,
+            "runoff_quantity": -1.16
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OF1",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OF1",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "00:25",
+              "unit": "CMS",
+              "value": 0.007
+            }
+          },
+          "time_hhmm": "00:25",
+          "unit": "CMS",
+          "value": 0.007
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/acceptance/codex-status-20260503",
+      "run_id": "codex-status-20260503",
+      "swmm_return_code": 0,
+      "warnings": [],
+      "workflow_mode": "acceptance_step1"
+    },
+    {
+      "artifacts_found": [
+        "builder_manifest",
+        "model_inp",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "continuity_qa",
+        "network_qa",
+        "peak_qa"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "generate-swmm-inp-raw-path",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": {
+          "network_conduits": 15,
+          "network_junctions": 12,
+          "network_outfalls": 2,
+          "subcatchments": 2,
+          "timeseries_rows": 13
+        },
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": 9.513,
+            "runoff_quantity": 0.0
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "J_4",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "J_4",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "00:00",
+              "unit": "CMS",
+              "value": 0.0
+            }
+          },
+          "time_hhmm": "00:00",
+          "unit": "CMS",
+          "value": 0.0
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/benchmarks/generate-swmm-inp-raw-path",
+      "run_id": "generate-swmm-inp-raw-path",
+      "swmm_return_code": 0,
+      "warnings": [],
+      "workflow_mode": "raw-like full modular adapter benchmark"
+    },
+    {
+      "artifacts_found": [
+        "continuity_qa",
+        "model_inp",
+        "peak_qa",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "network_qa"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "Tecnopolo January 1994 prepared-input benchmark",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": -0.004,
+            "runoff_quantity": -0.13
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OUT_0",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OUT_0",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "03:15",
+              "unit": "CMS",
+              "value": 0.061
+            }
+          },
+          "time_hhmm": "03:15",
+          "unit": "CMS",
+          "value": 0.061
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "Verify prepared-input execution, direct SWMM consistency, node-level QA, plotting, and audit.",
+      "qa_status": "pass",
+      "run_dir": "runs/benchmarks/tecnopolo-199401-prepared",
+      "run_id": "tecnopolo-199401-prepared",
+      "swmm_return_code": 0,
+      "warnings": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "workflow_mode": "external multi-subcatchment prepared-input benchmark"
+    },
+    {
+      "artifacts_found": [
+        "builder_manifest",
+        "model_inp",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "continuity_qa",
+        "network_qa",
+        "peak_qa"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "tuflow-swmm-module03-raw-path",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": {
+          "network_conduits": 14,
+          "network_junctions": 14,
+          "network_outfalls": 1,
+          "subcatchments": 14,
+          "timeseries_rows": 46
+        },
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": 0.002,
+            "runoff_quantity": -0.014
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "Node20",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "Node20",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "01:12",
+              "unit": "CMS",
+              "value": 3.62
+            }
+          },
+          "time_hhmm": "01:12",
+          "unit": "CMS",
+          "value": 3.62
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/benchmarks/tuflow-swmm-module03-raw-path",
+      "run_id": "tuflow-swmm-module03-raw-path",
+      "swmm_return_code": 0,
+      "warnings": [],
+      "workflow_mode": "TUFLOW SWMM Module 03 full multi-raingage raw GeoPackage adapter benchmark"
+    },
+    {
+      "artifacts_found": [
+        "continuity_qa",
+        "model_inp",
+        "peak_qa",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "network_qa"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "Tecnopolo January 1994 prepared-input benchmark",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": -0.004,
+            "runoff_quantity": -0.13
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OUT_0",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OUT_0",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "03:15",
+              "unit": "CMS",
+              "value": 0.061
+            }
+          },
+          "time_hhmm": "03:15",
+          "unit": "CMS",
+          "value": 0.061
+        },
+        "swmm_return_code": 0
+      },
+      "objective": "Verify top-level prepared-input orchestration through swmm-runner MCP, QA, audit, direct SWMM consistency, and plotting.",
+      "qa_status": "pass",
+      "run_dir": "runs/end-to-end/tecnopolo-199401-prepared",
+      "run_id": "tecnopolo-199401-prepared",
+      "swmm_return_code": 0,
+      "warnings": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "workflow_mode": "external multi-subcatchment prepared-input end-to-end"
+    },
+    {
+      "artifacts_found": [
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "model_inp",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "runner-fixed",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "continuity_parse_missing",
+        "missing_inp",
+        "partial_run",
+        "peak_flow_parse_missing"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": null,
+        "peak_flow": null,
+        "swmm_return_code": null
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/external-case-candidates/zenodo-tecnopolo/month-199401/runner-fixed",
+      "run_id": "runner-fixed",
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "external multi-subcatchment inp month benchmark"
+    },
+    {
+      "artifacts_found": [
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "model_inp",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "runner-check",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "continuity_parse_missing",
+        "missing_inp",
+        "partial_run",
+        "peak_flow_parse_missing"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": null,
+        "peak_flow": null,
+        "swmm_return_code": null
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/external-case-candidates/zenodo-tecnopolo/runner-check",
+      "run_id": "runner-check",
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "external benchmark inp run"
+    },
+    {
+      "artifacts_found": [
+        "model_inp",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "real-todcreek-minimal",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "continuity_parse_missing",
+        "partial_run"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": null,
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "O1",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "O1",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "12:47",
+              "unit": "CMS",
+              "value": 1.184
+            }
+          },
+          "time_hhmm": "12:47",
+          "unit": "CMS",
+          "value": 1.184
+        },
+        "swmm_return_code": null
+      },
+      "objective": "",
+      "qa_status": "pass",
+      "run_dir": "runs/real-todcreek-minimal",
+      "run_id": "real-todcreek-minimal",
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "minimal real-data fallback"
+    }
+  ],
+  "run_folder_count": 9,
+  "schema_version": "1.0",
+  "source_runs_dir": "runs"
+}
