@@ -76,11 +76,13 @@ Stormwater modelling is rarely a single command. A typical SWMM workflow may inv
 
 These steps are often scattered across manual operations, scripts, notebooks, GIS software, and model files. That makes the workflow hard to rerun, hard to audit, and hard to trust.
 
-AI agents can help coordinate these steps, but they also introduce a new risk: if generated files, assumptions, checks, and intermediate artifacts are not recorded, the modelling process becomes even harder to verify.
+Agentic AI can help coordinate these steps from natural-language instructions, but they also introduce a new risk: if generated files, assumptions, checks, and intermediate artifacts are not recorded, the modelling process becomes even harder to verify.
 
-This repository provides a middle path:
+This repository provides a middle path: natural-language-driven agentic orchestration is used to guide the workflow, while the actual SWMM modelling steps remain deterministic, inspectable, and evidence-based.
 
-**agentic orchestration with deterministic SWMM execution, explicit provenance, and verification-first modelling.**
+In practice, this means the workflow can install or run SWMM, prepare inputs, build models, execute simulations, check outputs, generate plots, record manifests, and write audit notes without hiding the modelling evidence behind a black box.
+
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, easier to inspect, and easier to trust.**
 
 ## 3. What makes it different
 
