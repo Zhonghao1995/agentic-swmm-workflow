@@ -4,10 +4,20 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+- No unreleased changes yet.
+
+## v0.4.0 - Modeling memory and controlled skill refinement
+
 - Added GitHub Actions lightweight CI for syntax checks, uncertainty unit tests, and fuzzy uncertainty dry-run coverage.
 - Added `CITATION.cff` so GitHub can expose repository citation metadata.
 - Added root `requirements.txt` as the standard manual Python dependency entrypoint.
 - Added this changelog for release-to-release visibility.
+- Added `skills/swmm-modeling-memory/`, a downstream modeling-memory skill that reads historical experiment audit artifacts without running SWMM or modifying existing skills.
+- Added deterministic summarization of audited runs into `modeling_memory_index.json`, `modeling_memory_index.md`, `lessons_learned.md`, `skill_update_proposals.md`, and `benchmark_verification_plan.md`.
+- Added controlled skill-refinement proposals for recurring assumptions, QA issues, missing evidence, failure patterns, and run-to-run differences.
+- Added public example modeling-memory outputs under `memory/modeling-memory/`.
+- Documented the memory loop as a core part of Agentic SWMM: each audited run can update project memory, while accepted skill changes still require human review and benchmark verification.
+- Updated public OpenClaw memory to include the optional modeling-memory step after experiment audit.
 
 ## v0.3.0 - Public agent memory and raw GeoPackage workflow
 
