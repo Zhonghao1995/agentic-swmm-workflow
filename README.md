@@ -40,7 +40,7 @@ This project is not a loose collection of Python scripts or a simple chat-to-SWM
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-## Try it in one command
+## 1. Try it in one command
 
 Choose the path that matches what you want to do. :)
 
@@ -70,7 +70,7 @@ Use this on Windows when you want a local development environment. Run PowerShel
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
 
-## Why this project exists
+## 2. Why this project exists
 
 Stormwater modelling is rarely a single command. A typical SWMM workflow may involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, output checking, plotting, calibration, uncertainty analysis, and reporting.
 
@@ -82,7 +82,7 @@ This repository provides a middle path:
 
 **agentic orchestration with deterministic SWMM execution, explicit provenance, and verification-first modelling.**
 
-## What makes it different
+## 3. What makes it different
 
 - **Five-minute onboarding:** install the workflow and SWMM engine with one bootstrap command.
 - **Not just chat-to-SWMM:** agents coordinate the workflow, but model execution remains deterministic and inspectable.
@@ -95,7 +95,7 @@ This repository provides a middle path:
 - **Research-facing outputs:** generated notes, plots, summaries, and audit files are suitable for experiment tracking, collaboration, and publication workflows.
 - **Works without an agent:** every core path can be run directly from the CLI.
 
-## How the workflow works
+## 4. How the workflow works
 
 <p align="center">
   <a href="docs/figs/openclaw_swmm_pipeline.pdf">
@@ -116,7 +116,7 @@ The workflow is organized into six layers:
 
 Agentic SWMM Workflow is not a chat-to-model-file wrapper. It is a reproducible and auditable modelling pipeline where agents coordinate the workflow, while SWMM execution, QA, provenance, and reporting remain deterministic and inspectable.
 
-## What the Agentic SWMM workflow produces
+## 5. What the Agentic SWMM workflow produces
 
 Depending on the selected path, a run can produce:
 
@@ -132,7 +132,7 @@ Depending on the selected path, a run can produce:
 - `comparison.json`,
 - Obsidian-compatible `experiment_note.md`.
 
-## Obsidian-compatible audit memory
+## 6. Obsidian-compatible audit memory
 
 Agentic SWMM treats audit notes as a first-class interface, not as an afterthought. The audit layer turns run folders into Obsidian-compatible Markdown so users can manage modelling progress, assumptions, QA results, scenario comparisons, and project memory in a research notebook.
 
@@ -146,11 +146,11 @@ This is useful when a project grows beyond a single run:
 
 The result is a workflow where OpenClaw or Hermes can help execute the modelling path while Obsidian can become the human-facing memory layer for project updates, experiment history, and research synthesis.
 
-## Validation evidence
+## 7. Validation evidence
 
 This repository includes two external benchmark paths that test different evidence boundaries.
 
-### 1. Raw GeoPackage-to-INP benchmark
+### 7.1 Raw GeoPackage-to-INP benchmark
 
 The TUFLOW SWMM Module 03 benchmark validates the structured raw GIS path. This is the stronger agentic workflow demonstration because it starts from public GeoPackage model layers and rebuilds the SWMM-ready structure before running QA and audit.
 
@@ -171,7 +171,7 @@ python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
 
 </details>
 
-### 2. Prepared-input SWMM benchmark
+### 7.2 Prepared-input SWMM benchmark
 
 The Tecnopolo benchmark validates the prepared-input path using an external **40-subcatchment** SWMM model derived from a public Zenodo dataset.
 
@@ -192,7 +192,7 @@ python3 scripts/benchmarks/run_tecnopolo_199401.py
 
 </details>
 
-### 3. Additional runnable paths
+### 7.3 Additional runnable paths
 
 The repository also includes an acceptance pipeline for regression checks and a minimal Tod Creek real-data fallback path for environments where the Tod Creek example inputs are available.
 
@@ -206,13 +206,13 @@ python3 scripts/real_cases/run_todcreek_minimal.py
 
 </details>
 
-### 4. Evidence boundary
+### 7.4 Evidence boundary
 
 The current repository is strongest as a reproducible agentic workflow for prepared-input SWMM execution, structured raw GIS-to-INP benchmarks, QA, audit, plotting, calibration support, and uncertainty extension. It also provides a practical path for users to get running quickly and then grow toward richer case-specific modelling.
 
 For fully greenfield watershed, subcatchment, and pipe-network generation directly from DEM, land use, soil, and drainage assets, the intended direction is to add case-specific delineation and parameterization evidence rather than overstate automatic generation before those examples are validated.
 
-## Experiment audit example
+## 8. Experiment audit example
 
 The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
 
@@ -222,7 +222,7 @@ The audit layer consolidates artifacts, QA checks, and metric provenance into an
 
 For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
 
-## Optional local verification
+## 9. Optional local verification
 
 <details>
 <summary>Acceptance, audit, and plot commands</summary>
@@ -257,7 +257,7 @@ python3 skills/swmm-plot/scripts/plot_rain_runoff_si.py \
 
 </details>
 
-## End-to-end flow
+## 10. End-to-end flow
 
 1. Prepare deterministic inputs: GIS polygons, rainfall series, mapped soil/landuse parameters, and network schema/import.
 2. Assemble a runnable SWMM `.inp` with `swmm-builder` and emit a build manifest.
@@ -266,7 +266,7 @@ python3 skills/swmm-plot/scripts/plot_rain_runoff_si.py \
 5. Produce publication-style rainfall-runoff plots.
 6. Optionally calibrate, validate, propagate fuzzy parameter uncertainty, and audit the run.
 
-## Repository map
+## 11. Repository map
 
 ```text
 agentic-swmm-workflow/
@@ -312,7 +312,7 @@ For more detail:
 - See `skills/<module>/SKILL.md` for module-specific behavior and examples.
 - Each module can expose an MCP server at `skills/<module>/scripts/mcp/server.js` for optional OpenClaw or Hermes integration.
 
-## OpenClaw / Hermes orchestration
+## 12. OpenClaw / Hermes orchestration
 
 Install or configure an agent runtime first:
 
@@ -341,7 +341,7 @@ For the exact MCP tool-call sequence behind that skill, see:
 docs/openclaw-execution-path.md
 ```
 
-## Where collaborators can help
+## 13. Where collaborators can help
 
 Contributions are especially welcome in:
 - additional SWMM case studies and benchmark datasets,
@@ -358,13 +358,13 @@ Contact:
 - zhonghaoz@uvic.ca
 - valeo@uvic.ca
 
-## Ongoing research extensions (Fuzzy uncertainty propagation and Calibration support)
+## 14. Ongoing research extensions (Fuzzy uncertainty propagation and Calibration support)
 
 `skills/swmm-uncertainty/` provides a framework for epistemic parameter uncertainty. Users can define triangular or trapezoidal membership functions, resolve alpha-cut intervals, sample parameter combinations, run SWMM, and summarize output envelopes by alpha level. It is designed as a research extension that can be audited alongside normal SWMM runs. `skills/swmm-calibration/` supports explicit candidate sets, bounded search, sensitivity scans, validation, and parameter scouting. It reuses manifest and run-directory conventions so calibration evidence can be audited alongside normal SWMM runs.
 
 See `examples/calibration/README.md` for the compact calibration example.
 
-## Citation
+## 15. Citation
 
 GitHub citation metadata is provided in `CITATION.cff`.
 
