@@ -14,6 +14,9 @@
   <a href="#try-it-in-one-command">
     <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
   </a>
+  <a href="#reproduce-v030-with-docker">
+    <img src="https://img.shields.io/badge/docker-v0.3.0%20reproducible-2496ED" alt="Docker reproducible environment" />
+  </a>
   <a href="https://github.com/USEPA/Stormwater-Management-Model">
     <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
   </a>
@@ -83,6 +86,57 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Yes
 ```
 
 </details>
+
+## Reproduce v0.3.0 with Docker
+
+If Docker is installed, you can reproduce the deterministic `v0.3.0` execution environment without installing Python, SWMM5, Node.js, MCP packages, or geospatial Python dependencies on your host machine.
+
+The one-command Docker quickstart runs the acceptance workflow and writes artifacts to `./agentic-swmm-runs/`:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/docker-bootstrap.sh)"
+```
+
+The equivalent direct Docker command is:
+
+```bash
+docker run --rm \
+  -v "$PWD/agentic-swmm-runs:/app/runs" \
+  ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
+```
+
+Available container commands:
+
+```bash
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 tecnopolo
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 uncertainty-dryrun
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 audit runs/acceptance/docker
+```
+
+For publication or review, prefer the fixed `v0.3.0` image tag over `latest`. The Docker image packages the Agentic SWMM repository at Git tag `v0.3.0` with EPA SWMM built from `USEPA/Stormwater-Management-Model` tag `v5.2.4`.
+
+<details>
+<summary>Build the v0.3.0 image locally</summary>
+
+```bash
+docker build \
+  --build-arg AGENTIC_SWMM_REF=v0.3.0 \
+  --build-arg SWMM_REF=v5.2.4 \
+  -t agentic-swmm-workflow:v0.3.0 .
+```
+
+Then run:
+
+```bash
+docker run --rm \
+  -v "$PWD/agentic-swmm-runs:/app/runs" \
+  agentic-swmm-workflow:v0.3.0 acceptance
+```
+
+</details>
+
+Docker reproduces the deterministic execution environment: Python tools, SWMM5, QA checks, plots, manifests, audit notes, benchmark scripts, and uncertainty dry runs. OpenClaw or Hermes can still be used as an optional orchestration layer on top of this environment, but they are not required to reproduce the core benchmark artifacts.
 
 ## Why this project exists
 

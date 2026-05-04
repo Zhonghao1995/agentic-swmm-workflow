@@ -1,0 +1,81 @@
+name: Docker
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Agentic SWMM Git ref to package into the image"
+        required: true
+        default: "v0.3.0"
+      image_tag:
+        description: "Optional image tag override"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out Docker packaging files
+        uses: actions/checkout@v4
+
+      - name: Resolve source ref
+        id: source
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            source_ref="${{ inputs.source_ref }}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            source_ref="${GITHUB_REF_NAME}"
+          else
+            source_ref="${GITHUB_SHA}"
+          fi
+          echo "ref=$source_ref" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/zhonghao1995/agentic-swmm-workflow
+          tags: |
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
+            type=raw,value=${{ inputs.source_ref }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=0.3.0,enable=${{ github.event_name == 'workflow_dispatch' && inputs.source_ref == 'v0.3.0' }}
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+
+      - name: Build and optionally push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          build-args: |
+            AGENTIC_SWMM_REF=${{ steps.source.outputs.ref }}
+            SWMM_REF=v5.2.4
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
