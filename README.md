@@ -91,12 +91,12 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 ## Workflow
 
 <p align="center">
-  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
-    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+  <a href="docs/figs/modeling_memory_skill_evolution.png">
+    <img src="docs/figs/modeling_memory_skill_evolution.png" alt="Agentic SWMM modeling memory and controlled skill evolution loop" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
   </a>
 </p>
 
-The workflow has six layers: optional OpenClaw or Hermes orchestration, reusable skills, MCP tool interfaces, deterministic EPA SWMM execution, standardized run artifacts, and verification checks.
+The workflow has three connected layers: execution, modeling memory, and controlled skill evolution. Natural-language requests can trigger reproducible SWMM actions; audited artifacts update human-readable and machine-readable memory; repeated patterns can produce skill-refinement proposals that still require human review and benchmark verification.
 
 ## What a run can produce
 
