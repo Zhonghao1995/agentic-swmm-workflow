@@ -42,7 +42,7 @@ License: **MIT**
 
 ## Try it in one command
 
-Choose the path that matches what you want to do.  ：）
+Choose the path that matches what you want to do. :)
 
 ### Method 1. Docker (Recommend)
 
