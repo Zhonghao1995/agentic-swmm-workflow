@@ -4,7 +4,25 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
+      - "Dockerfile"
+      - "examples/**"
+      - "openclaw/**"
+      - "requirements.txt"
+      - "scripts/**"
+      - "skills/**"
   pull_request:
+    paths:
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
+      - "Dockerfile"
+      - "examples/**"
+      - "openclaw/**"
+      - "requirements.txt"
+      - "scripts/**"
+      - "skills/**"
   workflow_dispatch:
     inputs:
       source_ref:
