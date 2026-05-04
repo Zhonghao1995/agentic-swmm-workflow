@@ -15,6 +15,11 @@ These files are not executable code and are not a replacement for `skills/swmm-e
 7. `skills/swmm-end-to-end/SKILL.md`
 8. `docs/openclaw-execution-path.md`
 
+Optional after multiple audited runs exist:
+
+9. `skills/swmm-modeling-memory/SKILL.md`
+10. `memory/modeling-memory/`
+
 ## Intended interface position
 
 OpenClaw, Hermes, or another compatible runtime should place this memory layer between the general agent runtime and the Agentic SWMM skill layer:
@@ -26,9 +31,12 @@ public agent runtime
   -> module skills and MCP tools
   -> deterministic Python/SWMM execution
   -> audit artifacts
+  -> optional modeling-memory summaries
 ```
 
 The memory layer should shape decisions and communication for repository users. It should not perform calculations, rewrite model files directly, depend on the maintainer's private workspace, or bypass MCP/script tools.
+
+`memory/modeling-memory/` is generated project memory, not startup instruction memory. Load or inspect it when the user asks for lessons learned, repeated failure patterns, missing evidence, QA issues, or controlled skill-refinement proposals.
 
 ## Minimum memory contract
 
