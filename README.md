@@ -28,11 +28,14 @@
   </a>
 </p>
 
-**A reproducible EPA SWMM workflow for agent-guided, verification-first stormwater modelling.**
+**Agentic SWMM for reproducible stormwater modeling**<br>
+*[OpenClaw](https://github.com/openclaw/openclaw) or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
-`agentic-swmm-workflow` helps researchers install SWMM, run benchmark workflows, check outputs, audit evidence, produce plots and notes, and keep modelling memory from previous runs. Agents can coordinate the workflow through OpenClaw, Hermes Agent, MCP tools, or compatible runtimes, while SWMM execution remains deterministic and inspectable.
+**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-This is not a chat-to-SWMM wrapper. The model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling-memory summaries remain visible as artifacts.
+`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With OpenClaw, Hermes Agent, or a compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
+
+This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but the model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling memory remain visible as artifacts. The modeling-memory layer can notice repeated problems and propose skill refinements, but changes are accepted only after human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
