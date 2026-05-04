@@ -1,128 +1,40 @@
-# agentic-swmm-workflow
+# Agentic SWMM Workflow
 
 **Agentic SWMM for reproducible stormwater modeling**  
 *OpenClaw or Hermes + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
+**One-command, auditable, and reproducible EPA SWMM modelling workflow for agentic environmental modelling.**
+
+`agentic-swmm-workflow` helps researchers and developers build, run, verify, audit, plot, calibrate, and extend SWMM models through a deterministic workflow that can also be orchestrated by OpenClaw or Hermes.
+
+This project is not a simple chat-to-SWMM wrapper. The agent coordinates the workflow, but SWMM execution, generated files, QA checks, provenance, plots, and reports remain script-based, reproducible, inspectable, and supported by explicit artifacts.
+
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-`agentic-swmm-workflow` is an open-source framework for building **reproducible, agentic SWMM workflows** with **OpenClaw** or **Hermes** as the recommended orchestration layer.
-It helps researchers and developers move from scattered scripts and manual clicks to a pipeline that is **structured, auditable, and easier to rerun**.
-The audit layer produces Obsidian-compatible experiment notes and can also be run directly from the CLI.
+## Try it in one command
 
-At the core of this project is a simple idea: **use OpenClaw or Hermes to operate a modular SWMM workflow through Skills and MCP tools, while keeping the underlying modeling steps deterministic and inspectable**.
-OpenClaw can trigger the audit layer after a run, while the generated Markdown note supports Obsidian as a second-brain review layer.
-
-Unlike a simple chat-to-SWMM wrapper, this repository focuses on the full workflow: **prepare inputs, assemble models, run SWMM, verify outputs, plot results, and calibrate with traceable artifacts**.
-
-## Why this project matters
-
-- **OpenClaw and Hermes ready:** the workflow is designed to be operated through modern agentic runtimes rather than only through ad hoc scripts.
-- **End-to-end workflow:** GIS, climate, parameters, network assembly, model build, run, plotting, and calibration in one repo.
-- **Reproducible by default:** build/run/calibration stages emit standardized artifacts and `manifest.json` provenance.
-- **Verification-first:** continuity, mass-balance, preprocessing consistency, and parsed peak checks are built into execution.
-- **Works with or without an agent:** run directly from CLI, or orchestrate with **OpenClaw** or **Hermes**.
-- **Made for research and tooling:** clean outputs, deterministic runs, publication-style plots, and modular skill-level interfaces.
-
-## Who this is for
-
-This project is useful if you are:
-- a **SWMM user** who wants cleaner and more repeatable workflows,
-- a **hydrology or stormwater researcher** exploring reproducible computational pipelines,
-- a **developer building AI tools for environmental modeling**, or
-- a **collaborator** interested in MCP tools, orchestration, calibration, or hydrologic QA.
-
-## What you can do with it
-
-Implemented capabilities already include:
-- **Skills** for GIS, climate, parameters, network assembly, model build, run, plotting, and calibration.
-- A top-level **`swmm-end-to-end` orchestration skill** for OpenClaw-facing build/run/QA flows.
-- **MCP servers** for each module, enabling tool-level orchestration in OpenClaw.
-- **Manifest-driven provenance and audit notes:** stages emit `manifest.json`, while the audit layer consolidates artifacts into `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
-- **Verification checks** for continuity/mass balance, preprocessing consistency, and extracted peak metrics.
-- **Calibration loop support** with explicit candidate sets and bounded search (`random`, `lhs`, `adaptive`).
-- **Direct CLI execution** for deterministic, script-first runs without requiring an orchestrator.
-
-## Architecture
-
-<p align="center">
-  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
-    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
-  </a>
-</p>
-
-*(Click the figure to open the PDF version.)*
-
-**Layers (left → right):**
-- **Orchestrator layer:** OpenClaw (optional; coordinates tools and steps)
-- **Skills layer:** SOP-style Skills describing how each tool should be run safely and reproducibly
-- **MCP layer:** tool interfaces (GIS / Climate / Params / Network / Builder / SWMM / Plot / Calibration)
-- **Engine layer:** SWMM engine (`swmm5`)
-- **Output layer:** standardized run directory (`INP/RPT/OUT`, manifest, plots, summaries)
-- **Verification layer:** checks for equivalence, continuity, and preprocessing consistency
-
-## Experiment Audit Example
-
-The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
-
-<p align="center">
-  <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
-</p>
-
-For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
-
-## External multi-subcatchment benchmark
-
-The repository includes a compact Tecnopolo prepared-input benchmark derived from a public Zenodo SWMM dataset. It verifies that the workflow can execute and audit an external **40-subcatchment** SWMM model, compare `swmm-runner` outputs against direct `swmm5` execution, check both an outfall and an internal junction, and generate rainfall-runoff figures.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tecnopolo_199401.py
-```
-
-See `examples/tecnopolo/README.md` for the validation details, expected peak-flow checks, reproducibility notes, and the boundary that this benchmark validates the prepared-input path rather than raw GIS-to-INP construction.
-
-## Raw GeoPackage-to-INP benchmark
-
-The TUFLOW SWMM Module 03 benchmark verifies the structured raw GIS path: public GeoPackage layers are extracted into junctions, outfalls, conduits, subcatchments, multi-raingage rainfall inputs, `network.json`, `subcatchments.csv`, parameter JSON, a generated `model.inp`, SWMM run outputs, continuity/peak QA, and an audit note.
-
-```bash
-python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
-```
-
-See `examples/tuflow-swmm-module03/README.md` for setup, expected artifacts, metrics, and the evidence boundary.
-
-## Quickstart
-
-### One-command install (macOS / Linux)
+### macOS / Linux
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-This bootstrap command:
-- clones or updates the repository into `./agentic-swmm-workflow`,
-- installs missing system dependencies where supported,
-- installs Python and MCP dependencies, and
-- installs or builds the SWMM engine if `swmm5` is not already available.
+This command clones or updates the repository, installs missing system dependencies where supported, installs Python and MCP dependencies, and installs or builds the SWMM engine when `swmm5` is not already available.
 
 On macOS / Linux, the installer builds the SWMM solver from the official [USEPA/Stormwater-Management-Model](https://github.com/USEPA/Stormwater-Management-Model) source repository when a local `swmm5` command is missing.
 
-### One-command install (Windows PowerShell, run as Administrator)
+### Windows PowerShell
+
+Run PowerShell as Administrator:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
 
-This bootstrap command:
-- clones or updates the repository into `.\agentic-swmm-workflow`,
-- installs Chocolatey if needed,
-- installs Git, Python, Node.js LTS, and SWMM,
-- installs Python and MCP dependencies, and
-- creates a `swmm5` command shim when the Windows SWMM installer exposes a different executable name.
+The Windows bootstrap clones or updates the repository, installs Chocolatey if needed, installs Git, Python, Node.js LTS, SWMM, Python/MCP dependencies, and creates a `swmm5` command shim when the Windows SWMM installer exposes a different executable name.
+
+The Python environment installed by this repository covers the acceptance path and the Tod Creek smoke-test dependencies, including `pandas`, `numpy`, `matplotlib`, `rasterio`, `pyshp`, `pysheds`, and `swmmtoolbox`.
 
 ### Install after clone
 
@@ -138,38 +50,144 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -Yes
 .\.venv\Scripts\Activate.ps1
 ```
 
-### Python requirements
+## Why this project exists
 
-The Python install now covers both the acceptance path and the real-data Tod Creek smoke test, including:
-- `pandas`
-- `numpy`
-- `matplotlib`
-- `rasterio`
-- `pyshp`
-- `pysheds`
-- `swmmtoolbox`
+Stormwater modelling is rarely a single command. A typical SWMM workflow may involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, output checking, plotting, calibration, uncertainty analysis, and reporting.
 
-### Run the acceptance pipeline
+These steps are often scattered across manual operations, scripts, notebooks, GIS software, and model files. That makes the workflow hard to rerun, hard to audit, and hard to trust.
+
+AI agents can help coordinate these steps, but they also introduce a new risk: if generated files, assumptions, checks, and intermediate artifacts are not recorded, the modelling process becomes even harder to verify.
+
+This repository provides a middle path:
+
+**agentic orchestration with deterministic SWMM execution, explicit provenance, and verification-first modelling.**
+
+## What makes it different
+
+- **One-command onboarding:** install the workflow and SWMM engine with a bootstrap command.
+- **Not just chat-to-SWMM:** agents coordinate the workflow, but model execution remains deterministic and inspectable.
+- **Modular Skills:** GIS, climate, parameters, network, builder, runner, plotting, calibration, uncertainty, audit, and end-to-end orchestration are separated into reusable modules.
+- **MCP-ready tools:** modules expose tool-level interfaces for OpenClaw or Hermes orchestration where available.
+- **Manifest-based provenance:** build, run, audit, and comparison stages emit traceable artifacts.
+- **Verification-first workflow:** continuity, mass balance, preprocessing consistency, peak-flow parsing, and direct SWMM comparison are used before treating outputs as evidence.
+- **Research-facing outputs:** generated notes, plots, summaries, and audit files are suitable for experiment tracking and publication workflows.
+- **Works without an agent:** every core path can be run directly from the CLI.
+
+## Validation evidence
+
+This repository includes two external benchmark paths that test different evidence boundaries.
+
+### 1. Prepared-input SWMM benchmark
+
+The Tecnopolo benchmark validates the prepared-input path using an external **40-subcatchment** SWMM model derived from a public Zenodo dataset.
+
+It checks that the workflow can execute an external SWMM model, compare workflow outputs against direct `swmm5` execution, inspect both an outfall and an internal junction, generate rainfall-runoff figures, and emit audit-ready artifacts.
+
+<p align="center">
+  <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
+</p>
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_199401.py
+```
+
+See `examples/tecnopolo/README.md` for validation details, expected peak-flow checks, reproducibility notes, and the prepared-input evidence boundary.
+
+### 2. Raw GeoPackage-to-INP benchmark
+
+The TUFLOW SWMM Module 03 benchmark validates the structured raw GIS path.
+
+It converts public GeoPackage layers into SWMM-ready artifacts, including junctions, outfalls, conduits, subcatchments, raingages, multi-raingage rainfall inputs, `network.json`, `subcatchments.csv`, parameter JSON, a generated `model.inp`, SWMM outputs, QA summaries, and audit notes.
+
+```bash
+python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
+```
+
+See `examples/tuflow-swmm-module03/README.md` for download instructions, expected artifacts, metrics, and the raw GeoPackage evidence boundary.
+
+### Additional runnable paths
+
+The repository also includes an acceptance pipeline for local regression checks and a minimal Tod Creek real-data fallback path for environments where the local Tod Creek data are available.
+
+```bash
+python3 scripts/acceptance/run_acceptance.py --run-id latest
+python3 scripts/real_cases/run_todcreek_minimal.py
+```
+
+### Evidence boundary
+
+The current repository validates prepared-input and structured raw GIS-to-INP workflows.
+
+It does not yet claim full greenfield automatic watershed, subcatchment, and pipe-network generation directly from DEM, land use, soil, and drainage assets. That broader path needs separate delineation and parameterization evidence.
+
+## How the workflow works
+
+<p align="center">
+  <a href="docs/figs/openclaw_swmm_pipeline.pdf">
+    <img src="docs/figs/openclaw_swmm_pipeline.png" alt="OpenClaw + SWMM agentic modelling pipeline with verification layer" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
+  </a>
+</p>
+
+*(Click the figure to open the PDF version.)*
+
+The workflow is organized into six layers:
+
+1. **Orchestrator layer** - optional OpenClaw or Hermes coordination.
+2. **Skills layer** - SOP-style instructions for safe and reproducible tool use.
+3. **MCP layer** - tool interfaces for GIS, climate, parameters, network, builder, runner, plot, calibration, and audit.
+4. **Engine layer** - deterministic EPA SWMM execution through `swmm5`.
+5. **Output layer** - standardized run folders with INP, RPT, OUT, plots, summaries, and manifests.
+6. **Verification layer** - continuity, peak-flow, preprocessing, and direct SWMM consistency checks.
+
+Agentic SWMM Workflow is not a chat-to-model-file wrapper. It is a reproducible and auditable modelling pipeline where agents coordinate the workflow, while SWMM execution, QA, provenance, and reporting remain deterministic and inspectable.
+
+## What the workflow produces
+
+Depending on the selected path, a run can produce:
+
+- generated or supplied SWMM input files such as `model.inp`,
+- SWMM report and binary outputs such as `.rpt` and `.out`,
+- build and run manifests such as `manifest.json`,
+- continuity and mass-balance QA summaries,
+- parsed peak-flow metrics from SWMM report sections,
+- rainfall-runoff figures,
+- calibration and validation summaries,
+- fuzzy uncertainty propagation summaries,
+- `experiment_provenance.json`,
+- `comparison.json`,
+- Obsidian-compatible `experiment_note.md`.
+
+## Experiment audit example
+
+The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
+
+<p align="center">
+  <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
+</p>
+
+For agent-orchestrated runs, use a high-reasoning coding model and inspect the generated audit note before treating outputs as research evidence.
+
+## Run the acceptance pipeline
 
 ```bash
 python3 scripts/acceptance/run_acceptance.py --run-id latest
 ```
 
-### Check the acceptance report
+Check the acceptance report:
 
-Open:
+```text
+runs/acceptance/latest/acceptance_report.md
+```
 
-`runs/acceptance/latest/acceptance_report.md`
-
-### Audit a run
+Audit the run:
 
 ```bash
 python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/acceptance/latest
 ```
 
-Add `--obsidian-dir <vault-folder>` to write a copy of the note into Obsidian.
+Add `--obsidian-dir <vault-folder>` to write a copy of the same note into Obsidian.
 
-### Make a rainfall-runoff plot from acceptance outputs
+Make a rainfall-runoff plot from acceptance outputs:
 
 ```bash
 mkdir -p runs/acceptance/latest/07_plot
@@ -181,12 +199,12 @@ python3 skills/swmm-plot/scripts/plot_rain_runoff_si.py \
 
 ## End-to-end flow
 
-1. Prepare deterministic inputs (GIS polygons, rainfall series, mapped soil/landuse parameters, and network schema/import).
+1. Prepare deterministic inputs: GIS polygons, rainfall series, mapped soil/landuse parameters, and network schema/import.
 2. Assemble a runnable SWMM `.inp` with `swmm-builder` and emit a build manifest.
-3. Execute SWMM with `swmm-runner` and emit run-level manifest plus parsed diagnostics.
-4. Verify continuity and extracted peak behavior.
+3. Execute SWMM with `swmm-runner` and emit a run manifest plus parsed diagnostics.
+4. Verify continuity, mass balance, preprocessing consistency, and extracted peak behavior.
 5. Produce publication-style rainfall-runoff plots.
-6. Optionally calibrate and validate with explicit sets or bounded search.
+6. Optionally calibrate, validate, propagate fuzzy parameter uncertainty, and audit the run.
 
 ## Repository map
 
@@ -195,6 +213,8 @@ agentic-swmm-workflow/
 ├─ README.md
 ├─ docs/
 │  ├─ figs/openclaw_swmm_pipeline.{png,pdf}
+│  ├─ experiment-audit-framework.md
+│  ├─ openclaw-execution-path.md
 │  └─ repo-map.md
 ├─ examples/
 │  ├─ todcreek/model_chicago5min.inp
@@ -228,11 +248,33 @@ agentic-swmm-workflow/
 For more detail:
 - See `docs/repo-map.md` for a broader repo walkthrough.
 - See `skills/<module>/SKILL.md` for module-specific behavior and examples.
-- Each module can expose an MCP server at `skills/<module>/scripts/mcp/server.js` for optional OpenClaw integration.
+- Each module can expose an MCP server at `skills/<module>/scripts/mcp/server.js` for optional OpenClaw or Hermes integration.
+
+## OpenClaw / Hermes orchestration
+
+If you want one agent-facing entrypoint instead of manually choosing module skills, start with:
+
+```text
+skills/swmm-end-to-end/SKILL.md
+```
+
+That top-level skill defines when to use the full modular path, when to use the prepared-input path, when to fall back to the Tod Creek minimal real-data runner, which QA gates must pass before a run is considered usable, and when to stop instead of inventing missing network or subcatchment inputs.
+
+For the exact MCP tool-call sequence behind that skill, see:
+
+```text
+docs/openclaw-execution-path.md
+```
+
+## Research extensions
+
+The core repository focuses on reproducible SWMM execution, QA, audit, plotting, and calibration. Additional research-facing modules include uncertainty and calibration extensions that build on the same run-directory and manifest conventions.
 
 ### Fuzzy uncertainty propagation
 
-`skills/swmm-uncertainty/` adds a CLI-first framework for epistemic parameter uncertainty. Users define triangular or trapezoidal membership functions in `fuzzy_space.json`; compact triangular specs use the current model parameter value as the default peak. The tool resolves alpha-cut intervals, samples parameter combinations, runs SWMM, and summarizes output envelopes by alpha level.
+`skills/swmm-uncertainty/` provides a CLI-first framework for epistemic parameter uncertainty. Users can define triangular or trapezoidal membership functions, resolve alpha-cut intervals, sample parameter combinations, run SWMM, and summarize output envelopes by alpha level.
+
+This module is currently separate from the main validation story.
 
 Dry-run example:
 
@@ -247,27 +289,18 @@ python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py \
   --dry-run
 ```
 
-## OpenClaw orchestration
+### Calibration support
 
-If you want one OpenClaw-facing entrypoint instead of manually choosing module skills, start with:
+`skills/swmm-calibration/` supports explicit candidate sets, bounded search, sensitivity scans, validation, and parameter scouting. It reuses manifest and run-directory conventions so calibration evidence can be audited alongside normal SWMM runs.
 
-`skills/swmm-end-to-end/SKILL.md`
-
-That top-level skill defines:
-- when to use the full modular path,
-- when to fall back to the Tod Creek minimal real-data runner,
-- which QA gates must pass before a run is considered usable, and
-- when to stop instead of inventing missing network/subcatchment inputs.
-
-For the exact MCP tool-call sequence behind that skill, see:
-
-`docs/openclaw-execution-path.md`
+See `examples/calibration/README.md` for the compact calibration example.
 
 ## Where collaborators can help
 
 Contributions are especially welcome in:
 - additional SWMM case studies and benchmark datasets,
 - stronger calibration and validation workflows,
+- DEM, land-use, soil, and drainage-asset workflows for greenfield model generation,
 - new MCP tools and orchestration patterns,
 - QA and regression testing,
 - documentation, tutorials, and onboarding examples,
@@ -286,6 +319,7 @@ Planned or actively explored directions include:
 - richer calibration agents and search strategies,
 - stronger report generation and experiment summaries,
 - broader GIS and data-ingestion tooling,
+- greenfield DEM/land-use/soil/drainage-asset-to-INP case studies,
 - cleaner onboarding for external contributors,
 - deeper reproducibility and equivalence testing.
 
