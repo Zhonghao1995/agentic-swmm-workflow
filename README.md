@@ -29,7 +29,7 @@
 </p>
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
-*Codex, [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
+*[Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
 **A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
