@@ -20,7 +20,7 @@ description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. U
   - `swmm-experiment-audit`
 - Clear stop conditions so the agent does not pretend a full model was built when critical inputs are still missing.
 - A minimal real-data fallback path for Tod Creek via `scripts/real_cases/run_todcreek_minimal.py`.
-- A mandatory audit handoff that consolidates artifacts, metrics, QA, and comparison records after success or failure.
+- A mandatory audit handoff that consolidates artifacts, metrics, QA, comparison records, and default Obsidian audit notes after success or failure.
 
 ## When to use this skill
 Use this skill when the user asks for:
@@ -86,6 +86,7 @@ Exact MCP call chain for the full modular path:
    - `swmm-calibration-mcp.swmm_parameter_scout`
 15. `swmm-experiment-audit` via CLI:
    - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
+   - By default this also writes the audit note into `~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits` and updates `Experiment Audit Index.md`.
 
 ### Mode B: Prepared-input build
 Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
@@ -106,6 +107,7 @@ Exact MCP call chain for prepared inputs:
 6. optional calibration tools
 7. `swmm-experiment-audit` via CLI:
    - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
+   - By default this also writes the audit note into the local Obsidian audit vault and updates the audit index.
 
 ### Mode C: Minimal real-data Tod Creek fallback
 Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
@@ -231,6 +233,8 @@ Recommended stage layout:
 - Use the run directory as the single audit input.
 - Pass `--compare-to <baseline-run-dir>` when the user requests baseline/scenario or before/after comparison.
 - The audit must write `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
+- The audit should also use the default Obsidian export unless the user explicitly asks for `--no-obsidian`.
+- The default Obsidian vault is `~/Documents/Agentic-SWMM-Obsidian-Vault`, with `10_Memory_Layer` for durable lessons and `20_Audit_Layer` for run-level evidence.
 - Do not include chat transcripts or conversational content in audit outputs.
 
 ## OpenClaw prompt-level instruction

@@ -1,6 +1,6 @@
 ---
 name: swmm-experiment-audit
-description: Consolidate Agentic SWMM run artifacts into auditable provenance, comparison records, and Obsidian-compatible experiment notes. Use after any SWMM build/run/QA attempt, successful or failed, when OpenClaw or a CLI workflow needs a traceable record of inputs, commands, artifacts, metrics, QA checks, and run-to-run differences.
+description: Consolidate Agentic SWMM run artifacts into auditable provenance, comparison records, and local Obsidian audit notes. Use after any SWMM build/run/QA attempt, successful or failed, when OpenClaw or a CLI workflow needs a traceable record of inputs, commands, artifacts, metrics, QA checks, run-to-run differences, and first-user-friendly Obsidian visualization.
 ---
 
 # SWMM Experiment Audit
@@ -11,6 +11,8 @@ description: Consolidate Agentic SWMM run artifacts into auditable provenance, c
 - Consolidation of dispersed `manifest.json`, QA JSON, logs, metrics, and artifact paths.
 - Machine-readable outputs for reproducibility and review.
 - Obsidian-compatible Markdown notes for human research records.
+- Default local Obsidian export into a clean English audit vault.
+- Automatic update of the Obsidian `Experiment Audit Index`.
 - Optional run-to-run comparison for baseline/scenario or before/after parser validation.
 
 This skill records what happened. It does not run SWMM, build models, invent missing artifacts, or replace module-level validation.
@@ -51,7 +53,25 @@ For every audited run, write these files into the run directory unless explicit 
 
 `experiment_note.md` is Obsidian-compatible Markdown with YAML frontmatter. It should stay readable in GitHub as plain Markdown.
 
+By default, the CLI also writes a copy of the audit note into:
+
+```text
+~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits
+```
+
+and updates:
+
+```text
+~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment Audit Index.md
+```
+
 ## CLI
+
+Initialize a first-user Obsidian vault:
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/init_obsidian_vault.py
+```
 
 ```bash
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
@@ -82,6 +102,14 @@ With an Obsidian vault folder:
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
   --run-dir runs/acceptance/latest \
   --obsidian-dir "/path/to/Obsidian/Agentic SWMM/04_Experiments"
+```
+
+Disable Obsidian export when only repo-local files are wanted:
+
+```bash
+python3 skills/swmm-experiment-audit/scripts/audit_run.py \
+  --run-dir runs/acceptance/latest \
+  --no-obsidian
 ```
 
 ## Audit rules
@@ -117,4 +145,28 @@ The generated `experiment_note.md` is designed for Obsidian:
 
 The note is also valid GitHub Markdown, so it can be committed as an example or exported as supplementary evidence if desired.
 
-Use `--obsidian-dir` to write a copy of the same note into an Obsidian vault folder. This is optional; the run directory remains the canonical audit output location.
+The default local vault is:
+
+```text
+~/Documents/Agentic-SWMM-Obsidian-Vault
+```
+
+It is organized for first-time Obsidian use:
+
+```text
+00_Home/
+10_Memory_Layer/
+20_Audit_Layer/
+30_Evidence_Layer/
+40_Skill_Evolution/
+90_Templates/
+```
+
+Default behavior:
+
+- write the canonical audit outputs into the run directory,
+- copy the human-readable note into `20_Audit_Layer/Experiment_Audits`,
+- update `20_Audit_Layer/Experiment Audit Index.md`,
+- keep repo-local JSON files as the machine-readable source of truth.
+
+Use `--obsidian-dir` and `--obsidian-index` to target another vault. Use `--no-obsidian` to disable the local Obsidian export.

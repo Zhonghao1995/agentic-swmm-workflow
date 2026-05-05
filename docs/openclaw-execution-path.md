@@ -1,8 +1,10 @@
 # OpenClaw Execution Path
 
-This document defines the intended top-level execution path for `swmm-end-to-end`.
+This document defines the intended top-level execution path for `swmm-end-to-end` when used by OpenClaw, Hermes, or another MCP-centered external agent runtime.
 
 It is not a new MCP server. It is the concrete tool-call contract that OpenClaw should follow when using the existing module MCP servers.
+
+For Codex as a local development and audit runtime, see `docs/codex-runtime.md`. Codex can follow the same skill contract locally, but it can also edit code, run scripts, inspect generated files, update Obsidian, and verify diffs inside the checkout.
 
 ## Goal
 

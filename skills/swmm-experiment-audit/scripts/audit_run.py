@@ -13,6 +13,9 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_OBSIDIAN_VAULT = Path.home() / "Documents" / "Agentic-SWMM-Obsidian-Vault"
+DEFAULT_OBSIDIAN_AUDIT_DIR = DEFAULT_OBSIDIAN_VAULT / "20_Audit_Layer" / "Experiment_Audits"
+DEFAULT_OBSIDIAN_AUDIT_INDEX = DEFAULT_OBSIDIAN_VAULT / "20_Audit_Layer" / "Experiment Audit Index.md"
 
 
 def now_utc() -> str:
@@ -37,6 +40,72 @@ def write_json(path: Path, obj: Any) -> None:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def obsidian_wikilink(note_path: Path) -> str:
+    return f"[[{note_path.stem}]]"
+
+
+def update_obsidian_audit_index(
+    index_path: Path,
+    provenance: dict[str, Any],
+    out_provenance: Path,
+    out_comparison: Path,
+    obsidian_note: Path,
+) -> None:
+    index_path.parent.mkdir(parents=True, exist_ok=True)
+    if index_path.exists():
+        text = index_path.read_text(encoding="utf-8")
+    else:
+        text = "\n".join(
+            [
+                "---",
+                "project: Agentic SWMM",
+                "type: experiment-audit-index",
+                "status: active",
+                "---",
+                "",
+                "# Experiment Audit Index",
+                "",
+                "## Audited Runs",
+                "",
+                "| Run ID | Status | Audit Note | Provenance JSON | Comparison JSON | Last Updated |",
+                "|---|---|---|---|---|---|",
+                "",
+            ]
+        )
+
+    marker = "|---|---|---|---|---|---|"
+    if marker not in text:
+        text = text.rstrip() + "\n\n## Audited Runs\n\n| Run ID | Status | Audit Note | Provenance JSON | Comparison JSON | Last Updated |\n|---|---|---|---|---|---|\n"
+
+    run_id = str(provenance.get("run_id") or obsidian_note.stem)
+    status = str(provenance.get("status") or "unknown")
+    generated_at = str(provenance.get("generated_at_utc") or now_utc())
+    row = (
+        f"| `{run_id}` | {status} | {obsidian_wikilink(obsidian_note)} | "
+        f"`{out_provenance}` | `{out_comparison}` | {generated_at} |"
+    )
+
+    lines = text.splitlines()
+    filtered: list[str] = []
+    for line in lines:
+        if line.startswith(f"| `{run_id}` |"):
+            continue
+        filtered.append(line)
+
+    insert_at = None
+    for i, line in enumerate(filtered):
+        if line.strip() == marker:
+            insert_at = i + 1
+            break
+
+    if insert_at is None:
+        filtered.extend(["", "## Audited Runs", "", "| Run ID | Status | Audit Note | Provenance JSON | Comparison JSON | Last Updated |", marker])
+        insert_at = len(filtered)
+
+    filtered.insert(insert_at, row)
+    write_text(index_path, "\n".join(filtered).rstrip() + "\n")
 
 
 def sha256_file(path: Path) -> str | None:
@@ -730,6 +799,13 @@ def safe_note_name(value: Any) -> str:
     return text or "experiment"
 
 
+def readable_note_name(provenance: dict[str, Any]) -> str:
+    name = provenance.get("case_name") or provenance.get("run_id") or "experiment"
+    text = safe_note_name(name).replace("_", " ").replace("-", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text.title() if text else "Experiment"
+
+
 def md_table(headers: list[str], rows: list[list[Any]]) -> str:
     out = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for row in rows:
@@ -969,11 +1045,29 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--obsidian-dir",
         type=Path,
-        help="Optional Obsidian vault folder where a copy of experiment_note.md should be written.",
+        default=DEFAULT_OBSIDIAN_AUDIT_DIR,
+        help=(
+            "Obsidian vault folder where a copy of experiment_note.md should be written. "
+            f"Defaults to {DEFAULT_OBSIDIAN_AUDIT_DIR}."
+        ),
     )
     ap.add_argument(
         "--obsidian-note-name",
-        help="Optional file name for the Obsidian note. Defaults to '<run_id> experiment audit.md'.",
+        help="Optional file name for the Obsidian note. Defaults to a readable case/run title.",
+    )
+    ap.add_argument(
+        "--obsidian-index",
+        type=Path,
+        default=DEFAULT_OBSIDIAN_AUDIT_INDEX,
+        help=(
+            "Obsidian audit index to update after writing the note. "
+            f"Defaults to {DEFAULT_OBSIDIAN_AUDIT_INDEX}."
+        ),
+    )
+    ap.add_argument(
+        "--no-obsidian",
+        action="store_true",
+        help="Disable the default Obsidian note copy and index update.",
     )
     return ap.parse_args()
 
@@ -1001,8 +1095,8 @@ def main() -> None:
     out_comparison = args.out_comparison or (run_dir / "comparison.json")
     out_note = args.out_note or (run_dir / "experiment_note.md")
     obsidian_note = None
-    if args.obsidian_dir:
-        note_name = args.obsidian_note_name or f"{safe_note_name(provenance.get('run_id'))} experiment audit.md"
+    if args.obsidian_dir and not args.no_obsidian:
+        note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"
         obsidian_note = args.obsidian_dir / note_name
 
     write_json(out_provenance, provenance)
@@ -1011,6 +1105,14 @@ def main() -> None:
     write_text(out_note, note_text)
     if obsidian_note:
         write_text(obsidian_note, note_text)
+        if args.obsidian_index:
+            update_obsidian_audit_index(
+                args.obsidian_index,
+                provenance,
+                out_provenance,
+                out_comparison,
+                obsidian_note,
+            )
 
     print(
         json.dumps(

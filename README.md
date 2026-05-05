@@ -20,8 +20,8 @@
   <a href="https://github.com/USEPA/Stormwater-Management-Model">
     <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
   </a>
-  <a href="#openclaw--hermes-ready">
-    <img src="https://img.shields.io/badge/OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="OpenClaw or Hermes ready" />
+  <a href="#codex--openclaw--hermes-ready">
+    <img src="https://img.shields.io/badge/Codex%20%2F%20OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="Codex, OpenClaw, or Hermes ready" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
@@ -29,11 +29,11 @@
 </p>
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
-*[OpenClaw](https://github.com/openclaw/openclaw) or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
+*Codex, [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
 **A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With OpenClaw, Hermes Agent, or a compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
+`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With Codex, OpenClaw, Hermes Agent, or another compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
 
 This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but the model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling memory remain visible as artifacts. The modeling-memory layer can notice repeated problems and propose skill refinements, but changes are accepted only after human review and benchmark verification.
 
@@ -157,7 +157,11 @@ The downstream modelling-memory layer can summarize audited run histories into r
 
 More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
 
-## OpenClaw / Hermes ready
+## Codex / OpenClaw / Hermes ready
+
+Codex can serve as the primary local development runtime for this repository: it can inspect the checkout, run scripts, edit skills, generate audit records, update the local Obsidian vault, and review evidence before claims are accepted.
+
+OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-centered agent runs outside the Codex development environment.
 
 For agent-orchestrated runs, preload the public memory package and then use the top-level end-to-end skill:
 
@@ -168,13 +172,14 @@ skills/swmm-end-to-end/SKILL.md
 
 The top-level skill defines when to use the full modular path, when to use the prepared-input path, which QA gates must pass, and when to stop instead of inventing missing inputs.
 
-More details: [OpenClaw execution path](docs/openclaw-execution-path.md).
+More details: [Codex runtime path](docs/codex-runtime.md) and [OpenClaw execution path](docs/openclaw-execution-path.md).
 
 ## Documentation map
 
 - [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
 - [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
+- [Codex runtime path](docs/codex-runtime.md) - local development, audit, Obsidian, and evidence-review workflow
 - [OpenClaw execution path](docs/openclaw-execution-path.md) - MCP tool-call sequence for agent runtimes
 - [Repository map](docs/repo-map.md) - folder-level walkthrough
 - [Calibration example](examples/calibration/README.md) - compact calibration support example
