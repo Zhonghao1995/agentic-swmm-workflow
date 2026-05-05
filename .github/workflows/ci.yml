@@ -41,6 +41,7 @@ jobs:
       - name: Unit tests
         run: |
           python -m unittest discover -s skills/swmm-uncertainty/tests -v
+          python -m unittest discover -s tests -v
 
       - name: Fuzzy uncertainty dry run
         run: |
