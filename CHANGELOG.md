@@ -4,7 +4,8 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
-- No unreleased changes yet.
+- Updated `CITATION.cff` to match the latest `v0.4.1` repository release.
+- Added an optional INP-derived raw adapter benchmark that fetches a fixed public `generate_swmm_inp` fixture, reconstructs raw-like inputs, and documents its evidence boundary.
 
 ## v0.4.1 - README and memory-loading guidance polish
 

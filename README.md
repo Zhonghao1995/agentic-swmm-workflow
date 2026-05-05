@@ -135,6 +135,14 @@ This path validates execution, direct SWMM comparison, plotting, and audit artif
 python3 scripts/benchmarks/run_tecnopolo_199401.py
 ```
 
+### Optional INP-derived raw adapter benchmark
+
+This path fetches a public `generate_swmm_inp` fixture, extracts raw-like GIS/CSV inputs from its open SWMM input file, and runs the Agentic SWMM modular path from those derived inputs.
+
+```bash
+python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
+```
+
 More details: [Validation evidence](docs/validation-evidence.md), [TUFLOW example](examples/tuflow-swmm-module03/README.md), and [Tecnopolo example](examples/tecnopolo/README.md).
 
 ## Audit and research memory

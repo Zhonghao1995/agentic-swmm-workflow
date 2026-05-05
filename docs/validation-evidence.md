@@ -42,6 +42,18 @@ python3 scripts/benchmarks/run_tecnopolo_199401.py
 
 See `../examples/tecnopolo/README.md` for validation details, expected peak-flow checks, reproducibility notes, and the prepared-input evidence boundary.
 
+## INP-derived raw adapter benchmark
+
+The `generate_swmm_inp` adapter benchmark is an optional reproducibility check for the modular Agentic SWMM path. It fetches a fixed public upstream commit from `Jannik-Schilling/generate_swmm_inp`, reads the open `Test_5_2.inp` fixture, extracts raw-like GeoJSON, CSV, and JSON inputs, then rebuilds and runs the case through the repository's network, GIS, parameter, builder, runner, and QA modules.
+
+Run:
+
+```bash
+python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
+```
+
+Evidence boundary: this is not a greenfield watershed case from DEM, land-use, soil, and drainage-asset source files. Its source is an existing public SWMM `.inp`; the benchmark is useful for testing raw-like adapter handoff and modular reconstruction, not for claiming independent watershed delineation or hydrologic validation.
+
 ## Additional runnable paths
 
 The repository also includes an acceptance pipeline for regression checks and a minimal Tod Creek real-data fallback path for environments where the Tod Creek example inputs are available.
