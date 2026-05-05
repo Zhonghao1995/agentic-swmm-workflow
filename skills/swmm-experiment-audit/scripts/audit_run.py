@@ -566,6 +566,17 @@ def collect_run(
     status = derive_status(qa, runner_manifest, bool(inp_path and rpt_path and out_path))
 
     warnings: list[str] = []
+    for warning in top_manifest.get("qa_warnings") or []:
+        if isinstance(warning, dict):
+            kind = warning.get("kind") or "qa_warning"
+            boundary = warning.get("boundary")
+            value = warning.get("value_percent", warning.get("value"))
+            detail = f"{kind}: {boundary}" if boundary else str(kind)
+            if value is not None:
+                detail = f"{detail} value={value}"
+            warnings.append(detail)
+        else:
+            warnings.append(str(warning))
     if (top_manifest.get("repo") or {}).get("git_status_porcelain"):
         warnings.append("The recorded Git working tree was not clean at run time.")
     if peak_metric and (peak_metric.get("source_validation") or {}).get("matches_report") is False:
@@ -578,7 +589,7 @@ def collect_run(
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "run_id": top_manifest.get("run_id") or acceptance_report.get("run_id") or run_dir.name,
-        "case_name": case_name or run_dir.name,
+        "case_name": case_name or top_manifest.get("case_name") or run_dir.name,
         "objective": objective,
         "workflow_mode": workflow_mode or top_manifest.get("pipeline") or acceptance_report.get("pipeline"),
         "status": status,

@@ -694,6 +694,9 @@ def main() -> None:
 
     summary = {
         "run_dir": str(RUN_DIR.relative_to(REPO_ROOT)),
+        "case_name": "Generate_SWMM_inp INP-derived raw adapter benchmark",
+        "pipeline": "inp-derived raw-like modular adapter benchmark",
+        "objective": "Exercise Agentic SWMM raw-like modular handoff by extracting GeoJSON, CSV, and JSON inputs from a public SWMM INP fixture, then rebuilding and running the case.",
         "status": "pass",
         "qa_warning_count": len(qa_warnings),
         "qa_warnings": qa_warnings,

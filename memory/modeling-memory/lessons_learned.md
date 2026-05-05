@@ -1,6 +1,6 @@
 # Lessons Learned
 
-Generated at UTC: `2026-05-04T18:05:01+00:00`
+Generated at UTC: `2026-05-05T11:17:07+00:00`
 
 This synthesis is derived from historical experiment audit artifacts. It is project memory, not proof that a model is calibrated or validated.
 

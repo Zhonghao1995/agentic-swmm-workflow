@@ -4,7 +4,7 @@ This document keeps the detailed benchmark and verification notes out of the REA
 
 ## Benchmark paths
 
-Agentic SWMM currently includes two external benchmark paths that test different parts of the workflow.
+Agentic SWMM currently includes three benchmark paths that test different parts of the workflow, plus additional acceptance and fallback checks.
 
 ## Raw GeoPackage-to-INP benchmark
 

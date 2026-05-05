@@ -12,7 +12,7 @@
     "peak_flow_parse_missing": 2
   },
   "failure_record_count": 4,
-  "generated_at_utc": "2026-05-04T18:05:01+00:00",
+  "generated_at_utc": "2026-05-05T11:17:07+00:00",
   "qa_status_counts": {
     "pass": 9
   },
@@ -200,9 +200,12 @@
       ],
       "assumptions": [],
       "audit_status": "pass",
-      "case_name": "generate-swmm-inp-raw-path",
+      "case_name": "Generate_SWMM_inp INP-derived raw adapter benchmark",
       "comparison_status": "not_requested",
-      "evidence_boundary_notes": [],
+      "evidence_boundary_notes": [
+        "flow_routing_continuity_error: Adapter executed successfully, but this result should not be treated as hydrologic validation. value=9.513",
+        "zero_target_node_peak: The selected node peak is useful as a parser smoke check, not as a calibration or validation metric."
+      ],
       "failure_patterns": [
         "no_detected_failure"
       ],
@@ -256,8 +259,11 @@
       "run_dir": "runs/benchmarks/generate-swmm-inp-raw-path",
       "run_id": "generate-swmm-inp-raw-path",
       "swmm_return_code": 0,
-      "warnings": [],
-      "workflow_mode": "raw-like full modular adapter benchmark"
+      "warnings": [
+        "flow_routing_continuity_error: Adapter executed successfully, but this result should not be treated as hydrologic validation. value=9.513",
+        "zero_target_node_peak: The selected node peak is useful as a parser smoke check, not as a calibration or validation metric."
+      ],
+      "workflow_mode": "inp-derived raw-like modular adapter benchmark"
     },
     {
       "artifacts_found": [
