@@ -126,7 +126,10 @@ def run_git(repo_root: Path, *args: str) -> str | None:
 
 
 def get_swmm_version(repo_root: Path) -> str | None:
-    proc = subprocess.run(["swmm5", "--version"], cwd=repo_root, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(["swmm5", "--version"], cwd=repo_root, capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
     if proc.returncode != 0:
         return None
     return proc.stdout.strip() or None
