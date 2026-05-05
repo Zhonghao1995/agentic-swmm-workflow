@@ -2,7 +2,19 @@ name: CI
 
 on:
   push:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "requirements.txt"
+      - "scripts/**"
+      - "skills/**"
+      - "examples/**"
   pull_request:
+    paths:
+      - ".github/workflows/ci.yml"
+      - "requirements.txt"
+      - "scripts/**"
+      - "skills/**"
+      - "examples/**"
 
 jobs:
   smoke-test:
@@ -40,3 +52,41 @@ jobs:
             --run-root runs/ci-uncertainty \
             --summary-json runs/ci-uncertainty/uncertainty_summary.json \
             --dry-run
+
+  acceptance-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install SWMM engine
+        run: |
+          scripts/install.sh --yes --skip-python --skip-mcp
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run acceptance workflow
+        run: |
+          python scripts/acceptance/run_acceptance.py --run-id ci-audit
+
+      - name: Generate audit record
+        run: |
+          python skills/swmm-experiment-audit/scripts/audit_run.py \
+            --run-dir runs/acceptance/ci-audit \
+            --no-obsidian
+
+      - name: Verify audit outputs
+        run: |
+          test -f runs/acceptance/ci-audit/experiment_provenance.json
+          test -f runs/acceptance/ci-audit/comparison.json
+          test -f runs/acceptance/ci-audit/experiment_note.md
