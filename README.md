@@ -125,7 +125,11 @@ python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
 
 ### Prepared-input SWMM benchmark
 
-This path validates execution, direct SWMM comparison, plotting, and audit artifacts for an external 40-subcatchment SWMM model.
+This path validates execution, direct SWMM comparison, node-level QA, plotting, and audit artifacts for an external 40-subcatchment SWMM model from the public Tecnopolo dataset. The layout figure is generated from the prepared INP coordinates, conduits, outfalls, rain gage, and subcatchment routing fields; the hydrograph is checked against a direct `swmm5` baseline.
+
+<p align="center">
+  <img src="docs/figs/tecnopolo_prepared_layout.png" alt="Tecnopolo prepared-input SWMM layout with 40 subcatchments routed through junctions, conduits, outfalls, and one rain gage" width="760" />
+</p>
 
 <p align="center">
   <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
