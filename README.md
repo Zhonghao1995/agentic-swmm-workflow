@@ -113,6 +113,18 @@ The workflow has three connected layers: execution, modeling memory, and control
 
 The repository includes benchmark paths with different evidence boundaries.
 
+### Information-loss-guided subcatchment partition
+
+This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions a watershed before SWMM open-channel simulation using information loss and spatial heterogeneity, rather than only fixed area thresholds. The method screens DEM, land-use, and soil information with entropy and fuzzy similarity so heterogeneous regions can be preserved at finer resolution while more homogeneous regions can be lumped.
+
+<p align="center">
+  <img src="docs/figs/information_entropy_subcatchment_partition_readme.png" alt="Entropy and fuzzy-similarity guided subcatchment partition showing alternative watershed discretizations before SWMM simulation" width="900" />
+</p>
+
+Scientific basis: Zhang, Z., & Valeo, C. (2026), [*Quantifying uncertainty in flowrate modelling using spatially defined fuzzy entropy based on hydrological processes in a catchment*](https://doi.org/10.1016/j.jhydrol.2025.134447), *Journal of Hydrology*, 664, 134447.
+
+Evidence boundary: this figure demonstrates the GIS preprocessing and information-loss-based subcatchment partition concept. It is not a calibrated SWMM performance claim.
+
 ### Raw GeoPackage-to-INP benchmark
 
 This path converts public TUFLOW SWMM Module 03 GeoPackage layers into SWMM-ready artifacts before running QA and audit.
