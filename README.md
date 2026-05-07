@@ -33,9 +33,11 @@
 
 **A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With Codex, OpenClaw, Hermes Agent, or another compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
+Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
-This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but the model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling memory remain visible as artifacts. The modeling-memory layer can notice repeated problems and propose skill refinements, but changes are accepted only after human review and benchmark verification.
+The project is designed to work with agent runtimes such as Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
+
+This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
