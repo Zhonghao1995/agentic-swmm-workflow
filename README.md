@@ -115,7 +115,7 @@ The repository includes benchmark paths with different evidence boundaries.
 
 ### Information-loss-guided subcatchment partition
 
-This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions a watershed before SWMM open-channel simulation using information loss and spatial heterogeneity, rather than only fixed area thresholds. The method screens DEM, land-use, and soil information with entropy and fuzzy similarity so heterogeneous regions can be preserved at finer resolution while more homogeneous regions can be lumped.
+This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions the TodCreek watershed before SWMM open-channel simulation using entropy theory, rather than only fixed area thresholds. This innovative spatial discretization method reduces information loss during simplification, improves the representation of spatial heterogeneity, and preserves SWMM’s model structure.
 
 <p align="center">
   <img src="docs/figs/information_entropy_subcatchment_partition_readme.png" alt="Entropy and fuzzy-similarity guided subcatchment partition showing alternative watershed discretizations before SWMM simulation" width="900" />
