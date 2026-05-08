@@ -4,6 +4,7 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+- Renamed the preload memory package from `openclaw/memory/` to `agentic-ai/memory/` to reflect Codex, OpenClaw, Hermes, and other Agentic AI runtimes.
 - Updated `CITATION.cff` to match the latest `v0.4.1` repository release.
 - Added an optional INP-derived raw adapter benchmark that fetches a fixed public `generate_swmm_inp` fixture, reconstructs raw-like inputs, and documents its evidence boundary.
 - Refreshed validation and modeling-memory documentation after adding the adapter benchmark.
@@ -26,11 +27,11 @@ All notable changes to Agentic SWMM Workflow are documented here.
 - Added controlled skill-refinement proposals for recurring assumptions, QA issues, missing evidence, failure patterns, and run-to-run differences.
 - Added public example modeling-memory outputs under `memory/modeling-memory/`.
 - Documented the memory loop as a core part of Agentic SWMM: each audited run can update project memory, while accepted skill changes still require human review and benchmark verification.
-- Updated public OpenClaw memory to include the optional modeling-memory step after experiment audit.
+- Updated public Agentic AI memory to include the optional modeling-memory step after experiment audit.
 
 ## v0.3.0 - Public agent memory and raw GeoPackage workflow
 
-- Added the public OpenClaw/Hermes memory package under `openclaw/memory/`.
+- Added the public OpenClaw/Hermes memory package under `openclaw/memory/`, later renamed to `agentic-ai/memory/`.
 - Added ordered agent workflow memory for guiding users from input inventory through build, run, QA, audit, and readiness reporting.
 - Added the TUFLOW SWMM Module 03 Raw GeoPackage-to-INP benchmark.
 - Added a README figure showing generated subcatchments, conduits, junctions, and outfall from the raw GeoPackage benchmark.

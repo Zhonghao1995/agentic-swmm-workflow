@@ -23,7 +23,7 @@ Key folders:
 - `examples/calibration/` → minimal calibration example inputs
 - `skills/swmm-uncertainty/examples/` → fuzzy membership and uncertainty propagation examples
 - `docs/` → figures, repo documentation, and OpenClaw execution-path notes
-- `openclaw/memory/` → public identification, soul, operational, ordered workflow, evidence, and user-bridge memory for OpenClaw/Hermes context preload
+- `agentic-ai/memory/` → public identification, soul, operational, ordered workflow, evidence, and user-bridge memory for Codex, OpenClaw, Hermes, and compatible Agentic AI runtimes
 
 ## Working project (larger local development directory)
 Path:

@@ -136,7 +136,7 @@ The top-level execution contract still lives in:
 ```text
 skills/swmm-end-to-end/SKILL.md
 docs/openclaw-execution-path.md
-openclaw/memory/
+agentic-ai/memory/
 ```
 
 Codex can follow the same skill contract locally. OpenClaw and Hermes can use the same contract as external orchestration runtimes.

@@ -146,10 +146,10 @@ Codex can serve as the primary local development runtime for this repository: it
 
 OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-centered agent runs outside the Codex development environment.
 
-For agent-orchestrated runs, preload the public memory package and then use the top-level end-to-end skill:
+For agent-orchestrated runs, preload the Agentic AI memory package and then use the top-level end-to-end skill:
 
 ```text
-openclaw/memory/
+agentic-ai/memory/
 skills/swmm-end-to-end/SKILL.md
 ```
 

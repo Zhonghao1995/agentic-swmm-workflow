@@ -20,22 +20,22 @@ Use one top-level OpenClaw skill to call the existing SWMM module tools in a sta
 
 ## Memory layer
 
-Before loading the `swmm-end-to-end` skill, OpenClaw or Hermes should load the project memory files in:
+Before loading the `swmm-end-to-end` skill, Codex, OpenClaw, Hermes, or another compatible Agentic AI runtime should load the project memory files in:
 
 ```text
-openclaw/memory/
+agentic-ai/memory/
 ```
 
 Recommended order:
 
-1. `openclaw/memory/identification_memory.md`
-2. `openclaw/memory/soul.md`
-3. `openclaw/memory/operational_memory.md`
-4. `openclaw/memory/modeling_workflow_memory.md`
-5. `openclaw/memory/evidence_memory.md`
-6. `openclaw/memory/user_bridge_memory.md`
+1. `agentic-ai/memory/identification_memory.md`
+2. `agentic-ai/memory/soul.md`
+3. `agentic-ai/memory/operational_memory.md`
+4. `agentic-ai/memory/modeling_workflow_memory.md`
+5. `agentic-ai/memory/evidence_memory.md`
+6. `agentic-ai/memory/user_bridge_memory.md`
 
-This memory layer gives a public OpenClaw/Hermes user stable project identity, modelling posture, evidence boundaries, and first-run behavior before the agent starts calling SWMM module tools. It is not a new runtime, does not depend on the maintainer's private local workspace, and should not bypass this execution path.
+This memory layer gives a public Agentic AI user stable project identity, modelling posture, evidence boundaries, and first-run behavior before the agent starts calling SWMM module tools. It is not a new runtime, does not depend on the maintainer's private local workspace, and should not bypass this execution path.
 
 ## Full modular path
 

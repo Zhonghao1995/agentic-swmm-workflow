@@ -26,7 +26,7 @@ OpenClaw, Hermes, or another compatible runtime should place this memory layer b
 
 ```text
 public agent runtime
-  -> openclaw/memory/*.md
+  -> agentic-ai/memory/*.md
   -> skills/swmm-end-to-end/SKILL.md
   -> module skills and MCP tools
   -> deterministic Python/SWMM execution
