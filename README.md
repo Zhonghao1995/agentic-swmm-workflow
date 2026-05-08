@@ -158,6 +158,14 @@ This path validates execution, direct SWMM comparison, node-level QA, plotting, 
 python3 scripts/benchmarks/run_tecnopolo_199401.py
 ```
 
+### Prior Monte Carlo uncertainty smoke
+
+Early model-parameter uncertainty preview: Tecnopolo HORTON parameters are perturbed before rerunning SWMM. This is not calibration; the uncertainty code is still under development.
+
+<p align="center">
+  <img src="docs/figs/tecnopolo_mc_uncertainty_flow_envelope_readme.png" alt="Tecnopolo prior Monte Carlo uncertainty rainfall and flow envelope at J6" width="900" />
+</p>
+
 ### Optional INP-derived raw adapter benchmark
 
 This path fetches a public `generate_swmm_inp` fixture, extracts raw-like GIS/CSV inputs from its open SWMM input file, and runs the Agentic SWMM modular path from those derived inputs.
