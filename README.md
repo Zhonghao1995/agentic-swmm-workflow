@@ -116,65 +116,17 @@ The workflow has three connected layers: execution, modeling memory, and control
 
 ## Validation snapshot
 
-The repository includes benchmark paths with different evidence boundaries.
+The repository includes runnable benchmarks and research previews with different evidence boundaries. The README keeps only the index; figures, commands, and boundary notes live in [Validation evidence](docs/validation-evidence.md).
 
-### Information-loss-guided subcatchment partition
+| Path | What it shows | Evidence boundary |
+| --- | --- | --- |
+| [Information-loss-guided subcatchment partition](docs/validation-evidence.md#information-loss-guided-subcatchment-partition) | QGIS-to-Agentic SWMM preprocessing using entropy and fuzzy-similarity concepts | GIS preprocessing concept, not a calibrated SWMM performance claim |
+| [Raw GeoPackage-to-INP benchmark](docs/validation-evidence.md#raw-geopackage-to-inp-benchmark) | Public TUFLOW GeoPackage layers converted into SWMM-ready artifacts, QA, and audit | Structured raw GIS path, not arbitrary CAD/GIS recognition |
+| [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
+| [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
+| [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
 
-This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions the TodCreek watershed before SWMM open-channel simulation using entropy theory, rather than only fixed area thresholds. This innovative spatial discretization method reduces information loss during simplification, improves the representation of spatial heterogeneity, and preserves SWMM’s model structure.
-
-<p align="center">
-  <img src="docs/figs/information_entropy_subcatchment_partition_readme.png" alt="Entropy and fuzzy-similarity guided subcatchment partition showing alternative watershed discretizations before SWMM simulation" width="900" />
-</p>
-
-Scientific basis: Zhang, Z., & Valeo, C. (2026), [*Quantifying uncertainty in flowrate modelling using spatially defined fuzzy entropy based on hydrological processes in a catchment*](https://doi.org/10.1016/j.jhydrol.2025.134447), *Journal of Hydrology*, 664, 134447.
-
-Evidence boundary: this figure demonstrates the GIS preprocessing and information-loss-based subcatchment partition concept. It is not a calibrated SWMM performance claim.
-
-### Raw GeoPackage-to-INP benchmark
-
-This path converts public TUFLOW SWMM Module 03 GeoPackage layers into SWMM-ready artifacts before running QA and audit.
-
-<p align="center">
-  <img src="docs/figs/tuflow_swmm_module03_raw_layers.png" alt="TUFLOW SWMM Module 03 raw GeoPackage layers converted into Agentic SWMM subcatchments, conduits, junctions, and outfall" width="520" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
-```
-
-### Prepared-input SWMM benchmark
-
-This path validates execution, direct SWMM comparison, node-level QA, plotting, and audit artifacts for an external 40-subcatchment SWMM model from the public Tecnopolo dataset. The layout figure is generated from the prepared INP coordinates, conduits, outfalls, rain gage, and subcatchment routing fields; the hydrograph is checked against a direct `swmm5` baseline.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_prepared_layout.png" alt="Tecnopolo prepared-input SWMM layout with 40 subcatchments routed through junctions, conduits, outfalls, and one rain gage" width="760" />
-</p>
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tecnopolo_199401.py
-```
-
-### Prior Monte Carlo uncertainty smoke
-
-Early model-parameter uncertainty preview: Tecnopolo HORTON parameters are perturbed before rerunning SWMM. This is not calibration; the uncertainty code is still under development.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_mc_uncertainty_flow_envelope_readme.png" alt="Tecnopolo prior Monte Carlo uncertainty rainfall and flow envelope at J6" width="900" />
-</p>
-
-### Optional INP-derived raw adapter benchmark
-
-This path fetches a public `generate_swmm_inp` fixture, extracts raw-like GIS/CSV inputs from its open SWMM input file, and runs the Agentic SWMM modular path from those derived inputs.
-
-```bash
-python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
-```
-
-More details: [Validation evidence](docs/validation-evidence.md), [TUFLOW example](examples/tuflow-swmm-module03/README.md), and [Tecnopolo example](examples/tecnopolo/README.md).
+Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
 ## Audit and research memory
 

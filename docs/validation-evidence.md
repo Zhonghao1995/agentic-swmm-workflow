@@ -4,7 +4,19 @@ This document keeps the detailed benchmark and verification notes out of the REA
 
 ## Benchmark paths
 
-Agentic SWMM currently includes three benchmark paths that test different parts of the workflow, plus additional acceptance and fallback checks.
+Agentic SWMM includes runnable benchmark paths, research previews, and smoke tests that exercise different parts of the workflow. Each path has its own evidence boundary.
+
+## Information-loss-guided subcatchment partition
+
+This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions the TodCreek watershed before SWMM open-channel simulation using entropy theory, rather than only fixed area thresholds. The aim is to reduce information loss during simplification, improve the representation of spatial heterogeneity, and preserve SWMM's model structure.
+
+<p align="center">
+  <img src="figs/information_entropy_subcatchment_partition_readme.png" alt="Entropy and fuzzy-similarity guided subcatchment partition showing alternative watershed discretizations before SWMM simulation" width="900" />
+</p>
+
+Scientific basis: Zhang, Z., & Valeo, C. (2026), [*Quantifying uncertainty in flowrate modelling using spatially defined fuzzy entropy based on hydrological processes in a catchment*](https://doi.org/10.1016/j.jhydrol.2025.134447), *Journal of Hydrology*, 664, 134447.
+
+Evidence boundary: this figure demonstrates the GIS preprocessing and information-loss-based subcatchment partition concept. It is not a calibrated SWMM performance claim.
 
 ## Raw GeoPackage-to-INP benchmark
 
@@ -53,6 +65,22 @@ python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
 ```
 
 Evidence boundary: this is not a greenfield watershed case from DEM, land-use, soil, and drainage-asset source files. Its source is an existing public SWMM `.inp`; the benchmark is useful for testing raw-like adapter handoff and modular reconstruction, not for claiming independent watershed delineation or hydrologic validation.
+
+## Prior Monte Carlo uncertainty smoke
+
+This early model-parameter uncertainty preview perturbs Tecnopolo HORTON parameters before rerunning SWMM. It is useful for checking parameter-sampling mechanics, rerun orchestration, and envelope plotting.
+
+<p align="center">
+  <img src="figs/tecnopolo_mc_uncertainty_flow_envelope_readme.png" alt="Tecnopolo prior Monte Carlo uncertainty rainfall and flow envelope at J6" width="900" />
+</p>
+
+Run:
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py --samples 20 --seed 42 --node OUT_0 --scan-nodes --entropy-nodes J6 OUT_0
+```
+
+Evidence boundary: this is a prior uncertainty smoke test, not calibration. It does not use observed-flow data or claim calibrated predictive uncertainty.
 
 ## Additional runnable paths
 
