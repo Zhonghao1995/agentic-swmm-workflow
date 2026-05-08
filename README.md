@@ -11,10 +11,10 @@
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
     <img src="https://img.shields.io/github/v/release/Zhonghao1995/agentic-swmm-workflow?label=release&color=1F6FEB" alt="latest release" />
   </a>
-  <a href="#try-it-in-one-command">
-    <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
+  <a href="#one-command-options">
+    <img src="https://img.shields.io/badge/install-options-0B74DE" alt="install options" />
   </a>
-  <a href="#try-it-in-one-command">
+  <a href="#try-it-with-docker">
     <img src="https://img.shields.io/badge/docker-reproducible-2496ED" alt="Docker reproducible environment" />
   </a>
   <a href="https://github.com/USEPA/Stormwater-Management-Model">
@@ -31,7 +31,7 @@
 **Agentic SWMM for reproducible stormwater modeling**<br>
 *[Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
-**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+**A five-minute EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
 Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
@@ -44,36 +44,6 @@ License: **MIT**
 
 Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
 
-## Try it in one command
-
-Choose the path that matches your environment.
-
-### Method 1. Docker recommended
-
-Use this when you want the most reproducible path and do not want to install Python packages, SWMM5, Node, or GIS dependencies locally.
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/docker-bootstrap.sh)"
-```
-
-Requirements: Docker Desktop or Docker Engine.
-
-### Method 2. macOS / Linux local install
-
-Use this when you want a local development environment.
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
-```
-
-### Method 3. Windows PowerShell local install
-
-Run PowerShell as Administrator.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
-```
-
 ## Why this project exists
 
 Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
@@ -84,11 +54,46 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## What makes it different
 
-- **One-command onboarding:** install the workflow and SWMM engine with the bootstrap script.
+- **Quick onboarding:** start from an explicit Docker run, or use local bootstrap scripts after reviewing them.
 - **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
 - **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
 - **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
+
+## Try it with Docker
+
+For the reproducible path, install Docker Desktop or Docker Engine, then run:
+
+```bash
+mkdir -p agentic-swmm-runs
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
+```
+
+Artifacts are written to `agentic-swmm-runs`.
+
+## One command options
+
+The repository also includes one-command setup scripts for local installs. Review the script first, then run it if you are comfortable with what it does.
+
+<details>
+<summary>macOS / Linux local install</summary>
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
+```
+
+</details>
+
+<details>
+<summary>Windows PowerShell local install</summary>
+
+Run PowerShell as Administrator.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
+```
+
+</details>
 
 ## Workflow
 
