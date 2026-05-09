@@ -42,6 +42,8 @@ This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the wor
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
+Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://aiswmm.com/)
+
 Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
 
 ## Why this project exists
