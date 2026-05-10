@@ -89,10 +89,17 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swm
 <details>
 <summary>Windows PowerShell local install</summary>
 
-Run PowerShell as Administrator.
+Run PowerShell as Administrator. For a fresh install, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
+```
+
+If you already cloned the repository, run the local installer from the checkout instead:
+
+```powershell
+cd agentic-swmm-workflow
+.\scripts\install.ps1 -Yes
 ```
 
 </details>
