@@ -14,11 +14,25 @@ import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "../../../..");
 const plotPy = path.resolve(__dirname, "../plot_rain_runoff_si.py");
+
+function resolvePython() {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  const candidates = process.platform === "win32"
+    ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")]
+    : [path.join(repoRoot, ".venv", "bin", "python")];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+const pythonCmd = resolvePython();
 
 function runPy(args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [plotPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(pythonCmd, [plotPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));

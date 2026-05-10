@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from swmmtoolbox import extract
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PYTHON = sys.executable
 EXAMPLE_DIR = REPO_ROOT / "examples" / "tecnopolo"
 DEFAULT_RUN_DIR = REPO_ROOT / "runs" / "benchmarks" / "tecnopolo-199401-prepared"
 NODE_TARGET = "J22"
@@ -195,7 +197,7 @@ def main() -> None:
     run_cmd(["swmm5", str(inp), str(direct_dir / "model.rpt"), str(direct_dir / "model.out")], stdout=direct_dir / "stdout.txt", stderr=direct_dir / "stderr.txt")
 
     run_cmd([
-        "python3",
+        PYTHON,
         "skills/swmm-runner/scripts/swmm_runner.py",
         "run",
         "--inp",
@@ -207,19 +209,19 @@ def main() -> None:
     ])
 
     runner_rpt = run_dir / "06_runner" / "model.rpt"
-    peak = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", OUTFALL_TARGET])
-    continuity = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(runner_rpt)])
+    peak = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", OUTFALL_TARGET])
+    continuity = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(runner_rpt)])
     write_json(run_dir / "07_qa" / "runner_peak.json", peak)
     write_json(run_dir / "07_qa" / "runner_continuity.json", continuity)
 
-    node_peak = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", NODE_TARGET])
+    node_peak = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", NODE_TARGET])
     write_json(run_dir / "07_qa" / f"node_{NODE_TARGET}_peak.json", node_peak)
     consistency = compare_direct_and_runner(run_dir)
     node_validation = validate_internal_node(run_dir)
 
     for node in [OUTFALL_TARGET, NODE_TARGET]:
         run_cmd([
-            "python3",
+            PYTHON,
             "skills/swmm-plot/scripts/plot_rain_runoff_si.py",
             "--inp",
             str(inp),
@@ -247,7 +249,7 @@ def main() -> None:
 
     write_top_manifest(run_dir, inp)
     run_cmd([
-        "python3",
+        PYTHON,
         "skills/swmm-experiment-audit/scripts/audit_run.py",
         "--run-dir",
         str(run_dir),
