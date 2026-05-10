@@ -52,6 +52,13 @@ def write_json(path: Path, obj: Any) -> None:
     path.write_text(json.dumps(obj, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def safe_name(value: Any) -> str:
+    text = str(value or "run").strip()
+    cleaned = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in text)
+    cleaned = "-".join(part for part in cleaned.split("-") if part)
+    return cleaned or "run"
+
+
 def relpath(path: Path, root: Path) -> str:
     try:
         return str(path.resolve().relative_to(root.resolve()))
@@ -365,6 +372,83 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
     return "\n".join(lines)
 
 
+def render_run_memory_note(record: dict[str, Any], generated_at: str) -> str:
+    metrics = record.get("metrics") if isinstance(record.get("metrics"), dict) else {}
+    peak = metrics.get("peak_flow") if isinstance(metrics, dict) else None
+    continuity = metrics.get("continuity_error") if isinstance(metrics, dict) else None
+    lines = [
+        f"# Run Memory: {record.get('run_id')}",
+        "",
+        f"Generated at UTC: `{generated_at}`",
+        "",
+        "## Run",
+        "",
+        f"- Run ID: `{record.get('run_id')}`",
+        f"- Case: `{record.get('case_name')}`",
+        f"- Workflow: `{record.get('workflow_mode')}`",
+        f"- Run directory: `{record.get('run_dir')}`",
+        f"- Audit status: `{record.get('audit_status')}`",
+        f"- QA status: `{record.get('qa_status')}`",
+        f"- SWMM return code: `{record.get('swmm_return_code')}`",
+        "",
+        "## Metrics",
+        "",
+    ]
+    if isinstance(peak, dict):
+        lines.extend(
+            [
+                f"- Peak flow node: `{peak.get('node')}`",
+                f"- Peak flow value: `{peak.get('value')}` `{peak.get('unit')}`",
+                f"- Peak flow time: `{peak.get('time_hhmm')}`",
+                f"- Peak source: `{peak.get('source_section')}`",
+            ]
+        )
+    else:
+        lines.append("- Peak flow: missing")
+    if isinstance(continuity, dict):
+        lines.append(f"- Continuity error: `{json.dumps(continuity.get('values'), sort_keys=True)}`")
+    else:
+        lines.append("- Continuity error: missing")
+    lines.extend(["", "## Evidence Boundary", ""])
+    notes = record.get("evidence_boundary_notes") or []
+    if notes:
+        lines.extend(f"- {note}" for note in notes)
+    else:
+        lines.append("- No additional evidence-boundary note was recorded.")
+    lines.extend(["", "## Failure Patterns", ""])
+    for pattern in record.get("failure_patterns") or ["unknown"]:
+        lines.append(f"- `{pattern}`")
+    lines.extend(["", "## Improvement Signal", ""])
+    if has_detected_failure(record):
+        lines.append("- This run should be reviewed for possible skill, MCP, CLI, documentation, or benchmark improvements.")
+    else:
+        lines.append("- No failure-driven improvement signal was detected for this run.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def write_memory_snapshots(out_dir: Path, records: list[dict[str, Any]], index: dict[str, Any], generated_at: str) -> Path:
+    stamp = snapshot_stamp(generated_at)
+    snapshot_dir = out_dir / "snapshots" / stamp
+    write_json(snapshot_dir / "modeling_memory_index.json", index)
+    write_text(snapshot_dir / "modeling_memory_index.md", render_index_md(records, generated_at))
+    write_text(snapshot_dir / "lessons_learned.md", render_lessons(records, generated_at))
+    write_text(snapshot_dir / "skill_update_proposals.md", render_proposals(records, generated_at))
+    write_text(snapshot_dir / "benchmark_verification_plan.md", render_benchmark_plan(generated_at))
+    return snapshot_dir
+
+
+def write_by_run_memory(out_dir: Path, records: list[dict[str, Any]], generated_at: str) -> None:
+    for record in records:
+        run_dir = out_dir / "by-run" / safe_name(record.get("run_id"))
+        write_json(run_dir / "memory_record.json", record)
+        write_text(run_dir / "memory_note.md", render_run_memory_note(record, generated_at))
+
+
+def snapshot_stamp(generated_at: str) -> str:
+    return generated_at.replace("+00:00", "Z").replace("-", "").replace(":", "")
+
+
 def repeated_items(records: list[dict[str, Any]], key: str) -> list[tuple[str, int]]:
     counter: Counter[str] = Counter()
     for record in records:
@@ -638,6 +722,8 @@ def main() -> int:
     write_text(out_dir / "lessons_learned.md", render_lessons(records, generated_at))
     write_text(out_dir / "skill_update_proposals.md", render_proposals(records, generated_at))
     write_text(out_dir / "benchmark_verification_plan.md", render_benchmark_plan(generated_at))
+    snapshot_dir = write_memory_snapshots(out_dir, records, index, generated_at)
+    write_by_run_memory(out_dir, records, generated_at)
 
     obsidian_used = False
     if args.obsidian_dir:
@@ -648,6 +734,8 @@ def main() -> int:
     print(f"audit records found: {len(records)}")
     print(f"runs with detected failures: {failure_count}")
     print(f"output directory: {out_dir}")
+    print(f"snapshot directory: {snapshot_dir}")
+    print(f"by-run memory directory: {out_dir / 'by-run'}")
     print(f"obsidian export used: {'yes' if obsidian_used else 'no'}")
     return 0
 

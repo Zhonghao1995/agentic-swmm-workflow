@@ -312,7 +312,9 @@ def build_qa_checks(
     checks: list[dict[str, Any]] = []
     validation = builder_manifest.get("validation")
     if isinstance(validation, dict):
-        validation_ok = not any(bool(v) for v in validation.values())
+        validation_ok = validation.get("status") == "pass"
+        if "status" not in validation:
+            validation_ok = not any(bool(v) for v in validation.values())
         checks.append(
             {
                 "id": "builder_input_validation",
@@ -471,6 +473,9 @@ def collect_run(
     acceptance_report = read_json(acceptance_report_path)
     builder_manifest = read_json(builder_manifest_path) if builder_manifest_path else {}
     runner_manifest = read_json(runner_manifest_path) if runner_manifest_path else {}
+    if not runner_manifest and any(key in top_manifest for key in ("files", "metrics", "return_code")):
+        runner_manifest = top_manifest
+        runner_manifest_path = top_manifest_path
     network_qa = read_json(network_qa_path) if network_qa_path else {}
     continuity_qa = read_json(continuity_qa_path) if continuity_qa_path else {}
     peak_qa = read_json(peak_qa_path) if peak_qa_path else {}

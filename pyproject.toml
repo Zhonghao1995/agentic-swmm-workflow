@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-swmm-workflow"
+version = "0.5.0"
+description = "Unified CLI for reproducible and auditable Agentic SWMM workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Zhonghao Zhang" },
+  { name = "Caterina Valeo" },
+]
+dependencies = [
+  "matplotlib",
+  "numpy",
+  "swmmtoolbox",
+]
+
+[project.scripts]
+agentic-swmm = "agentic_swmm.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agentic_swmm*"]

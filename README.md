@@ -128,6 +128,34 @@ By default, the Windows installer downloads the USEPA SWMM `5.2.4` solver zip in
 
 </details>
 
+## Unified CLI execution layer
+
+The agentic workflow remains centered on Skills, MCP tools, audit records, Obsidian-compatible notes, and modeling memory. The `agentic-swmm` CLI is a stable execution layer for humans and agent runtimes so common actions do not depend on remembering many lower-level script paths.
+
+The local installers now install the editable Python package and expose this command inside the repository virtual environment:
+
+```bash
+agentic-swmm doctor
+```
+
+For an existing checkout or development environment, reinstall the editable package explicitly if the command is missing:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\agentic-swmm.exe doctor
+```
+
+Prepared-input example:
+
+```bash
+agentic-swmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo-cli --node OUT_0
+agentic-swmm audit --run-dir runs/tecnopolo-cli
+agentic-swmm plot --run-dir runs/tecnopolo-cli --node OUT_0
+agentic-swmm memory --runs-dir runs --out-dir memory/modeling-memory
+```
+
+The CLI currently wraps the existing validated scripts. Lower-level scripts and MCP tools remain the right interface for module development, debugging, GIS preprocessing, parameter mapping, network import, calibration, and uncertainty workflows that are not yet exposed through the CLI.
+
 ## Workflow
 
 <p align="center">
@@ -187,6 +215,8 @@ skills/swmm-end-to-end/SKILL.md
 ```
 
 The top-level skill defines when to use the full modular path, when to use the prepared-input path, which QA gates must pass, and when to stop instead of inventing missing inputs.
+
+For common prepared-input execution, audit, plotting, and memory summarization, the skill should prefer the unified `agentic-swmm` CLI. MCP tools remain available for the modular stages and for agent runtimes that need fine-grained tool calls.
 
 More details: [Codex runtime path](docs/codex-runtime.md), [OpenClaw execution path](docs/openclaw-execution-path.md), [Skill installation](integrations/skills/README.md), and [MCP runtime integration](integrations/mcp/README.md).
 
