@@ -64,25 +64,13 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## Try it in one command
 
-Docker:
+Recommended Docker path:
 
 ```bash
 mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.0 acceptance
 ```
 
-macOS / Linux:
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
-```
-
-Windows PowerShell:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
-```
-
-Docker writes artifacts to `agentic-swmm-runs`. Local installers set up the repository environment and the `agentic-swmm` CLI. Details: [Installation and CLI guide](docs/installation.md).
+Docker writes artifacts to `agentic-swmm-runs`. Local installation is also available for macOS, Linux, and Windows, but review the install script before running it. Details: [Installation and CLI guide](docs/installation.md).
 
 ## Workflow
 

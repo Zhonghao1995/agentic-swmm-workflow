@@ -1,6 +1,6 @@
 # Installation and CLI Guide
 
-This page keeps detailed setup notes out of the README. For most users, start with Docker. Use local installation when you need to edit skills, run MCP servers, or develop the Python CLI.
+This page keeps detailed setup notes out of the README. For most users, Docker is the recommended path because it keeps the SWMM solver and Python environment reproducible. Use local installation when you need to edit skills, run MCP servers, or develop the Python CLI.
 
 ## Docker
 
@@ -17,7 +17,13 @@ The image pins USEPA SWMM to `v5.2.4` for reproducible solver builds.
 
 ## macOS and Linux
 
-Review the bootstrap script first if needed, then run:
+Review the bootstrap script before running it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh
+```
+
+Then run:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
@@ -31,7 +37,13 @@ For an existing checkout, run the local installer directly:
 
 ## Windows PowerShell
 
-For a fresh install, run:
+Review the bootstrap script before running it:
+
+```powershell
+(New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1')
+```
+
+Then run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
