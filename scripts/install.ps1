@@ -114,6 +114,16 @@ function Add-SwmmShim {
 
     $shimDir = Join-Path $RepoRoot '.local\bin'
     New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+    $targetDir = Split-Path -Parent $Target
+    if ([System.IO.Path]::GetExtension($Target) -ieq '.exe') {
+        Get-ChildItem -Path $targetDir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @('.exe', '.dll') } |
+            ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $shimDir $_.Name) -Force
+            }
+        Copy-Item -LiteralPath $Target -Destination (Join-Path $shimDir 'swmm5.exe') -Force
+    }
+
     $shimPath = Join-Path $shimDir 'swmm5.cmd'
     @(
         '@echo off'
@@ -156,6 +166,33 @@ function Find-SwmmExecutable {
     return $target
 }
 
+function Install-SwmmReleaseZip {
+    $releaseTag = "v$SwmmVersion"
+    $archiveName = "swmm-solver-$SwmmVersion-win64.zip"
+    $downloadUrl = "https://github.com/USEPA/Stormwater-Management-Model/releases/download/$releaseTag/$archiveName"
+    $installRoot = Join-Path $RepoRoot ".local\swmm\$SwmmVersion"
+    $archivePath = Join-Path $env:TEMP $archiveName
+
+    Write-Step "Downloading USEPA SWMM $SwmmVersion solver from $downloadUrl"
+    New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+    Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath
+
+    Write-Step "Extracting SWMM $SwmmVersion to $installRoot"
+    $extractDir = Join-Path $installRoot 'extract'
+    if (Test-Path $extractDir) {
+        Remove-Item -Recurse -Force $extractDir
+    }
+    Expand-Archive -Path $archivePath -DestinationPath $extractDir -Force
+
+    $runswmm = Get-ChildItem -Path $extractDir -Filter runswmm.exe -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $runswmm) {
+        Fail "Unable to locate runswmm.exe in downloaded SWMM archive: $downloadUrl"
+    }
+
+    return $runswmm
+}
+
 function Ensure-Swmm {
     if ($SkipSwmm) {
         return
@@ -171,7 +208,9 @@ function Ensure-Swmm {
     }
 
     if (-not $InstallSystemDeps) {
-        Fail "swmm5 is not available. Install EPA SWMM and pass -SwmmExe, use -SkipSwmm, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+        $downloaded = Install-SwmmReleaseZip
+        Add-SwmmShim -Target $downloaded
+        return
     }
 
     Ensure-Chocolatey
