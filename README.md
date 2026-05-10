@@ -62,99 +62,27 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
 - **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
 
-## Try it with Docker
+## Try it in one command
 
-For the reproducible path, install Docker Desktop or Docker Engine, then run:
+Docker:
 
 ```bash
-mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.0 acceptance
+mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.0 acceptance
 ```
 
-Artifacts are written to `agentic-swmm-runs`.
-
-## One command options
-
-The repository also includes one-command setup scripts for local installs. Review the script first, then run it if you are comfortable with what it does.
-
-<details>
-<summary>macOS / Linux local install</summary>
+macOS / Linux:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
 ```
 
-</details>
-
-<details>
-<summary>Windows PowerShell local install</summary>
-
-Run PowerShell as Administrator only if you want the installer to add missing system dependencies through Chocolatey. For a fresh install, run:
+Windows PowerShell:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
 ```
 
-If you already cloned the repository, run the local installer from the checkout instead:
-
-```powershell
-cd agentic-swmm-workflow
-.\scripts\install.ps1 -Yes
-```
-
-To install only user-space Python and MCP dependencies before configuring SWMM, use:
-
-```powershell
-.\scripts\install.ps1 -Yes -SkipSwmm
-```
-
-The same option can be passed to the bootstrap script:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))) -SkipSwmm"
-```
-
-If EPA SWMM is already installed outside PATH, pass the executable explicitly:
-
-```powershell
-.\scripts\install.ps1 -Yes -SwmmExe "C:\Path\To\runswmm.exe"
-```
-
-By default, the Windows installer downloads the USEPA SWMM `5.2.4` solver zip into `.local\swmm`, matching the Docker image's `SWMM_REF=v5.2.4`. To use Chocolatey instead:
-
-```powershell
-.\scripts\install.ps1 -Yes -InstallSystemDeps -SwmmVersion 5.2.4
-```
-
-</details>
-
-## Unified CLI execution layer
-
-The agentic workflow remains centered on Skills, MCP tools, audit records, Obsidian-compatible notes, and modeling memory. The `agentic-swmm` CLI is a stable execution layer for humans and agent runtimes so common actions do not depend on remembering many lower-level script paths.
-
-The local installers now install the editable Python package and expose this command inside the repository virtual environment:
-
-```bash
-agentic-swmm doctor
-```
-
-For an existing checkout or development environment, reinstall the editable package explicitly if the command is missing:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\agentic-swmm.exe doctor
-```
-
-Prepared-input example:
-
-```bash
-agentic-swmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo-cli --node OUT_0
-agentic-swmm audit --run-dir runs/tecnopolo-cli
-agentic-swmm plot --run-dir runs/tecnopolo-cli --node OUT_0
-agentic-swmm memory --runs-dir runs --out-dir memory/modeling-memory
-```
-
-The CLI currently wraps the existing validated scripts. Lower-level scripts and MCP tools remain the right interface for module development, debugging, GIS preprocessing, parameter mapping, network import, calibration, and uncertainty workflows that are not yet exposed through the CLI.
+Docker writes artifacts to `agentic-swmm-runs`. Local installers set up the repository environment and the `agentic-swmm` CLI. Details: [Installation and CLI guide](docs/installation.md).
 
 ## Workflow
 
@@ -223,6 +151,7 @@ More details: [Codex runtime path](docs/codex-runtime.md), [OpenClaw execution p
 ## Documentation map
 
 - [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
+- [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
 - [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
 - [Codex runtime path](docs/codex-runtime.md) - local development, audit, Obsidian, and evidence-review workflow
