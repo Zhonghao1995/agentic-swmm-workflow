@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 show_help() {
   cat <<'USAGE'
-Usage: scripts/install.sh [--yes] [--skip-python] [--skip-mcp] [--skip-swmm] [--help]
+Usage: scripts/install.sh [--yes] [--skip-python] [--skip-mcp] [--skip-swmm] [--swmm-ref REF] [--help]
 
 Bootstrap local dependencies for agentic-swmm-workflow.
 
@@ -13,6 +13,7 @@ Options:
   --skip-python  Skip virtualenv creation and pip installs.
   --skip-mcp     Skip npm installs for skills/*/scripts/mcp packages.
   --skip-swmm    Skip SWMM engine installation/build.
+  --swmm-ref REF  USEPA SWMM Git ref to build. Default: v5.2.4.
   --help         Show this help message.
 USAGE
 }
@@ -34,6 +35,7 @@ YES=0
 SKIP_PYTHON=0
 SKIP_MCP=0
 SKIP_SWMM=0
+SWMM_REF="${SWMM_REF:-v5.2.4}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -41,6 +43,11 @@ while [[ $# -gt 0 ]]; do
     --skip-python) SKIP_PYTHON=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
     --skip-swmm) SKIP_SWMM=1 ;;
+    --swmm-ref)
+      [[ $# -ge 2 ]] || fail "--swmm-ref requires a value"
+      SWMM_REF="$2"
+      shift
+      ;;
     --help|-h)
       show_help
       exit 0
@@ -57,8 +64,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$REPO_ROOT/.venv"
 REQ_FILE="$SCRIPT_DIR/requirements.txt"
 CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/agentic-swmm-workflow"
-SWMM_SRC_DIR="$CACHE_ROOT/swmm-src"
-SWMM_BUILD_DIR="$CACHE_ROOT/swmm-build"
+SWMM_SAFE_REF="${SWMM_REF//\//_}"
+SWMM_SRC_DIR="$CACHE_ROOT/swmm-src-$SWMM_SAFE_REF"
+SWMM_BUILD_DIR="$CACHE_ROOT/swmm-build-$SWMM_SAFE_REF"
 LOCAL_BIN_DIR="$HOME/.local/bin"
 
 detect_platform() {
@@ -214,20 +222,16 @@ build_swmm_from_source() {
   mkdir -p "$CACHE_ROOT"
 
   if [[ ! -d "$SWMM_SRC_DIR/.git" ]]; then
-    log "Cloning USEPA SWMM solver source"
-    git clone --depth 1 https://github.com/USEPA/Stormwater-Management-Model.git "$SWMM_SRC_DIR"
+    log "Cloning USEPA SWMM solver source at $SWMM_REF"
+    git init "$SWMM_SRC_DIR"
+    git -C "$SWMM_SRC_DIR" remote add origin https://github.com/USEPA/Stormwater-Management-Model.git
   else
-    log "Updating cached USEPA SWMM solver source"
-    local upstream_ref
-    upstream_ref="$(git -C "$SWMM_SRC_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-    if [[ -z "$upstream_ref" ]]; then
-      fail "Unable to determine the upstream branch for cached SWMM source in $SWMM_SRC_DIR"
-    fi
-    git -C "$SWMM_SRC_DIR" fetch --depth 1 origin
-    git -C "$SWMM_SRC_DIR" reset --hard "$upstream_ref"
+    log "Updating cached USEPA SWMM solver source at $SWMM_REF"
   fi
+  git -C "$SWMM_SRC_DIR" fetch --depth 1 origin "$SWMM_REF"
+  git -C "$SWMM_SRC_DIR" checkout --detach FETCH_HEAD
 
-  log "Building SWMM solver from source"
+  log "Building SWMM solver from source ($SWMM_REF)"
   cmake -S "$SWMM_SRC_DIR" -B "$SWMM_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
   cmake --build "$SWMM_BUILD_DIR" --config Release -j "${SWMM_BUILD_JOBS:-4}"
 
@@ -323,6 +327,7 @@ Install summary
 - Repo root: $REPO_ROOT
 - Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt)" || echo "skipped (--skip-python)")
 - MCP npm setup: $([[ $SKIP_MCP -eq 0 ]] && echo "installed" || echo "skipped (--skip-mcp)")
+- SWMM ref: $SWMM_REF
 - SWMM check: $(swmm_status)
 
 Next steps

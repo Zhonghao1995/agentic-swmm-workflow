@@ -28,7 +28,7 @@ on:
       source_ref:
         description: "Agentic SWMM Git ref to package into the image"
         required: true
-        default: "v0.3.0"
+        default: "v0.4.1"
       image_tag:
         description: "Optional image tag override"
         required: false
@@ -81,7 +81,7 @@ jobs:
           tags: |
             type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
             type=raw,value=${{ inputs.source_ref }},enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=raw,value=0.3.0,enable=${{ github.event_name == 'workflow_dispatch' && inputs.source_ref == 'v0.3.0' }}
+            type=raw,value=0.4.1,enable=${{ github.event_name == 'workflow_dispatch' && inputs.source_ref == 'v0.4.1' }}
             type=ref,event=tag
             type=semver,pattern={{version}}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}

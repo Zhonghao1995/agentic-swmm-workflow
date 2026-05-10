@@ -4,7 +4,8 @@ param(
     [switch]$SkipMcp,
     [switch]$SkipSwmm,
     [switch]$InstallSystemDeps,
-    [string]$SwmmExe
+    [string]$SwmmExe,
+    [string]$SwmmVersion = "5.2.4"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +54,7 @@ if ($SkipMcp) { $installArgs.SkipMcp = $true }
 if ($SkipSwmm) { $installArgs.SkipSwmm = $true }
 if ($InstallSystemDeps) { $installArgs.InstallSystemDeps = $true }
 if ($SwmmExe) { $installArgs.SwmmExe = $SwmmExe }
+if ($SwmmVersion) { $installArgs.SwmmVersion = $SwmmVersion }
 
 if (Test-Path $localInstaller) {
     Write-Step "Using existing checkout in $currentDir"

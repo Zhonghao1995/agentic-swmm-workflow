@@ -68,7 +68,7 @@ For the reproducible path, install Docker Desktop or Docker Engine, then run:
 
 ```bash
 mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.4.1 acceptance
 ```
 
 Artifacts are written to `agentic-swmm-runs`.
@@ -118,6 +118,12 @@ If EPA SWMM is already installed outside PATH, pass the executable explicitly:
 
 ```powershell
 .\scripts\install.ps1 -Yes -SwmmExe "C:\Path\To\runswmm.exe"
+```
+
+By default, the Windows installer asks Chocolatey for EPA SWMM `5.2.4`, matching the Docker image's `SWMM_REF=v5.2.4`. To override it:
+
+```powershell
+.\scripts\install.ps1 -Yes -InstallSystemDeps -SwmmVersion 5.2.4
 ```
 
 </details>

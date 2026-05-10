@@ -4,7 +4,8 @@ param(
     [switch]$SkipMcp,
     [switch]$SkipSwmm,
     [switch]$InstallSystemDeps,
-    [string]$SwmmExe
+    [string]$SwmmExe,
+    [string]$SwmmVersion = "5.2.4"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -175,8 +176,8 @@ function Ensure-Swmm {
 
     Ensure-Chocolatey
     Ensure-Admin
-    Write-Step "Installing SWMM with Chocolatey"
-    choco upgrade swmm -y --no-progress
+    Write-Step "Installing SWMM $SwmmVersion with Chocolatey"
+    choco upgrade swmm --version $SwmmVersion -y --no-progress
     Refresh-ChocolateyEnvironment
     $installed = Find-SwmmExecutable
     if (-not $installed) {
