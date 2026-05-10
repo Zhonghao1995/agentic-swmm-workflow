@@ -18,11 +18,7 @@ on:
       - ".dockerignore"
       - ".github/workflows/docker.yml"
       - "Dockerfile"
-      - "examples/**"
-      - "openclaw/**"
-      - "requirements.txt"
-      - "scripts/**"
-      - "skills/**"
+      - "scripts/docker*"
   workflow_dispatch:
     inputs:
       source_ref:
