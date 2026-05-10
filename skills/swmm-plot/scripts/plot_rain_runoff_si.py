@@ -118,15 +118,15 @@ def main():
     # For hyetograph we usually show intensity (mm/hr) inverted.
     if args.rain_kind == 'intensity_mm_per_hr':
         rain_plot = rain_v
-        rain_ylabel = 'Rainfall intensity (mm/h)'
+        rain_ylabel = 'Rainfall intensity\n(mm/h)'
     elif args.rain_kind == 'cumulative_depth_mm':
         rain_plot = np.diff(rain_v, prepend=rain_v[0])
         rain_plot = np.where(rain_plot < 0, 0.0, rain_plot)
-        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
+        rain_ylabel = f'Rainfall depth\n(mm/{int(args.dt_min)} min)'
     else:
         # values are assumed intensity mm/hr by our generator; convert to mm per dt for bar area readability
         rain_plot = rain_v * (args.dt_min / 60.0)
-        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
+        rain_ylabel = f'Rainfall depth\n(mm/{int(args.dt_min)} min)'
 
     # Flow series (SI): CMS = m^3/s
     key = f'node,{args.node},{args.node_attr}'
@@ -134,8 +134,16 @@ def main():
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
 
-    # Figure
-    fig, ax_rain = plt.subplots(figsize=(9, 3.8), dpi=args.dpi)
+    # Separate rainfall and flow panels so the inverted hyetograph cannot
+    # visually overlap the hydrograph.
+    fig, (ax_rain, ax_flow) = plt.subplots(
+        2,
+        1,
+        figsize=(9, 4.6),
+        dpi=args.dpi,
+        sharex=True,
+        gridspec_kw={'height_ratios': [1.0, 1.8], 'hspace': 0.18},
+    )
 
     # Rain bars
     bar_width_days = (args.dt_min / 60.0) / 24.0
@@ -150,15 +158,14 @@ def main():
         zorder=1,
     )
     ax_rain.set_ylabel(rain_ylabel)
-    ax_rain.set_xlabel('Time')
 
     # invert rain axis (hyetograph convention)
     ax_rain.invert_yaxis()
 
-    # Flow line (draw above rain)
-    ax_flow = ax_rain.twinx()
+    # Flow line in a separate panel.
     ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label='Flow', zorder=3)
-    ax_flow.set_ylabel('Flow (m³/s)')
+    ax_flow.set_ylabel('Flow (m$^3$/s)')
+    ax_flow.set_xlabel('Time')
 
     # Focus x-axis: one day or auto-window
     import matplotlib.dates as mdates
@@ -170,12 +177,12 @@ def main():
             t0 = d0.replace(hour=ws.hour, minute=ws.minute)
             t1 = d0.replace(hour=we.hour, minute=we.minute)
             ax_rain.set_xlim(t0, t1)
-            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
         else:
             ax_rain.set_xlim(d0, d0 + timedelta(hours=24))
-            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=3))
-            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=3))
+            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     else:
         nz = np.where(np.asarray(rain_plot) > 0)[0]
         if nz.size:
@@ -183,21 +190,20 @@ def main():
             tmax = rain_t[int(nz.max())]
             pad = timedelta(hours=float(args.pad_hours))
             ax_rain.set_xlim(tmin - pad, tmax + pad)
-            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
+            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
 
     # Ticks inward on both axes
     ax_rain.tick_params(direction='in', which='both', top=True, right=False)
-    ax_flow.tick_params(direction='in', which='both', top=True, right=True)
+    ax_rain.tick_params(labelbottom=False)
+    ax_flow.tick_params(direction='in', which='both', top=True, right=False)
 
     # No title (per spec)
 
-    # Legend: combine
-    h1, l1 = ax_rain.get_legend_handles_labels()
-    h2, l2 = ax_flow.get_legend_handles_labels()
-    ax_flow.legend(h1 + h2, l1 + l2, loc='upper left', framealpha=0.9)
+    ax_rain.legend(loc='upper left', framealpha=0.9)
+    ax_flow.legend(loc='upper left', framealpha=0.9)
 
-    fig.tight_layout()
+    fig.tight_layout(pad=0.8, h_pad=1.4)
     args.out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out_png, dpi=args.dpi)
 

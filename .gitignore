@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 .local/
+integrations/mcp/generated/
 
 # Node
 node_modules/
