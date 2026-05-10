@@ -78,6 +78,14 @@ Generated outputs:
 
 MCP exposes deterministic tools. The agent runtime still needs the project memory and orchestration contract to use those tools correctly.
 
+For Codex skills, install the repository skills first:
+
+```bash
+node scripts/install_codex_skills.mjs
+```
+
+See [Skill installation](../skills/README.md).
+
 Recommended preload order:
 
 1. `agentic-ai/memory/identification_memory.md`
@@ -143,5 +151,4 @@ openclaw mcp set swmm-runner '{"command":"node","args":["/absolute/path/to/Agent
 
 ## Current Boundary
 
-This integration package makes the module MCP servers discoverable and callable by standard stdio MCP clients. It does not automatically install Agentic SWMM into every runtime's private skill registry. The memory files and `swmm-end-to-end` skill remain explicit preload/context inputs for the agent runtime.
-
+This integration package makes the module MCP servers discoverable and callable by standard stdio MCP clients. Skill installation is separate because runtimes store skills in different registries. For Codex, use `scripts/install_codex_skills.mjs`; for Hermes and OpenClaw, preload the memory files and `swmm-end-to-end` skill according to the runtime's skill/context mechanism.
