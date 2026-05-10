@@ -274,6 +274,7 @@ install_python_requirements() {
   log "Installing Python dependencies"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip
   "$VENV_DIR/bin/python" -m pip install -r "$REQ_FILE"
+  "$VENV_DIR/bin/python" -m pip install -e "$REPO_ROOT"
 }
 
 install_mcp_requirements() {
@@ -325,14 +326,15 @@ cat <<SUMMARY
 
 Install summary
 - Repo root: $REPO_ROOT
-- Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt)" || echo "skipped (--skip-python)")
+- Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt + agentic-swmm CLI)" || echo "skipped (--skip-python)")
 - MCP npm setup: $([[ $SKIP_MCP -eq 0 ]] && echo "installed" || echo "skipped (--skip-mcp)")
 - SWMM ref: $SWMM_REF
 - SWMM check: $(swmm_status)
 
 Next steps
 1. Activate the virtualenv: source .venv/bin/activate
-2. Run acceptance: python3 scripts/acceptance/run_acceptance.py --run-id latest
-3. Open report: runs/acceptance/latest/acceptance_report.md
-4. Real-data smoke test: python3 scripts/real_cases/run_todcreek_minimal.py
+2. Check the CLI: agentic-swmm doctor
+3. Run acceptance: agentic-swmm demo acceptance --run-id latest
+4. Open report: runs/acceptance/latest/acceptance_report.md
+5. Real-data smoke test: python3 scripts/real_cases/run_todcreek_minimal.py
 SUMMARY

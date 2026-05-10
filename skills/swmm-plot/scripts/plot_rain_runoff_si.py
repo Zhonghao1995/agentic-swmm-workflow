@@ -97,6 +97,10 @@ def main():
                     help='Optional HH:MM. If provided with --focus-day, x-axis will be limited to this time window within the day.')
     ap.add_argument('--pad-hours', type=float, default=2.0,
                     help='When focus-day is not set, auto-window uses nonzero rainfall extent ± pad-hours.')
+    ap.add_argument('--auto-window-mode', choices=['flow-peak', 'rain', 'full'], default='flow-peak',
+                    help='Auto-window mode when --focus-day is not set. flow-peak keeps long simulations readable.')
+    ap.add_argument('--window-hours', type=float, default=12.0,
+                    help='Total hours shown around the peak flow when --auto-window-mode=flow-peak.')
     args = ap.parse_args()
 
     # Matplotlib styling: Arial 12, ticks inward
@@ -185,13 +189,31 @@ def main():
             ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     else:
         nz = np.where(np.asarray(rain_plot) > 0)[0]
-        if nz.size:
+        if args.auto_window_mode == 'flow-peak' and len(flow_t):
+            peak_idx = int(np.nanargmax(flow_v))
+            center = flow_t[peak_idx]
+            half = timedelta(hours=float(args.window_hours) / 2.0)
+            ax_rain.set_xlim(center - half, center + half)
+            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        elif args.auto_window_mode == 'rain' and nz.size:
             tmin = rain_t[int(nz.min())]
             tmax = rain_t[int(nz.max())]
             pad = timedelta(hours=float(args.pad_hours))
             ax_rain.set_xlim(tmin - pad, tmax + pad)
-            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
+            span_hours = max((tmax - tmin).total_seconds() / 3600.0, 1.0)
+            if span_hours <= 48:
+                ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
+            elif span_hours <= 24 * 10:
+                ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+            else:
+                ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+        else:
+            ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=3))
+            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
 
     # Ticks inward on both axes
     ax_rain.tick_params(direction='in', which='both', top=True, right=False)

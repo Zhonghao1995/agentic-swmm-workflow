@@ -239,6 +239,7 @@ function Install-PythonRequirements {
     $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
     & $venvPython -m pip install --upgrade pip
     & $venvPython -m pip install -r $ReqFile
+    & $venvPython -m pip install -e $RepoRoot
 }
 
 function Install-McpRequirements {
@@ -299,11 +300,12 @@ Ensure-Swmm
 Write-Host ""
 Write-Host "Install summary"
 Write-Host "- Repo root: $RepoRoot"
-Write-Host "- Python setup: $(if ($SkipPython) { 'skipped (--skip-python)' } else { 'installed (.venv + scripts/requirements.txt)' })"
+Write-Host "- Python setup: $(if ($SkipPython) { 'skipped (--skip-python)' } else { 'installed (.venv + scripts/requirements.txt + agentic-swmm CLI)' })"
 Write-Host "- MCP npm setup: $(if ($SkipMcp) { 'skipped (--skip-mcp)' } else { 'installed' })"
 Write-Host "- SWMM check: $(Get-SwmmStatus)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "1. Activate the virtualenv: .\.venv\Scripts\Activate.ps1"
-Write-Host "2. Run acceptance: python scripts/acceptance/run_acceptance.py --run-id latest"
-Write-Host "3. Real-data smoke test: python scripts/real_cases/run_todcreek_minimal.py"
+Write-Host "2. Check the CLI: agentic-swmm doctor"
+Write-Host "3. Run acceptance: agentic-swmm demo acceptance --run-id latest"
+Write-Host "4. Real-data smoke test: python scripts/real_cases/run_todcreek_minimal.py"
