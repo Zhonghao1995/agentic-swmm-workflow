@@ -6,15 +6,30 @@ import { z } from 'zod';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '../../../..');
 const scriptsDir = path.resolve(__dirname, '..');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
 
+function resolvePython() {
+  if (process.env.PYTHON) return process.env.PYTHON;
+  const candidates = process.platform === 'win32'
+    ? [path.join(repoRoot, '.venv', 'Scripts', 'python.exe')]
+    : [path.join(repoRoot, '.venv', 'bin', 'python')];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
+const pythonCmd = resolvePython();
+
 function runPython(script, args) {
-  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync(pythonCmd, [script, ...args], { encoding: 'utf8' });
   if (proc.error) {
     throw new Error(proc.error.message);
   }

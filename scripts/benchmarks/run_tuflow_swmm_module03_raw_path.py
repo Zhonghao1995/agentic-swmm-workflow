@@ -7,12 +7,14 @@ import math
 import sqlite3
 import struct
 import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PYTHON = sys.executable
 CASE_ROOT = (
     REPO_ROOT
     / "runs/raw-case-candidates/tuflow-swmm/TUFLOW_SWMM_Tutorial_Models_QGIS_GPKG/"
@@ -384,7 +386,7 @@ def main() -> None:
     paths = extract_raw_inputs()
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-network/scripts/network_import.py",
             "--conduits",
             str(paths["conduits"]),
@@ -400,7 +402,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-network/scripts/network_qa.py",
             str(RUN_DIR / "04_network/network.json"),
             "--report-json",
@@ -409,7 +411,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-gis/scripts/preprocess_subcatchments.py",
             "--subcatchments-geojson",
             str(paths["subcatchments"]),
@@ -425,7 +427,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-builder/scripts/build_swmm_inp.py",
             "--subcatchments-csv",
             str(RUN_DIR / "01_gis/subcatchments.csv"),
@@ -447,7 +449,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-runner/scripts/swmm_runner.py",
             "run",
             "--inp",
@@ -459,12 +461,12 @@ def main() -> None:
         ]
     )
     continuity = subprocess.check_output(
-        ["python3", "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(RUN_DIR / "06_runner/model.rpt")],
+        [PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(RUN_DIR / "06_runner/model.rpt")],
         cwd=REPO_ROOT,
         text=True,
     )
     peak = subprocess.check_output(
-        ["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(RUN_DIR / "06_runner/model.rpt"), "--node", "Node20"],
+        [PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(RUN_DIR / "06_runner/model.rpt"), "--node", "Node20"],
         cwd=REPO_ROOT,
         text=True,
     )
@@ -487,7 +489,7 @@ def main() -> None:
     write_json(RUN_DIR / "manifest.json", summary)
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-experiment-audit/scripts/audit_run.py",
             "--run-dir",
             str(RUN_DIR),

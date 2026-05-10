@@ -5,11 +5,13 @@ import csv
 import json
 import math
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PYTHON = sys.executable
 SOURCE_REPO_URL = "https://github.com/Jannik-Schilling/generate_swmm_inp.git"
 SOURCE_REPO_COMMIT = "cd881da2df14898a00e3794b010a26c9b8cff8e8"
 SOURCE_REPO_DIR = REPO_ROOT / "runs/raw-case-candidates/generate_swmm_inp_repo"
@@ -545,7 +547,7 @@ def main() -> None:
 
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-network/scripts/network_import.py",
             "--conduits",
             str(paths["conduits"]),
@@ -561,7 +563,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-network/scripts/network_qa.py",
             str(RUN_DIR / "04_network/network.json"),
             "--report-json",
@@ -570,7 +572,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-gis/scripts/preprocess_subcatchments.py",
             "--subcatchments-geojson",
             str(paths["subcatchments"]),
@@ -586,7 +588,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-params/scripts/landuse_to_swmm_params.py",
             "--input",
             str(paths["landuse"]),
@@ -599,7 +601,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-params/scripts/soil_to_greenampt.py",
             "--input",
             str(paths["soil"]),
@@ -612,7 +614,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-params/scripts/merge_swmm_params.py",
             "--landuse-json",
             str(RUN_DIR / "02_params/landuse.json"),
@@ -625,7 +627,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-builder/scripts/build_swmm_inp.py",
             "--subcatchments-csv",
             str(RUN_DIR / "01_gis/subcatchments.csv"),
@@ -647,7 +649,7 @@ def main() -> None:
     )
     run_cmd(
         [
-            "python3",
+            PYTHON,
             "skills/swmm-runner/scripts/swmm_runner.py",
             "run",
             "--inp",
@@ -660,12 +662,12 @@ def main() -> None:
     )
 
     continuity = subprocess.check_output(
-        ["python3", "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(RUN_DIR / "06_runner/model.rpt")],
+        [PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(RUN_DIR / "06_runner/model.rpt")],
         cwd=REPO_ROOT,
         text=True,
     )
     peak = subprocess.check_output(
-        ["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(RUN_DIR / "06_runner/model.rpt"), "--node", "J_4"],
+        [PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(RUN_DIR / "06_runner/model.rpt"), "--node", "J_4"],
         cwd=REPO_ROOT,
         text=True,
     )
