@@ -2,7 +2,9 @@ param(
     [switch]$Yes,
     [switch]$SkipPython,
     [switch]$SkipMcp,
-    [switch]$SkipSwmm
+    [switch]$SkipSwmm,
+    [switch]$InstallSystemDeps,
+    [string]$SwmmExe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,7 +29,7 @@ function Ensure-Admin {
     $current = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($current)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Fail "Run scripts/install.ps1 from an elevated PowerShell session."
+        Fail "Administrator privileges are required for system package installation. Re-run from an elevated PowerShell session, or use -SkipSwmm / -SwmmExe for user-space setup."
     }
 }
 
@@ -46,6 +48,7 @@ function Ensure-Chocolatey {
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         return
     }
+    Ensure-Admin
     Write-Step "Installing Chocolatey"
     Set-ExecutionPolicy Bypass -Scope Process -Force
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -65,6 +68,7 @@ function Refresh-ChocolateyEnvironment {
 
 function Ensure-WindowsToolchain {
     Ensure-Chocolatey
+    Ensure-Admin
     Write-Step "Installing Windows toolchain packages with Chocolatey"
     choco upgrade git python nodejs-lts -y --no-progress
     Refresh-ChocolateyEnvironment
@@ -81,8 +85,11 @@ function Resolve-PythonCommand {
 }
 
 function Ensure-Python {
-    if (Get-Command python -ErrorAction SilentlyContinue -or Get-Command py -ErrorAction SilentlyContinue) {
+    if ((Get-Command python -ErrorAction SilentlyContinue) -or (Get-Command py -ErrorAction SilentlyContinue)) {
         return
+    }
+    if (-not $InstallSystemDeps) {
+        Fail "Python is not available. Install Python, or re-run with -InstallSystemDeps from an elevated PowerShell session."
     }
     Ensure-WindowsToolchain
 }
@@ -91,12 +98,43 @@ function Ensure-Node {
     if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
         return
     }
+    if (-not $InstallSystemDeps) {
+        Fail "Node.js/npm are not available. Install Node.js, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+    }
     Ensure-WindowsToolchain
 }
 
-function Ensure-SwmmShim {
+function Add-SwmmShim {
+    param([string]$Target)
+
+    if (-not (Test-Path $Target)) {
+        Fail "SWMM executable does not exist: $Target"
+    }
+
+    $shimDir = Join-Path $RepoRoot '.local\bin'
+    New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+    $shimPath = Join-Path $shimDir 'swmm5.cmd'
+    @(
+        '@echo off'
+        "`"$Target`" %*"
+    ) | Set-Content -Path $shimPath -Encoding ASCII
+
+    $env:Path = "$shimDir;$env:Path"
+    Write-Step "Created swmm5 shim at $shimPath"
+}
+
+function Find-SwmmExecutable {
+    if ($SwmmExe) {
+        return $SwmmExe
+    }
+
+    $cmd = Get-Command swmm5 -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
     if (Get-Command swmm5 -ErrorAction SilentlyContinue) {
-        return
+        return (Get-Command swmm5).Source
     }
 
     $candidates = @()
@@ -111,21 +149,10 @@ function Ensure-SwmmShim {
 
     $target = $candidates | Select-Object -First 1
     if (-not $target) {
-        Fail "Unable to locate a SWMM executable after installation."
+        return $null
     }
 
-    if (-not $env:ChocolateyInstall) {
-        $env:ChocolateyInstall = Join-Path $env:ProgramData 'chocolatey'
-    }
-    $shimDir = Join-Path $env:ChocolateyInstall 'bin'
-    New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
-    $shimPath = Join-Path $shimDir 'swmm5.cmd'
-    @(
-        '@echo off'
-        "`"$target`" %*"
-    ) | Set-Content -Path $shimPath -Encoding ASCII
-
-    $env:Path = "$shimDir;$env:Path"
+    return $target
 }
 
 function Ensure-Swmm {
@@ -135,11 +162,27 @@ function Ensure-Swmm {
     if (Get-Command swmm5 -ErrorAction SilentlyContinue) {
         return
     }
+
+    $existing = Find-SwmmExecutable
+    if ($existing) {
+        Add-SwmmShim -Target $existing
+        return
+    }
+
+    if (-not $InstallSystemDeps) {
+        Fail "swmm5 is not available. Install EPA SWMM and pass -SwmmExe, use -SkipSwmm, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+    }
+
     Ensure-Chocolatey
+    Ensure-Admin
     Write-Step "Installing SWMM with Chocolatey"
     choco upgrade swmm -y --no-progress
     Refresh-ChocolateyEnvironment
-    Ensure-SwmmShim
+    $installed = Find-SwmmExecutable
+    if (-not $installed) {
+        Fail "Unable to locate a SWMM executable after installation. Install EPA SWMM manually and re-run with -SwmmExe `"C:\Path\To\runswmm.exe`"."
+    }
+    Add-SwmmShim -Target $installed
     if (-not (Get-Command swmm5 -ErrorAction SilentlyContinue)) {
         Fail "SWMM installation completed, but swmm5 is still unavailable."
     }
@@ -160,19 +203,27 @@ function Install-PythonRequirements {
 
 function Install-McpRequirements {
     Ensure-Node
+    $npmCmd = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
+    if (-not $npmCmd) {
+        $npmCmd = (Get-Command npm -ErrorAction SilentlyContinue)
+    }
+    if (-not $npmCmd) {
+        Fail "npm is unavailable."
+    }
     Get-ChildItem -Path (Join-Path $RepoRoot 'skills') -Filter package.json -Recurse |
         Where-Object { $_.FullName -like '*\scripts\mcp\package.json' } |
         Sort-Object FullName |
         ForEach-Object {
             $dir = Split-Path -Parent $_.FullName
             Write-Step "Installing MCP deps in $dir"
-            if (Test-Path (Join-Path $dir 'package-lock.json')) {
-                Push-Location $dir
-                npm ci
-                Pop-Location
-            } else {
-                Push-Location $dir
-                npm install
+            Push-Location $dir
+            try {
+                if (Test-Path (Join-Path $dir 'package-lock.json')) {
+                    & $npmCmd.Source ci
+                } else {
+                    & $npmCmd.Source install
+                }
+            } finally {
                 Pop-Location
             }
         }
@@ -193,7 +244,6 @@ function Get-SwmmStatus {
     return 'missing'
 }
 
-Ensure-Admin
 Ensure-Confirmation
 
 if (-not $SkipPython) {

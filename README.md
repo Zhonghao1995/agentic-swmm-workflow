@@ -89,7 +89,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swm
 <details>
 <summary>Windows PowerShell local install</summary>
 
-Run PowerShell as Administrator. For a fresh install, run:
+Run PowerShell as Administrator if you want the installer to add missing system dependencies. For a fresh install, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
@@ -100,6 +100,24 @@ If you already cloned the repository, run the local installer from the checkout 
 ```powershell
 cd agentic-swmm-workflow
 .\scripts\install.ps1 -Yes
+```
+
+To install only user-space Python and MCP dependencies before configuring SWMM, use:
+
+```powershell
+.\scripts\install.ps1 -Yes -SkipSwmm
+```
+
+The same option can be passed to the bootstrap script:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))) -SkipSwmm"
+```
+
+If EPA SWMM is already installed outside PATH, pass the executable explicitly:
+
+```powershell
+.\scripts\install.ps1 -Yes -SwmmExe "C:\Path\To\runswmm.exe"
 ```
 
 </details>

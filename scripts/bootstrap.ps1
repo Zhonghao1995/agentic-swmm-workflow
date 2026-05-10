@@ -1,5 +1,10 @@
 param(
-    [string]$TargetDir = "agentic-swmm-workflow"
+    [string]$TargetDir = "agentic-swmm-workflow",
+    [switch]$SkipPython,
+    [switch]$SkipMcp,
+    [switch]$SkipSwmm,
+    [switch]$InstallSystemDeps,
+    [string]$SwmmExe
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,7 +19,7 @@ function Ensure-Admin {
     $current = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($current)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "Run bootstrap.ps1 from an elevated PowerShell session."
+        throw "Administrator privileges are required to install system dependencies with Chocolatey. Re-run from an elevated PowerShell session, or clone the repository and run scripts\install.ps1 -Yes -SkipSwmm for user-space setup."
     }
 }
 
@@ -22,6 +27,7 @@ function Ensure-Chocolatey {
     if (Get-Command choco -ErrorAction SilentlyContinue) {
         return
     }
+    Ensure-Admin
     Write-Step "Installing Chocolatey"
     Set-ExecutionPolicy Bypass -Scope Process -Force
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -39,12 +45,26 @@ function Refresh-ChocolateyEnvironment {
     }
 }
 
-Ensure-Admin
-Ensure-Chocolatey
-Refresh-ChocolateyEnvironment
+$currentDir = Get-Location
+$localInstaller = Join-Path $currentDir 'scripts\install.ps1'
+$installArgs = @{ Yes = $true }
+if ($SkipPython) { $installArgs.SkipPython = $true }
+if ($SkipMcp) { $installArgs.SkipMcp = $true }
+if ($SkipSwmm) { $installArgs.SkipSwmm = $true }
+if ($InstallSystemDeps) { $installArgs.InstallSystemDeps = $true }
+if ($SwmmExe) { $installArgs.SwmmExe = $SwmmExe }
+
+if (Test-Path $localInstaller) {
+    Write-Step "Using existing checkout in $currentDir"
+    & $localInstaller @installArgs
+    exit 0
+}
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Ensure-Chocolatey
+    Refresh-ChocolateyEnvironment
     Write-Step "Installing Git"
+    Ensure-Admin
     choco upgrade git -y --no-progress
     Refresh-ChocolateyEnvironment
 }
@@ -60,4 +80,4 @@ if (Test-Path (Join-Path $fullTarget '.git')) {
     git clone $repoUrl $fullTarget
 }
 
-& (Join-Path $fullTarget 'scripts\install.ps1') -Yes
+& (Join-Path $fullTarget 'scripts\install.ps1') @installArgs
