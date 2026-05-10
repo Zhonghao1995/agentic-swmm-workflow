@@ -68,7 +68,7 @@ For the reproducible path, install Docker Desktop or Docker Engine, then run:
 
 ```bash
 mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.4.1 acceptance
 ```
 
 Artifacts are written to `agentic-swmm-runs`.
@@ -89,7 +89,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swm
 <details>
 <summary>Windows PowerShell local install</summary>
 
-Run PowerShell as Administrator. For a fresh install, run:
+Run PowerShell as Administrator only if you want the installer to add missing system dependencies through Chocolatey. For a fresh install, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
@@ -100,6 +100,30 @@ If you already cloned the repository, run the local installer from the checkout 
 ```powershell
 cd agentic-swmm-workflow
 .\scripts\install.ps1 -Yes
+```
+
+To install only user-space Python and MCP dependencies before configuring SWMM, use:
+
+```powershell
+.\scripts\install.ps1 -Yes -SkipSwmm
+```
+
+The same option can be passed to the bootstrap script:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))) -SkipSwmm"
+```
+
+If EPA SWMM is already installed outside PATH, pass the executable explicitly:
+
+```powershell
+.\scripts\install.ps1 -Yes -SwmmExe "C:\Path\To\runswmm.exe"
+```
+
+By default, the Windows installer downloads the USEPA SWMM `5.2.4` solver zip into `.local\swmm`, matching the Docker image's `SWMM_REF=v5.2.4`. To use Chocolatey instead:
+
+```powershell
+.\scripts\install.ps1 -Yes -InstallSystemDeps -SwmmVersion 5.2.4
 ```
 
 </details>
