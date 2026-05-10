@@ -1,7 +1,7 @@
 FROM python:3.11-slim-bookworm
 
 ARG AGENTIC_SWMM_REPO=https://github.com/Zhonghao1995/agentic-swmm-workflow.git
-ARG AGENTIC_SWMM_REF=v0.4.1
+ARG AGENTIC_SWMM_REF=v0.5.0
 ARG SWMM_REF=v5.2.4
 
 LABEL org.opencontainers.image.title="Agentic SWMM Workflow"

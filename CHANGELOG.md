@@ -4,8 +4,18 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+- No unreleased changes yet.
+
+## v0.5.0 - CLI, Docker, Windows runtime, and structured workflow updates
+
+- Added a stable `agentic-swmm` CLI layer for acceptance demos, prepared-input runs, audit, plotting, memory inspection, and environment checks.
+- Added MCP runtime integration helpers, skill install helpers, generated MCP config support, and smoke testing for modular skill servers.
+- Hardened Windows setup by using the active Python executable, improving local SWMM solver installation, and clarifying Windows install guidance.
+- Improved Docker packaging defaults for the `v0.5.0` release, including updated image tags and the renamed `agentic-ai/memory/` trigger path.
+- Added lightweight CI coverage for the CLI, audit workflow, Obsidian vault initialization, and SWMM runner peak parsing.
+- Separated rainfall and flow plot panels for clearer runoff diagnostics and refreshed README figures for partitioning, uncertainty, and validation examples.
 - Renamed the preload memory package from `openclaw/memory/` to `agentic-ai/memory/` to reflect Codex, OpenClaw, Hermes, and other Agentic AI runtimes.
-- Updated `CITATION.cff` to match the latest `v0.4.1` repository release.
+- Updated `CITATION.cff` to match the latest `v0.5.0` repository release.
 - Added an optional INP-derived raw adapter benchmark that fetches a fixed public `generate_swmm_inp` fixture, reconstructs raw-like inputs, and documents its evidence boundary.
 - Refreshed validation and modeling-memory documentation after adding the adapter benchmark.
 
