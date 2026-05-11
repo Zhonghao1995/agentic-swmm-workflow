@@ -62,7 +62,7 @@ irm https://aiswmm.com/install.ps1 | iex
 
 After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.0 release README](docs/releases/v0.6.0.md).
 
-Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. For OpenAI-backed planning, configure your API key with an environment variable such as `OPENAI_API_KEY`; do not paste API keys into the `aiswmm` conversation.
+Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
 
 ## Why this project exists
 

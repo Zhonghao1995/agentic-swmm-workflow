@@ -25,7 +25,7 @@ aiswmm --help
 
 You can choose another OpenAI model during setup, such as `gpt-5.4` or `gpt-5.5`.
 
-Set your key outside the conversation before running OpenAI-backed planning:
+Set your key outside the conversation before running OpenAI-backed planning. See [API key configuration](api-key-configuration.md) for installer-managed and environment-variable setup.
 
 ```bash
 export OPENAI_API_KEY="..."

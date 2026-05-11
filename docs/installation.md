@@ -71,7 +71,7 @@ The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`
 
 If an older local `.venv` was previously created with Python 3.9, the installer rebuilds that virtual environment before installing `aiswmm`.
 
-During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable OpenAI-backed `aiswmm` agent planning immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI.
+During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable OpenAI-backed `aiswmm` agent planning immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI. See [API key configuration](api-key-configuration.md) for the recommended setup paths.
 
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
@@ -126,7 +126,7 @@ You can also run the same idea as a one-shot command:
 aiswmm "run tecnopolo_r1_199401.inp, audit it, and plot node OU2"
 ```
 
-Keep API keys outside the conversation. Configure `OPENAI_API_KEY` during setup or in your shell environment, and revoke or rotate any key that is accidentally pasted into an agent prompt.
+Keep API keys outside the conversation. Configure `OPENAI_API_KEY` during setup or in your shell environment, and revoke or rotate any key that is accidentally pasted into an agent prompt. See [API key configuration](api-key-configuration.md).
 
 ## macOS and Linux Checkout Installer
 
