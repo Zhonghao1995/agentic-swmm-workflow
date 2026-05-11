@@ -30,6 +30,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         )
 
         self.assertIn("doctor", proc.stdout)
+        self.assertIn("agent", proc.stdout)
         self.assertIn("chat", proc.stdout)
         self.assertIn("model", proc.stdout)
         self.assertIn("config", proc.stdout)
@@ -120,6 +121,49 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertEqual(proc.stdout.strip(), "mocked swmm answer")
+
+    def test_cli_without_command_defaults_to_chat(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default chat"
+            proc = subprocess.run(
+                [sys.executable, "-m", "agentic_swmm.cli"],
+                cwd=REPO_ROOT,
+                env=env,
+                input="/exit\n",
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("Welcome to Agentic SWMM.", proc.stdout)
+
+    def test_agent_dry_run_plans_acceptance_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--session-dir",
+                    str(Path(tmp) / "agent-session"),
+                    "--dry-run",
+                    "run acceptance and audit",
+                ],
+                cwd=REPO_ROOT,
+                env={**os.environ, "AISWMM_CONFIG_DIR": tmp},
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("Agentic SWMM executor", proc.stdout)
+            self.assertIn("demo_acceptance", proc.stdout)
+            self.assertIn("audit_run", proc.stdout)
+            report = Path(tmp) / "agent-session" / "final_report.md"
+            self.assertTrue(report.exists())
 
     def test_skill_and_mcp_lists_are_available(self) -> None:
         skill_proc = subprocess.run(

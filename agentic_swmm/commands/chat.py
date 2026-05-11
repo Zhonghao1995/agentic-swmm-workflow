@@ -30,7 +30,8 @@ def main(args: argparse.Namespace) -> int:
         print(result.text)
         return 0
 
-    print("Agentic SWMM chat. Type /exit to quit.")
+    print("Welcome to Agentic SWMM.")
+    print("Type /exit to quit.")
     while True:
         try:
             prompt = input("aiswmm> ").strip()

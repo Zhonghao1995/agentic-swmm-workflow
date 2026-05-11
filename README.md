@@ -88,6 +88,12 @@ Full local runtime installer:
 curl -fsSL https://aiswmm.com/install.sh | bash
 ```
 
+Windows PowerShell:
+
+```powershell
+irm https://aiswmm.com/install.ps1 | iex
+```
+
 ## Workflow
 
 <p align="center">

@@ -489,7 +489,7 @@ maybe_start_chat() {
   IFS= read -r reply </dev/tty || reply=""
   case "${reply:-Y}" in
     y|Y|yes|YES|"")
-      "$(preferred_cli_bin_dir)/aiswmm" chat --provider "$AISWMM_PROVIDER"
+      "$(preferred_cli_bin_dir)/aiswmm" chat --provider "$AISWMM_PROVIDER" </dev/tty
       ;;
     *)
       ;;

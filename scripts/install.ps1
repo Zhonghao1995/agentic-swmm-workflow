@@ -18,6 +18,9 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $VenvDir = Join-Path $RepoRoot '.venv'
 $ReqFile = Join-Path $ScriptDir 'requirements.txt'
+$AiswmmConfigDir = if ($env:AISWMM_CONFIG_DIR) { $env:AISWMM_CONFIG_DIR } else { Join-Path $HOME '.aiswmm' }
+$AiswmmEnvFile = Join-Path $AiswmmConfigDir 'env.ps1'
+$CliBinDir = if ($env:AISWMM_CLI_BIN_DIR) { $env:AISWMM_CLI_BIN_DIR } else { Join-Path $env:LOCALAPPDATA 'AgenticSWMM\bin' }
 $script:PythonExe = $null
 $script:PythonArgs = @()
 
@@ -70,6 +73,104 @@ function Refresh-ChocolateyEnvironment {
         Import-Module $profileModule -Force
         refreshenv
     }
+}
+
+function ConvertTo-PowerShellSingleQuoted {
+    param([string]$Value)
+    return "'" + ($Value -replace "'", "''") + "'"
+}
+
+function Write-OpenAiEnvFile {
+    param([string]$ApiKey)
+    New-Item -ItemType Directory -Force -Path $AiswmmConfigDir | Out-Null
+    @(
+        '# Agentic SWMM local secrets. This file is dot-sourced by the installed aiswmm command.'
+        "`$env:OPENAI_API_KEY = $(ConvertTo-PowerShellSingleQuoted $ApiKey)"
+    ) | Set-Content -Path $AiswmmEnvFile -Encoding ASCII
+    Write-Step "Saved OpenAI API key to $AiswmmEnvFile"
+}
+
+function Import-AiswmmEnvFile {
+    if (Test-Path $AiswmmEnvFile) {
+        . $AiswmmEnvFile
+    }
+}
+
+function Prompt-OpenAiApiKey {
+    if ($Provider -ne 'openai' -or $env:OPENAI_API_KEY -or (Test-Path $AiswmmEnvFile)) {
+        return
+    }
+
+    Write-Host ""
+    Write-Host "OpenAI API key"
+    Write-Host "  - Paste a key now to enable aiswmm chat immediately."
+    Write-Host "  - Press Enter to do it later."
+    $apiKey = Read-Host "OpenAI API key [do it later]"
+    if ([string]::IsNullOrWhiteSpace($apiKey)) {
+        Write-Step "OpenAI API key skipped; you can add it later in $AiswmmEnvFile"
+        return
+    }
+    Write-OpenAiEnvFile -ApiKey $apiKey
+    $env:OPENAI_API_KEY = $apiKey
+}
+
+function Add-UserPathEntry {
+    param([string]$PathEntry)
+    $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ([string]::IsNullOrWhiteSpace($currentUserPath)) {
+        $parts = @()
+    } else {
+        $parts = $currentUserPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    }
+    $alreadyPresent = $false
+    foreach ($part in $parts) {
+        if ($part.TrimEnd('\') -ieq $PathEntry.TrimEnd('\')) {
+            $alreadyPresent = $true
+            break
+        }
+    }
+    if (-not $alreadyPresent) {
+        $newUserPath = (@($parts) + $PathEntry) -join ';'
+        [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
+        Write-Step "Added $PathEntry to the user PATH for new terminals"
+    }
+    if (($env:Path -split ';' | ForEach-Object { $_.TrimEnd('\') }) -notcontains $PathEntry.TrimEnd('\')) {
+        $env:Path = "$PathEntry;$env:Path"
+    }
+}
+
+function Install-CliShims {
+    if ($SkipPython) {
+        return
+    }
+    $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
+    if (-not (Test-Path $venvPython)) {
+        Fail "Cannot install CLI shims because virtualenv Python is missing: $venvPython"
+    }
+
+    New-Item -ItemType Directory -Force -Path $CliBinDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $AiswmmConfigDir | Out-Null
+
+    foreach ($name in @('aiswmm', 'agentic-swmm')) {
+        $ps1Path = Join-Path $CliBinDir "$name.ps1"
+        $cmdPath = Join-Path $CliBinDir "$name.cmd"
+        @(
+            'param([Parameter(ValueFromRemainingArguments = $true)][string[]]$RemainingArgs)'
+            '$ErrorActionPreference = ''Stop'''
+            "`$envFile = $(ConvertTo-PowerShellSingleQuoted $AiswmmEnvFile)"
+            'if (Test-Path $envFile) { . $envFile }'
+            "`$python = $(ConvertTo-PowerShellSingleQuoted $venvPython)"
+            '& $python -m agentic_swmm.cli @RemainingArgs'
+            'exit $LASTEXITCODE'
+        ) | Set-Content -Path $ps1Path -Encoding ASCII
+        @(
+            '@echo off'
+            "powershell -NoProfile -ExecutionPolicy Bypass -File `"$ps1Path`" %*"
+        ) | Set-Content -Path $cmdPath -Encoding ASCII
+    }
+
+    Add-UserPathEntry -PathEntry $CliBinDir
+    Write-Step "Installed CLI shims: $CliBinDir\aiswmm.cmd and $CliBinDir\agentic-swmm.cmd"
 }
 
 function Ensure-WindowsToolchain {
@@ -419,6 +520,7 @@ Ensure-Confirmation
 
 if (-not $SkipPython) {
     Install-PythonRequirements
+    Install-CliShims
 }
 
 if (-not $SkipMcp) {
@@ -426,19 +528,22 @@ if (-not $SkipMcp) {
 }
 
 Ensure-Swmm
+Prompt-OpenAiApiKey
+Import-AiswmmEnvFile
 Invoke-AiswmmSetup
 
 Write-Host ""
 Write-Host "Install summary"
 Write-Host "- Repo root: $RepoRoot"
 Write-Host "- Python setup: $(if ($SkipPython) { 'skipped (--skip-python)' } else { 'installed (.venv + scripts/requirements.txt + agentic-swmm CLI)' })"
+Write-Host "- CLI command: $(if ($SkipPython) { 'skipped' } else { "$CliBinDir\aiswmm.cmd" })"
 Write-Host "- MCP npm setup: $(if ($SkipMcp) { 'skipped (--skip-mcp)' } else { 'installed' })"
 Write-Host "- Agentic SWMM setup: $(if ($SkipSetup -or $SkipPython) { 'skipped' } else { "registered provider=$Provider model=$Model skills/MCP/memory" })"
+Write-Host "- OpenAI API key: $(if ($env:OPENAI_API_KEY -or (Test-Path $AiswmmEnvFile)) { 'configured' } else { 'not configured' })"
 Write-Host "- SWMM check: $(Get-SwmmStatus)"
 Write-Host ""
-Write-Host "Next steps"
-Write-Host "1. Activate the virtualenv: .\.venv\Scripts\Activate.ps1"
-Write-Host "2. Set an OpenAI key for real chat: `$env:OPENAI_API_KEY = '...'"
-Write-Host "3. Check the CLI: aiswmm doctor"
-Write-Host "4. Start local orchestration chat: aiswmm chat --provider $Provider `"Explain what this Agentic SWMM installation can do`""
-Write-Host "5. Run acceptance: aiswmm demo acceptance --run-id latest"
+Write-Host "Run now"
+Write-Host "1. Check the runtime: aiswmm doctor"
+Write-Host "2. Start local orchestration chat: aiswmm chat --provider $Provider `"Explain what this Agentic SWMM installation can do`""
+Write-Host "3. Run acceptance: aiswmm demo acceptance --run-id latest"
+Write-Host "4. Open report: $RepoRoot\runs\acceptance\latest\acceptance_report.md"

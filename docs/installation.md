@@ -71,7 +71,7 @@ The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`
 
 If an older local `.venv` was previously created with Python 3.9, the installer rebuilds that virtual environment before installing `aiswmm`.
 
-During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable `aiswmm chat` immediately. The key is stored in `~/.aiswmm/env` with user-only permissions and loaded by the installed `aiswmm` command.
+During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable `aiswmm chat` immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI.
 
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
@@ -85,7 +85,9 @@ On Windows PowerShell, after publishing `web/install.ps1`:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-The Windows entrypoint installs into the current user's local application directory by default instead of `C:\Windows\System32`. If Git is unavailable, it downloads a GitHub source archive. If Python 3.10+ is unavailable, it first tries a user-scope `winget` Python install. Administrator PowerShell is only needed when you explicitly choose Chocolatey system dependency installation with `-InstallSystemDeps`.
+The Windows entrypoint installs into the current user's local application directory by default instead of `C:\Windows\System32`. If Git is unavailable, it downloads a GitHub source archive. If Python 3.10+ is unavailable, it first tries a user-scope `winget` Python install. It creates a local `.venv`, installs Python requirements and the editable CLI package, installs MCP npm dependencies when Node.js is available, downloads the USEPA SWMM solver zip into `.local\swmm`, and creates a `swmm5` shim under `.local\bin`.
+
+The Windows installer also creates user-level `aiswmm` and `agentic-swmm` command shims in `%LOCALAPPDATA%\AgenticSWMM\bin` and adds that directory to the user PATH for new terminals. The current installer session can use the command immediately. Administrator PowerShell is only needed when you explicitly choose Chocolatey system dependency installation with `-InstallSystemDeps`.
 
 The website scripts are thin stable entrypoints. They download the repository bootstrap scripts from GitHub, then run the local installer. For reproducible installs, pin a release tag before running:
 
@@ -139,6 +141,13 @@ cd agentic-swmm-workflow
 .\scripts\install.ps1 -Yes
 ```
 
+After the installer finishes, open a new PowerShell window or use the current installer session and run:
+
+```powershell
+aiswmm doctor
+aiswmm demo acceptance --run-id latest
+```
+
 To install only user-space Python and MCP dependencies before configuring SWMM:
 
 ```powershell
@@ -162,6 +171,12 @@ By default, the Windows installer downloads the USEPA SWMM `5.2.4` solver zip in
 
 ```powershell
 .\scripts\install.ps1 -Yes -InstallSystemDeps -SwmmVersion 5.2.4
+```
+
+If you need to pin a different USEPA SWMM solver release through the website entrypoint:
+
+```powershell
+& ([scriptblock]::Create((New-Object System.Net.WebClient).DownloadString('https://aiswmm.com/install.ps1'))) -SwmmVersion 5.2.4
 ```
 
 ## Unified CLI
