@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -29,10 +30,151 @@ class AgenticSwmmCliTests(unittest.TestCase):
         )
 
         self.assertIn("doctor", proc.stdout)
+        self.assertIn("chat", proc.stdout)
+        self.assertIn("model", proc.stdout)
+        self.assertIn("config", proc.stdout)
+        self.assertIn("setup", proc.stdout)
+        self.assertIn("mcp", proc.stdout)
+        self.assertIn("skill", proc.stdout)
         self.assertIn("run", proc.stdout)
         self.assertIn("audit", proc.stdout)
         self.assertIn("plot", proc.stdout)
         self.assertIn("memory", proc.stdout)
+
+    def test_model_config_uses_isolated_config_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "model",
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("provider: openai", proc.stdout)
+            self.assertIn("model: gpt-test", proc.stdout)
+            self.assertTrue((Path(tmp) / "config.toml").exists())
+
+    def test_setup_accepts_newer_openai_model_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "setup",
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-5.4",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            payload = json.loads(proc.stdout)
+
+            self.assertEqual(payload["provider"]["model"], "gpt-5.4")
+
+    def test_openai_chat_mock_response(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked swmm answer"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "chat",
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "summarize",
+                    "this",
+                    "run",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertEqual(proc.stdout.strip(), "mocked swmm answer")
+
+    def test_skill_and_mcp_lists_are_available(self) -> None:
+        skill_proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "skill", "list"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("swmm-end-to-end", skill_proc.stdout)
+
+        mcp_proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "mcp", "list"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        self.assertIn("swmm-runner", mcp_proc.stdout)
+
+    def test_setup_mounts_repo_resources_into_local_registry(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "setup",
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            payload = json.loads(proc.stdout)
+
+            self.assertIn(payload["status"], {"ready", "ready_with_warnings"})
+            self.assertEqual(payload["resources"]["skills"], 12)
+            self.assertEqual(payload["resources"]["mcp_servers"], 8)
+            self.assertEqual(payload["resources"]["memory_files"], 10)
+            self.assertEqual(payload["resources"]["memory_layers"]["long_term"], 6)
+            self.assertEqual(payload["resources"]["memory_layers"]["project_modeling"], 4)
+            self.assertTrue((Path(tmp) / "config.toml").exists())
+            self.assertTrue((Path(tmp) / "skills.json").exists())
+            self.assertTrue((Path(tmp) / "mcp.json").exists())
+            self.assertTrue((Path(tmp) / "memory.json").exists())
+            self.assertTrue((Path(tmp) / "setup_state.json").exists())
 
     def test_audit_command_writes_artifacts_without_obsidian_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

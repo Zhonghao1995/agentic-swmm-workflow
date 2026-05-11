@@ -12,8 +12,19 @@ def packaged_resource_root() -> Path:
     return Path(sysconfig.get_path("data")) / "aiswmm"
 
 
+def resource_root() -> Path:
+    source_root = repo_root()
+    if (source_root / "skills").exists() and (source_root / "agentic-ai" / "memory").exists():
+        return source_root
+    installed_root = packaged_resource_root()
+    if installed_root.exists():
+        return installed_root
+    return source_root
+
+
 def resource_path(*parts: str) -> Path:
-    source_path = repo_root().joinpath(*parts)
+    root = resource_root()
+    source_path = root.joinpath(*parts)
     if source_path.exists():
         return source_path
 

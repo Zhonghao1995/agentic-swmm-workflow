@@ -76,7 +76,16 @@ Python package:
 
 ```bash
 pip install aiswmm
+aiswmm setup --provider openai --model gpt-5.5
 aiswmm --help
+```
+
+You can choose another OpenAI model at setup time, such as `gpt-5.4` or `gpt-5.5`.
+
+Full local runtime installer:
+
+```bash
+curl -fsSL https://aiswmm.com/install.sh | bash
 ```
 
 ## Workflow

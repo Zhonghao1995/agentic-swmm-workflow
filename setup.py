@@ -12,6 +12,7 @@ RESOURCE_DIRS = (
     "integrations",
     "scripts",
     "skills",
+    "web",
 )
 
 EXCLUDED_DIRS = {

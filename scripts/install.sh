@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 show_help() {
   cat <<'USAGE'
-Usage: scripts/install.sh [--yes] [--skip-python] [--skip-mcp] [--skip-swmm] [--swmm-ref REF] [--help]
+Usage: scripts/install.sh [--yes] [--skip-python] [--skip-mcp] [--skip-swmm] [--skip-setup] [--provider NAME] [--model MODEL] [--swmm-ref REF] [--help]
 
 Bootstrap local dependencies for agentic-swmm-workflow.
 
@@ -13,6 +13,9 @@ Options:
   --skip-python  Skip virtualenv creation and pip installs.
   --skip-mcp     Skip npm installs for skills/*/scripts/mcp packages.
   --skip-swmm    Skip SWMM engine installation/build.
+  --skip-setup   Skip aiswmm orchestration setup after installation.
+  --provider NAME  Provider to register with aiswmm setup. Default: openai.
+  --model MODEL  Model to register with aiswmm setup. Default: gpt-5.5.
   --swmm-ref REF  USEPA SWMM Git ref to build. Default: v5.2.4.
   --help         Show this help message.
 USAGE
@@ -35,6 +38,9 @@ YES=0
 SKIP_PYTHON=0
 SKIP_MCP=0
 SKIP_SWMM=0
+SKIP_SETUP=0
+AISWMM_PROVIDER="${AISWMM_PROVIDER:-openai}"
+AISWMM_MODEL="${AISWMM_MODEL:-gpt-5.5}"
 SWMM_REF="${SWMM_REF:-v5.2.4}"
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +49,17 @@ while [[ $# -gt 0 ]]; do
     --skip-python) SKIP_PYTHON=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
     --skip-swmm) SKIP_SWMM=1 ;;
+    --skip-setup) SKIP_SETUP=1 ;;
+    --provider)
+      [[ $# -ge 2 ]] || fail "--provider requires a value"
+      AISWMM_PROVIDER="$2"
+      shift
+      ;;
+    --model)
+      [[ $# -ge 2 ]] || fail "--model requires a value"
+      AISWMM_MODEL="$2"
+      shift
+      ;;
     --swmm-ref)
       [[ $# -ge 2 ]] || fail "--swmm-ref requires a value"
       SWMM_REF="$2"
@@ -294,6 +311,14 @@ install_mcp_requirements() {
   log "Installed MCP deps in $mcp_count package(s)"
 }
 
+run_aiswmm_setup() {
+  if [[ $SKIP_SETUP -eq 1 || $SKIP_PYTHON -eq 1 ]]; then
+    return
+  fi
+  log "Configuring Agentic SWMM orchestration layer"
+  "$VENV_DIR/bin/python" -m agentic_swmm.cli setup --provider "$AISWMM_PROVIDER" --model "$AISWMM_MODEL"
+}
+
 swmm_status() {
   ensure_local_bin_on_path
   if command -v swmm5 >/dev/null 2>&1; then
@@ -321,6 +346,7 @@ if [[ $SKIP_MCP -eq 0 ]]; then
 fi
 
 ensure_swmm
+run_aiswmm_setup
 
 cat <<SUMMARY
 
@@ -328,13 +354,15 @@ Install summary
 - Repo root: $REPO_ROOT
 - Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt + agentic-swmm CLI)" || echo "skipped (--skip-python)")
 - MCP npm setup: $([[ $SKIP_MCP -eq 0 ]] && echo "installed" || echo "skipped (--skip-mcp)")
+- Agentic SWMM setup: $([[ $SKIP_SETUP -eq 0 && $SKIP_PYTHON -eq 0 ]] && echo "registered provider=$AISWMM_PROVIDER model=$AISWMM_MODEL skills/MCP/memory" || echo "skipped")
 - SWMM ref: $SWMM_REF
 - SWMM check: $(swmm_status)
 
 Next steps
 1. Activate the virtualenv: source .venv/bin/activate
-2. Check the CLI: agentic-swmm doctor
-3. Run acceptance: agentic-swmm demo acceptance --run-id latest
-4. Open report: runs/acceptance/latest/acceptance_report.md
-5. Real-data smoke test: python3 scripts/real_cases/run_todcreek_minimal.py
+2. Set an OpenAI key for real chat: export OPENAI_API_KEY="..."
+3. Check the CLI: aiswmm doctor
+4. Start local orchestration chat: aiswmm chat --provider $AISWMM_PROVIDER "Explain what this Agentic SWMM installation can do"
+5. Run acceptance: aiswmm demo acceptance --run-id latest
+6. Open report: runs/acceptance/latest/acceptance_report.md
 SUMMARY

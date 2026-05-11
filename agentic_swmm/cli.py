@@ -4,7 +4,7 @@ import argparse
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import audit, demo, doctor, memory, plot, run
+from agentic_swmm.commands import audit, chat, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +15,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+    chat.register(subparsers)
+    model.register(subparsers)
+    config.register(subparsers)
+    setup.register(subparsers)
+    mcp.register(subparsers)
+    skill.register(subparsers)
     doctor.register(subparsers)
     run.register(subparsers)
     audit.register(subparsers)

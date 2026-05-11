@@ -3,8 +3,11 @@ param(
     [switch]$SkipPython,
     [switch]$SkipMcp,
     [switch]$SkipSwmm,
+    [switch]$SkipSetup,
     [switch]$InstallSystemDeps,
     [string]$SwmmExe,
+    [string]$Provider = "openai",
+    [string]$Model = "gpt-5.5",
     [string]$SwmmVersion = "5.2.4"
 )
 
@@ -52,8 +55,11 @@ $installArgs = @{ Yes = $true }
 if ($SkipPython) { $installArgs.SkipPython = $true }
 if ($SkipMcp) { $installArgs.SkipMcp = $true }
 if ($SkipSwmm) { $installArgs.SkipSwmm = $true }
+if ($SkipSetup) { $installArgs.SkipSetup = $true }
 if ($InstallSystemDeps) { $installArgs.InstallSystemDeps = $true }
 if ($SwmmExe) { $installArgs.SwmmExe = $SwmmExe }
+if ($Provider) { $installArgs.Provider = $Provider }
+if ($Model) { $installArgs.Model = $Model }
 if ($SwmmVersion) { $installArgs.SwmmVersion = $SwmmVersion }
 
 if (Test-Path $localInstaller) {

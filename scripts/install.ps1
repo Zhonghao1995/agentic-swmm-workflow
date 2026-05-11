@@ -3,8 +3,11 @@ param(
     [switch]$SkipPython,
     [switch]$SkipMcp,
     [switch]$SkipSwmm,
+    [switch]$SkipSetup,
     [switch]$InstallSystemDeps,
     [string]$SwmmExe,
+    [string]$Provider = "openai",
+    [string]$Model = "gpt-5.5",
     [string]$SwmmVersion = "5.2.4"
 )
 
@@ -270,6 +273,15 @@ function Install-McpRequirements {
         }
 }
 
+function Invoke-AiswmmSetup {
+    if ($SkipSetup -or $SkipPython) {
+        return
+    }
+    $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
+    Write-Step "Configuring Agentic SWMM orchestration layer"
+    & $venvPython -m agentic_swmm.cli setup --provider $Provider --model $Model
+}
+
 function Get-SwmmStatus {
     if (Get-Command swmm5 -ErrorAction SilentlyContinue) {
         try {
@@ -296,16 +308,19 @@ if (-not $SkipMcp) {
 }
 
 Ensure-Swmm
+Invoke-AiswmmSetup
 
 Write-Host ""
 Write-Host "Install summary"
 Write-Host "- Repo root: $RepoRoot"
 Write-Host "- Python setup: $(if ($SkipPython) { 'skipped (--skip-python)' } else { 'installed (.venv + scripts/requirements.txt + agentic-swmm CLI)' })"
 Write-Host "- MCP npm setup: $(if ($SkipMcp) { 'skipped (--skip-mcp)' } else { 'installed' })"
+Write-Host "- Agentic SWMM setup: $(if ($SkipSetup -or $SkipPython) { 'skipped' } else { "registered provider=$Provider model=$Model skills/MCP/memory" })"
 Write-Host "- SWMM check: $(Get-SwmmStatus)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "1. Activate the virtualenv: .\.venv\Scripts\Activate.ps1"
-Write-Host "2. Check the CLI: agentic-swmm doctor"
-Write-Host "3. Run acceptance: agentic-swmm demo acceptance --run-id latest"
-Write-Host "4. Real-data smoke test: python scripts/real_cases/run_todcreek_minimal.py"
+Write-Host "2. Set an OpenAI key for real chat: `$env:OPENAI_API_KEY = '...'"
+Write-Host "3. Check the CLI: aiswmm doctor"
+Write-Host "4. Start local orchestration chat: aiswmm chat --provider $Provider `"Explain what this Agentic SWMM installation can do`""
+Write-Host "5. Run acceptance: aiswmm demo acceptance --run-id latest"
