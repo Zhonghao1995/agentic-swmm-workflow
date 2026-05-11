@@ -6,6 +6,12 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 - No unreleased changes yet.
 
+## v0.5.4 - PyPI CLI packaging and coverage reporting
+
+- Published the `aiswmm` Python package CLI entry point for `pip install aiswmm` workflows.
+- Added GitHub Release distribution assets so release downloads can be counted through GitHub asset metadata without displaying download totals in the README.
+- Added Codecov coverage reporting for lightweight CI while keeping benchmark and smoke-test evidence as the stronger validation layer for data-dependent skills and MCP workflows.
+
 ## v0.5.0 - CLI, Docker, Windows runtime, and structured workflow updates
 
 - Added a stable `agentic-swmm` CLI layer for acceptance demos, prepared-input runs, audit, plotting, memory inspection, and environment checks.

@@ -67,7 +67,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 Recommended Docker path:
 
 ```bash
-mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.0 acceptance
+mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.4 acceptance
 ```
 
 Docker writes artifacts to `agentic-swmm-runs`. Local installation is also available for macOS, Linux, and Windows, but review the install script before running it. Details: [Installation and CLI guide](docs/installation.md).
