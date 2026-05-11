@@ -3,6 +3,11 @@ __pycache__/
 *.pyc
 .venv/
 .local/
+build/
+dist/
+*.egg-info/
+.coverage
+coverage.xml
 integrations/mcp/generated/
 
 # Node
