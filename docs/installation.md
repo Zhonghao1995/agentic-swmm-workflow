@@ -69,6 +69,8 @@ Use this when you want a fuller local runtime setup similar to OpenClaw or Herme
 
 The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`, and only uses an interpreter that satisfies Python 3.10+. If none is available on macOS, it can install Homebrew Python before creating the local virtual environment.
 
+If an older local `.venv` was previously created with Python 3.9, the installer rebuilds that virtual environment before installing `aiswmm`.
+
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
 ```bash

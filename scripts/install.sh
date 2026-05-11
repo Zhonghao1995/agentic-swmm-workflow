@@ -239,6 +239,25 @@ PY
   return 1
 }
 
+venv_needs_rebuild() {
+  local venv_python="$VENV_DIR/bin/python"
+
+  if [[ ! -x "$venv_python" ]]; then
+    return 0
+  fi
+
+  if ! "$venv_python" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+  then
+    warn "Existing virtualenv uses Python < 3.10; rebuilding $VENV_DIR"
+    return 0
+  fi
+
+  return 1
+}
+
 ensure_node() {
   if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
     return
@@ -306,6 +325,10 @@ ensure_swmm() {
 install_python_requirements() {
   ensure_python
   [[ -f "$REQ_FILE" ]] || fail "Missing requirements file: $REQ_FILE"
+
+  if venv_needs_rebuild; then
+    rm -rf "$VENV_DIR"
+  fi
 
   log "Creating virtualenv: $VENV_DIR"
   "$PYTHON_BIN" -m venv "$VENV_DIR"
