@@ -8,7 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agentic_swmm.commands.chat import _extract_existing_paths, _first_outfall_node
+from agentic_swmm.cli import _route_default_to_agent
+from agentic_swmm.commands.agent import _find_repo_inp
 from agentic_swmm.utils.paths import script_path
 
 
@@ -32,7 +33,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
         self.assertIn("doctor", proc.stdout)
         self.assertIn("agent", proc.stdout)
-        self.assertIn("chat", proc.stdout)
+        self.assertNotIn("chat", proc.stdout)
         self.assertIn("model", proc.stdout)
         self.assertIn("config", proc.stdout)
         self.assertIn("setup", proc.stdout)
@@ -95,11 +96,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             self.assertEqual(payload["provider"]["model"], "gpt-5.4")
 
-    def test_openai_chat_mock_response(self) -> None:
+    def test_legacy_chat_command_routes_to_openai_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
-            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked swmm answer"
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked agent answer"
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -121,110 +122,74 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertEqual(proc.stdout.strip(), "mocked swmm answer")
+            self.assertIn("Agentic SWMM executor", proc.stdout)
+            self.assertIn("- planner: openai", proc.stdout)
+            self.assertIn("mocked agent answer", proc.stdout)
 
-    def test_interactive_chat_labels_user_and_assistant_turns(self) -> None:
+    def test_cli_without_command_defaults_to_openai_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
-            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked interactive answer"
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
+            proc = subprocess.run(
+                [sys.executable, "-m", "agentic_swmm.cli", "--model", "gpt-test"],
+                cwd=REPO_ROOT,
+                env=env,
+                input="inspect project\n/exit\n",
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("Agentic SWMM interactive agent", proc.stdout)
+            self.assertIn("Agentic SWMM executor", proc.stdout)
+            self.assertIn("- planner: openai", proc.stdout)
+            self.assertIn("- goal: inspect project", proc.stdout)
+            self.assertIn("mocked default agent", proc.stdout)
+
+    def test_natural_language_goal_defaults_to_openai_agent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked natural language agent"
             proc = subprocess.run(
                 [
                     sys.executable,
                     "-m",
                     "agentic_swmm.cli",
-                    "chat",
-                    "--provider",
-                    "openai",
-                    "--model",
-                    "gpt-test",
+                    "inspect",
+                    "the",
+                    "project",
                 ],
                 cwd=REPO_ROOT,
                 env=env,
-                input="hello\n/exit\n",
                 capture_output=True,
                 text=True,
                 check=True,
             )
 
-            self.assertIn("you> ", proc.stdout)
-            self.assertIn("\naiswmm:\nmocked interactive answer\n", proc.stdout)
+            self.assertIn("Agentic SWMM executor", proc.stdout)
+            self.assertIn("- goal: inspect the project", proc.stdout)
+            self.assertIn("mocked natural language agent", proc.stdout)
 
-    def test_interactive_chat_can_list_local_inp_files(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            case_dir = tmp_path / "examples"
-            case_dir.mkdir()
-            inp = case_dir / "case.inp"
-            inp.write_text("[TITLE]\nLocal test\n", encoding="utf-8")
-            env = os.environ.copy()
-            env["AISWMM_CONFIG_DIR"] = str(tmp_path / "config")
-            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "should not be used"
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "agentic_swmm.cli",
-                    "chat",
-                    "--provider",
-                    "openai",
-                    "--model",
-                    "gpt-test",
-                ],
-                cwd=REPO_ROOT,
-                env=env,
-                input=f"{case_dir} contains inp files, can you see them?\n/exit\n",
-                capture_output=True,
-                text=True,
-                check=True,
-            )
+    def test_default_router_preserves_explicit_low_level_run(self) -> None:
+        self.assertEqual(_route_default_to_agent([]), ["agent", "--planner", "openai", "--interactive"])
+        self.assertEqual(_route_default_to_agent(["chat"]), ["agent", "--planner", "openai", "--interactive"])
+        self.assertEqual(
+            _route_default_to_agent(["--model", "gpt-test"]),
+            ["agent", "--planner", "openai", "--interactive", "--model", "gpt-test"],
+        )
+        self.assertEqual(_route_default_to_agent(["run", "--inp", "model.inp"]), ["run", "--inp", "model.inp"])
+        self.assertEqual(
+            _route_default_to_agent(["run", "tecnopolo_r1_199401.inp"]),
+            ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
+        )
 
-            self.assertIn("I can see these `.inp` file(s):", proc.stdout)
-            self.assertIn(str(inp), proc.stdout)
-            self.assertNotIn("should not be used", proc.stdout)
-
-    def test_chat_first_outfall_node_parser(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            inp = Path(tmp) / "model.inp"
-            inp.write_text(
-                """
-[TITLE]
-Example
-
-[OUTFALLS]
-;Name           Elevation  Type
-OUT1            0          FREE
-
-[CONDUITS]
-""".strip(),
-                encoding="utf-8",
-            )
-
-            self.assertEqual(_first_outfall_node(inp), "OUT1")
-
-    def test_chat_extracts_local_paths_with_spaces(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "Agentic SWMM open source" / "examples"
-            path.mkdir(parents=True)
-
-            self.assertEqual(_extract_existing_paths(f"{path} has inp files"), [path.resolve()])
-
-    def test_cli_without_command_defaults_to_chat(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            env = os.environ.copy()
-            env["AISWMM_CONFIG_DIR"] = tmp
-            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default chat"
-            proc = subprocess.run(
-                [sys.executable, "-m", "agentic_swmm.cli"],
-                cwd=REPO_ROOT,
-                env=env,
-                input="/exit\n",
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-
-            self.assertIn("Welcome to Agentic SWMM.", proc.stdout)
+    def test_agent_resolves_bare_inp_names_from_examples(self) -> None:
+        self.assertEqual(
+            _find_repo_inp("tecnopolo_r1_199401.inp"),
+            REPO_ROOT / "examples" / "tecnopolo" / "tecnopolo_r1_199401.inp",
+        )
 
     def test_agent_dry_run_plans_acceptance_audit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

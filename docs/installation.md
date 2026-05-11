@@ -54,11 +54,11 @@ aiswmm setup --provider openai --model gpt-5.4
 aiswmm setup --provider openai --model gpt-5.5
 ```
 
-For real OpenAI chat, set your key in the local shell before running `aiswmm chat`:
+For real OpenAI agent planning, set your key in the local shell before running `aiswmm`:
 
 ```bash
 export OPENAI_API_KEY="..."
-aiswmm chat --provider openai "Explain what this Agentic SWMM installation can do"
+aiswmm --provider openai "Explain what this Agentic SWMM installation can do"
 ```
 
 `agentic-swmm` remains available as an alias for the same CLI.
@@ -71,7 +71,7 @@ The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`
 
 If an older local `.venv` was previously created with Python 3.9, the installer rebuilds that virtual environment before installing `aiswmm`.
 
-During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable `aiswmm chat` immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI.
+During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable OpenAI-backed `aiswmm` agent planning immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI.
 
 On macOS and Linux, after publishing `web/install.sh` to your website:
 

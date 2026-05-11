@@ -46,7 +46,7 @@ def main(args: argparse.Namespace) -> int:
     root = repo_root()
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("repo root", root.exists(), str(root), True))
-    checks.append(("OPENAI_API_KEY", bool(os.environ.get("OPENAI_API_KEY")), "set" if os.environ.get("OPENAI_API_KEY") else "not set; needed for `aiswmm chat --provider openai`", False))
+    checks.append(("OPENAI_API_KEY", bool(os.environ.get("OPENAI_API_KEY")), "set" if os.environ.get("OPENAI_API_KEY") else "not set; needed for OpenAI agent planner mode", False))
     claude = shutil.which("claude")
     checks.append(("claude code CLI", claude is not None, claude or "not found; optional future provider", False))
     node = shutil.which("node")

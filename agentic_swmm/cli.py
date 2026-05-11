@@ -4,7 +4,23 @@ import argparse
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, chat, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
+from agentic_swmm.commands import agent, audit, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
+
+
+COMMANDS = {
+    "agent",
+    "model",
+    "config",
+    "setup",
+    "mcp",
+    "skill",
+    "doctor",
+    "run",
+    "audit",
+    "plot",
+    "memory",
+    "demo",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,7 +31,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     subparsers = parser.add_subparsers(dest="command")
-    chat.register(subparsers)
     agent.register(subparsers)
     model.register(subparsers)
     config.register(subparsers)
@@ -34,8 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if not argv:
-        argv = ["chat"]
+    argv = _route_default_to_agent(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
@@ -46,6 +60,40 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+
+def _route_default_to_agent(argv: list[str]) -> list[str]:
+    if not argv:
+        return ["agent", "--planner", "openai", "--interactive"]
+    if argv[0] == "chat":
+        return ["agent", "--planner", "openai", *argv[1:]] if len(argv) > 1 else ["agent", "--planner", "openai", "--interactive"]
+    if argv[0] in COMMANDS:
+        if argv[0] == "run" and "--inp" not in argv:
+            return ["agent", "--planner", "openai", *argv]
+        return argv
+    if argv[0] in {"-h", "--help", "--version"}:
+        return argv
+    if argv[0].startswith("-"):
+        if _agent_options_without_goal(argv):
+            return ["agent", "--planner", "openai", "--interactive", *argv]
+        return ["agent", "--planner", "openai", *argv]
+    return ["agent", "--planner", "openai", *argv]
+
+
+def _agent_options_without_goal(argv: list[str]) -> bool:
+    options_with_values = {"--provider", "--model", "--session-id", "--session-dir", "--max-steps"}
+    flags = {"--dry-run", "--interactive"}
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item in options_with_values:
+            index += 2
+            continue
+        if item in flags:
+            index += 1
+            continue
+        return False
+    return True
 
 
 if __name__ == "__main__":

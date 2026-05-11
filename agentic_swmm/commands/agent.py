@@ -51,11 +51,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not execute tools.")
+    parser.add_argument("--interactive", action="store_true", help="Start an interactive agent shell; each prompt is executed with tool access.")
     parser.add_argument("--max-steps", type=int, default=8, help="Maximum tool calls to execute.")
     parser.set_defaults(func=main)
 
 
 def main(args: argparse.Namespace) -> int:
+    if args.interactive:
+        return _run_interactive_shell(args)
+
     goal = " ".join(args.goal).strip() or "run doctor"
     session_id = args.session_id or f"agent-{int(time.time())}"
     session_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / _safe_name(session_id)
@@ -101,6 +105,42 @@ def main(args: argparse.Namespace) -> int:
     _write_event(trace_path, {"event": "session_end", "ok": ok, "report": str(report)})
     print(f"\nFinal report: {report}")
     return 0 if ok else 1
+
+
+def _run_interactive_shell(args: argparse.Namespace) -> int:
+    if args.planner != "openai":
+        raise ValueError("interactive agent shell currently requires `--planner openai`.")
+
+    base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / "interactive"
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    print("Agentic SWMM interactive agent")
+    print("- mode: OpenAI planner with constrained local tools")
+    print(f"- session base: {base_dir}")
+    print("- type /exit to quit\n")
+
+    turn = 0
+    while True:
+        try:
+            prompt = input("you> ").strip()
+        except EOFError:
+            print()
+            return 0
+        if prompt in {"/exit", "/quit", "exit", "quit"}:
+            return 0
+        if not prompt:
+            continue
+
+        turn += 1
+        turn_id = f"{int(time.time())}-{turn:03d}-{_safe_name(prompt)[:40]}"
+        session_dir = base_dir / turn_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        trace_path = session_dir / "agent_trace.jsonl"
+        print()
+        result = _run_openai_planner(args, prompt, session_dir, trace_path)
+        print()
+        if result != 0:
+            print(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
 
 
 def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path) -> int:
@@ -611,6 +651,10 @@ def _read_skill_tool(call: ToolCall) -> dict[str, Any]:
 def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     inp = _required_repo_file(call, "inp_path", suffix=".inp")
     if isinstance(inp, dict):
+        resolved = _find_repo_inp(str(call.args.get("inp_path", "")))
+        if resolved is not None:
+            inp = resolved
+    if isinstance(inp, dict):
         return inp
     run_dir = _optional_repo_output_dir(call, "run_dir")
     if isinstance(run_dir, dict):
@@ -791,6 +835,16 @@ def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) 
     if not path.exists() or not path.is_file():
         return {"tool": call.name, "args": call.args, "ok": False, "summary": f"file not found: {path}"}
     return path
+
+
+def _find_repo_inp(value: str) -> Path | None:
+    if not value or Path(value).is_absolute() or "/" in value:
+        return None
+    root = repo_root() / "examples"
+    if not root.exists():
+        return None
+    matches = sorted(path for path in root.rglob(value) if path.is_file() and path.suffix.lower() == ".inp")
+    return matches[0] if matches else None
 
 
 def _required_repo_dir(call: ToolCall, key: str) -> Path | dict[str, Any]:
