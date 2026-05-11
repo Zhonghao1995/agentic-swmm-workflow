@@ -85,6 +85,7 @@ SWMM_SAFE_REF="${SWMM_REF//\//_}"
 SWMM_SRC_DIR="$CACHE_ROOT/swmm-src-$SWMM_SAFE_REF"
 SWMM_BUILD_DIR="$CACHE_ROOT/swmm-build-$SWMM_SAFE_REF"
 LOCAL_BIN_DIR="$HOME/.local/bin"
+PYTHON_BIN=""
 
 detect_platform() {
   case "$(uname -s)" in
@@ -114,6 +115,7 @@ ensure_confirmation() {
 }
 
 ensure_homebrew() {
+  load_homebrew_env
   if command -v brew >/dev/null 2>&1; then
     return
   fi
@@ -210,11 +212,31 @@ ensure_local_bin_on_path() {
 }
 
 ensure_python() {
-  if command -v python3 >/dev/null 2>&1; then
+  if resolve_python_310; then
     return
   fi
   ensure_toolchain
-  command -v python3 >/dev/null 2>&1 || fail "python3 is still unavailable after installation."
+  resolve_python_310 || fail "Python 3.10+ is still unavailable after installation."
+}
+
+resolve_python_310() {
+  local candidate version
+  for candidate in python3.12 python3.11 python3.10 python3; do
+    if ! command -v "$candidate" >/dev/null 2>&1; then
+      continue
+    fi
+    if "$candidate" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
+PY
+    then
+      PYTHON_BIN="$(command -v "$candidate")"
+      version="$("$PYTHON_BIN" --version 2>&1)"
+      log "Using $version at $PYTHON_BIN"
+      return 0
+    fi
+  done
+  return 1
 }
 
 ensure_node() {
@@ -286,7 +308,7 @@ install_python_requirements() {
   [[ -f "$REQ_FILE" ]] || fail "Missing requirements file: $REQ_FILE"
 
   log "Creating virtualenv: $VENV_DIR"
-  python3 -m venv "$VENV_DIR"
+  "$PYTHON_BIN" -m venv "$VENV_DIR"
 
   log "Installing Python dependencies"
   "$VENV_DIR/bin/python" -m pip install --upgrade pip

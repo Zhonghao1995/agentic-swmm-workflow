@@ -26,6 +26,12 @@ Agentic SWMM supports two local installation paths:
 
 Use this when Python, Node.js, and SWMM are already available or when you mainly want the `aiswmm` CLI and packaged runtime resources.
 
+`aiswmm` requires Python 3.10 or newer. On macOS, `/usr/bin/python3` may be Python 3.9, so use a newer interpreter when installing directly:
+
+```bash
+python3.11 -m pip install aiswmm
+```
+
 Install the Python package:
 
 ```bash
@@ -60,6 +66,8 @@ aiswmm chat --provider openai "Explain what this Agentic SWMM installation can d
 ## One-Line Runtime Installer
 
 Use this when you want a fuller local runtime setup similar to OpenClaw or Hermes installers.
+
+The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`, and only uses an interpreter that satisfies Python 3.10+. If none is available on macOS, it can install Homebrew Python before creating the local virtual environment.
 
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
