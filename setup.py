@@ -29,7 +29,7 @@ def collect_resource_files() -> list[tuple[str, list[str]]]:
     files_by_target: dict[str, list[str]] = {}
     for path in tracked:
         relative_parent = path.parent
-        target = str(Path("agentic-swmm-workflow") / relative_parent)
+        target = str(Path("aiswmm") / relative_parent)
         files_by_target.setdefault(target, []).append(path.as_posix())
     data_files.extend((target, sorted(files)) for target, files in sorted(files_by_target.items()))
     return data_files

@@ -15,6 +15,21 @@ Artifacts are written to `agentic-swmm-runs`.
 
 The image pins USEPA SWMM to `v5.2.4` for reproducible solver builds.
 
+## PyPI package
+
+Install the Python package:
+
+```bash
+pip install aiswmm
+```
+
+The package installs both command names:
+
+```bash
+aiswmm doctor
+agentic-swmm doctor
+```
+
 ## macOS and Linux
 
 Review the bootstrap script before running it:

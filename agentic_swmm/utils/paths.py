@@ -9,7 +9,7 @@ def repo_root() -> Path:
 
 
 def packaged_resource_root() -> Path:
-    return Path(sysconfig.get_path("data")) / "agentic-swmm-workflow"
+    return Path(sysconfig.get_path("data")) / "aiswmm"
 
 
 def resource_path(*parts: str) -> Path:

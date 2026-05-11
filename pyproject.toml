@@ -3,8 +3,8 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentic-swmm-workflow"
-version = "0.5.1"
+name = "aiswmm"
+version = "0.5.2"
 description = "Unified CLI for reproducible and auditable Agentic SWMM workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,6 +39,7 @@ Issues = "https://github.com/Zhonghao1995/agentic-swmm-workflow/issues"
 Changelog = "https://github.com/Zhonghao1995/agentic-swmm-workflow/blob/main/CHANGELOG.md"
 
 [project.scripts]
+aiswmm = "agentic_swmm.cli:main"
 agentic-swmm = "agentic_swmm.cli:main"
 
 [tool.setuptools.packages.find]
