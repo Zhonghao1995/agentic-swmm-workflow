@@ -71,6 +71,8 @@ The installer looks for `python3.12`, `python3.11`, `python3.10`, then `python3`
 
 If an older local `.venv` was previously created with Python 3.9, the installer rebuilds that virtual environment before installing `aiswmm`.
 
+During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable `aiswmm chat` immediately. The key is stored in `~/.aiswmm/env` with user-only permissions and loaded by the installed `aiswmm` command.
+
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
 ```bash

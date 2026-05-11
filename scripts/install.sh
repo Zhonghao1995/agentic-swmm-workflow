@@ -85,6 +85,8 @@ SWMM_SAFE_REF="${SWMM_REF//\//_}"
 SWMM_SRC_DIR="$CACHE_ROOT/swmm-src-$SWMM_SAFE_REF"
 SWMM_BUILD_DIR="$CACHE_ROOT/swmm-build-$SWMM_SAFE_REF"
 LOCAL_BIN_DIR="$HOME/.local/bin"
+AISWMM_CONFIG_DIR="${AISWMM_CONFIG_DIR:-$HOME/.aiswmm}"
+AISWMM_ENV_FILE="$AISWMM_CONFIG_DIR/env"
 PYTHON_BIN=""
 
 detect_platform() {
@@ -209,6 +211,109 @@ ensure_toolchain() {
 ensure_local_bin_on_path() {
   mkdir -p "$LOCAL_BIN_DIR"
   export PATH="$LOCAL_BIN_DIR:$PATH"
+}
+
+shell_quote() {
+  local value="$1"
+  printf '%q' "$value"
+}
+
+write_openai_env_file() {
+  local api_key="$1"
+  mkdir -p "$AISWMM_CONFIG_DIR"
+  {
+    printf '# Agentic SWMM local secrets. This file is sourced by ~/.local/bin/aiswmm.\n'
+    printf 'export OPENAI_API_KEY=%s\n' "$(shell_quote "$api_key")"
+  } >"$AISWMM_ENV_FILE"
+  chmod 600 "$AISWMM_ENV_FILE"
+}
+
+prompt_openai_api_key() {
+  if [[ "$AISWMM_PROVIDER" != "openai" || -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]]; then
+    return
+  fi
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    return
+  fi
+
+  cat >/dev/tty <<'MENU'
+
+OpenAI API key
+  - Paste a key now to enable `aiswmm chat` immediately.
+  - Press Enter to do it later.
+
+MENU
+  printf 'OpenAI API key [do it later]: ' >/dev/tty
+  local api_key
+  IFS= read -rs api_key </dev/tty || api_key=""
+  printf '\n' >/dev/tty
+  if [[ -z "${api_key:-}" ]]; then
+    log "OpenAI API key skipped; you can add it later in $AISWMM_ENV_FILE"
+    return
+  fi
+  write_openai_env_file "$api_key"
+  export OPENAI_API_KEY="$api_key"
+  log "Saved OpenAI API key to $AISWMM_ENV_FILE"
+}
+
+install_cli_shims() {
+  if [[ $SKIP_PYTHON -eq 1 ]]; then
+    return
+  fi
+  local cli_bin_dir
+  cli_bin_dir="$(preferred_cli_bin_dir)"
+  mkdir -p "$cli_bin_dir"
+  mkdir -p "$AISWMM_CONFIG_DIR"
+
+  local shim
+  for shim in aiswmm agentic-swmm; do
+    cat >"$cli_bin_dir/$shim" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -f "$AISWMM_ENV_FILE" ]]; then
+  source "$AISWMM_ENV_FILE"
+fi
+exec "$VENV_DIR/bin/python" -m agentic_swmm.cli "\$@"
+EOF
+    chmod +x "$cli_bin_dir/$shim"
+  done
+  if [[ "$cli_bin_dir" == "$LOCAL_BIN_DIR" ]]; then
+    persist_local_bin_path
+  fi
+  log "Installed CLI shims: $cli_bin_dir/aiswmm and $cli_bin_dir/agentic-swmm"
+}
+
+preferred_cli_bin_dir() {
+  local dir
+  for dir in /opt/homebrew/bin /usr/local/bin "$LOCAL_BIN_DIR"; do
+    case ":$PATH:" in
+      *":$dir:"*)
+        if [[ -d "$dir" && -w "$dir" ]]; then
+          printf '%s\n' "$dir"
+          return
+        fi
+        ;;
+    esac
+  done
+  printf '%s\n' "$LOCAL_BIN_DIR"
+}
+
+persist_local_bin_path() {
+  local profile_file
+  case "${SHELL:-}" in
+    */zsh) profile_file="$HOME/.zshrc" ;;
+    */bash) profile_file="$HOME/.bashrc" ;;
+    *) profile_file="$HOME/.profile" ;;
+  esac
+  mkdir -p "$(dirname "$profile_file")"
+  touch "$profile_file"
+  if ! grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$profile_file"; then
+    {
+      printf '\n# Agentic SWMM CLI\n'
+      printf 'export PATH="$HOME/.local/bin:$PATH"\n'
+    } >>"$profile_file"
+    log "Added $LOCAL_BIN_DIR to PATH in $profile_file for new terminals"
+  fi
 }
 
 ensure_python() {
@@ -364,6 +469,29 @@ run_aiswmm_setup() {
   "$VENV_DIR/bin/python" -m agentic_swmm.cli setup --provider "$AISWMM_PROVIDER" --model "$AISWMM_MODEL"
 }
 
+maybe_start_chat() {
+  if [[ $SKIP_SETUP -eq 1 || $SKIP_PYTHON -eq 1 || "$AISWMM_PROVIDER" != "openai" ]]; then
+    return
+  fi
+  if [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
+    return
+  fi
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    return
+  fi
+
+  printf '\nStart Agentic SWMM chat now? [Y/n] ' >/dev/tty
+  local reply
+  IFS= read -r reply </dev/tty || reply=""
+  case "${reply:-Y}" in
+    y|Y|yes|YES|"")
+      "$(preferred_cli_bin_dir)/aiswmm" chat --provider "$AISWMM_PROVIDER"
+      ;;
+    *)
+      ;;
+  esac
+}
+
 swmm_status() {
   ensure_local_bin_on_path
   if command -v swmm5 >/dev/null 2>&1; then
@@ -384,6 +512,7 @@ ensure_confirmation
 
 if [[ $SKIP_PYTHON -eq 0 ]]; then
   install_python_requirements
+  install_cli_shims
 fi
 
 if [[ $SKIP_MCP -eq 0 ]]; then
@@ -391,6 +520,7 @@ if [[ $SKIP_MCP -eq 0 ]]; then
 fi
 
 ensure_swmm
+prompt_openai_api_key
 run_aiswmm_setup
 
 cat <<SUMMARY
@@ -398,16 +528,18 @@ cat <<SUMMARY
 Install summary
 - Repo root: $REPO_ROOT
 - Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt + agentic-swmm CLI)" || echo "skipped (--skip-python)")
+- CLI command: $([[ $SKIP_PYTHON -eq 0 ]] && echo "$(preferred_cli_bin_dir)/aiswmm" || echo "skipped")
 - MCP npm setup: $([[ $SKIP_MCP -eq 0 ]] && echo "installed" || echo "skipped (--skip-mcp)")
 - Agentic SWMM setup: $([[ $SKIP_SETUP -eq 0 && $SKIP_PYTHON -eq 0 ]] && echo "registered provider=$AISWMM_PROVIDER model=$AISWMM_MODEL skills/MCP/memory" || echo "skipped")
+- OpenAI API key: $([[ -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]] && echo "configured" || echo "not configured")
 - SWMM ref: $SWMM_REF
 - SWMM check: $(swmm_status)
 
-Next steps
-1. Activate the virtualenv: source .venv/bin/activate
-2. Set an OpenAI key for real chat: export OPENAI_API_KEY="..."
-3. Check the CLI: aiswmm doctor
-4. Start local orchestration chat: aiswmm chat --provider $AISWMM_PROVIDER "Explain what this Agentic SWMM installation can do"
-5. Run acceptance: aiswmm demo acceptance --run-id latest
-6. Open report: runs/acceptance/latest/acceptance_report.md
+Run now
+1. Start local orchestration chat: aiswmm chat --provider $AISWMM_PROVIDER
+2. Check the runtime: aiswmm doctor
+3. Run acceptance: aiswmm demo acceptance --run-id latest
+4. Open report: $REPO_ROOT/runs/acceptance/latest/acceptance_report.md
 SUMMARY
+
+maybe_start_chat
