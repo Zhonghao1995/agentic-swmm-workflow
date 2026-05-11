@@ -232,7 +232,7 @@ prompt_openai_api_key() {
   if [[ "$AISWMM_PROVIDER" != "openai" || -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]]; then
     return
   fi
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+  if ! can_use_tty; then
     return
   fi
 
@@ -254,6 +254,10 @@ MENU
   write_openai_env_file "$api_key"
   export OPENAI_API_KEY="$api_key"
   log "Saved OpenAI API key to $AISWMM_ENV_FILE"
+}
+
+can_use_tty() {
+  [[ -e /dev/tty ]] && { : >/dev/tty; } 2>/dev/null
 }
 
 install_cli_shims() {
@@ -476,7 +480,7 @@ maybe_start_chat() {
   if [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
     return
   fi
-  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+  if ! can_use_tty; then
     return
   fi
 
