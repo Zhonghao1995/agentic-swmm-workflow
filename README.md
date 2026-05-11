@@ -14,9 +14,6 @@
   <a href="https://pypi.org/project/aiswmm/">
     <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
   </a>
-  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases">
-    <img src="https://img.shields.io/github/downloads/Zhonghao1995/agentic-swmm-workflow/total?label=release%20downloads&color=0E8A16" alt="GitHub Release downloads" />
-  </a>
   <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
     <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
   </a>
@@ -49,43 +46,9 @@ Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://
 
 Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
 
-## Why this project exists
-
-Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
-
-Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
-
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, inspect, remember, and trust.**
-
-## What makes it different
-
-- **Quick onboarding:** start from an explicit Docker run, or use local bootstrap scripts after reviewing them.
-- **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
-- **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
-- **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
-- **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
-
 ## Try it in one command
 
-Recommended Docker path:
-
-```bash
-mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.0 acceptance
-```
-
-Docker writes artifacts to `agentic-swmm-runs`. Local installation is also available for macOS, Linux, and Windows, but review the install script before running it. Details: [Installation and CLI guide](docs/installation.md).
-
-Python package:
-
-```bash
-pip install aiswmm
-aiswmm setup --provider openai --model gpt-5.5
-aiswmm --help
-```
-
-You can choose another OpenAI model at setup time, such as `gpt-5.4` or `gpt-5.5`.
-
-Full local runtime installer:
+macOS and Linux:
 
 ```bash
 curl -fsSL https://aiswmm.com/install.sh | bash
@@ -97,7 +60,23 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-Release notes for the interactive `aiswmm` runtime milestone: [v0.6.0 release README](docs/releases/v0.6.0.md).
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.0 release README](docs/releases/v0.6.0.md).
+
+## Why this project exists
+
+Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
+
+Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
+
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, inspect, remember, and trust.**
+
+## What makes it different
+
+- **Quick onboarding:** start from one-line macOS/Linux or Windows installers, with Docker and Python package paths documented separately.
+- **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
+- **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
+- **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
+- **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
 
 ## Workflow
 
