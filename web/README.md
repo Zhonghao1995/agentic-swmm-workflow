@@ -26,7 +26,7 @@ curl -fsSL https://aiswmm.com/install.sh | bash
 Pin a release with:
 
 ```bash
-curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.5.5 bash
+curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.6.0 bash
 ```
 
 ## Windows
@@ -46,10 +46,10 @@ irm https://aiswmm.com/install.ps1 | iex
 Pin a release with:
 
 ```powershell
-$env:AISWMM_INSTALL_REF = "v0.5.5"
+$env:AISWMM_INSTALL_REF = "v0.6.0"
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
 ## Release Discipline
 
-For development, the scripts default to `main`. For public use, prefer pinning `AISWMM_INSTALL_REF` to a released tag such as `v0.5.5` so users get a reproducible installer.
+For development, the scripts default to `main`. For public use, prefer pinning `AISWMM_INSTALL_REF` to a released tag such as `v0.6.0` so users get a reproducible installer.

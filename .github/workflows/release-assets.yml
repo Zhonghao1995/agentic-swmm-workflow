@@ -8,7 +8,7 @@ on:
       tag_name:
         description: "Git tag to package and attach to a GitHub Release"
         required: true
-        default: "v0.5.4"
+        default: "v0.6.0"
 
 permissions:
   contents: write
@@ -51,6 +51,7 @@ jobs:
         with:
           tag_name: ${{ steps.release.outputs.tag_name }}
           name: ${{ steps.release.outputs.tag_name }}
+          body_path: docs/releases/${{ steps.release.outputs.tag_name }}.md
           files: dist/*
-          generate_release_notes: true
+          generate_release_notes: false
           make_latest: true

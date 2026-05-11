@@ -8,7 +8,7 @@ Install Docker Desktop or Docker Engine, then run:
 
 ```bash
 mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.4 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.0 acceptance
 ```
 
 Artifacts are written to `agentic-swmm-runs`.
@@ -92,13 +92,41 @@ The Windows installer also creates user-level `aiswmm` and `agentic-swmm` comman
 The website scripts are thin stable entrypoints. They download the repository bootstrap scripts from GitHub, then run the local installer. For reproducible installs, pin a release tag before running:
 
 ```bash
-curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.5.5 bash
+curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.6.0 bash
 ```
 
 ```powershell
-$env:AISWMM_INSTALL_REF = "v0.5.5"
+$env:AISWMM_INSTALL_REF = "v0.6.0"
 irm https://aiswmm.com/install.ps1 | iex
 ```
+
+## After Installation: Interactive Agent Smoke Test
+
+`aiswmm` starts an interactive agent runtime by default:
+
+```bash
+aiswmm
+```
+
+Useful first prompts:
+
+```text
+inspect available skills, then tell me what local tools you can call
+```
+
+```text
+run tecnopolo_r1_199401.inp, audit it, and plot node OU2
+```
+
+The Tecnopolo prompt should produce a run directory under `runs/agent/interactive/...` with SWMM runner outputs, QA summaries, audit records, plot artifacts, and a `final_report.md`.
+
+You can also run the same idea as a one-shot command:
+
+```bash
+aiswmm "run tecnopolo_r1_199401.inp, audit it, and plot node OU2"
+```
+
+Keep API keys outside the conversation. Configure `OPENAI_API_KEY` during setup or in your shell environment, and revoke or rotate any key that is accidentally pasted into an agent prompt.
 
 ## macOS and Linux Checkout Installer
 

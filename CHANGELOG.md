@@ -6,6 +6,16 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 - No unreleased changes yet.
 
+## v0.6.0 - Interactive aiswmm runtime and auditable Tecnopolo baseline
+
+- Made `aiswmm` a natural-language interactive agent runtime by default, with constrained local tools exposed for doctor checks, skill inspection, SWMM execution, plotting, auditing, and evidence reads.
+- Verified the one-line local runtime path with the Tecnopolo prepared INP baseline: the agent can run `tecnopolo_r1_199401.inp`, audit the result, and produce traceable run, QA, plot, provenance, comparison, and final-report artifacts.
+- Documented the post-install user flow, including the first prompts to type after launching `aiswmm`, expected evidence directories, and baseline screenshots from the working runtime.
+- Updated release packaging metadata to `0.6.0`, including Python package metadata, citation metadata, Docker workflow defaults, and release-asset workflow defaults.
+- Added a README download-count badge for lightweight release download tracking.
+- Added an explicit API-key safety note: configure keys during setup or through environment variables, do not paste keys into the agent conversation, and revoke exposed keys immediately.
+- Known limitations: the current interactive planner path uses OpenAI API-key CLI calls; prompt routing and the modeling-memory loop still need further hardening.
+
 ## v0.5.4 - PyPI CLI packaging and coverage reporting
 
 - Published the `aiswmm` Python package CLI entry point for `pip install aiswmm` workflows.

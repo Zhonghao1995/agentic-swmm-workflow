@@ -14,6 +14,9 @@
   <a href="https://pypi.org/project/aiswmm/">
     <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
   </a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases">
+    <img src="https://img.shields.io/github/downloads/Zhonghao1995/agentic-swmm-workflow/total?label=release%20downloads&color=0E8A16" alt="GitHub Release downloads" />
+  </a>
   <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
     <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
   </a>
@@ -67,7 +70,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 Recommended Docker path:
 
 ```bash
-mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.5.4 acceptance
+mkdir -p agentic-swmm-runs && docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.0 acceptance
 ```
 
 Docker writes artifacts to `agentic-swmm-runs`. Local installation is also available for macOS, Linux, and Windows, but review the install script before running it. Details: [Installation and CLI guide](docs/installation.md).
@@ -93,6 +96,8 @@ Windows PowerShell:
 ```powershell
 irm https://aiswmm.com/install.ps1 | iex
 ```
+
+Release notes for the interactive `aiswmm` runtime milestone: [v0.6.0 release README](docs/releases/v0.6.0.md).
 
 ## Workflow
 
