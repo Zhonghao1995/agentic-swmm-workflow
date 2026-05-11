@@ -17,20 +17,14 @@
   <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
     <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
   </a>
-  <a href="#one-command-options">
-    <img src="https://img.shields.io/badge/install-options-0B74DE" alt="install options" />
-  </a>
-  <a href="#try-it-with-docker">
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/pkgs/container/agentic-swmm-workflow">
     <img src="https://img.shields.io/badge/docker-reproducible-2496ED" alt="Docker reproducible environment" />
-  </a>
-  <a href="https://github.com/USEPA/Stormwater-Management-Model">
-    <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
-  </a>
-  <a href="#codex--openclaw--hermes-ready">
-    <img src="https://img.shields.io/badge/Codex%20%2F%20OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="Codex, OpenClaw, or Hermes ready" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+  </a>
+  <a href="https://zhonghaoz.ca">
+    <img src="https://img.shields.io/badge/built%20by-Zhonghao-7C3AED" alt="Built by Zhonghao" />
   </a>
 </p>
 
