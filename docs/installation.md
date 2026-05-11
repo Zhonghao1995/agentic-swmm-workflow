@@ -81,6 +81,8 @@ On Windows PowerShell, after publishing `web/install.ps1`:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
+The Windows entrypoint installs into the current user's local application directory by default instead of `C:\Windows\System32`. If Git is unavailable, it downloads a GitHub source archive. If Python 3.10+ is unavailable, it first tries a user-scope `winget` Python install. Administrator PowerShell is only needed when you explicitly choose Chocolatey system dependency installation with `-InstallSystemDeps`.
+
 The website scripts are thin stable entrypoints. They download the repository bootstrap scripts from GitHub, then run the local installer. For reproducible installs, pin a release tag before running:
 
 ```bash

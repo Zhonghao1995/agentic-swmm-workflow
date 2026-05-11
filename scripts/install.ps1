@@ -18,6 +18,8 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot = Split-Path -Parent $ScriptDir
 $VenvDir = Join-Path $RepoRoot '.venv'
 $ReqFile = Join-Path $ScriptDir 'requirements.txt'
+$script:PythonExe = $null
+$script:PythonArgs = @()
 
 function Write-Step {
     param([string]$Message)
@@ -78,34 +80,104 @@ function Ensure-WindowsToolchain {
     Refresh-ChocolateyEnvironment
 }
 
-function Resolve-PythonCommand {
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        return 'python'
+function Add-UserPythonPath {
+    $roots = @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310')
+    )
+    foreach ($root in $roots) {
+        if (Test-Path $root) {
+            $scripts = Join-Path $root 'Scripts'
+            $env:Path = "$root;$scripts;$env:Path"
+        }
     }
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        return 'py -3'
+}
+
+function Try-InstallPythonWithWinget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return $false
     }
-    Fail "Python is unavailable after installation."
+    Write-Step "Installing Python 3.12 with winget for the current user"
+    & winget install --id Python.Python.3.12 --exact --source winget --scope user --accept-package-agreements --accept-source-agreements --silent
+    Add-UserPythonPath
+    return $true
+}
+
+function Resolve-Python310 {
+    Add-UserPythonPath
+    $candidates = @(
+        @{ Exe = 'py'; Args = @('-3.12') },
+        @{ Exe = 'py'; Args = @('-3.11') },
+        @{ Exe = 'py'; Args = @('-3.10') },
+        @{ Exe = 'python3.12'; Args = @() },
+        @{ Exe = 'python3.11'; Args = @() },
+        @{ Exe = 'python3.10'; Args = @() },
+        @{ Exe = 'python'; Args = @() }
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not (Get-Command $candidate.Exe -ErrorAction SilentlyContinue)) {
+            continue
+        }
+        $probeArgs = @($candidate.Args) + @('-c', 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)')
+        try {
+            & $candidate.Exe @probeArgs *> $null
+            if ($LASTEXITCODE -ne 0) {
+                continue
+            }
+            $versionArgs = @($candidate.Args) + @('--version')
+            $version = (& $candidate.Exe @versionArgs 2>&1 | Select-Object -First 1)
+            $script:PythonExe = $candidate.Exe
+            $script:PythonArgs = @($candidate.Args)
+            Write-Step "Using $version via $($candidate.Exe) $($candidate.Args -join ' ')"
+            return $true
+        } catch {
+            continue
+        }
+    }
+    return $false
+}
+
+function Invoke-ResolvedPython {
+    param([string[]]$Arguments)
+    if (-not $script:PythonExe) {
+        Fail "Python 3.10+ has not been resolved."
+    }
+    $allArgs = @($script:PythonArgs) + $Arguments
+    & $script:PythonExe @allArgs
 }
 
 function Ensure-Python {
-    if ((Get-Command python -ErrorAction SilentlyContinue) -or (Get-Command py -ErrorAction SilentlyContinue)) {
+    if (Resolve-Python310) {
         return
     }
-    if (-not $InstallSystemDeps) {
-        Fail "Python is not available. Install Python, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+    if ($InstallSystemDeps) {
+        Ensure-WindowsToolchain
+    } else {
+        try {
+            if (-not (Try-InstallPythonWithWinget)) {
+                Fail "Python 3.10+ is not available. Install Python 3.10+, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+            }
+        } catch {
+            Fail "Python 3.10+ is not available and winget user install failed. Install Python 3.10+, or re-run with -InstallSystemDeps from an elevated PowerShell session. Details: $_"
+        }
     }
-    Ensure-WindowsToolchain
+    if (-not (Resolve-Python310)) {
+        Fail "Python 3.10+ is still unavailable after installation."
+    }
 }
 
 function Ensure-Node {
     if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
-        return
+        return $true
     }
     if (-not $InstallSystemDeps) {
-        Fail "Node.js/npm are not available. Install Node.js, or re-run with -InstallSystemDeps from an elevated PowerShell session."
+        Write-Warning "Node.js/npm are not available. Skipping MCP npm dependency installation. Install Node.js later and re-run .\scripts\install.ps1 -Yes -SkipPython -SkipSwmm."
+        return $false
     }
     Ensure-WindowsToolchain
+    return ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue))
 }
 
 function Add-SwmmShim {
@@ -236,17 +308,21 @@ function Install-PythonRequirements {
     if (-not (Test-Path $ReqFile)) {
         Fail "Missing requirements file: $ReqFile"
     }
-    $pythonCmd = Resolve-PythonCommand
     Write-Step "Creating virtualenv at $VenvDir"
-    Invoke-Expression "$pythonCmd -m venv `"$VenvDir`""
+    Invoke-ResolvedPython -Arguments @('-m', 'venv', $VenvDir)
     $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
+    if (-not (Test-Path $venvPython)) {
+        Fail "Virtualenv Python was not created at $venvPython"
+    }
     & $venvPython -m pip install --upgrade pip
     & $venvPython -m pip install -r $ReqFile
     & $venvPython -m pip install -e $RepoRoot
 }
 
 function Install-McpRequirements {
-    Ensure-Node
+    if (-not (Ensure-Node)) {
+        return
+    }
     $npmCmd = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
     if (-not $npmCmd) {
         $npmCmd = (Get-Command npm -ErrorAction SilentlyContinue)

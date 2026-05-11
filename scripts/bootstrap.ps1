@@ -1,5 +1,6 @@
 param(
-    [string]$TargetDir = "agentic-swmm-workflow",
+    [string]$TargetDir = "",
+    [string]$SourceRef = $env:AISWMM_INSTALL_REF,
     [switch]$SkipPython,
     [switch]$SkipMcp,
     [switch]$SkipSwmm,
@@ -13,6 +14,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+if ([string]::IsNullOrWhiteSpace($SourceRef)) {
+    $SourceRef = 'main'
+}
 
 function Write-Step {
     param([string]$Message)
@@ -49,6 +54,52 @@ function Refresh-ChocolateyEnvironment {
     }
 }
 
+function Get-DefaultTargetDir {
+    $base = $env:LOCALAPPDATA
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        $base = Join-Path $HOME '.aiswmm'
+    } else {
+        $base = Join-Path $base 'AgenticSWMM'
+    }
+    return Join-Path $base 'agentic-swmm-workflow'
+}
+
+function Resolve-TargetDir {
+    if ([string]::IsNullOrWhiteSpace($TargetDir)) {
+        return Get-DefaultTargetDir
+    }
+    if ([System.IO.Path]::IsPathRooted($TargetDir)) {
+        return $TargetDir
+    }
+    return (Join-Path (Get-Location) $TargetDir)
+}
+
+function Install-RepositoryZip {
+    param([string]$Destination)
+
+    $zipUrl = "https://codeload.github.com/Zhonghao1995/agentic-swmm-workflow/zip/$SourceRef"
+    $tmpRoot = Join-Path $env:TEMP "aiswmm-bootstrap-$([guid]::NewGuid().ToString('N'))"
+    $zipPath = Join-Path $tmpRoot 'source.zip'
+    $extractRoot = Join-Path $tmpRoot 'extract'
+
+    Write-Step "Downloading repository archive from $zipUrl"
+    New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
+    Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+    Expand-Archive -Path $zipPath -DestinationPath $extractRoot -Force
+
+    $sourceDir = Get-ChildItem -Path $extractRoot -Directory | Select-Object -First 1
+    if (-not $sourceDir) {
+        throw "Unable to find extracted repository directory in $extractRoot"
+    }
+
+    if (Test-Path $Destination) {
+        Remove-Item -Recurse -Force $Destination
+    }
+    Move-Item -Path $sourceDir.FullName -Destination $Destination
+    Remove-Item -Recurse -Force $tmpRoot
+}
+
 $currentDir = Get-Location
 $localInstaller = Join-Path $currentDir 'scripts\install.ps1'
 $installArgs = @{ Yes = $true }
@@ -68,24 +119,26 @@ if (Test-Path $localInstaller) {
     exit 0
 }
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Ensure-Chocolatey
-    Refresh-ChocolateyEnvironment
-    Write-Step "Installing Git"
-    Ensure-Admin
-    choco upgrade git -y --no-progress
-    Refresh-ChocolateyEnvironment
-}
-
 $repoUrl = 'https://github.com/Zhonghao1995/agentic-swmm-workflow.git'
-$fullTarget = Join-Path (Get-Location) $TargetDir
+$fullTarget = Resolve-TargetDir
 
 if (Test-Path (Join-Path $fullTarget '.git')) {
     Write-Step "Updating existing checkout in $fullTarget"
-    git -C $fullTarget pull --ff-only
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        git -C $fullTarget pull --ff-only
+    } else {
+        Write-Step "Git is unavailable; refreshing checkout from archive instead"
+        Install-RepositoryZip -Destination $fullTarget
+    }
 } else {
-    Write-Step "Cloning repository into $fullTarget"
-    git clone $repoUrl $fullTarget
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        Write-Step "Cloning repository into $fullTarget"
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $fullTarget) | Out-Null
+        git clone $repoUrl $fullTarget
+    } else {
+        Write-Step "Git is unavailable; using a GitHub source archive"
+        Install-RepositoryZip -Destination $fullTarget
+    }
 }
 
 & (Join-Path $fullTarget 'scripts\install.ps1') @installArgs
