@@ -214,6 +214,107 @@ def _plan(goal: str) -> list[ToolCall]:
     return calls
 
 
+def _openai_planner_prompt() -> str:
+    return (
+        "You are the Agentic SWMM tool-calling planner. "
+        "Plan and execute with only the provided function tools: doctor, demo_acceptance, audit_run, summarize_memory, read_file. "
+        "Never request shell commands, package installation, network access, file writes outside tool side effects, or tools not in the schema. "
+        "Use doctor for runtime checks, demo_acceptance for a reproducible acceptance run, audit_run for evidence capture, "
+        "summarize_memory for modeling-memory refreshes, and read_file for inspecting repository artifacts. "
+        "After each tool result, decide the next evidence-producing tool or stop with a concise final answer that states the evidence boundary."
+    )
+
+
+def _openai_tool_schemas() -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "function",
+            "name": "doctor",
+            "description": "Run the built-in Agentic SWMM runtime doctor.",
+            "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+        {
+            "type": "function",
+            "name": "demo_acceptance",
+            "description": "Run the prepared acceptance demo through the Agentic SWMM CLI.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "run_id": {"type": "string", "description": "Run id under runs/acceptance."},
+                    "keep_existing": {"type": "boolean", "description": "Keep an existing acceptance run directory."},
+                },
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "audit_run",
+            "description": "Audit a run directory and write deterministic provenance/comparison/note artifacts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "run_dir": {"type": "string", "description": "Repository-relative run directory."},
+                    "workflow_mode": {"type": "string", "description": "Workflow label, for example acceptance."},
+                    "objective": {"type": "string", "description": "Run objective to record in the audit note."},
+                },
+                "required": ["run_dir"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "summarize_memory",
+            "description": "Summarize audited runs into the modeling-memory directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "runs_dir": {"type": "string", "description": "Repository-relative runs directory to summarize."},
+                    "out_dir": {"type": "string", "description": "Repository-relative modeling-memory output directory."},
+                },
+                "required": ["runs_dir"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "type": "function",
+            "name": "read_file",
+            "description": "Read a repository file and return a bounded excerpt.",
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "Repository-relative file path."}},
+                "required": ["path"],
+                "additionalProperties": False,
+            },
+        },
+    ]
+
+
+def _validated_openai_call(call: ProviderToolCall) -> ToolCall:
+    if call.name not in ALLOWED_TOOLS:
+        raise ValueError(f"planner requested unsupported tool: {call.name}")
+    return ToolCall(call.name, dict(call.arguments))
+
+
+def _provider_call_payload(call: ProviderToolCall) -> dict[str, Any]:
+    return {"call_id": call.call_id, "tool": call.name, "args": call.arguments}
+
+
+def _tool_output_for_model(result: dict[str, Any]) -> dict[str, Any]:
+    allowed_keys = {
+        "tool",
+        "args",
+        "ok",
+        "return_code",
+        "summary",
+        "stdout_tail",
+        "stderr_tail",
+        "path",
+        "chars",
+        "excerpt",
+    }
+    return {key: value for key, value in result.items() if key in allowed_keys}
+
+
 def _execute_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if call.name == "doctor":
         return _run_cli_tool(call, session_dir, ["doctor"])
@@ -299,15 +400,26 @@ def _summarize_cli_result(tool: str, stdout: str, return_code: int) -> str:
     return stripped[-1] if stripped else "completed"
 
 
-def _write_report(session_dir: Path, goal: str, plan: list[ToolCall], results: list[dict[str, Any]], *, dry_run: bool) -> Path:
+def _write_report(
+    session_dir: Path,
+    goal: str,
+    plan: list[ToolCall],
+    results: list[dict[str, Any]],
+    *,
+    dry_run: bool,
+    planner: str = "rule",
+    final_text: str = "",
+) -> Path:
     report_path = session_dir / "final_report.md"
     ok = all(result.get("ok") for result in results) if results else dry_run
     lines = [
         "# Agentic SWMM Executor Report",
         "",
         f"- goal: {goal}",
+        f"- planner: {planner}",
         f"- status: {'DRY RUN' if dry_run else ('PASS' if ok else 'FAIL')}",
         f"- session_dir: {session_dir}",
+        f"- allowed_tools: {', '.join(sorted(ALLOWED_TOOLS))}",
         "",
         "## Plan",
         "",
@@ -326,6 +438,8 @@ def _write_report(session_dir: Path, goal: str, plan: list[ToolCall], results: l
                 lines.append(f"   - stderr: {result['stderr_file']}")
             if result.get("path"):
                 lines.append(f"   - artifact: {result['path']}")
+    if final_text:
+        lines.extend(["", "## Planner Final Answer", "", final_text])
     lines.extend(["", "## Evidence Boundary", "", "This executor only reports commands and artifacts it actually ran or read. A successful SWMM run is not a calibration or validation claim unless observed-data evidence and validation checks are present."])
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path

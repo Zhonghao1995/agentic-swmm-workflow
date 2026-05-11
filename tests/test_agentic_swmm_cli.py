@@ -165,6 +165,74 @@ class AgenticSwmmCliTests(unittest.TestCase):
             report = Path(tmp) / "agent-session" / "final_report.md"
             self.assertTrue(report.exists())
 
+    def test_agent_openai_planner_uses_mock_tool_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [
+                    {"name": "doctor", "arguments": {}},
+                    {"name": "read_file", "arguments": {"path": "README.md"}},
+                ]
+            )
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mock planner final"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "--dry-run",
+                    "inspect the project",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("planner: openai", proc.stdout)
+            self.assertIn("doctor", proc.stdout)
+            report = (session_dir / "final_report.md").read_text(encoding="utf-8")
+            self.assertIn("- planner: openai", report)
+            self.assertIn("allowed_tools", report)
+
+    def test_agent_openai_planner_rejects_unsupported_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps([{"name": "shell", "arguments": {"cmd": "pwd"}}])
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(Path(tmp) / "agent-session"),
+                    "try shell",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("unsupported tool", proc.stderr)
+
     def test_skill_and_mcp_lists_are_available(self) -> None:
         skill_proc = subprocess.run(
             [sys.executable, "-m", "agentic_swmm.cli", "skill", "list"],
