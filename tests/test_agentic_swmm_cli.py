@@ -233,6 +233,77 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertNotEqual(proc.returncode, 0)
             self.assertIn("unsupported tool", proc.stderr)
 
+    def test_agent_openai_planner_can_read_skill_contracts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [
+                    {"name": "list_skills", "arguments": {}},
+                    {"name": "read_skill", "arguments": {"skill_name": "swmm-runner"}},
+                ]
+            )
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "skill contracts inspected"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "inspect runner skill",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("list_skills", proc.stdout)
+            self.assertIn("read_skill", proc.stdout)
+            self.assertIn("skill contracts inspected", proc.stdout)
+            report = (session_dir / "final_report.md").read_text(encoding="utf-8")
+            self.assertIn("read_skill", report)
+
+    def test_agent_openai_planner_rejects_run_inp_outside_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            outside_inp = Path(tmp) / "outside.inp"
+            outside_inp.write_text("[TITLE]\nOutside\n", encoding="utf-8")
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [{"name": "run_swmm_inp", "arguments": {"inp_path": str(outside_inp)}}]
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(Path(tmp) / "agent-session"),
+                    "run outside inp",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("inp_path must be inside repository", proc.stdout)
+
     def test_skill_and_mcp_lists_are_available(self) -> None:
         skill_proc = subprocess.run(
             [sys.executable, "-m", "agentic_swmm.cli", "skill", "list"],
