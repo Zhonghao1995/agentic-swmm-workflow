@@ -62,6 +62,8 @@ irm https://aiswmm.com/install.ps1 | iex
 
 After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.0 release README](docs/releases/v0.6.0.md).
 
+Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. For OpenAI-backed planning, configure your API key with an environment variable such as `OPENAI_API_KEY`; do not paste API keys into the `aiswmm` conversation.
+
 ## Why this project exists
 
 Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
