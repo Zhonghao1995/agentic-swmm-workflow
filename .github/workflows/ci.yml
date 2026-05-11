@@ -4,17 +4,23 @@ on:
   push:
     paths:
       - ".github/workflows/ci.yml"
+      - "pyproject.toml"
       - "requirements.txt"
+      - "agentic_swmm/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
+      - "tests/**"
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - "pyproject.toml"
       - "requirements.txt"
+      - "agentic_swmm/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
+      - "tests/**"
 
 jobs:
   smoke-test:
@@ -32,7 +38,9 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install coverage[toml]
           pip install -r requirements.txt
+          pip install -e .
 
       - name: Syntax check
         run: |
@@ -40,8 +48,22 @@ jobs:
 
       - name: Unit tests
         run: |
-          python -m unittest discover -s skills/swmm-uncertainty/tests -v
-          python -m unittest discover -s tests -v
+          coverage run --source=agentic_swmm,skills -m unittest discover -s skills/swmm-uncertainty/tests -v
+          coverage run --append --source=agentic_swmm,skills -m unittest discover -s tests -v
+          coverage xml
+          coverage report --show-missing
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Build Python package
+        run: |
+          python -m pip install build
+          python -m build
 
       - name: Fuzzy uncertainty dry run
         run: |

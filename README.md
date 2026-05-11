@@ -11,6 +11,12 @@
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
     <img src="https://img.shields.io/github/v/release/Zhonghao1995/agentic-swmm-workflow?label=release&color=1F6FEB" alt="latest release" />
   </a>
+  <a href="https://pypi.org/project/agentic-swmm-workflow/">
+    <img src="https://img.shields.io/pypi/v/agentic-swmm-workflow?label=PyPI&color=3775A9" alt="PyPI version" />
+  </a>
+  <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
+    <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
+  </a>
   <a href="#one-command-options">
     <img src="https://img.shields.io/badge/install-options-0B74DE" alt="install options" />
   </a>

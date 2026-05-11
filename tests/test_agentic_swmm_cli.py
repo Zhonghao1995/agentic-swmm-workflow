@@ -7,11 +7,18 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from agentic_swmm.utils.paths import script_path
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class AgenticSwmmCliTests(unittest.TestCase):
+    def test_script_path_prefers_source_checkout_resource(self) -> None:
+        expected = REPO_ROOT / "skills" / "swmm-runner" / "scripts" / "swmm_runner.py"
+
+        self.assertEqual(script_path("skills", "swmm-runner", "scripts", "swmm_runner.py"), expected)
+
     def test_help_lists_primary_commands(self) -> None:
         proc = subprocess.run(
             [sys.executable, "-m", "agentic_swmm.cli", "--help"],
