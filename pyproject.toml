@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiswmm"
-version = "0.5.3"
+version = "0.5.2"
 description = "Unified CLI for reproducible and auditable Agentic SWMM workflows."
 readme = "README.md"
 requires-python = ">=3.10"

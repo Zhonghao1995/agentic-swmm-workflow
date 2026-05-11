@@ -14,9 +14,6 @@
   <a href="https://pypi.org/project/aiswmm/">
     <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
   </a>
-  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases">
-    <img src="https://img.shields.io/github/downloads/Zhonghao1995/agentic-swmm-workflow/total?label=downloads&color=0B74DE" alt="GitHub release downloads" />
-  </a>
   <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
     <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
   </a>
