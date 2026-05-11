@@ -81,17 +81,62 @@ function Ensure-WindowsToolchain {
 }
 
 function Add-UserPythonPath {
-    $roots = @(
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python310')
-    )
+    $roots = Get-UserPythonRoots
     foreach ($root in $roots) {
         if (Test-Path $root) {
             $scripts = Join-Path $root 'Scripts'
             $env:Path = "$root;$scripts;$env:Path"
         }
     }
+}
+
+function Get-UserPythonRoots {
+    $roots = New-Object System.Collections.Generic.List[string]
+    $base = Join-Path $env:LOCALAPPDATA 'Programs\Python'
+
+    foreach ($name in @('Python312', 'Python311', 'Python310')) {
+        $path = Join-Path $base $name
+        if (Test-Path $path) {
+            $roots.Add($path)
+        }
+    }
+
+    if (Test-Path $base) {
+        Get-ChildItem -Path $base -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending |
+            ForEach-Object {
+                if (-not $roots.Contains($_.FullName)) {
+                    $roots.Add($_.FullName)
+                }
+            }
+    }
+
+    return $roots.ToArray()
+}
+
+function Get-PythonCandidates {
+    $items = New-Object System.Collections.Generic.List[object]
+
+    foreach ($root in Get-UserPythonRoots) {
+        $exe = Join-Path $root 'python.exe'
+        if (Test-Path $exe) {
+            $items.Add(@{ Exe = $exe; Args = @() })
+        }
+    }
+
+    foreach ($candidate in @(
+        @{ Exe = 'py'; Args = @('-3.12') },
+        @{ Exe = 'py'; Args = @('-3.11') },
+        @{ Exe = 'py'; Args = @('-3.10') },
+        @{ Exe = 'python3.12'; Args = @() },
+        @{ Exe = 'python3.11'; Args = @() },
+        @{ Exe = 'python3.10'; Args = @() },
+        @{ Exe = 'python'; Args = @() }
+    )) {
+        $items.Add($candidate)
+    }
+
+    return $items.ToArray()
 }
 
 function Try-InstallPythonWithWinget {
@@ -106,18 +151,10 @@ function Try-InstallPythonWithWinget {
 
 function Resolve-Python310 {
     Add-UserPythonPath
-    $candidates = @(
-        @{ Exe = 'py'; Args = @('-3.12') },
-        @{ Exe = 'py'; Args = @('-3.11') },
-        @{ Exe = 'py'; Args = @('-3.10') },
-        @{ Exe = 'python3.12'; Args = @() },
-        @{ Exe = 'python3.11'; Args = @() },
-        @{ Exe = 'python3.10'; Args = @() },
-        @{ Exe = 'python'; Args = @() }
-    )
+    $candidates = Get-PythonCandidates
 
     foreach ($candidate in $candidates) {
-        if (-not (Get-Command $candidate.Exe -ErrorAction SilentlyContinue)) {
+        if (-not ((Test-Path $candidate.Exe) -or (Get-Command $candidate.Exe -ErrorAction SilentlyContinue))) {
             continue
         }
         $probeArgs = @($candidate.Args) + @('-c', 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)')
@@ -130,7 +167,12 @@ function Resolve-Python310 {
             $version = (& $candidate.Exe @versionArgs 2>&1 | Select-Object -First 1)
             $script:PythonExe = $candidate.Exe
             $script:PythonArgs = @($candidate.Args)
-            Write-Step "Using $version via $($candidate.Exe) $($candidate.Args -join ' ')"
+            $suffix = ($candidate.Args -join ' ')
+            if ($suffix) {
+                Write-Step "Using $version via $($candidate.Exe) $suffix"
+            } else {
+                Write-Step "Using $version via $($candidate.Exe)"
+            }
             return $true
         } catch {
             continue
