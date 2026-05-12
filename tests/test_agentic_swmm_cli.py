@@ -13,6 +13,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.cli import _route_default_to_agent, build_parser
 from agentic_swmm.commands.agent import _find_repo_inp
+from agentic_swmm.agent.intent_map import load_intent_map
 from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_mcp_servers, _select_relevant_skills, _workflow_route_args
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
@@ -301,6 +302,14 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
         self.assertIn("Startup memory: identification_memory.md", prompt)
         self.assertIn("You are **aiswmm**", prompt)
+
+    def test_intent_map_is_external_config(self) -> None:
+        payload = load_intent_map()
+
+        self.assertEqual(payload["schema_version"], "1.0")
+        self.assertIn("swmm-end-to-end", payload["always_load_skills"])
+        self.assertTrue(any(intent["id"] == "uncertainty" for intent in payload["intents"]))
+        self.assertIn("swmm-runner", payload["mcp_enabled_skills"])
 
     def test_relevant_skill_selection_is_dynamic(self) -> None:
         self.assertEqual(

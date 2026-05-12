@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "always_load_skills": ["swmm-end-to-end"],
+  "fallback_skills": ["swmm-runner", "swmm-experiment-audit"],
+  "excluded_swmm_keywords": ["test", "pytest", "skill", "capabilities", "runtime", "diff", "search"],
+  "swmm_request_keywords": [
+    "swmm",
+    ".inp",
+    "audit",
+    "plot",
+    "作图",
+    "画图",
+    "图",
+    "calibration",
+    "calibrate",
+    "uncertainty",
+    "fuzzy",
+    "rainfall",
+    "outfall",
+    "node",
+    "tecnopolo",
+    "example",
+    "examples/",
+    "运行",
+    "审计",
+    "校准",
+    "率定",
+    "不确定"
+  ],
+  "plot_keywords": [
+    "plot",
+    "figure",
+    "graph",
+    "hydrograph",
+    "rainfall",
+    "node",
+    "outfall",
+    "total_inflow",
+    "depth",
+    "volume",
+    "flood",
+    "图",
+    "画",
+    "作图",
+    "绘图",
+    "节点",
+    "水深",
+    "体积",
+    "流量"
+  ],
+  "mcp_enabled_skills": [
+    "swmm-builder",
+    "swmm-calibration",
+    "swmm-climate",
+    "swmm-gis",
+    "swmm-network",
+    "swmm-params",
+    "swmm-plot",
+    "swmm-runner"
+  ],
+  "intents": [
+    {
+      "id": "runner",
+      "skills": ["swmm-runner"],
+      "keywords": [".inp", "run", "runner", "swmm5", "运行", "跑一下"]
+    },
+    {
+      "id": "audit",
+      "skills": ["swmm-experiment-audit"],
+      "keywords": ["audit", "provenance", "comparison", "compare", "审计", "证据", "对比"]
+    },
+    {
+      "id": "plot",
+      "skills": ["swmm-plot"],
+      "keywords_from": "plot_keywords"
+    },
+    {
+      "id": "calibration",
+      "skills": ["swmm-calibration"],
+      "keywords": ["calibration", "calibrate", "validation", "sensitivity", "observed", "nse", "kge", "校准", "率定", "敏感性", "观测"]
+    },
+    {
+      "id": "uncertainty",
+      "skills": ["swmm-uncertainty"],
+      "keywords": ["uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊"]
+    },
+    {
+      "id": "gis",
+      "skills": ["swmm-gis"],
+      "keywords": ["gis", "dem", "geopackage", "shapefile", "geojson", "subcatchment", "pour point", "流域", "汇水区"]
+    },
+    {
+      "id": "climate",
+      "skills": ["swmm-climate"],
+      "keywords": ["rainfall", "raingage", "timeseries", "climate", "降雨", "雨量"]
+    },
+    {
+      "id": "network",
+      "skills": ["swmm-network"],
+      "keywords": ["network", "conduit", "junction", "outfall", "xsection", "pipe", "管网", "节点", "出口"]
+    },
+    {
+      "id": "params",
+      "skills": ["swmm-params"],
+      "keywords": ["landuse", "land use", "soil", "green-ampt", "parameter", "参数", "土地利用", "土壤"]
+    },
+    {
+      "id": "builder",
+      "skills": ["swmm-builder"],
+      "keywords": ["build", "builder", "assemble", "network_json", "subcatchments_csv", "生成inp", "构建"]
+    },
+    {
+      "id": "modeling-memory",
+      "skills": ["swmm-modeling-memory"],
+      "keywords": ["memory", "lessons", "failure pattern", "skill update", "建模记忆", "经验"]
+    }
+  ]
+}
