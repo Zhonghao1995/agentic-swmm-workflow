@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -21,6 +22,22 @@ def _rel(path: Path) -> str:
         return str(path.resolve().relative_to(repo_root().resolve()))
     except ValueError:
         return str(path.resolve())
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _source_type(path: Path) -> str:
+    try:
+        path.resolve().relative_to(repo_root().resolve())
+    except ValueError:
+        return "external_inp_import"
+    return "repository_inp"
 
 
 def _parse_runner_manifest(stdout: str) -> dict[str, Any]:
@@ -70,7 +87,8 @@ def main(args: argparse.Namespace) -> int:
     runner_dir.mkdir(parents=True, exist_ok=True)
     qa_dir.mkdir(parents=True, exist_ok=True)
 
-    run_inp = inputs_dir / inp.name
+    source_type = _source_type(inp)
+    run_inp = inputs_dir / "model.inp"
     if inp.resolve() != run_inp.resolve():
         shutil.copy2(inp, run_inp)
     sidecar_inputs = _copy_inp_sidecar_files(inp, inputs_dir)
@@ -145,15 +163,21 @@ def main(args: argparse.Namespace) -> int:
     builder_manifest = {
         "schema_version": "1.0",
         "stage": "prepared-input-handoff",
+        "source_type": source_type,
         "outputs": {"inp": _rel(builder_inp)},
         "inputs": {
-            "source_inp": _rel(inp),
-            "copied_inp": _rel(run_inp),
-            "sidecar_files": [_rel(path) for path in sidecar_inputs],
+            "source_inp": {"path": _rel(inp), "sha256": _sha256(inp), "source_type": source_type},
+            "copied_inp": {"path": _rel(run_inp), "sha256": _sha256(run_inp)},
+            "sidecar_files": [{"path": _rel(path), "sha256": _sha256(path)} for path in sidecar_inputs],
         },
         "validation": {
             "status": "pass",
-            "notes": ["Prepared-input workflow: INP was supplied by the user/example and copied into 04_builder as the execution handoff."],
+            "notes": [
+                "Prepared-input workflow: INP was supplied by the user/example and copied into 04_builder as the execution handoff.",
+                "External INP imports are copied into the run directory before execution; SWMM runs against the run-local copy.",
+            ]
+            if source_type == "external_inp_import"
+            else ["Prepared-input workflow: INP was supplied by the user/example and copied into 04_builder as the execution handoff."],
         },
     }
     (builder_dir / "manifest.json").write_text(json.dumps(builder_manifest, indent=2), encoding="utf-8")
@@ -163,12 +187,12 @@ def main(args: argparse.Namespace) -> int:
         "generated_by": "agentic-swmm",
         "generated_at_utc": _now_utc(),
         "run_id": run_dir.name,
-        "pipeline": "prepared-input-cli",
+        "pipeline": source_type if source_type == "external_inp_import" else "prepared-input-cli",
         "inputs": {
-            "source_inp": {"path": _rel(inp)},
-            "run_inp": {"path": _rel(run_inp)},
-            "builder_inp": {"path": _rel(builder_inp)},
-            "sidecar_files": [{"path": _rel(path)} for path in sidecar_inputs],
+            "source_inp": {"path": _rel(inp), "sha256": _sha256(inp), "source_type": source_type},
+            "run_inp": {"path": _rel(run_inp), "sha256": _sha256(run_inp), "imported_copy": True},
+            "builder_inp": {"path": _rel(builder_inp), "sha256": _sha256(builder_inp)},
+            "sidecar_files": [{"path": _rel(path), "sha256": _sha256(path)} for path in sidecar_inputs],
         },
         "outputs": {
             "built_inp": {"path": _rel(builder_inp)},

@@ -36,6 +36,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertNotIn("chat", proc.stdout)
         self.assertIn("model", proc.stdout)
         self.assertIn("config", proc.stdout)
+        self.assertIn("capabilities", proc.stdout)
         self.assertIn("setup", proc.stdout)
         self.assertIn("mcp", proc.stdout)
         self.assertIn("skill", proc.stdout)
@@ -123,7 +124,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("- planner: openai", proc.stdout)
+            self.assertIn("agent> Planner: openai", proc.stdout)
             self.assertIn("mocked agent answer", proc.stdout)
 
     def test_cli_without_command_defaults_to_openai_agent(self) -> None:
@@ -143,8 +144,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             self.assertIn("Agentic SWMM interactive agent", proc.stdout)
             self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("- planner: openai", proc.stdout)
-            self.assertIn("- goal: inspect project", proc.stdout)
+            self.assertIn("agent> Planner: openai", proc.stdout)
+            self.assertIn("agent> Goal: inspect project", proc.stdout)
             self.assertIn("mocked default agent", proc.stdout)
 
     def test_natural_language_goal_defaults_to_openai_agent(self) -> None:
@@ -169,7 +170,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("- goal: inspect the project", proc.stdout)
+            self.assertIn("agent> Goal: inspect the project", proc.stdout)
             self.assertIn("mocked natural language agent", proc.stdout)
 
     def test_default_router_preserves_explicit_low_level_run(self) -> None:
@@ -180,6 +181,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
             ["agent", "--planner", "openai", "--interactive", "--model", "gpt-test"],
         )
         self.assertEqual(_route_default_to_agent(["run", "--inp", "model.inp"]), ["run", "--inp", "model.inp"])
+        self.assertEqual(_route_default_to_agent(["capabilities"]), ["capabilities"])
+        self.assertEqual(
+            _route_default_to_agent(["--verbose", "--model", "gpt-test"]),
+            ["agent", "--planner", "openai", "--interactive", "--verbose", "--model", "gpt-test"],
+        )
         self.assertEqual(
             _route_default_to_agent(["run", "tecnopolo_r1_199401.inp"]),
             ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
@@ -251,7 +257,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("planner: openai", proc.stdout)
+            self.assertIn("agent> Planner: openai", proc.stdout)
             self.assertIn("doctor", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
             self.assertIn("- planner: openai", report)
@@ -324,10 +330,69 @@ class AgenticSwmmCliTests(unittest.TestCase):
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
             self.assertIn("read_skill", report)
 
-    def test_agent_openai_planner_rejects_run_inp_outside_repo(self) -> None:
+    def test_agent_openai_planner_uses_workspace_and_runtime_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [
+                    {"name": "capabilities", "arguments": {}},
+                    {"name": "list_dir", "arguments": {"path": "agentic_swmm"}},
+                    {"name": "search_files", "arguments": {"query": "Agentic SWMM", "glob": "README.md"}},
+                    {"name": "list_mcp_servers", "arguments": {}},
+                ]
+            )
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "workspace tools inspected"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "inspect runtime capabilities",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("capabilities", proc.stdout)
+            self.assertIn("list_dir", proc.stdout)
+            self.assertIn("search_files", proc.stdout)
+            self.assertIn("list_mcp_servers", proc.stdout)
+            self.assertIn("workspace tools inspected", proc.stdout)
+            report = (session_dir / "final_report.md").read_text(encoding="utf-8")
+            self.assertIn("allowed_tools", report)
+            self.assertIn("web_search", report)
+            self.assertIn("call_mcp_tool", report)
+
+    def test_capabilities_command_lists_new_agent_tools(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "capabilities", "--json"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        payload = json.loads(proc.stdout)
+        self.assertEqual(payload["filesystem"]["arbitrary_shell"], False)
+        self.assertTrue(payload["web"]["enabled"])
+        self.assertTrue(payload["mcp"]["enabled"])
+        self.assertIn("web_search", payload["tools"])
+        self.assertIn("call_mcp_tool", payload["tools"])
+
+    def test_agent_openai_planner_reports_missing_external_inp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             outside_inp = Path(tmp) / "outside.inp"
-            outside_inp.write_text("[TITLE]\nOutside\n", encoding="utf-8")
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
@@ -354,7 +419,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertNotEqual(proc.returncode, 0)
-            self.assertIn("inp_path must be inside repository", proc.stdout)
+            self.assertIn("external INP file not found", proc.stdout)
 
     def test_skill_and_mcp_lists_are_available(self) -> None:
         skill_proc = subprocess.run(
@@ -472,6 +537,90 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertTrue((run_dir / "experiment_note.md").exists())
             self.assertTrue((run_dir / "command_trace.json").exists())
             self.assertIsNone(payload["obsidian_note"])
+
+    def test_run_imports_external_inp_before_execution_and_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            external_dir = tmp_path / "external models"
+            external_dir.mkdir()
+            external_inp = external_dir / "user case.inp"
+            external_inp.write_text("[TITLE]\nExternal user model\n", encoding="utf-8")
+
+            fake_bin = tmp_path / "bin"
+            fake_bin.mkdir()
+            swmm5 = fake_bin / "swmm5.cmd"
+            swmm5.write_text(
+                "\n".join(
+                    [
+                        "@echo off",
+                        "if \"%1\"==\"--version\" (echo EPA SWMM 5.2.4 & exit /b 0)",
+                        "(",
+                        "echo ***** Node Inflow Summary *****",
+                        "echo ------------------------------------------------",
+                        "echo   O1              OUTFALL       0.001       1.250      2    12:47",
+                        "echo.",
+                        "echo ***** Flow Routing Continuity *****",
+                        "echo Continuity Error (%%) ............. 0.00",
+                        ") > \"%2\"",
+                        "echo binary-placeholder > \"%3\"",
+                        "exit /b 0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            run_dir = tmp_path / "runs" / "external-case"
+            env = os.environ.copy()
+            env["PATH"] = str(fake_bin) + os.pathsep + env["PATH"]
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "run",
+                    "--inp",
+                    str(external_inp),
+                    "--run-dir",
+                    str(run_dir),
+                    "--node",
+                    "O1",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            imported_inp = run_dir / "00_inputs" / "model.inp"
+            self.assertTrue(imported_inp.exists())
+            manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["pipeline"], "external_inp_import")
+            self.assertEqual(manifest["inputs"]["source_inp"]["path"], str(external_inp.resolve()))
+            self.assertEqual(manifest["inputs"]["source_inp"]["sha256"], manifest["inputs"]["run_inp"]["sha256"])
+            self.assertEqual(manifest["inputs"]["run_inp"]["path"], str(imported_inp.resolve()))
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "audit",
+                    "--run-dir",
+                    str(run_dir),
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            provenance = json.loads((run_dir / "experiment_provenance.json").read_text(encoding="utf-8"))
+            note = (run_dir / "experiment_note.md").read_text(encoding="utf-8")
+            self.assertEqual(provenance["workflow_mode"], "external_inp_import")
+            self.assertIn("## Input Provenance", note)
+            self.assertIn("External INP import boundary", note)
+            self.assertIn("does not claim the external model is calibrated or validated", note)
 
 
 if __name__ == "__main__":

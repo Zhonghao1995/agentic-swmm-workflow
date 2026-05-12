@@ -4,13 +4,14 @@ import argparse
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
+from agentic_swmm.commands import agent, audit, capabilities, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
 
 
 COMMANDS = {
     "agent",
     "model",
     "config",
+    "capabilities",
     "setup",
     "mcp",
     "skill",
@@ -34,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     agent.register(subparsers)
     model.register(subparsers)
     config.register(subparsers)
+    capabilities.register(subparsers)
     setup.register(subparsers)
     mcp.register(subparsers)
     skill.register(subparsers)
@@ -82,7 +84,7 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
 
 def _agent_options_without_goal(argv: list[str]) -> bool:
     options_with_values = {"--provider", "--model", "--session-id", "--session-dir", "--max-steps"}
-    flags = {"--dry-run", "--interactive"}
+    flags = {"--dry-run", "--interactive", "--verbose"}
     index = 0
     while index < len(argv):
         item = argv[index]
