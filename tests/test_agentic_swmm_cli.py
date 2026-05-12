@@ -497,9 +497,22 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("web_search", payload["tools"])
         self.assertIn("call_mcp_tool", payload["tools"])
         self.assertIn("select_workflow_mode", payload["tools"])
+        self.assertIn("inspect_plot_options", payload["tools"])
         self.assertIn("apply_patch", payload["tools"])
         self.assertIn("run_tests", payload["tools"])
         self.assertIn("run_allowed_command", payload["tools"])
+
+    def test_plot_help_exposes_node_attribute_selection(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "plot", "--help"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        self.assertIn("--node-attr", proc.stdout)
+        self.assertIn("Volume_stored_ponded", proc.stdout)
 
     def test_agent_blocks_disallowed_shell_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -633,6 +646,26 @@ class AgenticSwmmCliTests(unittest.TestCase):
         payload = result["results"]
         self.assertTrue(payload["node_suggestions"])
         self.assertEqual(payload["node_suggestions"][0], "OU2")
+        options = payload["plot_selection_options"]
+        self.assertTrue(options["rainfall_options"])
+        self.assertIn("Depth_above_invert", {item["name"] for item in options["node_attribute_options"]})
+        self.assertIn("Volume_stored_ponded", {item["name"] for item in options["node_attribute_options"]})
+
+    def test_agent_can_inspect_plot_options_before_plotting(self) -> None:
+        registry = AgentToolRegistry()
+        inp = REPO_ROOT / "examples" / "tecnopolo" / "tecnopolo_r1_199401.inp"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = registry.execute(ToolCall("inspect_plot_options", {"inp_path": str(inp)}), Path(tmp))
+
+        payload = result["results"]
+        self.assertTrue(result["ok"])
+        self.assertEqual(payload["defaults"]["node"], "OU2")
+        self.assertTrue(payload["rainfall_options"])
+        self.assertNotIn("rain_ts", payload["selections_needed"])
+        self.assertIn("node", payload["selections_needed"])
+        self.assertIn("node_attr", payload["selections_needed"])
+        self.assertIn("Total_inflow", {item["name"] for item in payload["node_attribute_options"]})
+        self.assertIn("Flow_lost_flooding", {item["name"] for item in payload["node_attribute_options"]})
 
     def test_agent_openai_planner_reports_missing_external_inp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

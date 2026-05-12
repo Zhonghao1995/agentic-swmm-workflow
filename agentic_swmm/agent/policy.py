@@ -15,6 +15,7 @@ def capability_summary(tool_names: list[str]) -> dict[str, Any]:
             "run_external_inp_import": True,
             "audit": True,
             "plot": True,
+            "plot_selection": "Agent can inspect selectable rainfall TIMESERIES, nodes, and node output attributes before plotting.",
             "calibration_or_validation_claims": "Only when observed-data evidence and validation checks exist.",
         },
         "workspace": {

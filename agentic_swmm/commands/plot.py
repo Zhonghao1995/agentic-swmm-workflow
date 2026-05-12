@@ -8,6 +8,26 @@ from typing import Any
 from agentic_swmm.utils.paths import repo_root, require_dir, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
+DEFAULT_NODE_ATTR = "Total_inflow"
+
+NODE_ATTRIBUTE_CHOICES = [
+    "Total_inflow",
+    "Lateral_inflow",
+    "Flow_lost_flooding",
+    "Volume_stored_ponded",
+    "Depth_above_invert",
+    "Hydraulic_head",
+]
+
+NODE_ATTRIBUTE_LABELS = {
+    "Total_inflow": "total inflow peak or hydrograph",
+    "Lateral_inflow": "lateral inflow hydrograph",
+    "Flow_lost_flooding": "flooding loss hydrograph",
+    "Volume_stored_ponded": "stored/ponded volume hydrograph",
+    "Depth_above_invert": "node water depth above invert hydrograph",
+    "Hydraulic_head": "hydraulic head hydrograph",
+}
+
 
 def _read_manifest(run_dir: Path) -> dict[str, Any]:
     candidates = [run_dir / "manifest.json", *sorted(run_dir.glob("**/manifest.json"))]
@@ -58,8 +78,19 @@ def _find_out(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
 
 
 def _infer_rain_timeseries(inp: Path) -> tuple[str, str | None]:
+    options = rainfall_timeseries_options(inp)
+    for option in options:
+        if option.get("used_by_raingage"):
+            return str(option["name"]), option.get("rain_kind")
+    if options:
+        return str(options[0]["name"]), options[0].get("rain_kind")
+    raise FileNotFoundError(f"Unable to infer rainfall TIMESERIES from INP: {inp}")
+
+
+def rainfall_timeseries_options(inp: Path) -> list[dict[str, Any]]:
     text = inp.read_text(encoding="utf-8", errors="ignore")
     lines = text.splitlines()
+    raingage_series: dict[str, dict[str, str | None]] = {}
     in_raingages = False
     for raw in lines:
         stripped = raw.strip()
@@ -76,9 +107,14 @@ def _infer_rain_timeseries(inp: Path) -> tuple[str, str | None]:
         if "TIMESERIES" in upper_parts:
             idx = upper_parts.index("TIMESERIES")
             if idx + 1 < len(parts):
-                rain_kind = "cumulative_depth_mm" if "CUMULATIVE" in upper_parts else None
-                return parts[idx + 1].strip('"'), rain_kind
+                name = parts[idx + 1].strip('"')
+                gage = parts[0].strip('"')
+                raingage_series[name] = {
+                    "gage": gage,
+                    "rain_kind": "cumulative_depth_mm" if "CUMULATIVE" in upper_parts else None,
+                }
 
+    options: list[dict[str, Any]] = []
     in_timeseries = False
     for raw in lines:
         stripped = raw.strip()
@@ -90,8 +126,35 @@ def _infer_rain_timeseries(inp: Path) -> tuple[str, str | None]:
             break
         if not in_timeseries or not stripped or stripped.startswith(";"):
             continue
-        return stripped.split()[0], None
-    raise FileNotFoundError(f"Unable to infer rainfall TIMESERIES from INP: {inp}")
+        parts = stripped.split()
+        if not parts:
+            continue
+        name = parts[0].strip('"')
+        if any(option["name"] == name for option in options):
+            continue
+        gage_info = raingage_series.get(name, {})
+        options.append(
+            {
+                "name": name,
+                "source": "file" if len(parts) >= 3 and parts[1].upper() == "FILE" else "inline",
+                "used_by_raingage": name in raingage_series,
+                "gage": gage_info.get("gage"),
+                "rain_kind": gage_info.get("rain_kind"),
+            }
+        )
+    for name, gage_info in raingage_series.items():
+        if not any(option["name"] == name for option in options):
+            options.append(
+                {
+                    "name": name,
+                    "source": "raingage",
+                    "used_by_raingage": True,
+                    "gage": gage_info.get("gage"),
+                    "rain_kind": gage_info.get("rain_kind"),
+                }
+            )
+    rainfall_options = [option for option in options if option.get("used_by_raingage")]
+    return rainfall_options or options
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -100,6 +163,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--inp", type=Path, help="Explicit INP file. Defaults to auto-discovery from run-dir.")
     parser.add_argument("--out-file", type=Path, help="Explicit SWMM .out file. Defaults to auto-discovery from run-dir.")
     parser.add_argument("--node", default="O1", help="Node/outfall to plot.")
+    parser.add_argument(
+        "--node-attr",
+        default=DEFAULT_NODE_ATTR,
+        help="Node output attribute to plot. Common choices include Total_inflow, Depth_above_invert, Volume_stored_ponded, and Flow_lost_flooding.",
+    )
     parser.add_argument("--rain-ts", help="TIMESERIES name for rainfall. Defaults to auto-discovery from INP.")
     parser.add_argument(
         "--rain-kind",
@@ -142,6 +210,8 @@ def main(args: argparse.Namespace) -> int:
         str(out_file),
         "--node",
         args.node,
+        "--node-attr",
+        args.node_attr,
         "--rain-ts",
         rain_ts,
         "--rain-kind",

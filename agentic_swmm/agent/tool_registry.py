@@ -17,6 +17,7 @@ from agentic_swmm.agent import mcp_client
 from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR, NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, _find_inp, _find_out, _read_manifest, rainfall_timeseries_options
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import discover_skills, load_mcp_registry
 from agentic_swmm.utils.paths import repo_root, script_path
@@ -100,6 +101,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
         ToolSpec("format_rainfall", "Format rainfall CSV into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill.", _object({"input_csv": {"type": "string"}, "out_json": {"type": "string"}, "out_timeseries": {"type": "string"}, "series_name": {"type": "string"}, "timestamp_column": {"type": "string"}, "value_column": {"type": "string"}, "value_units": {"type": "string"}, "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]}, "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]}}, ["input_csv", "out_json", "out_timeseries"]), _format_rainfall_tool),
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool),
+        ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool),
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool),
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}}, ["server"]), _list_mcp_tools_tool),
@@ -107,7 +109,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool),
         ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
         ToolSpec("network_to_inp", "Export a SWMM network JSON to INP section text using the swmm-network script.", _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]), _network_to_inp_tool),
-        ToolSpec("plot_run", "Create a rainfall-runoff plot from a run directory using the swmm-plot skill wrapper.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
+        ToolSpec("plot_run", "Create a rainfall-runoff plot from a run directory using selected rainfall series, node, and node output attribute.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
@@ -221,6 +223,62 @@ def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, command)
 
 
+def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    run_dir: Path | None = None
+    if call.args.get("run_dir"):
+        resolved_run_dir = _required_repo_dir(call, "run_dir")
+        if isinstance(resolved_run_dir, dict):
+            return resolved_run_dir
+        run_dir = resolved_run_dir
+
+    inp: Path | None = None
+    if call.args.get("inp_path"):
+        inp = _resolve_existing_inp(str(call.args["inp_path"]))
+    elif run_dir is not None:
+        manifest = _read_manifest(run_dir)
+        inp = _find_inp(run_dir, manifest)
+
+    out_file: Path | None = None
+    if call.args.get("out_file"):
+        out_file = _repo_path(str(call.args["out_file"]))
+        if out_file is None or not out_file.exists() or not out_file.is_file():
+            return _failure(call, f"out_file must be an existing repository file: {call.args['out_file']}")
+    elif run_dir is not None:
+        manifest = _read_manifest(run_dir)
+        out_file = _find_out(run_dir, manifest)
+
+    rainfall_options = rainfall_timeseries_options(inp) if inp is not None else []
+    node_options = _node_suggestions(str(inp), limit=100) if inp is not None else []
+    node_attribute_options = _node_attribute_options(out_file, node_options)
+    default_rain = next((option["name"] for option in rainfall_options if option.get("used_by_raingage")), None)
+    if default_rain is None and rainfall_options:
+        default_rain = rainfall_options[0]["name"]
+    default_node = node_options[0] if node_options else None
+
+    selections_needed: list[str] = []
+    if len(rainfall_options) > 1:
+        selections_needed.append("rain_ts")
+    if len(node_options) > 1:
+        selections_needed.append("node")
+    if len(node_attribute_options) > 1:
+        selections_needed.append("node_attr")
+    user_prompt = ""
+    if selections_needed:
+        user_prompt = "Please choose " + ", ".join(selections_needed) + " before plotting."
+
+    result = {
+        "inp": str(inp) if inp is not None else None,
+        "out_file": str(out_file) if out_file is not None else None,
+        "rainfall_options": rainfall_options,
+        "node_options": node_options,
+        "node_attribute_options": node_attribute_options,
+        "defaults": {"rain_ts": default_rain, "node": default_node, "node_attr": DEFAULT_NODE_ATTR},
+        "selections_needed": selections_needed,
+        "user_prompt": user_prompt,
+    }
+    return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"rain={len(rainfall_options)} nodes={len(node_options)} attrs={len(node_attribute_options)}"}
+
+
 def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     goal = str(call.args.get("goal") or "").lower()
     provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
@@ -258,7 +316,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     elif has_inp:
         mode = "prepared_inp_cli"
         required = ["inp_path", "node"]
-        next_tools = ["run_swmm_inp", "audit_run", "plot_run"]
+        next_tools = ["run_swmm_inp", "audit_run", "inspect_plot_options", "plot_run"]
         boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
     elif has_full_build:
         mode = "full_modular_build"
@@ -277,6 +335,8 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     if mode == "prepared_demo":
         missing = []
 
+    node_suggestions = _node_suggestions(provided.get("inp_path"))
+    plot_selection_options = _plot_selection_options_for_inp(provided.get("inp_path"))
     result = {
         "mode": mode,
         "top_level_contract": "skills/swmm-end-to-end/SKILL.md",
@@ -287,7 +347,8 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "stop_reason": "missing critical input" if missing else None,
         "evidence_boundary": boundary,
         "user_prompt": _workflow_user_prompt(mode, missing),
-        "node_suggestions": _node_suggestions(provided.get("inp_path")),
+        "node_suggestions": node_suggestions,
+        "plot_selection_options": plot_selection_options,
     }
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
@@ -297,6 +358,8 @@ def _plot_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if isinstance(run_dir, dict):
         return run_dir
     command = ["plot", "--run-dir", str(run_dir), "--node", str(call.args.get("node") or "O1")]
+    if call.args.get("node_attr"):
+        command.extend(["--node-attr", str(call.args["node_attr"])])
     for key, flag in (("rain_ts", "--rain-ts"), ("rain_kind", "--rain-kind")):
         if call.args.get(key):
             command.extend([flag, str(call.args[key])])
@@ -659,6 +722,47 @@ def _node_suggestions(inp_path: str | None, limit: int = 8) -> list[str]:
     suggestions = [*sections["[OUTFALLS]"], *sections["[JUNCTIONS]"]]
     deduped = list(dict.fromkeys(suggestions))
     return deduped[:limit]
+
+
+def _plot_selection_options_for_inp(inp_path: str | None) -> dict[str, Any]:
+    if not inp_path:
+        return {"rainfall_options": [], "node_attribute_options": _default_node_attribute_options()}
+    inp = _resolve_existing_inp(inp_path)
+    if inp is None:
+        return {"rainfall_options": [], "node_attribute_options": _default_node_attribute_options()}
+    return {
+        "rainfall_options": rainfall_timeseries_options(inp),
+        "node_attribute_options": _default_node_attribute_options(),
+    }
+
+
+def _node_attribute_options(out_file: Path | None, node_options: list[str]) -> list[dict[str, Any]]:
+    if out_file is None or not out_file.exists():
+        return _default_node_attribute_options()
+    try:
+        from swmmtoolbox import catalog
+
+        rows = catalog(str(out_file), "node")
+    except Exception:
+        return _default_node_attribute_options()
+    attrs: list[str] = []
+    for row in rows:
+        if len(row) < 3 or row[0] != "node":
+            continue
+        node, attr = str(row[1]), str(row[2])
+        if node_options and node not in node_options:
+            continue
+        if attr not in attrs:
+            attrs.append(attr)
+    if not attrs:
+        return _default_node_attribute_options()
+    preferred = [attr for attr in NODE_ATTRIBUTE_CHOICES if attr in attrs]
+    remainder = [attr for attr in attrs if attr not in preferred]
+    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in [*preferred, *remainder]]
+
+
+def _default_node_attribute_options() -> list[dict[str, str]]:
+    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in NODE_ATTRIBUTE_CHOICES]
 
 
 def _resolve_existing_inp(value: str) -> Path | None:

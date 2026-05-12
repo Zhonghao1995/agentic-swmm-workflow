@@ -77,6 +77,16 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
     return times, vals
 
 
+NODE_ATTR_LABELS = {
+    'Total_inflow': 'Total inflow (m$^3$/s)',
+    'Lateral_inflow': 'Lateral inflow (m$^3$/s)',
+    'Flow_lost_flooding': 'Flooding flow (m$^3$/s)',
+    'Volume_stored_ponded': 'Volume stored/ponded (m$^3$)',
+    'Depth_above_invert': 'Node water depth above invert (m)',
+    'Hydraulic_head': 'Hydraulic head (m)',
+}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--inp', required=True, type=Path)
@@ -86,7 +96,8 @@ def main():
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
     ap.add_argument('--node', default='O1')
-    ap.add_argument('--node-attr', default='Total_inflow')
+    ap.add_argument('--node-attr', default='Total_inflow',
+                    help='SWMM node output attribute to plot, e.g. Total_inflow, Volume_stored_ponded, Flow_lost_flooding.')
     ap.add_argument('--out-png', required=True, type=Path)
     ap.add_argument('--dpi', type=int, default=300)
     ap.add_argument('--focus-day', type=str, default=None,
@@ -167,8 +178,8 @@ def main():
     ax_rain.invert_yaxis()
 
     # Flow line in a separate panel.
-    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label='Flow', zorder=3)
-    ax_flow.set_ylabel('Flow (m$^3$/s)')
+    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label=args.node_attr.replace('_', ' '), zorder=3)
+    ax_flow.set_ylabel(NODE_ATTR_LABELS.get(args.node_attr, args.node_attr.replace('_', ' ')))
     ax_flow.set_xlabel('Time')
 
     # Focus x-axis: one day or auto-window
