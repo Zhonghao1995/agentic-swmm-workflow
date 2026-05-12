@@ -104,18 +104,13 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
     base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / "interactive"
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    conversation_id = f"{int(time.time())}-session"
-    conversation_dir = base_dir / conversation_id
-    turns_dir = conversation_dir / "turns"
-    runs_dir = conversation_dir / "runs"
-    turns_dir.mkdir(parents=True, exist_ok=True)
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    conversation_dir, turns_dir, runs_dir = _new_interactive_session(base_dir)
 
     _agent_say("Agentic SWMM interactive agent")
     _agent_say("Mode: OpenAI planner with constrained local tools")
     _agent_say(f"Session base: {_display_path(base_dir)}")
     _agent_say(f"Session folder: {_display_path(conversation_dir)}")
-    _agent_say("Type /exit to quit\n")
+    _agent_say("Type /exit to quit, or /new-session to start a fresh session\n")
 
     turn = 0
     active_run_dir: Path | None = None
@@ -127,6 +122,12 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
             return 0
         if prompt in {"/exit", "/quit", "exit", "quit"}:
             return 0
+        if prompt in {"/new-session", "/new session", "new session"}:
+            conversation_dir, turns_dir, runs_dir = _new_interactive_session(base_dir)
+            active_run_dir = None
+            turn = 0
+            _agent_say(f"New session folder: {_display_path(conversation_dir)}\n")
+            continue
         if not prompt:
             continue
 
@@ -151,6 +152,20 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
         print()
         if result != 0:
             _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
+
+
+def _new_interactive_session(base_dir: Path) -> tuple[Path, Path, Path]:
+    conversation_id = f"{int(time.time())}-session"
+    conversation_dir = base_dir / conversation_id
+    counter = 2
+    while conversation_dir.exists():
+        conversation_dir = base_dir / f"{int(time.time())}-session-{counter}"
+        counter += 1
+    turns_dir = conversation_dir / "turns"
+    runs_dir = conversation_dir / "runs"
+    turns_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    return conversation_dir, turns_dir, runs_dir
 
 
 def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path, registry: AgentToolRegistry) -> int:

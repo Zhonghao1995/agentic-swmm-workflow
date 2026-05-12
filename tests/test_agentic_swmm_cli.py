@@ -193,6 +193,39 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("agent> Goal: inspect project", proc.stdout)
             self.assertIn("mocked default agent", proc.stdout)
 
+    def test_interactive_new_session_command_switches_session_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
+            session_base = Path(tmp) / "interactive"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--interactive",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_base),
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                input="/new-session\ninspect project\n/exit\n",
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("New session folder:", proc.stdout)
+            self.assertIn("agent> Goal: inspect project", proc.stdout)
+            session_dirs = [path for path in session_base.iterdir() if path.is_dir()]
+            self.assertGreaterEqual(len(session_dirs), 2)
+
     def test_natural_language_goal_defaults_to_openai_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()

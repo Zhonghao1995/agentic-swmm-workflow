@@ -81,6 +81,8 @@ runs/agent/interactive/<session-id>/
 
 Follow-up actions such as "plot the previous result", "audit that run again", or "compare this with baseline" should reuse the active run directory instead of starting from a new blank evidence folder. Multi-run workflows such as sensitivity or uncertainty analysis should create multiple child run directories under the same parent session.
 
+The interactive shell should support `/new-session` to start a fresh parent session without exiting the process. Starting a new session clears the active run directory and prevents follow-up plot/audit requests from attaching to the previous workflow.
+
 ## Operating Modes
 
 Do not ask the user to pick an internal mode as the first step. Start by identifying the goal and concrete files, infer the safest mode, and ask a targeted question only when the data supports multiple paths or a critical input is missing.
