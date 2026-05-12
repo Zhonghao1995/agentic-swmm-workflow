@@ -74,7 +74,11 @@ class AgentToolRegistry:
             "results",
             "servers",
             "tools",
+            "mapped_tools",
             "capabilities",
+            "recovery",
+            "fallback_tools",
+            "node_suggestions",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -283,6 +287,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "stop_reason": "missing critical input" if missing else None,
         "evidence_boundary": boundary,
         "user_prompt": _workflow_user_prompt(mode, missing),
+        "node_suggestions": _node_suggestions(provided.get("inp_path")),
     }
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
@@ -462,24 +467,78 @@ def _list_mcp_servers_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
-        return _failure(call, f"MCP server not found: {call.args['server']}")
+        return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
     try:
         tools = mcp_client.list_tools(str(server["command"]), [str(arg) for arg in server.get("args", [])])
     except Exception as exc:
-        return _failure(call, f"MCP tools/list failed: {exc}")
-    return {"tool": call.name, "args": call.args, "ok": True, "tools": tools, "summary": f"{len(tools)} MCP tool(s) on {server['name']}"}
+        return _mcp_failure(call, f"MCP tools/list failed: {exc}")
+    mapped = [_map_mcp_tool_schema(str(server["name"]), tool) for tool in tools if isinstance(tool, dict)]
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "tools": tools,
+        "mapped_tools": mapped,
+        "summary": f"{len(tools)} MCP tool(s) on {server['name']}; {len(mapped)} schema(s) mapped for planner inspection",
+    }
 
 
 def _call_mcp_tool_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
-        return _failure(call, f"MCP server not found: {call.args['server']}")
+        return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
     arguments = call.args.get("arguments") if isinstance(call.args.get("arguments"), dict) else {}
     try:
         result = mcp_client.call_tool(str(server["command"]), [str(arg) for arg in server.get("args", [])], str(call.args["tool"]), arguments)
     except Exception as exc:
-        return _failure(call, f"MCP tools/call failed: {exc}")
+        return _mcp_failure(call, f"MCP tools/call failed: {exc}", server=str(server["name"]))
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"called MCP tool {server['name']}.{call.args['tool']}"}
+
+
+def _mcp_failure(call: ToolCall, summary: str, *, server: str | None = None) -> dict[str, Any]:
+    result = _failure(call, summary)
+    result["recovery"] = "Use list_mcp_servers/list_mcp_tools to refresh available MCP tools, then retry with corrected server/tool/arguments or fall back to the CLI wrapper."
+    result["fallback_tools"] = _mcp_fallback_tools(server or str(call.args.get("server") or ""))
+    return result
+
+
+def _map_mcp_tool_schema(server_name: str, tool: dict[str, Any]) -> dict[str, Any]:
+    name = str(tool.get("name") or "tool")
+    description = str(tool.get("description") or f"MCP tool exposed by {server_name}.")
+    schema = tool.get("inputSchema")
+    if not isinstance(schema, dict):
+        schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
+    parameters = _normalize_json_schema(schema)
+    return {
+        "server": server_name,
+        "mcp_tool": name,
+        "planner_tool": "call_mcp_tool",
+        "description": description,
+        "arguments": {"server": server_name, "tool": name, "arguments_schema": parameters},
+    }
+
+
+def _normalize_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not schema:
+        return {"type": "object", "properties": {}, "additionalProperties": True}
+    normalized = dict(schema)
+    normalized.setdefault("type", "object")
+    normalized.setdefault("properties", {})
+    normalized.setdefault("additionalProperties", True)
+    if not isinstance(normalized.get("properties"), dict):
+        normalized["properties"] = {}
+    return normalized
+
+
+def _mcp_fallback_tools(server_name: str) -> list[str]:
+    mapping = {
+        "swmm-builder": ["build_inp"],
+        "swmm-climate": ["format_rainfall"],
+        "swmm-network": ["network_qa", "network_to_inp"],
+        "swmm-plot": ["plot_run"],
+        "swmm-runner": ["run_swmm_inp"],
+    }
+    return mapping.get(server_name, ["list_mcp_servers", "list_mcp_tools"])
 
 
 def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -576,6 +635,44 @@ def _repo_output_path(value: str) -> Path | None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _node_suggestions(inp_path: str | None, limit: int = 8) -> list[str]:
+    if not inp_path:
+        return []
+    candidate = _resolve_existing_inp(inp_path)
+    if candidate is None:
+        return []
+    sections: dict[str, list[str]] = {"[OUTFALLS]": [], "[JUNCTIONS]": []}
+    section: str | None = None
+    for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped.upper()
+            continue
+        if section in {"[OUTFALLS]", "[JUNCTIONS]"}:
+            name = stripped.split()[0]
+            if name not in sections[section]:
+                sections[section].append(name)
+    suggestions = [*sections["[OUTFALLS]"], *sections["[JUNCTIONS]"]]
+    deduped = list(dict.fromkeys(suggestions))
+    return deduped[:limit]
+
+
+def _resolve_existing_inp(value: str) -> Path | None:
+    path = _repo_path(value)
+    if path is not None and path.exists() and path.is_file() and path.suffix.lower() == ".inp":
+        return path
+    external = Path(value).expanduser()
+    try:
+        external = external.resolve()
+    except OSError:
+        return None
+    if external.exists() and external.is_file() and external.suffix.lower() == ".inp":
+        return external
+    return _find_repo_inp(value)
 
 
 def _process_text(value: Any) -> str:

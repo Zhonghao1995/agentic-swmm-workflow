@@ -7,7 +7,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from agentic_swmm.agent.tool_registry import AgentToolRegistry
+from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.cli import _route_default_to_agent
 from agentic_swmm.commands.agent import _find_repo_inp
 from agentic_swmm.utils.paths import script_path
@@ -561,6 +564,75 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             self.assertIn("run_tests", proc.stdout)
             self.assertIn("OK:", proc.stdout)
+
+    def test_openai_agent_writes_session_state_and_context_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "state checked"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "inspect project state",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("state checked", proc.stdout)
+            state = json.loads((session_dir / "session_state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["planner"], "openai")
+            self.assertIn("retry_policy", state)
+            self.assertTrue((session_dir / "context_summary.md").exists())
+
+    def test_mcp_tool_list_returns_mapped_schemas(self) -> None:
+        registry = AgentToolRegistry()
+        fake_tools = [
+            {
+                "name": "validate_network",
+                "description": "Validate a network.",
+                "inputSchema": {"type": "object", "properties": {"network_json": {"type": "string"}}, "required": ["network_json"]},
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools):
+            result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["mapped_tools"][0]["planner_tool"], "call_mcp_tool")
+        self.assertEqual(result["mapped_tools"][0]["arguments"]["server"], "swmm-network")
+        self.assertIn("network_json", result["mapped_tools"][0]["arguments"]["arguments_schema"]["properties"])
+
+    def test_mcp_call_failure_reports_recovery_and_fallback(self) -> None:
+        registry = AgentToolRegistry()
+        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.call_tool", side_effect=RuntimeError("bad args")):
+            result = registry.execute(ToolCall("call_mcp_tool", {"server": "swmm-runner", "tool": "run", "arguments": {}}), Path(tmp))
+
+        self.assertFalse(result["ok"])
+        self.assertIn("recovery", result)
+        self.assertIn("run_swmm_inp", result["fallback_tools"])
+
+    def test_workflow_router_suggests_nodes_from_inp(self) -> None:
+        registry = AgentToolRegistry()
+        inp = REPO_ROOT / "examples" / "tecnopolo" / "tecnopolo_r1_199401.inp"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = registry.execute(ToolCall("select_workflow_mode", {"goal": "run inp", "inp_path": str(inp)}), Path(tmp))
+
+        payload = result["results"]
+        self.assertTrue(payload["node_suggestions"])
+        self.assertEqual(payload["node_suggestions"][0], "OU2")
 
     def test_agent_openai_planner_reports_missing_external_inp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

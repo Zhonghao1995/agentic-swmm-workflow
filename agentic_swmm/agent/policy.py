@@ -33,6 +33,8 @@ def capability_summary(tool_names: list[str]) -> dict[str, Any]:
         "mcp": {
             "enabled": True,
             "boundary": "MCP tools are discovered from the local Agentic SWMM registry and called through a traced stdio client.",
+            "preference": "Prefer CLI wrappers for core audited run/audit/plot workflows; use MCP when its schema is more specific or no CLI wrapper exists.",
+            "failure_recovery": "Failed MCP calls should be retried only after refreshing schemas or by falling back to a listed CLI wrapper.",
         },
         "tools": tool_names,
     }

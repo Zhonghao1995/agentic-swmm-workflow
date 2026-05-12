@@ -5,6 +5,7 @@ from pathlib import Path
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.planner import OpenAIPlanner, PlannerRun, rule_plan
 from agentic_swmm.agent.reporting import write_event
+from agentic_swmm.agent.state import write_session_state
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 
@@ -40,4 +41,14 @@ def run_openai_plan(*, goal: str, model: str, provider, registry: AgentToolRegis
         },
     )
     planner = OpenAIPlanner(provider, registry, max_steps=max_steps, verbose=verbose, emit=emit)
-    return planner.run(goal=goal, session_dir=executor.session_dir, trace_path=trace_path, executor=executor)
+    outcome = planner.run(goal=goal, session_dir=executor.session_dir, trace_path=trace_path, executor=executor)
+    state_path, context_path = write_session_state(
+        session_dir=executor.session_dir,
+        goal=goal,
+        planner="openai",
+        model=model,
+        allowed_tools=registry.sorted_names(),
+        outcome=outcome,
+    )
+    write_event(trace_path, {"event": "session_state", "state": str(state_path), "context_summary": str(context_path)})
+    return outcome
