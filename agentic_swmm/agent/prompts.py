@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from agentic_swmm.runtime.registry import enabled_startup_memory_files
+
 
 def openai_planner_prompt() -> str:
-    return (
+    base = (
         "You are the Agentic SWMM tool-calling planner. "
         "Plan and execute with only the provided function tools. "
         "Never request shell commands, package installation, network access, file writes outside tool side effects, or tools not in the schema. "
@@ -27,3 +29,27 @@ def openai_planner_prompt() -> str:
         "For final user-facing answers, do not dump the tool trace. Use a compact result card: outcome, key metrics or checks, main artifacts, evidence boundary, and next recommended action. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
+    memory = _startup_memory_context()
+    if memory:
+        return base + "\n\n" + memory
+    return base
+
+
+def _startup_memory_context(max_chars: int = 6000) -> str:
+    sections: list[str] = []
+    remaining = max_chars
+    for path in enabled_startup_memory_files():
+        if not path.exists() or not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore").strip()
+        header = f"---\nStartup memory: {path.name}\n---\n"
+        chunk = header + text
+        if len(chunk) > remaining:
+            if remaining > len(header) + 200:
+                sections.append(header + text[: remaining - len(header)].rstrip() + "\n[truncated]")
+            break
+        sections.append(chunk)
+        remaining -= len(chunk)
+    if not sections:
+        return ""
+    return "Use this startup memory as project identity and operating context:\n\n" + "\n\n".join(sections)
