@@ -13,11 +13,51 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.cli import _route_default_to_agent, build_parser
 from agentic_swmm.commands.agent import _find_repo_inp
-from agentic_swmm.agent.planner import _looks_like_swmm_request, _workflow_route_args
+from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _workflow_route_args
 from agentic_swmm.utils.paths import script_path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class FakePreparedInpExecutor:
+    def __init__(self, route: dict[str, object]):
+        self.route = route
+        self.results: list[dict[str, object]] = []
+        self.dry_run = False
+
+    def execute(self, call: ToolCall, *, index: int | None = None) -> dict[str, object]:
+        if call.name == "select_workflow_mode":
+            result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "results": self.route, "summary": "mode=prepared_inp_cli missing=0"}
+        elif call.name == "run_swmm_inp":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, manifest.json, command_trace.json"}
+        elif call.name == "audit_run":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "audit_note=/tmp/run/experiment_note.md"}
+        elif call.name == "inspect_plot_options":
+            result = {
+                "tool": call.name,
+                "args": call.args,
+                "ok": True,
+                "summary": "rain=1 nodes=2 attrs=4",
+                "results": {
+                    "rainfall_options": [{"name": "MACAO_94_23", "rain_kind": "cumulative_depth_mm"}],
+                    "node_options": ["OU2", "OUT_0"],
+                    "node_attribute_options": [
+                        {"name": "Total_inflow"},
+                        {"name": "Depth_above_invert"},
+                        {"name": "Volume_stored_ponded"},
+                        {"name": "Flow_lost_flooding"},
+                    ],
+                    "defaults": {"rain_ts": "MACAO_94_23", "node": "OU2", "node_attr": "Total_inflow"},
+                    "selections_needed": ["node", "node_attr"],
+                },
+            }
+        elif call.name == "plot_run":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "plot: /tmp/run/07_plots/fig_rain_runoff.png"}
+        else:
+            result = {"tool": call.name, "args": call.args, "ok": False, "summary": f"unexpected tool: {call.name}"}
+        self.results.append(result)
+        return result
 
 
 class AgenticSwmmCliTests(unittest.TestCase):
@@ -213,6 +253,48 @@ class AgenticSwmmCliTests(unittest.TestCase):
             _workflow_route_args("examples/tecnopolo/。你帮我跑一下这个我看看")["inp_path"],
             "examples/tecnopolo/tecnopolo_r1_199401.inp",
         )
+
+    def test_prepared_inp_workflow_stops_to_guide_plot_choice(self) -> None:
+        route = {
+            "mode": "prepared_inp_cli",
+            "missing_inputs": [],
+            "provided_values": {"inp_path": "examples/tecnopolo/tecnopolo_r1_199401.inp"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal="examples/tecnopolo/。你帮我跑一下这个我看看",
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "run_swmm_inp", "audit_run", "inspect_plot_options"])
+        self.assertIn("Before plotting", outcome.final_text)
+        self.assertIn("Depth_above_invert", outcome.final_text)
+
+    def test_prepared_inp_workflow_plots_when_user_selects_depth(self) -> None:
+        route = {
+            "mode": "prepared_inp_cli",
+            "missing_inputs": [],
+            "provided_values": {"inp_path": "examples/tecnopolo/tecnopolo_r1_199401.inp"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal="examples/tecnopolo/ 帮我画 OU2 的水深图",
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual(outcome.plan[-1].name, "plot_run")
+        self.assertEqual(outcome.plan[-1].args["node"], "OU2")
+        self.assertEqual(outcome.plan[-1].args["node_attr"], "Depth_above_invert")
 
     def test_agent_dry_run_plans_acceptance_audit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

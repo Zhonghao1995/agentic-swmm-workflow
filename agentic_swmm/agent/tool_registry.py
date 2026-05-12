@@ -344,6 +344,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "top_level_contract": "skills/swmm-end-to-end/SKILL.md",
         "required_inputs": required,
         "provided_inputs": sorted(provided),
+        "provided_values": provided,
         "missing_inputs": missing,
         "recommended_next_tools": [] if missing else next_tools,
         "stop_reason": "missing critical input" if missing else None,

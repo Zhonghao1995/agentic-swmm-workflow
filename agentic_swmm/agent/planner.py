@@ -71,6 +71,14 @@ class OpenAIPlanner:
             if route.get("missing_inputs"):
                 final_text = str(route.get("user_prompt") or "Please provide the missing SWMM workflow inputs.")
                 return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=final_text)
+            if route.get("mode") == "prepared_inp_cli":
+                return self._run_prepared_inp_workflow(
+                    goal=goal,
+                    session_dir=session_dir,
+                    plan=plan,
+                    route=route,
+                    executor=executor,
+                )
 
         input_items: list[dict[str, Any]] = [
             {
@@ -132,6 +140,73 @@ class OpenAIPlanner:
             final_text = f"planner stopped after max_steps={self.max_steps}"
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
+
+    def _run_prepared_inp_workflow(
+        self,
+        *,
+        goal: str,
+        session_dir: Path,
+        plan: list[ToolCall],
+        route: dict[str, Any],
+        executor: AgentExecutor,
+    ) -> PlannerRun:
+        inp_path = str(route.get("provided_values", {}).get("inp_path") or _workflow_route_args(goal).get("inp_path") or "")
+        if not inp_path:
+            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text="Please provide a SWMM INP path before running.")
+
+        def execute(call: ToolCall) -> dict[str, Any]:
+            plan.append(call)
+            self.emit(f"[{len(plan)}] {call.name}")
+            result = executor.execute(call, index=len(plan))
+            status = "OK" if result.get("ok") else "FAILED"
+            self.emit(f"{status}: {result.get('summary') or 'completed'}")
+            return result
+
+        node = _extract_after_label(goal, ("node", "outfall", "节点", "出口"))
+        run_args = {"inp_path": inp_path, "run_id": session_dir.name, "run_dir": str(session_dir)}
+        if node:
+            run_args["node"] = node
+        run_result = execute(ToolCall("run_swmm_inp", run_args))
+        if not run_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM run failed; inspect the saved stderr/stdout artifacts.")
+
+        audit_result = execute(
+            ToolCall(
+                "audit_run",
+                {
+                    "run_dir": str(session_dir),
+                    "workflow_mode": "prepared_inp_cli",
+                    "objective": goal,
+                },
+            )
+        )
+        if not audit_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran, but audit generation failed; inspect the saved audit tool artifacts.")
+
+        options_result = execute(ToolCall("inspect_plot_options", {"run_dir": str(session_dir)}))
+        if not options_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran and audit passed, but plot option inspection failed.")
+
+        options = options_result.get("results") if isinstance(options_result.get("results"), dict) else {}
+        plot_choice = _extract_plot_choice(goal, options)
+        if plot_choice is None:
+            return PlannerRun(
+                ok=True,
+                plan=plan,
+                results=executor.results,
+                final_text=_plot_choice_prompt(session_dir, options),
+            )
+
+        plot_args = {"run_dir": str(session_dir), **plot_choice}
+        plot_result = execute(ToolCall("plot_run", plot_args))
+        if not plot_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran and audit passed, but plot generation failed.")
+        return PlannerRun(
+            ok=True,
+            plan=plan,
+            results=executor.results,
+            final_text=_prepared_inp_done_text(session_dir, options, plotted=True),
+        )
 
 
 def _looks_like_swmm_request(goal: str) -> bool:
@@ -204,3 +279,88 @@ def _extract_after_label(text: str, labels: tuple[str, ...]) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+def _extract_plot_choice(goal: str, options: dict[str, Any]) -> dict[str, str] | None:
+    lowered = goal.lower()
+    explicit_plot = any(word in lowered for word in ("plot", "figure", "图", "画"))
+    attrs = [str(item.get("name")) for item in options.get("node_attribute_options", []) if isinstance(item, dict)]
+    nodes = [str(item) for item in options.get("node_options", [])]
+    rains = [str(item.get("name")) for item in options.get("rainfall_options", []) if isinstance(item, dict)]
+
+    node_attr = next((attr for attr in attrs if attr.lower() in lowered), None)
+    if node_attr is None:
+        aliases = {
+            "depth": "Depth_above_invert",
+            "水深": "Depth_above_invert",
+            "volume": "Volume_stored_ponded",
+            "体积": "Volume_stored_ponded",
+            "flood": "Flow_lost_flooding",
+            "flooding": "Flow_lost_flooding",
+            "淹没": "Flow_lost_flooding",
+            "溢流": "Flow_lost_flooding",
+            "head": "Hydraulic_head",
+            "水头": "Hydraulic_head",
+            "flow": "Total_inflow",
+            "peak": "Total_inflow",
+            "流量": "Total_inflow",
+            "峰值": "Total_inflow",
+        }
+        node_attr = next((value for key, value in aliases.items() if key in lowered and value in attrs), None)
+    node = next((candidate for candidate in nodes if candidate.lower() in lowered), None)
+    rain_ts = next((candidate for candidate in rains if candidate.lower() in lowered), None)
+
+    if not explicit_plot and node_attr is None:
+        return None
+    defaults = options.get("defaults") if isinstance(options.get("defaults"), dict) else {}
+    choice = {
+        "node": node or str(defaults.get("node") or (nodes[0] if nodes else "O1")),
+        "node_attr": node_attr or str(defaults.get("node_attr") or "Total_inflow"),
+    }
+    if rain_ts or defaults.get("rain_ts"):
+        choice["rain_ts"] = rain_ts or str(defaults["rain_ts"])
+    rain_kind = _default_rain_kind(options, choice.get("rain_ts"))
+    if rain_kind:
+        choice["rain_kind"] = rain_kind
+    return choice
+
+
+def _default_rain_kind(options: dict[str, Any], rain_ts: str | None) -> str | None:
+    for item in options.get("rainfall_options", []):
+        if isinstance(item, dict) and item.get("name") == rain_ts and item.get("rain_kind"):
+            return str(item["rain_kind"])
+    return None
+
+
+def _plot_choice_prompt(session_dir: Path, options: dict[str, Any]) -> str:
+    defaults = options.get("defaults") if isinstance(options.get("defaults"), dict) else {}
+    nodes = [str(item) for item in options.get("node_options", [])]
+    attrs = [str(item.get("name")) for item in options.get("node_attribute_options", []) if isinstance(item, dict)]
+    rains = [str(item.get("name")) for item in options.get("rainfall_options", []) if isinstance(item, dict)]
+    node_preview = ", ".join(nodes[:8]) + (" ..." if len(nodes) > 8 else "")
+    attr_preview = ", ".join(attrs[:8])
+    rain_preview = ", ".join(rains) if rains else "auto"
+    return (
+        "SWMM run and audit completed successfully.\n\n"
+        f"Run folder: {session_dir}\n"
+        f"Audit note: {session_dir / 'experiment_note.md'}\n\n"
+        "Before plotting, choose what you want to see:\n"
+        f"- rainfall series: {rain_preview}\n"
+        f"- node/outfall options: {node_preview}\n"
+        f"- plot variable options: {attr_preview}\n\n"
+        "Common choices are `Total_inflow` for flow/peak hydrograph, `Depth_above_invert` for node water depth, "
+        "`Volume_stored_ponded` for stored volume, and `Flow_lost_flooding` for flooding loss.\n\n"
+        f"Default suggestion: node `{defaults.get('node')}`, variable `{defaults.get('node_attr')}`, rainfall `{defaults.get('rain_ts')}`. "
+        "Reply with the node and variable you want to plot."
+    )
+
+
+def _prepared_inp_done_text(session_dir: Path, options: dict[str, Any], *, plotted: bool) -> str:
+    plot_line = f"Plot: {session_dir / '07_plots' / 'fig_rain_runoff.png'}" if plotted else "Plot: not generated"
+    return (
+        "SWMM run, audit, and plotting completed successfully.\n\n"
+        f"Run folder: {session_dir}\n"
+        f"Audit note: {session_dir / 'experiment_note.md'}\n"
+        f"{plot_line}\n\n"
+        "Evidence boundary: this is runnable/auditable SWMM evidence, not calibration or validation unless observed-data checks are added."
+    )
