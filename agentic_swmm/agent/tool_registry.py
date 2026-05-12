@@ -74,6 +74,7 @@ class AgentToolRegistry:
             "servers",
             "tools",
             "capabilities",
+            "results",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -106,6 +107,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool),
+        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool),
@@ -178,6 +180,76 @@ def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
     command = ["run", "--inp", str(inp), "--run-dir", str(run_dir), "--node", str(call.args.get("node") or "O1")]
     return _run_cli_tool(call, session_dir, command)
+
+
+def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    goal = str(call.args.get("goal") or "").lower()
+    provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
+
+    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
+    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
+    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "tecnopolo", "tuflow", "??", "??"))
+    has_inp = bool(provided.get("inp_path"))
+    full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
+    has_full_build = all(provided.get(key) for key in full_build_inputs)
+
+    if wants_calibration:
+        mode = "calibration"
+        required = ["inp_path", "observed_flow", "node"]
+        next_tools = ["run_swmm_inp", "audit_run"]
+        boundary = "Calibration requires observed flow evidence and recorded parameter-selection artifacts; a successful run alone is not calibration."
+    elif wants_uncertainty:
+        mode = "uncertainty"
+        required = ["inp_path", "fuzzy_config", "node"]
+        next_tools = ["run_swmm_inp", "audit_run"]
+        boundary = "Uncertainty runs produce scenario evidence, not calibrated predictive uncertainty unless supported by observed-data validation."
+    elif wants_demo:
+        mode = "prepared_demo"
+        required = []
+        next_tools = ["demo_acceptance", "audit_run"]
+        boundary = "Prepared demos are smoke or benchmark evidence, not proof of arbitrary greenfield modeling."
+    elif wants_audit and not has_inp:
+        mode = "audit_only_or_comparison"
+        required = ["run_dir"]
+        if "compare" in goal or "comparison" in goal or "??" in goal:
+            required.append("baseline_run_dir")
+        next_tools = ["audit_run"]
+        boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
+    elif has_inp:
+        mode = "prepared_inp_cli"
+        required = ["inp_path", "node"]
+        next_tools = ["run_swmm_inp", "audit_run", "plot_run"]
+        boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
+    elif has_full_build:
+        mode = "full_modular_build"
+        required = full_build_inputs
+        next_tools = ["format_rainfall", "network_qa", "build_inp", "run_swmm_inp", "audit_run"]
+        boundary = "Full modular build requires explicit GIS/network/rainfall/parameter inputs; the agent must not invent missing model inputs."
+    else:
+        mode = "needs_user_inputs"
+        required = ["inp_path or full modular build inputs"]
+        next_tools = []
+        boundary = "No SWMM execution should start until a prepared INP or complete build inputs are provided."
+
+    missing = [item for item in required if item not in provided]
+    if "inp_path or full modular build inputs" in required:
+        missing = ["SWMM INP path, or network_json + subcatchments_csv + rainfall_input + landuse_input + soil_input"]
+    if mode == "prepared_demo":
+        missing = []
+
+    result = {
+        "mode": mode,
+        "top_level_contract": "skills/swmm-end-to-end/SKILL.md",
+        "required_inputs": required,
+        "provided_inputs": sorted(provided),
+        "missing_inputs": missing,
+        "recommended_next_tools": [] if missing else next_tools,
+        "stop_reason": "missing critical input" if missing else None,
+        "evidence_boundary": boundary,
+        "user_prompt": _workflow_user_prompt(mode, missing),
+    }
+    return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
 
 def _plot_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -378,6 +450,14 @@ def _call_mcp_tool_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     names = sorted(_build_tools())
     return {"tool": call.name, "args": call.args, "ok": True, "capabilities": capability_summary(names), "summary": "runtime capabilities returned"}
+
+
+def _workflow_user_prompt(mode: str, missing: list[str]) -> str:
+    if not missing:
+        return "Inputs are sufficient for the selected workflow mode. Continue with the recommended tools."
+    if mode == "needs_user_inputs":
+        return "Please provide a SWMM INP path, or the complete full-build input set: network_json, subcatchments_csv, rainfall_input, landuse_input, and soil_input."
+    return "Please provide: " + ", ".join(missing)
 
 
 def _run_cli_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> dict[str, Any]:
