@@ -41,7 +41,7 @@ class FakePreparedInpExecutor:
                 "summary": "rain=1 nodes=2 attrs=4",
                 "results": {
                     "rainfall_options": [{"name": "MACAO_94_23", "rain_kind": "cumulative_depth_mm"}],
-                    "node_options": ["OU2", "OUT_0"],
+                    "node_options": ["OU2", "OUT_0", "J2"],
                     "node_attribute_options": [
                         {"name": "Total_inflow"},
                         {"name": "Depth_above_invert"},
@@ -253,6 +253,31 @@ class AgenticSwmmCliTests(unittest.TestCase):
             _workflow_route_args("examples/tecnopolo/。你帮我跑一下这个我看看")["inp_path"],
             "examples/tecnopolo/tecnopolo_r1_199401.inp",
         )
+
+    def test_plot_continuation_uses_previous_run_directory(self) -> None:
+        route = {
+            "mode": "existing_run_plot",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal=(
+                    "我想要 MACAO_94_23，node J2，Total_inflow 帮我作图\n\n"
+                    "Previous run directory: runs/agent/interactive/session/runs/003-tecnopolo"
+                ),
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "inspect_plot_options", "plot_run"])
+        self.assertEqual(outcome.plan[-1].args["run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
+        self.assertEqual(outcome.plan[-1].args["rain_ts"], "MACAO_94_23")
+        self.assertEqual(outcome.plan[-1].args["node_attr"], "Total_inflow")
 
     def test_prepared_inp_workflow_stops_to_guide_plot_choice(self) -> None:
         route = {

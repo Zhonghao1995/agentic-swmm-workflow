@@ -15,7 +15,7 @@ from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
-from agentic_swmm.agent.planner import rule_plan
+from agentic_swmm.agent.planner import _looks_like_swmm_request, rule_plan
 from agentic_swmm.agent.runtime import call_payload as _call_payload
 from agentic_swmm.agent.runtime import run_openai_plan, run_rule_plan
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -104,12 +104,21 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
     base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / "interactive"
     base_dir.mkdir(parents=True, exist_ok=True)
 
+    conversation_id = f"{int(time.time())}-session"
+    conversation_dir = base_dir / conversation_id
+    turns_dir = conversation_dir / "turns"
+    runs_dir = conversation_dir / "runs"
+    turns_dir.mkdir(parents=True, exist_ok=True)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
     _agent_say("Agentic SWMM interactive agent")
     _agent_say("Mode: OpenAI planner with constrained local tools")
     _agent_say(f"Session base: {_display_path(base_dir)}")
+    _agent_say(f"Session folder: {_display_path(conversation_dir)}")
     _agent_say("Type /exit to quit\n")
 
     turn = 0
+    active_run_dir: Path | None = None
     while True:
         try:
             prompt = input("you> ").strip()
@@ -122,12 +131,23 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
             continue
 
         turn += 1
-        turn_id = f"{int(time.time())}-{turn:03d}-{_safe_name(prompt)[:40]}"
-        session_dir = base_dir / turn_id
+        use_active_run = active_run_dir is not None and _looks_like_run_continuation(prompt)
+        goal = prompt
+        if use_active_run:
+            session_dir = active_run_dir
+            goal = f"{prompt}\n\nPrevious run directory: {active_run_dir}"
+        elif _looks_like_swmm_request(prompt):
+            turn_id = f"{turn:03d}-{_safe_name(prompt)[:40]}"
+            session_dir = runs_dir / turn_id
+        else:
+            turn_id = f"{turn:03d}-{_safe_name(prompt)[:40]}"
+            session_dir = turns_dir / turn_id
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
         print()
-        result = _run_openai_planner(args, prompt, session_dir, trace_path, AgentToolRegistry())
+        result = _run_openai_planner(args, goal, session_dir, trace_path, AgentToolRegistry())
+        if result == 0 and _is_swmm_run_dir(session_dir):
+            active_run_dir = session_dir
         print()
         if result != 0:
             _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
@@ -179,6 +199,40 @@ def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, 
     if outcome.final_text:
         _agent_say(outcome.final_text)
     return 0 if outcome.ok else 1
+
+
+def _looks_like_run_continuation(prompt: str) -> bool:
+    lowered = prompt.lower()
+    return any(
+        token in lowered
+        for token in (
+            "plot",
+            "figure",
+            "graph",
+            "rainfall",
+            "node",
+            "outfall",
+            "total_inflow",
+            "depth_above_invert",
+            "volume_stored_ponded",
+            "flow_lost_flooding",
+            "hydraulic_head",
+            "作图",
+            "画图",
+            "图",
+            "节点",
+            "根据你刚才",
+            "刚才的运行",
+        )
+    )
+
+
+def _is_swmm_run_dir(path: Path) -> bool:
+    if not path.exists() or not path.is_dir():
+        return False
+    if (path / "manifest.json").exists() and ((path / "05_runner").exists() or (path / "01_runner").exists()):
+        return True
+    return any(path.glob("**/*.out")) and any(path.glob("**/*.rpt"))
 
 
 def _plan(goal: str) -> list[ToolCall]:

@@ -79,6 +79,14 @@ class OpenAIPlanner:
                     route=route,
                     executor=executor,
                 )
+            if route.get("mode") == "existing_run_plot":
+                return self._run_existing_run_plot_workflow(
+                    goal=goal,
+                    session_dir=session_dir,
+                    plan=plan,
+                    route=route,
+                    executor=executor,
+                )
 
         input_items: list[dict[str, Any]] = [
             {
@@ -208,6 +216,44 @@ class OpenAIPlanner:
             final_text=_prepared_inp_done_text(session_dir, options, plotted=True),
         )
 
+    def _run_existing_run_plot_workflow(
+        self,
+        *,
+        goal: str,
+        session_dir: Path,
+        plan: list[ToolCall],
+        route: dict[str, Any],
+        executor: AgentExecutor,
+    ) -> PlannerRun:
+        run_dir = str(route.get("provided_values", {}).get("run_dir") or session_dir)
+
+        def execute(call: ToolCall) -> dict[str, Any]:
+            plan.append(call)
+            self.emit(f"[{len(plan)}] {call.name}")
+            result = executor.execute(call, index=len(plan))
+            status = "OK" if result.get("ok") else "FAILED"
+            self.emit(f"{status}: {result.get('summary') or 'completed'}")
+            return result
+
+        options_result = execute(ToolCall("inspect_plot_options", {"run_dir": run_dir}))
+        if not options_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Plot option inspection failed for the previous run directory.")
+
+        options = options_result.get("results") if isinstance(options_result.get("results"), dict) else {}
+        plot_choice = _extract_plot_choice(goal, options)
+        if plot_choice is None:
+            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=_plot_choice_prompt(Path(run_dir), options))
+
+        plot_result = execute(ToolCall("plot_run", {"run_dir": run_dir, **plot_choice}))
+        if not plot_result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Plot generation failed for the previous run directory.")
+        return PlannerRun(
+            ok=True,
+            plan=plan,
+            results=executor.results,
+            final_text=_existing_run_plot_done_text(Path(run_dir), plot_choice),
+        )
+
 
 def _looks_like_swmm_request(goal: str) -> bool:
     lowered = goal.lower()
@@ -220,6 +266,9 @@ def _looks_like_swmm_request(goal: str) -> bool:
             ".inp",
             "audit",
             "plot",
+            "作图",
+            "画图",
+            "图",
             "calibration",
             "calibrate",
             "uncertainty",
@@ -241,6 +290,9 @@ def _looks_like_swmm_request(goal: str) -> bool:
 
 def _workflow_route_args(goal: str) -> dict[str, Any]:
     args: dict[str, Any] = {"goal": goal}
+    run_dir = _extract_run_dir(goal)
+    if run_dir:
+        args["run_dir"] = run_dir
     inp = _extract_inp_path(goal) or _extract_example_inp_path(goal)
     if inp:
         args["inp_path"] = inp
@@ -256,6 +308,14 @@ def _extract_inp_path(text: str) -> str | None:
         return quoted.group(1)
     match = re.search(r"([A-Za-z]:\\[^\n\r]+?\.inp|(?:\.{0,2}/)?[^\s\"']+\.inp)", text, flags=re.I)
     return match.group(1).rstrip(".,;)]}") if match else None
+
+
+def _extract_run_dir(text: str) -> str | None:
+    labelled = re.search(r"(?:run_dir|run folder|run directory|previous run directory|上一轮运行目录|运行目录)\s*[:=]\s*([^\n\r]+)", text, flags=re.I)
+    if labelled:
+        return labelled.group(1).strip().rstrip(".,;)]}。")
+    match = re.search(r"(runs/[^\s，。；;,)]+)", text, flags=re.I)
+    return match.group(1).rstrip(".,;)]}。") if match else None
 
 
 def _extract_example_inp_path(text: str) -> str | None:
@@ -363,4 +423,15 @@ def _prepared_inp_done_text(session_dir: Path, options: dict[str, Any], *, plott
         f"Audit note: {session_dir / 'experiment_note.md'}\n"
         f"{plot_line}\n\n"
         "Evidence boundary: this is runnable/auditable SWMM evidence, not calibration or validation unless observed-data checks are added."
+    )
+
+
+def _existing_run_plot_done_text(run_dir: Path, choice: dict[str, str]) -> str:
+    details = ", ".join(f"{key}={value}" for key, value in choice.items())
+    return (
+        "Plot completed from the previous SWMM run.\n\n"
+        f"Run folder: {run_dir}\n"
+        f"Plot: {run_dir / '07_plots' / 'fig_rain_runoff.png'}\n"
+        f"Selection: {details}\n\n"
+        "Evidence boundary: the plot was generated from the existing run artifacts."
     )

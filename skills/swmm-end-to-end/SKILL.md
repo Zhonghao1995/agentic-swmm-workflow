@@ -63,6 +63,24 @@ runs/<case>/
 
 Existing benchmark layouts remain valid evidence and should not be rewritten just to match the new structure. The audit layer can read older stage folders such as `04_builder/`, `05_runner/`, and `06_qa/`.
 
+## Interactive Session Layout
+
+An interactive `aiswmm` shell should keep related work under one parent session folder:
+
+```text
+runs/agent/interactive/<session-id>/
+  turns/
+    001-<question>/
+  runs/
+    002-<case>/
+      00_inputs/
+      05_runner/
+      07_plots/
+      experiment_note.md
+```
+
+Follow-up actions such as "plot the previous result", "audit that run again", or "compare this with baseline" should reuse the active run directory instead of starting from a new blank evidence folder. Multi-run workflows such as sensitivity or uncertainty analysis should create multiple child run directories under the same parent session.
+
 ## Operating Modes
 
 Do not ask the user to pick an internal mode as the first step. Start by identifying the goal and concrete files, infer the safest mode, and ask a targeted question only when the data supports multiple paths or a critical input is missing.

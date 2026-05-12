@@ -288,12 +288,19 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
     wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
     wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
+    wants_plot = any(word in goal for word in ("plot", "figure", "graph", "作图", "画图", "图"))
     wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
     has_inp = bool(provided.get("inp_path"))
+    has_run_dir = bool(provided.get("run_dir"))
     full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
     has_full_build = all(provided.get(key) for key in full_build_inputs)
 
-    if wants_calibration:
+    if wants_plot and has_run_dir:
+        mode = "existing_run_plot"
+        required = ["run_dir"]
+        next_tools = ["inspect_plot_options", "plot_run"]
+        boundary = "Plots generated from an existing run directory are visualization evidence from recorded SWMM artifacts."
+    elif wants_calibration:
         mode = "calibration"
         required = ["inp_path", "observed_flow", "node"]
         next_tools = ["run_swmm_inp", "audit_run"]

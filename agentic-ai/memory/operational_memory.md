@@ -28,6 +28,12 @@ For a trustworthy `.inp`, use this sequence:
 
 Do not require a node before the run when a safe outfall or first available node can be discovered. Ask for the node and variable before plotting when the user's plot intent is unclear.
 
+## Interactive session continuity
+
+In an interactive `aiswmm` session, keep related work under one session folder. Store ordinary dialogue/tool turns separately from SWMM workflow runs, and keep follow-up actions such as plotting, audit review, or comparison attached to the active run directory.
+
+For later sensitivity or uncertainty workflows, keep the parent session stable and create multiple child run directories under that session.
+
 ## Tool-use rules
 
 - Prefer the unified `agentic-swmm` CLI for run, audit, inspect, and plot.
