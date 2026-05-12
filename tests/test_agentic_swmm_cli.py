@@ -943,13 +943,24 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 "inputSchema": {"type": "object", "properties": {"network_json": {"type": "string"}}, "required": ["network_json"]},
             }
         ]
-        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools):
+        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
             result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
 
         self.assertTrue(result["ok"])
+        self.assertEqual(mocked.call_args.kwargs["timeout"], 5)
         self.assertEqual(result["mapped_tools"][0]["planner_tool"], "call_mcp_tool")
         self.assertEqual(result["mapped_tools"][0]["arguments"]["server"], "swmm-network")
         self.assertIn("network_json", result["mapped_tools"][0]["arguments"]["arguments_schema"]["properties"])
+
+    def test_mcp_tool_list_honors_short_timeout(self) -> None:
+        registry = AgentToolRegistry()
+        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", side_effect=RuntimeError("MCP response timed out.")) as mocked:
+            result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner", "timeout_seconds": 3}), Path(tmp))
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(mocked.call_args.kwargs["timeout"], 3)
+        self.assertIn("fallback_tools", result)
+        self.assertIn("run_swmm_inp", result["fallback_tools"])
 
     def test_mcp_call_failure_reports_recovery_and_fallback(self) -> None:
         registry = AgentToolRegistry()

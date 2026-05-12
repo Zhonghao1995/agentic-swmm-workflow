@@ -156,7 +156,7 @@ class OpenAIPlanner:
         calls = [ToolCall("list_skills", {})]
         calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
         calls.append(ToolCall("list_mcp_servers", {}))
-        calls.extend(ToolCall("list_mcp_tools", {"server": name}) for name in _select_relevant_mcp_servers(skill_names))
+        calls.extend(ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 3}) for name in _select_relevant_mcp_servers(skill_names))
         for call in calls:
             plan.append(call)
             self.emit(f"[{len(plan)}] {call.name}")

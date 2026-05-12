@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import select
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -84,17 +86,16 @@ def _read(proc: subprocess.Popen[bytes], *, timeout: int) -> dict[str, Any]:
             break
     if length is None:
         raise McpClientError("MCP response missing Content-Length header.")
-    body = proc.stdout.read(length)
-    if len(body) != length:
-        raise McpClientError("MCP response ended before the declared body length.")
+    body = _read_exact(proc.stdout, length, timeout=timeout)
     parsed = json.loads(body.decode("utf-8"))
     return parsed if isinstance(parsed, dict) else {"result": parsed}
 
 
 def _read_until(stream: Any, marker: bytes, *, timeout: int) -> bytes:
-    # The MCP servers used here are local stdio processes; this loop is intentionally simple.
+    deadline = time.monotonic() + timeout
     data = b""
     while marker not in data:
+        _wait_readable(stream, deadline)
         chunk = stream.read(1)
         if not chunk:
             raise McpClientError("MCP process ended before sending a complete response.")
@@ -102,3 +103,24 @@ def _read_until(stream: Any, marker: bytes, *, timeout: int) -> bytes:
         if len(data) > 100_000:
             raise McpClientError("MCP response header is too large.")
     return data[: data.index(marker)]
+
+
+def _read_exact(stream: Any, length: int, *, timeout: int) -> bytes:
+    deadline = time.monotonic() + timeout
+    data = b""
+    while len(data) < length:
+        _wait_readable(stream, deadline)
+        chunk = stream.read(length - len(data))
+        if not chunk:
+            raise McpClientError("MCP response ended before the declared body length.")
+        data += chunk
+    return data
+
+
+def _wait_readable(stream: Any, deadline: float) -> None:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise McpClientError("MCP response timed out.")
+    readable, _, _ = select.select([stream], [], [], remaining)
+    if not readable:
+        raise McpClientError("MCP response timed out.")

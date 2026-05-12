@@ -104,7 +104,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool),
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool),
-        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}}, ["server"]), _list_mcp_tools_tool),
+        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool),
         ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
@@ -541,8 +541,9 @@ def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
         return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
+    timeout = int(call.args.get("timeout_seconds") or 5)
     try:
-        tools = mcp_client.list_tools(str(server["command"]), [str(arg) for arg in server.get("args", [])])
+        tools = mcp_client.list_tools(str(server["command"]), [str(arg) for arg in server.get("args", [])], timeout=timeout)
     except Exception as exc:
         return _mcp_failure(call, f"MCP tools/list failed: {exc}")
     mapped = [_map_mcp_tool_schema(str(server["name"]), tool) for tool in tools if isinstance(tool, dict)]
