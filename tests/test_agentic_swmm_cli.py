@@ -13,7 +13,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.cli import _route_default_to_agent, build_parser
 from agentic_swmm.commands.agent import _find_repo_inp
-from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_skills, _workflow_route_args
+from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_mcp_servers, _select_relevant_skills, _workflow_route_args
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
 
@@ -32,6 +32,10 @@ class FakePreparedInpExecutor:
             result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "summary": "12 skills available"}
         elif call.name == "read_skill":
             result = {"tool": call.name, "args": call.args, "ok": True, "summary": f"read skill {call.args.get('skill_name')}"}
+        elif call.name == "list_mcp_servers":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "8 configured MCP server(s)"}
+        elif call.name == "list_mcp_tools":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": f"1 MCP tool(s) on {call.args.get('server')}", "mapped_tools": []}
         elif call.name == "select_workflow_mode":
             result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "results": self.route, "summary": "mode=prepared_inp_cli missing=0"}
         elif call.name == "run_swmm_inp":
@@ -311,6 +315,16 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("swmm-builder", _select_relevant_skills("build INP from network_json and subcatchments_csv"))
         self.assertIn("swmm-modeling-memory", _select_relevant_skills("summarize modeling memory lessons"))
 
+    def test_relevant_mcp_selection_follows_mcp_enabled_skills(self) -> None:
+        self.assertEqual(
+            _select_relevant_mcp_servers(["swmm-end-to-end", "swmm-runner", "swmm-plot", "swmm-experiment-audit"]),
+            ["swmm-runner", "swmm-plot"],
+        )
+        self.assertEqual(
+            _select_relevant_mcp_servers(["swmm-calibration", "swmm-uncertainty", "swmm-gis"]),
+            ["swmm-calibration", "swmm-gis"],
+        )
+
     def test_plot_continuation_uses_previous_run_directory(self) -> None:
         route = {
             "mode": "existing_run_plot",
@@ -336,6 +350,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("swmm-end-to-end", skill_names)
         self.assertIn("swmm-plot", skill_names)
         self.assertIn("swmm-runner", skill_names)
+        mcp_servers = [call.args["server"] for call in outcome.plan if call.name == "list_mcp_tools"]
+        self.assertIn("swmm-runner", mcp_servers)
+        self.assertIn("swmm-plot", mcp_servers)
+        self.assertIn("list_mcp_servers", [call.name for call in outcome.plan])
         self.assertEqual(outcome.plan[-3].name, "select_workflow_mode")
         self.assertEqual(outcome.plan[-2].name, "inspect_plot_options")
         self.assertEqual(outcome.plan[-1].name, "plot_run")

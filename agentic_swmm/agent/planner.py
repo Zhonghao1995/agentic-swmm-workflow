@@ -154,6 +154,8 @@ class OpenAIPlanner:
         skill_names = _select_relevant_skills(goal)
         calls = [ToolCall("list_skills", {})]
         calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
+        calls.append(ToolCall("list_mcp_servers", {}))
+        calls.extend(ToolCall("list_mcp_tools", {"server": name}) for name in _select_relevant_mcp_servers(skill_names))
         for call in calls:
             plan.append(call)
             self.emit(f"[{len(plan)}] {call.name}")
@@ -365,6 +367,20 @@ def _select_relevant_skills(goal: str) -> list[str]:
         add("swmm-runner")
         add("swmm-experiment-audit")
     return selected
+
+
+def _select_relevant_mcp_servers(skill_names: list[str]) -> list[str]:
+    mcp_enabled = {
+        "swmm-builder",
+        "swmm-calibration",
+        "swmm-climate",
+        "swmm-gis",
+        "swmm-network",
+        "swmm-params",
+        "swmm-plot",
+        "swmm-runner",
+    }
+    return [name for name in skill_names if name in mcp_enabled]
 
 
 def _workflow_route_args(goal: str) -> dict[str, Any]:
