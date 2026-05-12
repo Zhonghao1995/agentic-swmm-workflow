@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent import mcp_client
+from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.base import ProviderToolCall
@@ -73,7 +74,11 @@ class AgentToolRegistry:
             "results",
             "servers",
             "tools",
+            "mapped_tools",
             "capabilities",
+            "recovery",
+            "fallback_tools",
+            "node_suggestions",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -88,6 +93,7 @@ def _object(properties: dict[str, Any], required: list[str] | None = None) -> di
 def _build_tools() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}}, ["run_dir"]), _audit_run_tool),
+        ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool),
         ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
@@ -105,7 +111,10 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
+        ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
+        ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool),
+        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool),
@@ -115,6 +124,38 @@ def _build_tools() -> dict[str, ToolSpec]:
 
 def _doctor_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, ["doctor"])
+
+
+def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    patch = str(call.args.get("patch") or "")
+    if not patch.strip():
+        return _failure(call, "patch is required")
+    touched = _patch_paths(patch)
+    if not touched:
+        return _failure(call, "patch did not contain recognizable file paths")
+    allow_evidence = bool(call.args.get("allow_evidence_edits"))
+    for path in touched:
+        full = _repo_path(path)
+        if full is None:
+            return _failure(call, f"patch path must be inside repository: {path}")
+        if not is_allowed_write_path(full):
+            return _failure(call, f"patch path is blocked by policy: {path}")
+        if is_evidence_path(full) and not allow_evidence:
+            return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
+    patch_path = session_dir / "tool_results" / "apply_patch.diff"
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
+    patch_path.write_text(patch, encoding="utf-8")
+    proc = subprocess.run(["git", "apply", str(patch_path)], cwd=repo_root(), capture_output=True, text=True)
+    return {
+        "tool": call.name,
+        "args": {"path_count": len(touched), "allow_evidence_edits": allow_evidence},
+        "ok": proc.returncode == 0,
+        "return_code": proc.returncode,
+        "path": str(patch_path),
+        "stdout_tail": _tail(proc.stdout),
+        "stderr_tail": _tail(proc.stderr),
+        "summary": f"applied patch to {len(touched)} path(s)" if proc.returncode == 0 else "patch failed",
+    }
 
 
 def _demo_acceptance_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -178,6 +219,77 @@ def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
     command = ["run", "--inp", str(inp), "--run-dir", str(run_dir), "--node", str(call.args.get("node") or "O1")]
     return _run_cli_tool(call, session_dir, command)
+
+
+def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    goal = str(call.args.get("goal") or "").lower()
+    provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
+
+    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
+    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
+    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "tecnopolo", "tuflow", "??", "??"))
+    has_inp = bool(provided.get("inp_path"))
+    full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
+    has_full_build = all(provided.get(key) for key in full_build_inputs)
+
+    if wants_calibration:
+        mode = "calibration"
+        required = ["inp_path", "observed_flow", "node"]
+        next_tools = ["run_swmm_inp", "audit_run"]
+        boundary = "Calibration requires observed flow evidence and recorded parameter-selection artifacts; a successful run alone is not calibration."
+    elif wants_uncertainty:
+        mode = "uncertainty"
+        required = ["inp_path", "fuzzy_config", "node"]
+        next_tools = ["run_swmm_inp", "audit_run"]
+        boundary = "Uncertainty runs produce scenario evidence, not calibrated predictive uncertainty unless supported by observed-data validation."
+    elif wants_demo:
+        mode = "prepared_demo"
+        required = []
+        next_tools = ["demo_acceptance", "audit_run"]
+        boundary = "Prepared demos are smoke or benchmark evidence, not proof of arbitrary greenfield modeling."
+    elif wants_audit and not has_inp:
+        mode = "audit_only_or_comparison"
+        required = ["run_dir"]
+        if "compare" in goal or "comparison" in goal or "??" in goal:
+            required.append("baseline_run_dir")
+        next_tools = ["audit_run"]
+        boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
+    elif has_inp:
+        mode = "prepared_inp_cli"
+        required = ["inp_path", "node"]
+        next_tools = ["run_swmm_inp", "audit_run", "plot_run"]
+        boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
+    elif has_full_build:
+        mode = "full_modular_build"
+        required = full_build_inputs
+        next_tools = ["format_rainfall", "network_qa", "build_inp", "run_swmm_inp", "audit_run"]
+        boundary = "Full modular build requires explicit GIS/network/rainfall/parameter inputs; the agent must not invent missing model inputs."
+    else:
+        mode = "needs_user_inputs"
+        required = ["inp_path or full modular build inputs"]
+        next_tools = []
+        boundary = "No SWMM execution should start until a prepared INP or complete build inputs are provided."
+
+    missing = [item for item in required if item not in provided]
+    if "inp_path or full modular build inputs" in required:
+        missing = ["SWMM INP path, or network_json + subcatchments_csv + rainfall_input + landuse_input + soil_input"]
+    if mode == "prepared_demo":
+        missing = []
+
+    result = {
+        "mode": mode,
+        "top_level_contract": "skills/swmm-end-to-end/SKILL.md",
+        "required_inputs": required,
+        "provided_inputs": sorted(provided),
+        "missing_inputs": missing,
+        "recommended_next_tools": [] if missing else next_tools,
+        "stop_reason": "missing critical input" if missing else None,
+        "evidence_boundary": boundary,
+        "user_prompt": _workflow_user_prompt(mode, missing),
+        "node_suggestions": _node_suggestions(provided.get("inp_path")),
+    }
+    return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
 
 def _plot_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -355,29 +467,91 @@ def _list_mcp_servers_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
-        return _failure(call, f"MCP server not found: {call.args['server']}")
+        return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
     try:
         tools = mcp_client.list_tools(str(server["command"]), [str(arg) for arg in server.get("args", [])])
     except Exception as exc:
-        return _failure(call, f"MCP tools/list failed: {exc}")
-    return {"tool": call.name, "args": call.args, "ok": True, "tools": tools, "summary": f"{len(tools)} MCP tool(s) on {server['name']}"}
+        return _mcp_failure(call, f"MCP tools/list failed: {exc}")
+    mapped = [_map_mcp_tool_schema(str(server["name"]), tool) for tool in tools if isinstance(tool, dict)]
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "tools": tools,
+        "mapped_tools": mapped,
+        "summary": f"{len(tools)} MCP tool(s) on {server['name']}; {len(mapped)} schema(s) mapped for planner inspection",
+    }
 
 
 def _call_mcp_tool_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
-        return _failure(call, f"MCP server not found: {call.args['server']}")
+        return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
     arguments = call.args.get("arguments") if isinstance(call.args.get("arguments"), dict) else {}
     try:
         result = mcp_client.call_tool(str(server["command"]), [str(arg) for arg in server.get("args", [])], str(call.args["tool"]), arguments)
     except Exception as exc:
-        return _failure(call, f"MCP tools/call failed: {exc}")
+        return _mcp_failure(call, f"MCP tools/call failed: {exc}", server=str(server["name"]))
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"called MCP tool {server['name']}.{call.args['tool']}"}
+
+
+def _mcp_failure(call: ToolCall, summary: str, *, server: str | None = None) -> dict[str, Any]:
+    result = _failure(call, summary)
+    result["recovery"] = "Use list_mcp_servers/list_mcp_tools to refresh available MCP tools, then retry with corrected server/tool/arguments or fall back to the CLI wrapper."
+    result["fallback_tools"] = _mcp_fallback_tools(server or str(call.args.get("server") or ""))
+    return result
+
+
+def _map_mcp_tool_schema(server_name: str, tool: dict[str, Any]) -> dict[str, Any]:
+    name = str(tool.get("name") or "tool")
+    description = str(tool.get("description") or f"MCP tool exposed by {server_name}.")
+    schema = tool.get("inputSchema")
+    if not isinstance(schema, dict):
+        schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
+    parameters = _normalize_json_schema(schema)
+    return {
+        "server": server_name,
+        "mcp_tool": name,
+        "planner_tool": "call_mcp_tool",
+        "description": description,
+        "arguments": {"server": server_name, "tool": name, "arguments_schema": parameters},
+    }
+
+
+def _normalize_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not schema:
+        return {"type": "object", "properties": {}, "additionalProperties": True}
+    normalized = dict(schema)
+    normalized.setdefault("type", "object")
+    normalized.setdefault("properties", {})
+    normalized.setdefault("additionalProperties", True)
+    if not isinstance(normalized.get("properties"), dict):
+        normalized["properties"] = {}
+    return normalized
+
+
+def _mcp_fallback_tools(server_name: str) -> list[str]:
+    mapping = {
+        "swmm-builder": ["build_inp"],
+        "swmm-climate": ["format_rainfall"],
+        "swmm-network": ["network_qa", "network_to_inp"],
+        "swmm-plot": ["plot_run"],
+        "swmm-runner": ["run_swmm_inp"],
+    }
+    return mapping.get(server_name, ["list_mcp_servers", "list_mcp_tools"])
 
 
 def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     names = sorted(_build_tools())
     return {"tool": call.name, "args": call.args, "ok": True, "capabilities": capability_summary(names), "summary": "runtime capabilities returned"}
+
+
+def _workflow_user_prompt(mode: str, missing: list[str]) -> str:
+    if not missing:
+        return "Inputs are sufficient for the selected workflow mode. Continue with the recommended tools."
+    if mode == "needs_user_inputs":
+        return "Please provide a SWMM INP path, or the complete full-build input set: network_json, subcatchments_csv, rainfall_input, landuse_input, and soil_input."
+    return "Please provide: " + ", ".join(missing)
 
 
 def _run_cli_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> dict[str, Any]:
@@ -388,17 +562,45 @@ def _run_script_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> 
     return _run_process_tool(call, session_dir, [sys.executable, *cli_args], cwd=repo_root())
 
 
-def _run_process_tool(call: ToolCall, session_dir: Path, command: list[str], *, cwd: Path) -> dict[str, Any]:
+def _run_process_tool(call: ToolCall, session_dir: Path, command: list[str], *, cwd: Path, timeout: int = 120) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
-    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=runtime_env())
+    try:
+        proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=runtime_env(), timeout=timeout)
+        timed_out = False
+    except subprocess.TimeoutExpired as exc:
+        proc = subprocess.CompletedProcess(command, 124, stdout=exc.stdout or "", stderr=exc.stderr or f"command timed out after {timeout}s")
+        timed_out = True
     finished = datetime.now(timezone.utc)
+    stdout = _process_text(proc.stdout)
+    stderr = _process_text(proc.stderr)
     safe_name = _safe_name(call.name)
     stdout_path = session_dir / "tool_results" / f"{safe_name}.stdout.txt"
     stderr_path = session_dir / "tool_results" / f"{safe_name}.stderr.txt"
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
-    stdout_path.write_text(proc.stdout, encoding="utf-8")
-    stderr_path.write_text(proc.stderr, encoding="utf-8")
-    return {"tool": call.name, "args": call.args, "command": command, "ok": proc.returncode == 0, "return_code": proc.returncode, "started_at_utc": started.isoformat(timespec="seconds"), "finished_at_utc": finished.isoformat(timespec="seconds"), "stdout_file": str(stdout_path), "stderr_file": str(stderr_path), "stdout_tail": _tail(proc.stdout), "stderr_tail": _tail(proc.stderr), "summary": _summarize_cli_result(call.name, proc.stdout, proc.returncode)}
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
+    return {"tool": call.name, "args": call.args, "command": command, "ok": proc.returncode == 0, "return_code": proc.returncode, "timed_out": timed_out, "started_at_utc": started.isoformat(timespec="seconds"), "finished_at_utc": finished.isoformat(timespec="seconds"), "stdout_file": str(stdout_path), "stderr_file": str(stderr_path), "stdout_tail": _tail(stdout), "stderr_tail": _tail(stderr), "summary": _summarize_cli_result(call.name, stdout, proc.returncode)}
+
+
+def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    paths = call.args.get("paths")
+    test_paths = [str(path) for path in paths] if isinstance(paths, list) and paths else ["tests"]
+    for path in test_paths:
+        resolved = _repo_path(path)
+        if resolved is None:
+            return _failure(call, f"test path must be inside repository: {path}")
+    timeout = int(call.args.get("timeout_seconds") or 120)
+    return _run_process_tool(call, session_dir, [sys.executable, "-m", "pytest", *test_paths], cwd=repo_root(), timeout=timeout)
+
+
+def _run_allowed_command_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    command = call.args.get("command")
+    if not isinstance(command, list) or not all(isinstance(item, str) and item for item in command):
+        return _failure(call, "command must be a non-empty string array")
+    if not _command_allowed(command):
+        return _failure(call, "command is not allowlisted")
+    timeout = int(call.args.get("timeout_seconds") or 120)
+    return _run_process_tool(call, session_dir, command, cwd=repo_root(), timeout=timeout)
 
 
 def _summarize_cli_result(tool: str, stdout: str, return_code: int) -> str:
@@ -433,6 +635,80 @@ def _repo_output_path(value: str) -> Path | None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _node_suggestions(inp_path: str | None, limit: int = 8) -> list[str]:
+    if not inp_path:
+        return []
+    candidate = _resolve_existing_inp(inp_path)
+    if candidate is None:
+        return []
+    sections: dict[str, list[str]] = {"[OUTFALLS]": [], "[JUNCTIONS]": []}
+    section: str | None = None
+    for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped.upper()
+            continue
+        if section in {"[OUTFALLS]", "[JUNCTIONS]"}:
+            name = stripped.split()[0]
+            if name not in sections[section]:
+                sections[section].append(name)
+    suggestions = [*sections["[OUTFALLS]"], *sections["[JUNCTIONS]"]]
+    deduped = list(dict.fromkeys(suggestions))
+    return deduped[:limit]
+
+
+def _resolve_existing_inp(value: str) -> Path | None:
+    path = _repo_path(value)
+    if path is not None and path.exists() and path.is_file() and path.suffix.lower() == ".inp":
+        return path
+    external = Path(value).expanduser()
+    try:
+        external = external.resolve()
+    except OSError:
+        return None
+    if external.exists() and external.is_file() and external.suffix.lower() == ".inp":
+        return external
+    return _find_repo_inp(value)
+
+
+def _process_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
+def _patch_paths(patch: str) -> list[str]:
+    paths: list[str] = []
+    for line in patch.splitlines():
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            path = line[6:].strip()
+            if path != "/dev/null" and path not in paths:
+                paths.append(path)
+        elif line.startswith("diff --git "):
+            parts = line.split()
+            for part in parts[2:4]:
+                if part.startswith(("a/", "b/")):
+                    path = part[2:]
+                    if path not in paths:
+                        paths.append(path)
+    return paths
+
+
+def _command_allowed(command: list[str]) -> bool:
+    exe = Path(command[0]).name.lower()
+    if exe in {"pytest", "pytest.exe"}:
+        return True
+    if exe in {"python", "python.exe"} or command[0] == sys.executable:
+        return len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}
+    if exe in {"node", "node.exe"}:
+        return len(command) >= 2 and _repo_path(command[1]) is not None and Path(command[1]).suffix == ".mjs" and str(Path(command[1])).replace("\\", "/").startswith("scripts/")
+    if exe in {"swmm5", "swmm5.exe", "swmm5.cmd"}:
+        return True
+    return False
 
 
 def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) -> Path | dict[str, Any]:
