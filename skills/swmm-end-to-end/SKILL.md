@@ -65,6 +65,14 @@ Existing benchmark layouts remain valid evidence and should not be rewritten jus
 
 ## Operating Modes
 
+Do not ask the user to pick an internal mode as the first step. Start by identifying the goal and concrete files, infer the safest mode, and ask a targeted question only when the data supports multiple paths or a critical input is missing.
+
+Good first questions are about evidence, not labels:
+
+- "Do you already have a SWMM `.inp` file?"
+- "Do you want to run the prepared example or build from raw GIS/rainfall/network files?"
+- "For plotting, which rainfall series, node/outfall, and variable do you want?"
+
 ### Mode A: Prepared INP CLI workflow
 
 Use this when a trustworthy `.inp` file already exists.
@@ -216,10 +224,7 @@ agentic-swmm audit --run-dir runs/<case>
 Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agentic-ai/memory/` when available:
 
 1. `identification_memory.md`
-2. `soul.md`
-3. `operational_memory.md`
-4. `modeling_workflow_memory.md`
-5. `evidence_memory.md`
-6. `user_bridge_memory.md`
+2. `operational_memory.md`
+3. `evidence_memory.md`
 
-Those files shape project identity, evidence boundaries, and communication style. They do not replace CLI execution or artifact checks.
+Those files shape project identity, routing behavior, and evidence boundaries. Load `soul.md`, `modeling_workflow_memory.md`, or `user_bridge_memory.md` only when the task specifically needs deeper product framing, long workflow detail, or user-facing communication guidance. Memory files do not replace CLI execution or artifact checks.

@@ -23,11 +23,8 @@ MCP_SERVERS = [
 
 LONG_TERM_MEMORY_FILES = [
     "agentic-ai/memory/identification_memory.md",
-    "agentic-ai/memory/soul.md",
     "agentic-ai/memory/operational_memory.md",
-    "agentic-ai/memory/modeling_workflow_memory.md",
     "agentic-ai/memory/evidence_memory.md",
-    "agentic-ai/memory/user_bridge_memory.md",
 ]
 
 MODELING_MEMORY_FILES = [

@@ -2,21 +2,21 @@
 
 This folder contains lightweight Markdown memory files for OpenClaw, Hermes, or another compatible agent runtime that needs to use Agentic SWMM from the public GitHub repository with minimal setup.
 
-These files are not executable code and are not a replacement for `skills/swmm-end-to-end/SKILL.md`. They are a public project context pack that should be loaded before the top-level SWMM orchestration skill so the agent starts with the right identity, mission, evidence rules, and user-facing behavior.
+These files are not executable code and are not a replacement for `skills/swmm-end-to-end/SKILL.md`. They are a compact public project context pack that should be loaded before the top-level SWMM orchestration skill so the agent starts with the right identity, operating rules, and evidence boundaries.
 
 ## Recommended load order
 
 1. `identification_memory.md`
-2. `soul.md`
-3. `operational_memory.md`
-4. `modeling_workflow_memory.md`
-5. `evidence_memory.md`
-6. `user_bridge_memory.md`
-7. `skills/swmm-end-to-end/SKILL.md`
-8. `docs/openclaw-execution-path.md`
+2. `operational_memory.md`
+3. `evidence_memory.md`
+4. `skills/swmm-end-to-end/SKILL.md`
+5. `docs/openclaw-execution-path.md`
 
-Optional after multiple audited runs exist:
+Optional references, loaded only when the task needs them:
 
+6. `soul.md`
+7. `modeling_workflow_memory.md`
+8. `user_bridge_memory.md`
 9. `skills/swmm-modeling-memory/SKILL.md`
 10. `memory/modeling-memory/`
 
@@ -26,7 +26,7 @@ OpenClaw, Hermes, or another compatible runtime should place this memory layer b
 
 ```text
 public agent runtime
-  -> agentic-ai/memory/*.md
+  -> compact startup memory
   -> skills/swmm-end-to-end/SKILL.md
   -> module skills and MCP tools
   -> deterministic Python/SWMM execution
@@ -44,7 +44,7 @@ An agent that loads these files should:
 
 - know that Agentic SWMM is a reproducible stormwater modelling workflow, not a chat-to-INP toy,
 - choose the top-level `swmm-end-to-end` skill for full workflow orchestration,
-- guide the user through modelling in the order `goal -> inputs -> mode -> build -> run -> QA -> audit -> readiness report`,
+- infer the workflow mode from `goal -> available inputs -> missing evidence` instead of forcing the user to choose an internal mode first,
 - stop on missing critical inputs rather than fabricate hydrologic or network data,
 - preserve run artifacts under explicit run directories,
 - run the audit layer after success, failure, or early stop,
