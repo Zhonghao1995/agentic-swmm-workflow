@@ -8,7 +8,7 @@ Install Docker Desktop or Docker Engine, then run:
 
 ```bash
 mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.0 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.1 acceptance
 ```
 
 Artifacts are written to `agentic-swmm-runs`.
@@ -92,11 +92,11 @@ The Windows installer also creates user-level `aiswmm` and `agentic-swmm` comman
 The website scripts are thin stable entrypoints. They download the repository bootstrap scripts from GitHub, then run the local installer. For reproducible installs, pin a release tag before running:
 
 ```bash
-curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.6.0 bash
+curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.6.1 bash
 ```
 
 ```powershell
-$env:AISWMM_INSTALL_REF = "v0.6.0"
+$env:AISWMM_INSTALL_REF = "v0.6.1"
 irm https://aiswmm.com/install.ps1 | iex
 ```
 

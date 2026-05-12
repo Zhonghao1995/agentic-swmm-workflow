@@ -6,6 +6,16 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 - No unreleased changes yet.
 
+## v0.6.1 - aiswmm runtime hardening and demo plot workflow
+
+- Unified the interactive runtime identity around `aiswmm`, including the terminal prefix and executor banner shown during local agent runs.
+- Flattened interactive run outputs into clearer date-and-case folders such as `runs/YYYY-MM-DD/HHMMSS_tecnopolo_run`, while preserving audited stage folders inside each run.
+- Improved prepared-demo continuity: users can run the Tecnopolo INP, inspect available rainfall/node/output-variable plot choices, and continue plotting from the same active run directory.
+- Fixed plot-selection follow-ups such as `Total_inflow J2 MACAO_94_23` so they route to the previous run instead of asking again for an INP file.
+- Added MCP schema caching under `~/.aiswmm/mcp_schema_cache` and timeout protection so slow MCP discovery does not block the audited CLI path.
+- Fixed recursive search glob handling so planner-generated patterns such as `**.inp` are normalized to valid recursive searches instead of crashing the runtime.
+- Added regression coverage for MCP schema cache hits/refreshes, recursive glob normalization, plot continuation, and workflow-state routing.
+
 ## v0.6.0 - Interactive aiswmm runtime and auditable Tecnopolo baseline
 
 - Made `aiswmm` a natural-language interactive agent runtime by default, with constrained local tools exposed for doctor checks, skill inspection, SWMM execution, plotting, auditing, and evidence reads.

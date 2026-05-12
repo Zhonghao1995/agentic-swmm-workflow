@@ -60,9 +60,18 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.0 release README](docs/releases/v0.6.0.md).
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.1 release README](docs/releases/v0.6.1.md).
 
 Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+
+## v0.6.1 highlights
+
+- `aiswmm` now keeps a clearer runtime identity in the interactive terminal, including the `aiswmm>` prefix and executor banner.
+- Interactive outputs use cleaner date-and-case run folders while preserving audited stage folders inside each run.
+- The Tecnopolo prepared `.inp` demo can be run, audited, inspected for plot options, and continued into rainfall/node/output-variable plots from the same active run.
+- Plot follow-ups such as `Total_inflow J2 MACAO_94_23` now continue from the previous run instead of asking again for model inputs.
+- MCP schema discovery is cached and timeout-protected so slow MCP servers do not block the main CLI run/audit/plot path.
+- Planner-generated recursive searches such as `**.inp` are normalized safely, fixing a demo-listing crash path.
 
 ## Why this project exists
 
