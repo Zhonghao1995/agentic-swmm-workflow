@@ -459,10 +459,14 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     query = str(call.args.get("query") or "").strip()
     if not query:
         return _failure(call, "query is required")
-    pattern = str(call.args.get("glob") or "*")
+    pattern = _normalize_search_glob(str(call.args.get("glob") or "*"))
     max_results = int(call.args.get("max_results") or 50)
     results: list[dict[str, Any]] = []
-    for path in repo_root().rglob(pattern):
+    try:
+        paths = repo_root().rglob(pattern)
+    except ValueError as exc:
+        return _failure(call, f"invalid glob pattern: {exc}")
+    for path in paths:
         if len(results) >= max_results:
             break
         if not path.is_file() or any(part in {".git", ".venv", "__pycache__"} for part in path.parts):
@@ -475,7 +479,16 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             if query.lower() in line.lower():
                 results.append({"path": str(path.relative_to(repo_root())), "line": lineno, "text": line.strip()[:300]})
                 break
-    return {"tool": call.name, "args": call.args, "ok": True, "results": results, "summary": f"{len(results)} match(es)"}
+    return {"tool": call.name, "args": call.args, "ok": True, "glob": pattern, "results": results, "summary": f"{len(results)} match(es)"}
+
+
+def _normalize_search_glob(pattern: str) -> str:
+    cleaned = pattern.strip() or "*"
+    # pathlib requires "**" to be a complete path component. LLM planners often
+    # produce "**.inp" when they mean a recursive extension search.
+    cleaned = re.sub(r"(?<!/)\*\*\.([A-Za-z0-9_*?[\]-]+)$", r"**/*.\1", cleaned)
+    cleaned = re.sub(r"/\*\*\.([A-Za-z0-9_*?[\]-]+)$", r"/**/*.\1", cleaned)
+    return cleaned
 
 
 def _git_diff_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

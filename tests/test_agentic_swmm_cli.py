@@ -699,6 +699,15 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("web_search", report)
             self.assertIn("call_mcp_tool", report)
 
+    def test_search_files_normalizes_recursive_extension_glob(self) -> None:
+        registry = AgentToolRegistry()
+        with tempfile.TemporaryDirectory() as tmp:
+            result = registry.execute(ToolCall("search_files", {"query": "[OPTIONS]", "glob": "**.inp"}), Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["glob"], "**/*.inp")
+        self.assertGreaterEqual(len(result["results"]), 2)
+
     def test_agent_selects_workflow_mode_before_swmm_execution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp) / "agent-session"
