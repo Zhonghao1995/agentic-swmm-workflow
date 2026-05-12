@@ -448,6 +448,37 @@ class AgenticSwmmCliTests(unittest.TestCase):
             trace = (session_dir / "agent_trace.jsonl").read_text(encoding="utf-8")
             self.assertIn("SWMM INP path", trace)
 
+    def test_auto_workflow_router_stops_missing_swmm_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_FORCE_AUTO_WORKFLOW_ROUTER"] = "1"
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "should not be used"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "run a SWMM model",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("select_workflow_mode", proc.stdout)
+            self.assertIn("Please provide a SWMM INP path", proc.stdout)
+
     def test_capabilities_command_lists_new_agent_tools(self) -> None:
         proc = subprocess.run(
             [sys.executable, "-m", "agentic_swmm.cli", "capabilities", "--json"],
@@ -463,6 +494,73 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("web_search", payload["tools"])
         self.assertIn("call_mcp_tool", payload["tools"])
         self.assertIn("select_workflow_mode", payload["tools"])
+        self.assertIn("apply_patch", payload["tools"])
+        self.assertIn("run_tests", payload["tools"])
+        self.assertIn("run_allowed_command", payload["tools"])
+
+    def test_agent_blocks_disallowed_shell_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [{"name": "run_allowed_command", "arguments": {"command": ["cmd", "/c", "dir"]}}]
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "try shell",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("command is not allowlisted", proc.stdout)
+
+    def test_agent_can_run_scoped_pytest_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "agent-session"
+            env = os.environ.copy()
+            env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
+                [{"name": "run_tests", "arguments": {"paths": ["tests/test_swmm_modeling_memory.py"], "timeout_seconds": 60}}]
+            )
+            env["AISWMM_OPENAI_MOCK_RESPONSE"] = "tests checked"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "agentic_swmm.cli",
+                    "agent",
+                    "--planner",
+                    "openai",
+                    "--model",
+                    "gpt-test",
+                    "--session-dir",
+                    str(session_dir),
+                    "run focused tests",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+            self.assertIn("run_tests", proc.stdout)
+            self.assertIn("OK:", proc.stdout)
 
     def test_agent_openai_planner_reports_missing_external_inp(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

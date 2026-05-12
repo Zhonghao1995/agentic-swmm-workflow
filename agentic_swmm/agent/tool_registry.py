@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent import mcp_client
+from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.base import ProviderToolCall
@@ -74,7 +75,6 @@ class AgentToolRegistry:
             "servers",
             "tools",
             "capabilities",
-            "results",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -89,6 +89,7 @@ def _object(properties: dict[str, Any], required: list[str] | None = None) -> di
 def _build_tools() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}}, ["run_dir"]), _audit_run_tool),
+        ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool),
         ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
@@ -106,6 +107,8 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
+        ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
+        ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool),
         ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
@@ -117,6 +120,38 @@ def _build_tools() -> dict[str, ToolSpec]:
 
 def _doctor_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, ["doctor"])
+
+
+def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    patch = str(call.args.get("patch") or "")
+    if not patch.strip():
+        return _failure(call, "patch is required")
+    touched = _patch_paths(patch)
+    if not touched:
+        return _failure(call, "patch did not contain recognizable file paths")
+    allow_evidence = bool(call.args.get("allow_evidence_edits"))
+    for path in touched:
+        full = _repo_path(path)
+        if full is None:
+            return _failure(call, f"patch path must be inside repository: {path}")
+        if not is_allowed_write_path(full):
+            return _failure(call, f"patch path is blocked by policy: {path}")
+        if is_evidence_path(full) and not allow_evidence:
+            return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
+    patch_path = session_dir / "tool_results" / "apply_patch.diff"
+    patch_path.parent.mkdir(parents=True, exist_ok=True)
+    patch_path.write_text(patch, encoding="utf-8")
+    proc = subprocess.run(["git", "apply", str(patch_path)], cwd=repo_root(), capture_output=True, text=True)
+    return {
+        "tool": call.name,
+        "args": {"path_count": len(touched), "allow_evidence_edits": allow_evidence},
+        "ok": proc.returncode == 0,
+        "return_code": proc.returncode,
+        "path": str(patch_path),
+        "stdout_tail": _tail(proc.stdout),
+        "stderr_tail": _tail(proc.stderr),
+        "summary": f"applied patch to {len(touched)} path(s)" if proc.returncode == 0 else "patch failed",
+    }
 
 
 def _demo_acceptance_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -468,17 +503,45 @@ def _run_script_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> 
     return _run_process_tool(call, session_dir, [sys.executable, *cli_args], cwd=repo_root())
 
 
-def _run_process_tool(call: ToolCall, session_dir: Path, command: list[str], *, cwd: Path) -> dict[str, Any]:
+def _run_process_tool(call: ToolCall, session_dir: Path, command: list[str], *, cwd: Path, timeout: int = 120) -> dict[str, Any]:
     started = datetime.now(timezone.utc)
-    proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=runtime_env())
+    try:
+        proc = subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=runtime_env(), timeout=timeout)
+        timed_out = False
+    except subprocess.TimeoutExpired as exc:
+        proc = subprocess.CompletedProcess(command, 124, stdout=exc.stdout or "", stderr=exc.stderr or f"command timed out after {timeout}s")
+        timed_out = True
     finished = datetime.now(timezone.utc)
+    stdout = _process_text(proc.stdout)
+    stderr = _process_text(proc.stderr)
     safe_name = _safe_name(call.name)
     stdout_path = session_dir / "tool_results" / f"{safe_name}.stdout.txt"
     stderr_path = session_dir / "tool_results" / f"{safe_name}.stderr.txt"
     stdout_path.parent.mkdir(parents=True, exist_ok=True)
-    stdout_path.write_text(proc.stdout, encoding="utf-8")
-    stderr_path.write_text(proc.stderr, encoding="utf-8")
-    return {"tool": call.name, "args": call.args, "command": command, "ok": proc.returncode == 0, "return_code": proc.returncode, "started_at_utc": started.isoformat(timespec="seconds"), "finished_at_utc": finished.isoformat(timespec="seconds"), "stdout_file": str(stdout_path), "stderr_file": str(stderr_path), "stdout_tail": _tail(proc.stdout), "stderr_tail": _tail(proc.stderr), "summary": _summarize_cli_result(call.name, proc.stdout, proc.returncode)}
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
+    return {"tool": call.name, "args": call.args, "command": command, "ok": proc.returncode == 0, "return_code": proc.returncode, "timed_out": timed_out, "started_at_utc": started.isoformat(timespec="seconds"), "finished_at_utc": finished.isoformat(timespec="seconds"), "stdout_file": str(stdout_path), "stderr_file": str(stderr_path), "stdout_tail": _tail(stdout), "stderr_tail": _tail(stderr), "summary": _summarize_cli_result(call.name, stdout, proc.returncode)}
+
+
+def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    paths = call.args.get("paths")
+    test_paths = [str(path) for path in paths] if isinstance(paths, list) and paths else ["tests"]
+    for path in test_paths:
+        resolved = _repo_path(path)
+        if resolved is None:
+            return _failure(call, f"test path must be inside repository: {path}")
+    timeout = int(call.args.get("timeout_seconds") or 120)
+    return _run_process_tool(call, session_dir, [sys.executable, "-m", "pytest", *test_paths], cwd=repo_root(), timeout=timeout)
+
+
+def _run_allowed_command_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    command = call.args.get("command")
+    if not isinstance(command, list) or not all(isinstance(item, str) and item for item in command):
+        return _failure(call, "command must be a non-empty string array")
+    if not _command_allowed(command):
+        return _failure(call, "command is not allowlisted")
+    timeout = int(call.args.get("timeout_seconds") or 120)
+    return _run_process_tool(call, session_dir, command, cwd=repo_root(), timeout=timeout)
 
 
 def _summarize_cli_result(tool: str, stdout: str, return_code: int) -> str:
@@ -513,6 +576,42 @@ def _repo_output_path(value: str) -> Path | None:
     if path is not None:
         path.parent.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _process_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value or "")
+
+
+def _patch_paths(patch: str) -> list[str]:
+    paths: list[str] = []
+    for line in patch.splitlines():
+        if line.startswith("+++ b/") or line.startswith("--- a/"):
+            path = line[6:].strip()
+            if path != "/dev/null" and path not in paths:
+                paths.append(path)
+        elif line.startswith("diff --git "):
+            parts = line.split()
+            for part in parts[2:4]:
+                if part.startswith(("a/", "b/")):
+                    path = part[2:]
+                    if path not in paths:
+                        paths.append(path)
+    return paths
+
+
+def _command_allowed(command: list[str]) -> bool:
+    exe = Path(command[0]).name.lower()
+    if exe in {"pytest", "pytest.exe"}:
+        return True
+    if exe in {"python", "python.exe"} or command[0] == sys.executable:
+        return len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}
+    if exe in {"node", "node.exe"}:
+        return len(command) >= 2 and _repo_path(command[1]) is not None and Path(command[1]).suffix == ".mjs" and str(Path(command[1])).replace("\\", "/").startswith("scripts/")
+    if exe in {"swmm5", "swmm5.exe", "swmm5.cmd"}:
+        return True
+    return False
 
 
 def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) -> Path | dict[str, Any]:

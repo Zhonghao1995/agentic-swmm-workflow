@@ -21,6 +21,9 @@ def capability_summary(tool_names: list[str]) -> dict[str, Any]:
             "list_dir": "Repository-local only.",
             "search_files": "Repository-local text search only.",
             "git_diff": "Read-only git diff inspection.",
+            "apply_patch": "Repository-local unified diffs only; .git/.venv/secrets and evidence paths are blocked unless explicitly allowed.",
+            "run_tests": "Pytest only, scoped to repository paths.",
+            "run_allowed_command": "Allowlisted commands only: pytest, python -m agentic_swmm.cli, node scripts/*.mjs, swmm5.",
         },
         "web": {
             "enabled": True,

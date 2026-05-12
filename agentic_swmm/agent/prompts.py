@@ -13,6 +13,7 @@ def openai_planner_prompt() -> str:
         "Use run_swmm_inp, build_inp, format_rainfall, network_qa, network_to_inp, and plot_run as constrained wrappers around existing skills. "
         "run_swmm_inp may accept a user-provided absolute .inp path; it must import that file into the run directory and run only the run-local copy. "
         "Use list_dir, search_files, read_file, and git_diff for repository workspace inspection. "
+        "Use apply_patch for controlled repository edits and run_tests or run_allowed_command for allowlisted verification; never request arbitrary shell. "
         "Use web_search and web_fetch_url for source-backed web research, but keep web evidence separate from local run evidence. "
         "Use list_mcp_servers, list_mcp_tools, and call_mcp_tool when the local MCP registry exposes a better tool than the CLI wrapper. "
         "Use capabilities when the user asks what this runtime can access or do. "
