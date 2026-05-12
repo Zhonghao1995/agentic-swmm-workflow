@@ -13,7 +13,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.cli import _route_default_to_agent, build_parser
 from agentic_swmm.commands.agent import _find_repo_inp
-from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _workflow_route_args
+from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_skills, _workflow_route_args
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
 
@@ -298,6 +298,19 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("Startup memory: identification_memory.md", prompt)
         self.assertIn("You are **aiswmm**", prompt)
 
+    def test_relevant_skill_selection_is_dynamic(self) -> None:
+        self.assertEqual(
+            _select_relevant_skills("run examples/tecnopolo/model.inp and audit it")[:3],
+            ["swmm-end-to-end", "swmm-runner", "swmm-experiment-audit"],
+        )
+        self.assertIn("swmm-calibration", _select_relevant_skills("run sensitivity calibration with observed flow and NSE"))
+        self.assertIn("swmm-uncertainty", _select_relevant_skills("propagate fuzzy alpha-cut uncertainty"))
+        self.assertIn("swmm-gis", _select_relevant_skills("build from GeoPackage GIS subcatchment data"))
+        self.assertIn("swmm-climate", _select_relevant_skills("format rainfall raingage timeseries"))
+        self.assertIn("swmm-network", _select_relevant_skills("check junction conduit outfall network"))
+        self.assertIn("swmm-builder", _select_relevant_skills("build INP from network_json and subcatchments_csv"))
+        self.assertIn("swmm-modeling-memory", _select_relevant_skills("summarize modeling memory lessons"))
+
     def test_plot_continuation_uses_previous_run_directory(self) -> None:
         route = {
             "mode": "existing_run_plot",
@@ -318,12 +331,14 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual(
-            [call.name for call in outcome.plan],
-            ["list_skills", "read_skill", "read_skill", "select_workflow_mode", "inspect_plot_options", "plot_run"],
-        )
-        self.assertEqual(outcome.plan[1].args["skill_name"], "swmm-end-to-end")
-        self.assertEqual(outcome.plan[2].args["skill_name"], "swmm-plot")
+        self.assertEqual(outcome.plan[0].name, "list_skills")
+        skill_names = [call.args["skill_name"] for call in outcome.plan if call.name == "read_skill"]
+        self.assertIn("swmm-end-to-end", skill_names)
+        self.assertIn("swmm-plot", skill_names)
+        self.assertIn("swmm-runner", skill_names)
+        self.assertEqual(outcome.plan[-3].name, "select_workflow_mode")
+        self.assertEqual(outcome.plan[-2].name, "inspect_plot_options")
+        self.assertEqual(outcome.plan[-1].name, "plot_run")
         self.assertEqual(outcome.plan[-1].args["run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
         self.assertEqual(outcome.plan[-1].args["rain_ts"], "MACAO_94_23")
         self.assertEqual(outcome.plan[-1].args["node_attr"], "Total_inflow")
@@ -349,10 +364,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual(
-            [call.name for call in outcome.plan],
-            ["list_skills", "read_skill", "read_skill", "select_workflow_mode", "inspect_plot_options"],
-        )
+        skill_names = [call.args["skill_name"] for call in outcome.plan if call.name == "read_skill"]
+        self.assertIn("swmm-end-to-end", skill_names)
+        self.assertIn("swmm-plot", skill_names)
+        self.assertEqual(outcome.plan[-2].name, "select_workflow_mode")
+        self.assertEqual(outcome.plan[-1].name, "inspect_plot_options")
         self.assertIn("plot variable options", outcome.final_text)
         self.assertIn("Depth_above_invert", outcome.final_text)
 
@@ -398,8 +414,13 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual([call.name for call in outcome.plan], ["list_skills", "read_skill", "select_workflow_mode", "run_swmm_inp", "audit_run", "inspect_plot_options"])
-        self.assertEqual(outcome.plan[1].args["skill_name"], "swmm-end-to-end")
+        skill_names = [call.args["skill_name"] for call in outcome.plan if call.name == "read_skill"]
+        self.assertIn("swmm-end-to-end", skill_names)
+        self.assertIn("swmm-runner", skill_names)
+        self.assertEqual(outcome.plan[-4].name, "select_workflow_mode")
+        self.assertEqual(outcome.plan[-3].name, "run_swmm_inp")
+        self.assertEqual(outcome.plan[-2].name, "audit_run")
+        self.assertEqual(outcome.plan[-1].name, "inspect_plot_options")
         self.assertIn("Before plotting", outcome.final_text)
         self.assertIn("Depth_above_invert", outcome.final_text)
 

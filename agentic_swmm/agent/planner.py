@@ -151,10 +151,7 @@ class OpenAIPlanner:
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
 
     def _consult_workflow_skills(self, *, goal: str, plan: list[ToolCall], executor: AgentExecutor) -> None:
-        skill_names = ["swmm-end-to-end"]
-        if _looks_like_plot_request(goal):
-            skill_names.append("swmm-plot")
-
+        skill_names = _select_relevant_skills(goal)
         calls = [ToolCall("list_skills", {})]
         calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
         for call in calls:
@@ -331,6 +328,43 @@ def _looks_like_plot_request(goal: str) -> bool:
             "流量",
         )
     )
+
+
+def _select_relevant_skills(goal: str) -> list[str]:
+    lowered = goal.lower()
+    selected = ["swmm-end-to-end"]
+
+    def add(name: str) -> None:
+        if name not in selected:
+            selected.append(name)
+
+    if any(word in lowered for word in (".inp", "run", "runner", "swmm5", "运行", "跑一下")):
+        add("swmm-runner")
+    if any(word in lowered for word in ("audit", "provenance", "comparison", "compare", "审计", "证据", "对比")):
+        add("swmm-experiment-audit")
+    if _looks_like_plot_request(goal):
+        add("swmm-plot")
+    if any(word in lowered for word in ("calibration", "calibrate", "validation", "sensitivity", "observed", "nse", "kge", "校准", "率定", "敏感性", "观测")):
+        add("swmm-calibration")
+    if any(word in lowered for word in ("uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊")):
+        add("swmm-uncertainty")
+    if any(word in lowered for word in ("gis", "dem", "geopackage", "shapefile", "geojson", "subcatchment", "pour point", "流域", "汇水区")):
+        add("swmm-gis")
+    if any(word in lowered for word in ("rainfall", "raingage", "timeseries", "climate", "降雨", "雨量")):
+        add("swmm-climate")
+    if any(word in lowered for word in ("network", "conduit", "junction", "outfall", "xsection", "pipe", "管网", "节点", "出口")):
+        add("swmm-network")
+    if any(word in lowered for word in ("landuse", "land use", "soil", "green-ampt", "parameter", "参数", "土地利用", "土壤")):
+        add("swmm-params")
+    if any(word in lowered for word in ("build", "builder", "assemble", "network_json", "subcatchments_csv", "生成inp", "构建")):
+        add("swmm-builder")
+    if any(word in lowered for word in ("memory", "lessons", "failure pattern", "skill update", "建模记忆", "经验")):
+        add("swmm-modeling-memory")
+
+    if len(selected) == 1:
+        add("swmm-runner")
+        add("swmm-experiment-audit")
+    return selected
 
 
 def _workflow_route_args(goal: str) -> dict[str, Any]:
