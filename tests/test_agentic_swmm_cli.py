@@ -792,26 +792,49 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             fake_bin = tmp_path / "bin"
             fake_bin.mkdir()
-            swmm5 = fake_bin / "swmm5.cmd"
-            swmm5.write_text(
-                "\n".join(
-                    [
-                        "@echo off",
-                        "if \"%1\"==\"--version\" (echo EPA SWMM 5.2.4 & exit /b 0)",
-                        "(",
-                        "echo ***** Node Inflow Summary *****",
-                        "echo ------------------------------------------------",
-                        "echo   O1              OUTFALL       0.001       1.250      2    12:47",
-                        "echo.",
-                        "echo ***** Flow Routing Continuity *****",
-                        "echo Continuity Error (%%) ............. 0.00",
-                        ") > \"%2\"",
-                        "echo binary-placeholder > \"%3\"",
-                        "exit /b 0",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            if os.name == "nt":
+                swmm5 = fake_bin / "swmm5.cmd"
+                swmm5.write_text(
+                    "\n".join(
+                        [
+                            "@echo off",
+                            "if \"%1\"==\"--version\" (echo EPA SWMM 5.2.4 & exit /b 0)",
+                            "(",
+                            "echo ***** Node Inflow Summary *****",
+                            "echo ------------------------------------------------",
+                            "echo   O1              OUTFALL       0.001       1.250      2    12:47",
+                            "echo.",
+                            "echo ***** Flow Routing Continuity *****",
+                            "echo Continuity Error (%%) ............. 0.00",
+                            ") > \"%2\"",
+                            "echo binary-placeholder > \"%3\"",
+                            "exit /b 0",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                swmm5 = fake_bin / "swmm5"
+                swmm5.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "if [ \"$1\" = \"--version\" ]; then echo 'EPA SWMM 5.2.4'; exit 0; fi",
+                            "{",
+                            "echo '***** Node Inflow Summary *****'",
+                            "echo '------------------------------------------------'",
+                            "echo '  O1              OUTFALL       0.001       1.250      2    12:47'",
+                            "echo",
+                            "echo '***** Flow Routing Continuity *****'",
+                            "echo 'Continuity Error (%) ............. 0.00'",
+                            "} > \"$2\"",
+                            "echo 'binary-placeholder' > \"$3\"",
+                            "exit 0",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                swmm5.chmod(0o755)
 
             run_dir = tmp_path / "runs" / "external-case"
             env = os.environ.copy()
