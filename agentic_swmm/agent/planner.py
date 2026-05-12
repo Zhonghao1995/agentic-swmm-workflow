@@ -62,10 +62,11 @@ class OpenAIPlanner:
         if os.environ.get("AISWMM_OPENAI_MOCK_TOOL_CALLS") and os.environ.get("AISWMM_FORCE_AUTO_WORKFLOW_ROUTER") != "1":
             auto_router_enabled = False
         if _looks_like_swmm_request(goal) and auto_router_enabled:
+            self._consult_workflow_skills(goal=goal, plan=plan, executor=executor)
             route_call = ToolCall("select_workflow_mode", _workflow_route_args(goal))
             plan.append(route_call)
-            self.emit("[1] select_workflow_mode")
-            route_result = executor.execute(route_call, index=1)
+            self.emit(f"[{len(plan)}] select_workflow_mode")
+            route_result = executor.execute(route_call, index=len(plan))
             self.emit(f"OK: {route_result.get('summary') or 'completed'}")
             route = route_result.get("results") if isinstance(route_result.get("results"), dict) else {}
             if route.get("missing_inputs"):
@@ -148,6 +149,20 @@ class OpenAIPlanner:
             final_text = f"planner stopped after max_steps={self.max_steps}"
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
+
+    def _consult_workflow_skills(self, *, goal: str, plan: list[ToolCall], executor: AgentExecutor) -> None:
+        skill_names = ["swmm-end-to-end"]
+        if _looks_like_plot_request(goal):
+            skill_names.append("swmm-plot")
+
+        calls = [ToolCall("list_skills", {})]
+        calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
+        for call in calls:
+            plan.append(call)
+            self.emit(f"[{len(plan)}] {call.name}")
+            result = executor.execute(call, index=len(plan))
+            status = "OK" if result.get("ok") else "FAILED"
+            self.emit(f"{status}: {result.get('summary') or 'completed'}")
 
     def _run_prepared_inp_workflow(
         self,
@@ -286,6 +301,34 @@ def _looks_like_swmm_request(goal: str) -> bool:
             "校准",
             "率定",
             "不确定",
+        )
+    )
+
+
+def _looks_like_plot_request(goal: str) -> bool:
+    lowered = goal.lower()
+    return any(
+        word in lowered
+        for word in (
+            "plot",
+            "figure",
+            "graph",
+            "hydrograph",
+            "rainfall",
+            "node",
+            "outfall",
+            "total_inflow",
+            "depth",
+            "volume",
+            "flood",
+            "图",
+            "画",
+            "作图",
+            "绘图",
+            "节点",
+            "水深",
+            "体积",
+            "流量",
         )
     )
 

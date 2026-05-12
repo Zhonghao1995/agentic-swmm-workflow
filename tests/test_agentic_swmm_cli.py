@@ -28,7 +28,11 @@ class FakePreparedInpExecutor:
         self.dry_run = False
 
     def execute(self, call: ToolCall, *, index: int | None = None) -> dict[str, object]:
-        if call.name == "select_workflow_mode":
+        if call.name == "list_skills":
+            result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "summary": "12 skills available"}
+        elif call.name == "read_skill":
+            result = {"tool": call.name, "args": call.args, "ok": True, "summary": f"read skill {call.args.get('skill_name')}"}
+        elif call.name == "select_workflow_mode":
             result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "results": self.route, "summary": "mode=prepared_inp_cli missing=0"}
         elif call.name == "run_swmm_inp":
             result = {"tool": call.name, "args": call.args, "ok": True, "summary": "standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, manifest.json, command_trace.json"}
@@ -314,7 +318,12 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "inspect_plot_options", "plot_run"])
+        self.assertEqual(
+            [call.name for call in outcome.plan],
+            ["list_skills", "read_skill", "read_skill", "select_workflow_mode", "inspect_plot_options", "plot_run"],
+        )
+        self.assertEqual(outcome.plan[1].args["skill_name"], "swmm-end-to-end")
+        self.assertEqual(outcome.plan[2].args["skill_name"], "swmm-plot")
         self.assertEqual(outcome.plan[-1].args["run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
         self.assertEqual(outcome.plan[-1].args["rain_ts"], "MACAO_94_23")
         self.assertEqual(outcome.plan[-1].args["node_attr"], "Total_inflow")
@@ -340,7 +349,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "inspect_plot_options"])
+        self.assertEqual(
+            [call.name for call in outcome.plan],
+            ["list_skills", "read_skill", "read_skill", "select_workflow_mode", "inspect_plot_options"],
+        )
         self.assertIn("plot variable options", outcome.final_text)
         self.assertIn("Depth_above_invert", outcome.final_text)
 
@@ -386,7 +398,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome.ok)
-        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "run_swmm_inp", "audit_run", "inspect_plot_options"])
+        self.assertEqual([call.name for call in outcome.plan], ["list_skills", "read_skill", "select_workflow_mode", "run_swmm_inp", "audit_run", "inspect_plot_options"])
+        self.assertEqual(outcome.plan[1].args["skill_name"], "swmm-end-to-end")
         self.assertIn("Before plotting", outcome.final_text)
         self.assertIn("Depth_above_invert", outcome.final_text)
 
