@@ -101,15 +101,16 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
     if args.planner != "openai":
         raise ValueError("interactive agent shell currently requires `--planner openai`.")
 
-    base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / "interactive"
+    base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs"
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    conversation_dir, turns_dir, runs_dir = _new_interactive_session(base_dir)
+    date_dir, session_label = _new_interactive_session(base_dir)
 
     _agent_say("Agentic SWMM interactive agent")
     _agent_say("Mode: OpenAI planner with constrained local tools")
-    _agent_say(f"Session base: {_display_path(base_dir)}")
-    _agent_say(f"Session folder: {_display_path(conversation_dir)}")
+    _agent_say(f"Run base: {_display_path(base_dir)}")
+    _agent_say(f"Date folder: {_display_path(date_dir)}")
+    _agent_say(f"Session: {session_label}")
     _agent_say("Type /exit to quit, or /new-session to start a fresh session\n")
 
     turn = 0
@@ -123,10 +124,11 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
         if prompt in {"/exit", "/quit", "exit", "quit"}:
             return 0
         if prompt in {"/new-session", "/new session", "new session"}:
-            conversation_dir, turns_dir, runs_dir = _new_interactive_session(base_dir)
+            date_dir, session_label = _new_interactive_session(base_dir)
             active_run_dir = None
             turn = 0
-            _agent_say(f"New session folder: {_display_path(conversation_dir)}\n")
+            _agent_say(f"New session: {session_label}")
+            _agent_say(f"Date folder: {_display_path(date_dir)}\n")
             continue
         if not prompt:
             continue
@@ -138,11 +140,9 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
             session_dir = active_run_dir
             goal = f"{prompt}\n\nPrevious run directory: {active_run_dir}"
         elif _looks_like_swmm_request(prompt):
-            turn_id = f"{turn:03d}-{_safe_name(prompt)[:40]}"
-            session_dir = runs_dir / turn_id
+            session_dir = _new_turn_dir(date_dir, prompt, kind="run")
         else:
-            turn_id = f"{turn:03d}-{_safe_name(prompt)[:40]}"
-            session_dir = turns_dir / turn_id
+            session_dir = _new_turn_dir(date_dir, prompt, kind="chat")
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
         print()
@@ -154,18 +154,47 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
             _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
 
 
-def _new_interactive_session(base_dir: Path) -> tuple[Path, Path, Path]:
-    conversation_id = f"{int(time.time())}-session"
-    conversation_dir = base_dir / conversation_id
+def _new_interactive_session(base_dir: Path) -> tuple[Path, str]:
+    now = datetime.now()
+    date_dir = base_dir / now.strftime("%Y-%m-%d")
+    date_dir.mkdir(parents=True, exist_ok=True)
+    session_label = f"session-{now.strftime('%H%M%S')}"
+    _append_session_index(date_dir, {"event": "session_start", "session": session_label, "created_at": now.isoformat(timespec="seconds")})
+    return date_dir, session_label
+
+
+def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
+    now = datetime.now()
+    case = _case_slug(prompt)
+    folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}"
     counter = 2
-    while conversation_dir.exists():
-        conversation_dir = base_dir / f"{int(time.time())}-session-{counter}"
+    while folder.exists():
+        folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}_{counter}"
         counter += 1
-    turns_dir = conversation_dir / "turns"
-    runs_dir = conversation_dir / "runs"
-    turns_dir.mkdir(parents=True, exist_ok=True)
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    return conversation_dir, turns_dir, runs_dir
+    return folder
+
+
+def _case_slug(prompt: str) -> str:
+    lowered = prompt.lower()
+    example = re.search(r"examples/([^/\s，。；;,)]+)", prompt, flags=re.I)
+    if example:
+        return _safe_name(example.group(1))[:32]
+    inp = re.search(r"([^/\s，。；;,)]+)\.inp", prompt, flags=re.I)
+    if inp:
+        return _safe_name(inp.group(1))[:32]
+    if "tecnopolo" in lowered:
+        return "tecnopolo"
+    if "todcreek" in lowered or "tod creek" in lowered:
+        return "todcreek"
+    if any(word in lowered for word in ("plot", "作图", "画图", "图")):
+        return "plot-selection"
+    return _safe_name(prompt)[:32]
+
+
+def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
+    index = date_dir / "_sessions.jsonl"
+    with index.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path, registry: AgentToolRegistry) -> int:

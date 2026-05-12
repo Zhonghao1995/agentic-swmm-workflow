@@ -118,9 +118,9 @@ inspect available skills, then tell me what local tools you can call
 run tecnopolo_r1_199401.inp, audit it, and plot node OU2
 ```
 
-The Tecnopolo prompt should produce a run directory under `runs/agent/interactive/...` with SWMM runner outputs, QA summaries, audit records, plot artifacts, and a `final_report.md`.
+The Tecnopolo prompt should produce a date-organized run directory such as `runs/YYYY-MM-DD/HHMMSS_tecnopolo_run/` with SWMM runner outputs, QA summaries, audit records, plot artifacts, and a `final_report.md`.
 
-Inside the interactive shell, use `/new-session` to start a fresh session folder without closing the terminal. This clears the active run context so the next task starts cleanly.
+Inside the interactive shell, use `/new-session` to start a fresh session context without closing the terminal. This clears the active run context so the next task starts cleanly. Session starts are recorded in `runs/YYYY-MM-DD/_sessions.jsonl`.
 
 You can also run the same idea as a one-shot command:
 

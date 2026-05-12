@@ -65,23 +65,24 @@ Existing benchmark layouts remain valid evidence and should not be rewritten jus
 
 ## Interactive Session Layout
 
-An interactive `aiswmm` shell should keep related work under one parent session folder:
+An interactive `aiswmm` shell should keep outputs shallow, date-organized, and human-readable:
 
 ```text
-runs/agent/interactive/<session-id>/
-  turns/
-    001-<question>/
-  runs/
-    002-<case>/
-      00_inputs/
-      05_runner/
-      07_plots/
-      experiment_note.md
+runs/YYYY-MM-DD/
+  _sessions.jsonl
+  HHMMSS_<case>_run/
+    00_inputs/
+    05_runner/
+    07_plots/
+    experiment_note.md
+  HHMMSS_<topic>_chat/
+    agent_trace.jsonl
+    final_report.md
 ```
 
-Follow-up actions such as "plot the previous result", "audit that run again", or "compare this with baseline" should reuse the active run directory instead of starting from a new blank evidence folder. Multi-run workflows such as sensitivity or uncertainty analysis should create multiple child run directories under the same parent session.
+Follow-up actions such as "plot the previous result", "audit that run again", or "compare this with baseline" should reuse the active run directory instead of starting from a new blank evidence folder. Multi-run workflows such as sensitivity or uncertainty analysis should create clearly named sibling run directories under the same date folder.
 
-The interactive shell should support `/new-session` to start a fresh parent session without exiting the process. Starting a new session clears the active run directory and prevents follow-up plot/audit requests from attaching to the previous workflow.
+The interactive shell should support `/new-session` to start a fresh session context without exiting the process. Starting a new session clears the active run directory and prevents follow-up plot/audit requests from attaching to the previous workflow.
 
 ## Operating Modes
 

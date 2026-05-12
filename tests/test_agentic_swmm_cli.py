@@ -202,7 +202,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("agent> Goal: inspect project", proc.stdout)
             self.assertIn("mocked default agent", proc.stdout)
 
-    def test_interactive_new_session_command_switches_session_folder(self) -> None:
+    def test_interactive_new_session_command_switches_context_without_nested_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
@@ -230,10 +230,15 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("New session folder:", proc.stdout)
+            self.assertIn("New session:", proc.stdout)
+            self.assertIn("Date folder:", proc.stdout)
             self.assertIn("agent> Goal: inspect project", proc.stdout)
-            session_dirs = [path for path in session_base.iterdir() if path.is_dir()]
-            self.assertGreaterEqual(len(session_dirs), 2)
+            date_dirs = [path for path in session_base.iterdir() if path.is_dir()]
+            self.assertEqual(len(date_dirs), 1)
+            output_dirs = [path for path in date_dirs[0].iterdir() if path.is_dir()]
+            self.assertEqual(len(output_dirs), 1)
+            self.assertIn("_chat", output_dirs[0].name)
+            self.assertTrue((date_dirs[0] / "_sessions.jsonl").exists())
 
     def test_natural_language_goal_defaults_to_openai_agent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
