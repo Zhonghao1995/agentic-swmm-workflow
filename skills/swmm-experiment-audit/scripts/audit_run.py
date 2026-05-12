@@ -814,6 +814,35 @@ def readable_note_name(provenance: dict[str, Any]) -> str:
     return text.title() if text else "Experiment"
 
 
+def input_rows(inputs: dict[str, Any]) -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for input_id, record in inputs.items():
+        if input_id == "sidecar_files" and isinstance(record, list):
+            for index, sidecar in enumerate(record, start=1):
+                if isinstance(sidecar, dict):
+                    rows.append(
+                        [
+                            f"`sidecar_files[{index}]`",
+                            sidecar.get("source_type") or "",
+                            f"`{sidecar.get('path')}`",
+                            f"`{short(sidecar.get('sha256'))}`",
+                        ]
+                    )
+            continue
+        if isinstance(record, dict):
+            rows.append(
+                [
+                    f"`{input_id}`",
+                    record.get("source_type") or ("run-local copy" if record.get("imported_copy") else ""),
+                    f"`{record.get('path')}`",
+                    f"`{short(record.get('sha256'))}`",
+                ]
+            )
+        else:
+            rows.append([f"`{input_id}`", "", f"`{record}`", ""])
+    return rows
+
+
 def md_table(headers: list[str], rows: list[list[Any]]) -> str:
     out = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for row in rows:
@@ -884,6 +913,31 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
         md_table(["Field", "Value"], identity_rows),
         "",
     ]
+
+    inputs = provenance.get("inputs") if isinstance(provenance.get("inputs"), dict) else {}
+    rows = input_rows(inputs)
+    if rows:
+        sections.extend(
+            [
+                "## Input Provenance",
+                "",
+                md_table(["Input", "Source type", "Path", "SHA256"], rows),
+                "",
+            ]
+        )
+        source = inputs.get("source_inp") if isinstance(inputs.get("source_inp"), dict) else {}
+        run_inp = inputs.get("run_inp") if isinstance(inputs.get("run_inp"), dict) else {}
+        if source.get("source_type") == "external_inp_import":
+            sections.extend(
+                [
+                    "External INP import boundary:",
+                    "",
+                    f"- Original user-provided INP: `{source.get('path')}`",
+                    f"- Run-local copy used for SWMM execution: `{run_inp.get('path')}`",
+                    "- This audit records the imported file identity and run-local execution evidence; it does not claim the external model is calibrated or validated.",
+                    "",
+                ]
+            )
 
     command_rows = []
     for command in provenance.get("commands") or []:

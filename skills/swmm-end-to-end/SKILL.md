@@ -74,6 +74,14 @@ Required inputs:
 - SWMM INP file
 - target node or outfall for peak-flow parsing and plotting
 
+The INP may be a repository file or a user-provided absolute local path. For an external local path, the CLI must import the file into the run directory first:
+
+```text
+runs/<case>/00_inputs/model.inp
+```
+
+The original path and SHA256 hash must be recorded in the run manifest. SWMM execution should use the run-local copy, and the audit note should state that this is an external INP import, not a repository demo or validation claim.
+
 Execution:
 
 1. Run `agentic-swmm doctor`.

@@ -347,8 +347,10 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
         "",
         f"Generated at UTC: `{generated_at}`",
         "",
-        "| Run | Case | Workflow | QA | SWMM RC | Comparison | Warnings | Failure patterns | Evidence boundary |",
-        "|---|---|---|---|---:|---|---|---|---|",
+        "Source contract: this index is derived from audited run artifacts, not raw chat history or unsupported external claims.",
+        "",
+        "| Run | Case | Workflow | QA | SWMM RC | Comparison | Missing evidence | Assumptions | Warnings | Failure patterns | Evidence boundary |",
+        "|---|---|---|---|---:|---|---|---|---|---|---|",
     ]
     for r in records:
         lines.append(
@@ -361,6 +363,8 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
                     md_escape(r["qa_status"]),
                     md_escape(r["swmm_return_code"]),
                     md_escape(r["comparison_status"]),
+                    md_escape("; ".join(r["artifacts_missing"][:3])),
+                    md_escape("; ".join(r["assumptions"][:3])),
                     md_escape("; ".join(r["warnings"][:3])),
                     md_escape(", ".join(r["failure_patterns"])),
                     md_escape("; ".join(r["evidence_boundary_notes"][:3])),
@@ -473,6 +477,12 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
         "",
         "This synthesis is derived from historical experiment audit artifacts. It is project memory, not proof that a model is calibrated or validated.",
         "",
+        "## Source Contract",
+        "",
+        "- Evidence comes from audited run artifacts such as `experiment_provenance.json`, `comparison.json`, `experiment_note.md`, manifests, QA summaries, SWMM reports, and plots.",
+        "- Assumptions, missing evidence, repeated failure patterns, and proposed improvements are kept separate from completed modeling claims.",
+        "- External case-study evidence is not included unless it is explicitly referenced by audited run artifacts.",
+        "",
         "## Repeated Failure Patterns",
     ]
     if failure_counts:
@@ -515,6 +525,16 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
             )
     else:
         lines.append("- No run was classified as `no_detected_failure`.")
+    lines.extend(
+        [
+            "",
+            "## Validation Boundary",
+            "",
+            "- A repeated successful practice is operational evidence, not calibration or validation evidence.",
+            "- Calibration requires observed data and recorded parameter-selection evidence.",
+            "- Validation requires independent evidence beyond a successful SWMM execution and audit.",
+        ]
+    )
     lines.append("")
     return "\n".join(lines)
 
@@ -621,6 +641,13 @@ def render_proposals(records: list[dict[str, Any]], generated_at: str) -> str:
         "The modeling-memory skill analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.",
         "",
         "Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified.",
+        "",
+        "Proposal boundaries:",
+        "",
+        "- A proposal may identify a repeated workflow weakness.",
+        "- A proposal may name candidate skills or scripts to review.",
+        "- A proposal must not claim the fix is correct until benchmark runs and audit outputs verify it.",
+        "- A proposal must not hide missing evidence by weakening QA or validation boundaries.",
         "",
     ]
     if not pattern_to_runs:

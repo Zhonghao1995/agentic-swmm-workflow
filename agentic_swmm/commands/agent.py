@@ -7,11 +7,22 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.prompts import openai_planner_prompt
+from agentic_swmm.agent.reporting import write_event as _write_event
+from agentic_swmm.agent.reporting import write_report as _write_report
+from agentic_swmm.agent.planner import rule_plan
+from agentic_swmm.agent.runtime import call_payload as _call_payload
+from agentic_swmm.agent.runtime import run_openai_plan, run_rule_plan
+from agentic_swmm.agent.tool_registry import AgentToolRegistry
+from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.ui import agent_say as _agent_say
+from agentic_swmm.agent.ui import compact_plan as _compact_plan
+from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.config import load_config
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.providers.openai_api import OpenAIProvider
@@ -19,27 +30,7 @@ from agentic_swmm.runtime.registry import discover_skills
 from agentic_swmm.utils.paths import repo_root, script_path
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
-ALLOWED_TOOLS = {
-    "audit_run",
-    "build_inp",
-    "demo_acceptance",
-    "doctor",
-    "format_rainfall",
-    "list_skills",
-    "network_qa",
-    "network_to_inp",
-    "plot_run",
-    "read_file",
-    "read_skill",
-    "run_swmm_inp",
-    "summarize_memory",
-}
-
-
-@dataclass(frozen=True)
-class ToolCall:
-    name: str
-    args: dict[str, Any]
+ALLOWED_TOOLS = AgentToolRegistry().names
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -53,6 +44,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not execute tools.")
     parser.add_argument("--interactive", action="store_true", help="Start an interactive agent shell; each prompt is executed with tool access.")
     parser.add_argument("--max-steps", type=int, default=8, help="Maximum tool calls to execute.")
+    parser.add_argument("--verbose", action="store_true", help="Show full planner/tool details in the terminal.")
     parser.set_defaults(func=main)
 
 
@@ -65,46 +57,44 @@ def main(args: argparse.Namespace) -> int:
     session_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / _safe_name(session_id)
     session_dir.mkdir(parents=True, exist_ok=True)
     trace_path = session_dir / "agent_trace.jsonl"
+    registry = AgentToolRegistry()
     if args.planner == "openai":
-        return _run_openai_planner(args, goal, session_dir, trace_path)
+        return _run_openai_planner(args, goal, session_dir, trace_path, registry)
 
-    plan = _plan(goal)
-    if len(plan) > args.max_steps:
-        plan = plan[: args.max_steps]
-    _write_event(trace_path, {"event": "session_start", "goal": goal, "session_dir": str(session_dir), "plan": [_call_payload(c) for c in plan]})
+    preview_plan = rule_plan(goal)
+    if len(preview_plan) > args.max_steps:
+        preview_plan = preview_plan[: args.max_steps]
 
-    print("Agentic SWMM executor")
-    print(f"- goal: {goal}")
-    print(f"- session: {session_dir}")
-    print("- plan:")
-    for index, call in enumerate(plan, start=1):
-        print(f"  {index}. {call.name} {json.dumps(call.args, sort_keys=True)}")
+    _agent_say("Agentic SWMM executor")
+    _agent_say(f"Goal: {goal}")
+    _agent_say(f"Evidence folder: {_display_path(session_dir)}")
+    if args.verbose:
+        _agent_say("Plan:")
+        for index, call in enumerate(preview_plan, start=1):
+            _agent_say(f"  {index}. {call.name} {json.dumps(call.args, sort_keys=True)}")
+    else:
+        _agent_say(f"Plan: {_compact_plan(preview_plan)}")
 
-    results: list[dict[str, Any]] = []
     if args.dry_run:
-        _write_report(session_dir, goal, plan, results, dry_run=True)
-        print(f"Dry run only. Trace: {trace_path}")
+        _write_report(session_dir, goal, preview_plan, [], dry_run=True, allowed_tools=registry.names)
+        _agent_say(f"Dry run only. Trace: {_display_path(trace_path)}")
         return 0
 
-    ok = True
-    for index, call in enumerate(plan, start=1):
-        print(f"\n[{index}/{len(plan)}] {call.name}")
-        _write_event(trace_path, {"event": "tool_start", "index": index, **_call_payload(call)})
-        result = _execute_tool(call, session_dir)
-        results.append(result)
-        _write_event(trace_path, {"event": "tool_result", "index": index, **result})
+    executor = AgentExecutor(registry, session_dir=session_dir, trace_path=trace_path, dry_run=False)
+    outcome = run_rule_plan(goal=goal, registry=registry, executor=executor, max_steps=args.max_steps, trace_path=trace_path)
+    for index, (call, result) in enumerate(zip(outcome.plan, outcome.results), start=1):
+        _agent_say(f"[{index}/{len(outcome.plan)}] {call.name}")
         if result["ok"]:
             detail = result.get("summary") or result.get("stdout_tail") or "ok"
-            print(f"OK: {detail}")
+            _agent_say(f"OK: {detail}")
         else:
-            ok = False
-            print(f"FAILED: {result.get('summary') or result.get('stderr_tail') or 'tool failed'}")
+            _agent_say(f"FAILED: {result.get('summary') or result.get('stderr_tail') or 'tool failed'}")
             break
 
-    report = _write_report(session_dir, goal, plan, results, dry_run=False)
-    _write_event(trace_path, {"event": "session_end", "ok": ok, "report": str(report)})
-    print(f"\nFinal report: {report}")
-    return 0 if ok else 1
+    report = _write_report(session_dir, goal, outcome.plan, outcome.results, dry_run=False, allowed_tools=registry.names)
+    _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report)})
+    _agent_say(f"Final report: {_display_path(report)}")
+    return 0 if outcome.ok else 1
 
 
 def _run_interactive_shell(args: argparse.Namespace) -> int:
@@ -114,10 +104,10 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
     base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs" / "agent" / "interactive"
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Agentic SWMM interactive agent")
-    print("- mode: OpenAI planner with constrained local tools")
-    print(f"- session base: {base_dir}")
-    print("- type /exit to quit\n")
+    _agent_say("Agentic SWMM interactive agent")
+    _agent_say("Mode: OpenAI planner with constrained local tools")
+    _agent_say(f"Session base: {_display_path(base_dir)}")
+    _agent_say("Type /exit to quit\n")
 
     turn = 0
     while True:
@@ -137,13 +127,13 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
         print()
-        result = _run_openai_planner(args, prompt, session_dir, trace_path)
+        result = _run_openai_planner(args, prompt, session_dir, trace_path, AgentToolRegistry())
         print()
         if result != 0:
-            print(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
+            _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
 
 
-def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path) -> int:
+def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path, registry: AgentToolRegistry) -> int:
     config = load_config()
     provider_name = args.provider or config.get("provider.default", "openai")
     model = args.model or config.get(f"{provider_name}.model")
@@ -153,94 +143,42 @@ def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, 
         raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5`.")
 
     provider = OpenAIProvider(model=model)
-    system_prompt = _openai_planner_prompt()
-    input_items: list[dict[str, Any]] = [
-        {
-            "role": "user",
-            "content": (
-                f"Goal: {goal}\n"
-                f"Session directory: {session_dir}\n"
-                "Use only the provided tools. Stop with a concise final answer after the evidence is sufficient."
-            ),
-        }
-    ]
-    previous_response_id: str | None = None
-    plan: list[ToolCall] = []
-    results: list[dict[str, Any]] = []
-    final_text = ""
-    ok = True
 
-    _write_event(
-        trace_path,
-        {
-            "event": "session_start",
-            "goal": goal,
-            "session_dir": str(session_dir),
-            "planner": "openai",
-            "model": model,
-            "allowed_tools": sorted(ALLOWED_TOOLS),
-        },
+    _agent_say("Agentic SWMM executor")
+    _agent_say(f"Goal: {goal}")
+    _agent_say(f"Planner: openai ({model})")
+    _agent_say(f"Evidence folder: {_display_path(session_dir)}")
+    if args.verbose:
+        _agent_say(f"Allowed tools: {', '.join(registry.sorted_names())}")
+
+    executor = AgentExecutor(registry, session_dir=session_dir, trace_path=trace_path, dry_run=args.dry_run)
+    outcome = run_openai_plan(
+        goal=goal,
+        model=model,
+        provider=provider,
+        registry=registry,
+        executor=executor,
+        max_steps=args.max_steps,
+        trace_path=trace_path,
+        verbose=args.verbose,
+        emit=_agent_say,
     )
 
-    print("Agentic SWMM executor")
-    print(f"- planner: openai")
-    print(f"- model: {model}")
-    print(f"- goal: {goal}")
-    print(f"- session: {session_dir}")
-    print(f"- allowed tools: {', '.join(sorted(ALLOWED_TOOLS))}")
-
-    for step in range(1, args.max_steps + 1):
-        response = provider.respond_with_tools(
-            system_prompt=system_prompt,
-            input_items=input_items,
-            tools=_openai_tool_schemas(),
-            previous_response_id=previous_response_id,
-        )
-        previous_response_id = response.response_id
-        _write_event(
-            trace_path,
-            {
-                "event": "planner_response",
-                "step": step,
-                "response_id": response.response_id,
-                "text": response.text,
-                "tool_calls": [_provider_call_payload(call) for call in response.tool_calls],
-            },
-        )
-        if not response.tool_calls:
-            final_text = response.text.strip()
-            break
-
-        outputs: list[dict[str, Any]] = []
-        for provider_call in response.tool_calls:
-            call = _validated_openai_call(provider_call)
-            plan.append(call)
-            print(f"\n[{len(plan)}] {call.name} {json.dumps(call.args, sort_keys=True)}")
-            _write_event(trace_path, {"event": "tool_start", "index": len(plan), **_call_payload(call)})
-            if args.dry_run:
-                result = {"tool": call.name, "args": call.args, "ok": True, "summary": "dry run; tool not executed"}
-            else:
-                result = _execute_tool(call, session_dir)
-            results.append(result)
-            _write_event(trace_path, {"event": "tool_result", "index": len(plan), **result})
-            print(("OK: " if result.get("ok") else "FAILED: ") + str(result.get("summary") or "completed"))
-            outputs.append({"type": "function_call_output", "call_id": provider_call.call_id, "output": json.dumps(_tool_output_for_model(result), sort_keys=True)})
-            if not result.get("ok"):
-                ok = False
-                break
-        input_items = outputs
-        if args.dry_run or not ok:
-            break
-    else:
-        ok = False
-        final_text = f"planner stopped after max_steps={args.max_steps}"
-
-    report = _write_report(session_dir, goal, plan, results, dry_run=args.dry_run, planner="openai", final_text=final_text)
-    _write_event(trace_path, {"event": "session_end", "ok": ok, "report": str(report), "final_text": final_text})
-    print(f"\nFinal report: {report}")
-    if final_text:
-        print(final_text)
-    return 0 if ok else 1
+    report = _write_report(
+        session_dir,
+        goal,
+        outcome.plan,
+        outcome.results,
+        dry_run=args.dry_run,
+        allowed_tools=registry.names,
+        planner="openai",
+        final_text=outcome.final_text,
+    )
+    _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})
+    _agent_say(f"Final report: {_display_path(report)}")
+    if outcome.final_text:
+        _agent_say(outcome.final_text)
+    return 0 if outcome.ok else 1
 
 
 def _plan(goal: str) -> list[ToolCall]:
@@ -267,19 +205,6 @@ def _plan(goal: str) -> list[ToolCall]:
     if not calls:
         calls.append(ToolCall("doctor", {}))
     return calls
-
-
-def _openai_planner_prompt() -> str:
-    return (
-        "You are the Agentic SWMM tool-calling planner. "
-        "Plan and execute with only the provided function tools. "
-        "Never request shell commands, package installation, network access, file writes outside tool side effects, or tools not in the schema. "
-        "Use list_skills and read_skill to inspect available Agentic SWMM skills. "
-        "Use run_swmm_inp, build_inp, format_rainfall, network_qa, network_to_inp, and plot_run as constrained wrappers around existing skills. "
-        "Use doctor for runtime checks, demo_acceptance for a reproducible acceptance run, audit_run for evidence capture, "
-        "summarize_memory for modeling-memory refreshes, and read_file for inspecting repository artifacts. "
-        "After each tool result, decide the next evidence-producing tool or stop with a concise final answer that states the evidence boundary."
-    )
 
 
 def _openai_tool_schemas() -> list[dict[str, Any]]:
@@ -327,7 +252,7 @@ def _openai_tool_schemas() -> list[dict[str, Any]]:
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "inp_path": {"type": "string", "description": "Repository-relative .inp path."},
+                    "inp_path": {"type": "string", "description": "Repository-relative .inp path or user-provided absolute .inp path to import into the run directory."},
                     "run_id": {"type": "string", "description": "Optional run id under runs/agent."},
                     "run_dir": {"type": "string", "description": "Optional repository-relative run directory."},
                     "node": {"type": "string", "description": "Node/outfall for peak-flow parsing."},
@@ -649,11 +574,7 @@ def _read_skill_tool(call: ToolCall) -> dict[str, Any]:
 
 
 def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    inp = _required_repo_file(call, "inp_path", suffix=".inp")
-    if isinstance(inp, dict):
-        resolved = _find_repo_inp(str(call.args.get("inp_path", "")))
-        if resolved is not None:
-            inp = resolved
+    inp = _resolve_inp_for_run(call)
     if isinstance(inp, dict):
         return inp
     run_dir = _optional_repo_output_dir(call, "run_dir")
@@ -837,6 +758,31 @@ def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) 
     return path
 
 
+def _resolve_inp_for_run(call: ToolCall) -> Path | dict[str, Any]:
+    raw = str(call.args.get("inp_path", "")).strip()
+    if not raw:
+        return {"tool": call.name, "args": call.args, "ok": False, "summary": "missing required file argument: inp_path"}
+
+    repo_file = _required_repo_file(call, "inp_path", suffix=".inp")
+    if not isinstance(repo_file, dict):
+        return repo_file
+
+    resolved = _find_repo_inp(raw)
+    if resolved is not None:
+        return resolved
+
+    external = Path(raw).expanduser()
+    try:
+        external = external.resolve()
+    except OSError:
+        return {"tool": call.name, "args": call.args, "ok": False, "summary": f"inp_path could not be resolved: {raw}"}
+    if external.suffix.lower() != ".inp":
+        return {"tool": call.name, "args": call.args, "ok": False, "summary": "inp_path must end with .inp"}
+    if not external.exists() or not external.is_file():
+        return {"tool": call.name, "args": call.args, "ok": False, "summary": f"external INP file not found: {external}"}
+    return external
+
+
 def _find_repo_inp(value: str) -> Path | None:
     if not value or Path(value).is_absolute() or "/" in value:
         return None
@@ -870,57 +816,6 @@ def _optional_repo_output_dir(call: ToolCall, key: str) -> Path | dict[str, Any]
         return {"tool": call.name, "args": call.args, "ok": False, "summary": f"{key} must be inside repository"}
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-def _write_report(
-    session_dir: Path,
-    goal: str,
-    plan: list[ToolCall],
-    results: list[dict[str, Any]],
-    *,
-    dry_run: bool,
-    planner: str = "rule",
-    final_text: str = "",
-) -> Path:
-    report_path = session_dir / "final_report.md"
-    ok = all(result.get("ok") for result in results) if results else dry_run
-    lines = [
-        "# Agentic SWMM Executor Report",
-        "",
-        f"- goal: {goal}",
-        f"- planner: {planner}",
-        f"- status: {'DRY RUN' if dry_run else ('PASS' if ok else 'FAIL')}",
-        f"- session_dir: {session_dir}",
-        f"- allowed_tools: {', '.join(sorted(ALLOWED_TOOLS))}",
-        "",
-        "## Plan",
-        "",
-    ]
-    for index, call in enumerate(plan, start=1):
-        lines.append(f"{index}. `{call.name}` `{json.dumps(call.args, sort_keys=True)}`")
-    if results:
-        lines.extend(["", "## Tool Results", ""])
-        for index, result in enumerate(results, start=1):
-            lines.append(f"{index}. `{result['tool']}` - {'OK' if result.get('ok') else 'FAILED'}")
-            if result.get("summary"):
-                lines.append(f"   - summary: {result['summary']}")
-            if result.get("stdout_file"):
-                lines.append(f"   - stdout: {result['stdout_file']}")
-            if result.get("stderr_file"):
-                lines.append(f"   - stderr: {result['stderr_file']}")
-            if result.get("path"):
-                lines.append(f"   - artifact: {result['path']}")
-    if final_text:
-        lines.extend(["", "## Planner Final Answer", "", final_text])
-    lines.extend(["", "## Evidence Boundary", "", "This executor only reports commands and artifacts it actually ran or read. A successful SWMM run is not a calibration or validation claim unless observed-data evidence and validation checks are present."])
-    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return report_path
-
-
-def _write_event(path: Path, payload: dict[str, Any]) -> None:
-    payload = {"timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), **payload}
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
 def _call_payload(call: ToolCall) -> dict[str, Any]:

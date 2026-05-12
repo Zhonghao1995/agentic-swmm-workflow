@@ -71,3 +71,17 @@ def test_summarize_memory_outputs(tmp_path: Path) -> None:
     assert index["record_count"] == 1
     assert index["records"][0]["run_id"] == "case-a"
     assert "missing_rpt" in index["records"][0]["failure_patterns"]
+
+    index_md = (out_dir / "modeling_memory_index.md").read_text(encoding="utf-8")
+    assert "Source contract" in index_md
+    assert "Missing evidence" in index_md
+    assert "Assumptions" in index_md
+
+    lessons = (out_dir / "lessons_learned.md").read_text(encoding="utf-8")
+    assert "## Source Contract" in lessons
+    assert "## Validation Boundary" in lessons
+    assert "Assumptions, missing evidence, repeated failure patterns" in lessons
+
+    proposals = (out_dir / "skill_update_proposals.md").read_text(encoding="utf-8")
+    assert "Proposal boundaries" in proposals
+    assert "must not claim the fix is correct" in proposals
