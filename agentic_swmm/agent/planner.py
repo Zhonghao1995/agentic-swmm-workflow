@@ -89,6 +89,13 @@ class OpenAIPlanner:
                     route=route,
                     executor=executor,
                 )
+            if route.get("mode") == "audit_only_or_comparison":
+                return self._run_audit_followup_workflow(
+                    goal=goal,
+                    plan=plan,
+                    route=route,
+                    executor=executor,
+                )
 
         input_items: list[dict[str, Any]] = [
             {
@@ -271,6 +278,27 @@ class OpenAIPlanner:
             final_text=_existing_run_plot_done_text(Path(run_dir), plot_choice, plot_path=plot_path),
         )
 
+    def _run_audit_followup_workflow(
+        self,
+        *,
+        goal: str,
+        plan: list[ToolCall],
+        route: dict[str, Any],
+        executor: AgentExecutor,
+    ) -> PlannerRun:
+        run_dir = str(route.get("provided_values", {}).get("run_dir") or "")
+        if not run_dir:
+            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text="Please provide a run directory to audit.")
+        call = ToolCall("audit_run", {"run_dir": run_dir, "workflow_mode": "audit_only_or_comparison", "objective": goal})
+        plan.append(call)
+        self.emit(f"[{len(plan)}] {call.name}")
+        result = executor.execute(call, index=len(plan))
+        status = "OK" if result.get("ok") else "FAILED"
+        self.emit(f"{status}: {result.get('summary') or 'completed'}")
+        if not result.get("ok"):
+            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Audit failed; inspect the saved audit tool artifacts.")
+        return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=f"Audit completed for {run_dir}.")
+
 
 def _looks_like_swmm_request(goal: str) -> bool:
     return looks_like_swmm_request(goal)
@@ -329,7 +357,7 @@ def _extract_example_inp_path(text: str) -> str | None:
     if candidate.is_dir():
         matches = sorted(path for path in candidate.glob("*.inp") if path.is_file())
         if len(matches) == 1:
-            return str(matches[0].resolve().relative_to(repo_root().resolve()))
+            return matches[0].resolve().relative_to(repo_root().resolve()).as_posix()
     return raw
 
 

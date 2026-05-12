@@ -397,6 +397,64 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(result["results"]["mode"], "existing_run_plot")
         self.assertEqual(result["results"]["missing_inputs"], [])
 
+    def test_plot_followup_uses_global_active_run_when_run_dir_is_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}):
+            active_run_dir = "runs/2026-05-11/204519_tecnopolo_run"
+            (Path(tmp) / "state.json").write_text(
+                json.dumps(
+                    {
+                        "active_case_id": "204519_tecnopolo_run",
+                        "active_run_dir": active_run_dir,
+                        "recent_cases": [{"case_id": "204519_tecnopolo_run", "active_run_dir": active_run_dir}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            registry = AgentToolRegistry()
+            result = registry.execute(ToolCall("select_workflow_mode", {"goal": "plot J2 depth"}), Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["results"]["mode"], "existing_run_plot")
+        self.assertEqual(result["results"]["provided_values"]["run_dir"], active_run_dir)
+        self.assertEqual(result["results"]["missing_inputs"], [])
+
+    def test_audit_followup_uses_global_active_run_when_run_dir_is_omitted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}):
+            active_run_dir = "runs/2026-05-11/204519_tecnopolo_run"
+            (Path(tmp) / "state.json").write_text(
+                json.dumps({"active_case_id": "204519_tecnopolo_run", "active_run_dir": active_run_dir}),
+                encoding="utf-8",
+            )
+            registry = AgentToolRegistry()
+            result = registry.execute(ToolCall("select_workflow_mode", {"goal": "audit it"}), Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["results"]["mode"], "audit_only_or_comparison")
+        self.assertEqual(result["results"]["provided_values"]["run_dir"], active_run_dir)
+        self.assertEqual(result["results"]["missing_inputs"], [])
+        self.assertEqual(result["results"]["recommended_next_tools"], ["audit_run"])
+
+    def test_planner_executes_audit_followup_from_workflow_route(self) -> None:
+        route = {
+            "mode": "audit_only_or_comparison",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/2026-05-11/204519_tecnopolo_run"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal="audit it",
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual(outcome.plan[-1].name, "audit_run")
+        self.assertEqual(outcome.plan[-1].args["run_dir"], "runs/2026-05-11/204519_tecnopolo_run")
+        self.assertIn("audit", outcome.final_text.lower())
+
     def test_plot_option_request_does_not_redraw_default_peak(self) -> None:
         route = {
             "mode": "existing_run_plot",
@@ -489,6 +547,78 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("plot", state["workflow_state"]["selected_intents"])
         self.assertTrue(state["intent_contracts"])
         self.assertIn("Workflow State", context_text)
+
+    def test_session_state_persists_global_active_run_pointer(self) -> None:
+        from agentic_swmm.agent.state import write_session_state
+
+        route = {
+            "mode": "existing_run_plot",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}):
+            session_dir = Path(tmp) / "session"
+            session_dir.mkdir()
+            outcome = planner.run(
+                goal="plot J2 depth",
+                session_dir=session_dir,
+                trace_path=session_dir / "agent_trace.jsonl",
+                executor=executor,
+            )
+            write_session_state(
+                session_dir=session_dir,
+                goal="plot J2 depth",
+                planner="openai",
+                model="gpt-test",
+                allowed_tools=AgentToolRegistry().sorted_names(),
+                outcome=outcome,
+            )
+
+            global_state = json.loads((Path(tmp) / "state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(global_state["active_run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
+        self.assertEqual(global_state["active_case_id"], "003-tecnopolo")
+        self.assertEqual(global_state["recent_cases"][0]["case_id"], "003-tecnopolo")
+        self.assertEqual(global_state["recent_cases"][0]["active_run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
+
+    def test_session_state_persists_case_state_in_active_run_folder(self) -> None:
+        from agentic_swmm.agent.state import write_session_state
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": str(Path(tmp) / "config")}):
+            active_run_dir = Path(tmp) / "runs" / "003-tecnopolo"
+            route = {
+                "mode": "existing_run_plot",
+                "missing_inputs": [],
+                "provided_values": {"run_dir": str(active_run_dir)},
+            }
+            executor = FakePreparedInpExecutor(route)
+            planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+            session_dir = Path(tmp) / "session"
+            session_dir.mkdir()
+            outcome = planner.run(
+                goal="plot J2 depth",
+                session_dir=session_dir,
+                trace_path=session_dir / "agent_trace.jsonl",
+                executor=executor,
+            )
+            write_session_state(
+                session_dir=session_dir,
+                goal="plot J2 depth",
+                planner="openai",
+                model="gpt-test",
+                allowed_tools=AgentToolRegistry().sorted_names(),
+                outcome=outcome,
+            )
+
+            case_state = json.loads((active_run_dir / "aiswmm_state.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(case_state["case_id"], "003-tecnopolo")
+        self.assertEqual(case_state["active_run_dir"], str(active_run_dir))
+        self.assertEqual(case_state["selected_node"], "J2")
+        self.assertEqual(case_state["selected_plot_variable"], "Depth_above_invert")
+        self.assertIn("plot", case_state["available_next_actions"])
 
     def test_prepared_inp_workflow_stops_to_guide_plot_choice(self) -> None:
         route = {
