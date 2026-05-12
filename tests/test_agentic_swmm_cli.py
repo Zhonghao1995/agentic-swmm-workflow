@@ -318,6 +318,56 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(outcome.plan[-1].args["run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
         self.assertEqual(outcome.plan[-1].args["rain_ts"], "MACAO_94_23")
         self.assertEqual(outcome.plan[-1].args["node_attr"], "Total_inflow")
+        self.assertIn("fig_J2_Total_inflow.png", outcome.plan[-1].args["out_png"])
+
+    def test_plot_option_request_does_not_redraw_default_peak(self) -> None:
+        route = {
+            "mode": "existing_run_plot",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal=(
+                    "能不能换个图，你有别的作图选项么，我不想要 peak\n\n"
+                    "Previous run directory: runs/agent/interactive/session/runs/003-tecnopolo"
+                ),
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual([call.name for call in outcome.plan], ["select_workflow_mode", "inspect_plot_options"])
+        self.assertIn("plot variable options", outcome.final_text)
+        self.assertIn("Depth_above_invert", outcome.final_text)
+
+    def test_plot_continuation_can_switch_to_depth(self) -> None:
+        route = {
+            "mode": "existing_run_plot",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            outcome = planner.run(
+                goal=(
+                    "换成 node J2 的水深图\n\n"
+                    "Previous run directory: runs/agent/interactive/session/runs/003-tecnopolo"
+                ),
+                session_dir=Path(tmp),
+                trace_path=Path(tmp) / "agent_trace.jsonl",
+                executor=executor,
+            )
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual(outcome.plan[-1].name, "plot_run")
+        self.assertEqual(outcome.plan[-1].args["node"], "J2")
+        self.assertEqual(outcome.plan[-1].args["node_attr"], "Depth_above_invert")
+        self.assertIn("fig_J2_Depth_above_invert.png", outcome.plan[-1].args["out_png"])
 
     def test_prepared_inp_workflow_stops_to_guide_plot_choice(self) -> None:
         route = {

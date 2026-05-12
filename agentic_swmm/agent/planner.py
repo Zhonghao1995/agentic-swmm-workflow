@@ -205,7 +205,8 @@ class OpenAIPlanner:
                 final_text=_plot_choice_prompt(session_dir, options),
             )
 
-        plot_args = {"run_dir": str(session_dir), **plot_choice}
+        plot_path = _plot_output_path(session_dir, plot_choice)
+        plot_args = {"run_dir": str(session_dir), **plot_choice, "out_png": str(plot_path)}
         plot_result = execute(ToolCall("plot_run", plot_args))
         if not plot_result.get("ok"):
             return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran and audit passed, but plot generation failed.")
@@ -213,7 +214,7 @@ class OpenAIPlanner:
             ok=True,
             plan=plan,
             results=executor.results,
-            final_text=_prepared_inp_done_text(session_dir, options, plotted=True),
+            final_text=_prepared_inp_done_text(session_dir, plot_path=plot_path),
         )
 
     def _run_existing_run_plot_workflow(
@@ -244,14 +245,15 @@ class OpenAIPlanner:
         if plot_choice is None:
             return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=_plot_choice_prompt(Path(run_dir), options))
 
-        plot_result = execute(ToolCall("plot_run", {"run_dir": run_dir, **plot_choice}))
+        plot_path = _plot_output_path(Path(run_dir), plot_choice)
+        plot_result = execute(ToolCall("plot_run", {"run_dir": run_dir, **plot_choice, "out_png": str(plot_path)}))
         if not plot_result.get("ok"):
             return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Plot generation failed for the previous run directory.")
         return PlannerRun(
             ok=True,
             plan=plan,
             results=executor.results,
-            final_text=_existing_run_plot_done_text(Path(run_dir), plot_choice),
+            final_text=_existing_run_plot_done_text(Path(run_dir), plot_choice, plot_path=plot_path),
         )
 
 
@@ -348,7 +350,7 @@ def _extract_plot_choice(goal: str, options: dict[str, Any]) -> dict[str, str] |
     nodes = [str(item) for item in options.get("node_options", [])]
     rains = [str(item.get("name")) for item in options.get("rainfall_options", []) if isinstance(item, dict)]
 
-    node_attr = next((attr for attr in attrs if attr.lower() in lowered), None)
+    node_attr = next((attr for attr in attrs if attr.lower() in lowered and not _is_negated(lowered, attr.lower())), None)
     if node_attr is None:
         aliases = {
             "depth": "Depth_above_invert",
@@ -366,10 +368,12 @@ def _extract_plot_choice(goal: str, options: dict[str, Any]) -> dict[str, str] |
             "流量": "Total_inflow",
             "峰值": "Total_inflow",
         }
-        node_attr = next((value for key, value in aliases.items() if key in lowered and value in attrs), None)
+        node_attr = next((value for key, value in aliases.items() if key in lowered and not _is_negated(lowered, key) and value in attrs), None)
     node = next((candidate for candidate in nodes if candidate.lower() in lowered), None)
     rain_ts = next((candidate for candidate in rains if candidate.lower() in lowered), None)
 
+    if _asks_for_plot_options(lowered) and node_attr is None:
+        return None
     if not explicit_plot and node_attr is None:
         return None
     defaults = options.get("defaults") if isinstance(options.get("defaults"), dict) else {}
@@ -383,6 +387,36 @@ def _extract_plot_choice(goal: str, options: dict[str, Any]) -> dict[str, str] |
     if rain_kind:
         choice["rain_kind"] = rain_kind
     return choice
+
+
+def _asks_for_plot_options(lowered: str) -> bool:
+    return any(
+        phrase in lowered
+        for phrase in (
+            "作图选项",
+            "绘图选项",
+            "别的图",
+            "其他图",
+            "换个图",
+            "自己选",
+            "我自己选",
+            "有哪些图",
+            "能画别的",
+            "不想要",
+            "不要 peak",
+            "不要peak",
+            "not peak",
+            "not total_inflow",
+        )
+    )
+
+
+def _is_negated(lowered: str, term: str) -> bool:
+    start = lowered.find(term)
+    if start < 0:
+        return False
+    prefix = lowered[max(0, start - 12) : start]
+    return any(marker in prefix for marker in ("不想要", "不要", "别画", "不是", "not ", "no "))
 
 
 def _default_rain_kind(options: dict[str, Any], rain_ts: str | None) -> str | None:
@@ -415,8 +449,14 @@ def _plot_choice_prompt(session_dir: Path, options: dict[str, Any]) -> str:
     )
 
 
-def _prepared_inp_done_text(session_dir: Path, options: dict[str, Any], *, plotted: bool) -> str:
-    plot_line = f"Plot: {session_dir / '07_plots' / 'fig_rain_runoff.png'}" if plotted else "Plot: not generated"
+def _plot_output_path(run_dir: Path, choice: dict[str, str]) -> Path:
+    node = re.sub(r"[^A-Za-z0-9_.-]+", "_", choice.get("node", "node")).strip("_") or "node"
+    attr = re.sub(r"[^A-Za-z0-9_.-]+", "_", choice.get("node_attr", "series")).strip("_") or "series"
+    return run_dir / "07_plots" / f"fig_{node}_{attr}.png"
+
+
+def _prepared_inp_done_text(session_dir: Path, *, plot_path: Path | None = None) -> str:
+    plot_line = f"Plot: {plot_path}" if plot_path else "Plot: not generated"
     return (
         "SWMM run, audit, and plotting completed successfully.\n\n"
         f"Run folder: {session_dir}\n"
@@ -426,12 +466,12 @@ def _prepared_inp_done_text(session_dir: Path, options: dict[str, Any], *, plott
     )
 
 
-def _existing_run_plot_done_text(run_dir: Path, choice: dict[str, str]) -> str:
+def _existing_run_plot_done_text(run_dir: Path, choice: dict[str, str], *, plot_path: Path) -> str:
     details = ", ".join(f"{key}={value}" for key, value in choice.items())
     return (
         "Plot completed from the previous SWMM run.\n\n"
         f"Run folder: {run_dir}\n"
-        f"Plot: {run_dir / '07_plots' / 'fig_rain_runoff.png'}\n"
+        f"Plot: {plot_path}\n"
         f"Selection: {details}\n\n"
         "Evidence boundary: the plot was generated from the existing run artifacts."
     )
