@@ -43,7 +43,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not execute tools.")
     parser.add_argument("--interactive", action="store_true", help="Start an interactive agent shell; each prompt is executed with tool access.")
-    parser.add_argument("--max-steps", type=int, default=8, help="Maximum tool calls to execute.")
+    parser.add_argument("--max-steps", type=int, default=16, help="Maximum tool calls to execute.")
     parser.add_argument("--verbose", action="store_true", help="Show full planner/tool details in the terminal.")
     parser.set_defaults(func=main)
 

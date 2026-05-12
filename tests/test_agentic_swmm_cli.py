@@ -11,8 +11,9 @@ from unittest.mock import patch
 
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.cli import _route_default_to_agent
+from agentic_swmm.cli import _route_default_to_agent, build_parser
 from agentic_swmm.commands.agent import _find_repo_inp
+from agentic_swmm.agent.planner import _looks_like_swmm_request, _workflow_route_args
 from agentic_swmm.utils.paths import script_path
 
 
@@ -198,6 +199,19 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(
             _find_repo_inp("tecnopolo_r1_199401.inp"),
             REPO_ROOT / "examples" / "tecnopolo" / "tecnopolo_r1_199401.inp",
+        )
+
+    def test_agent_default_step_budget_covers_run_audit_plot(self) -> None:
+        parser = build_parser()
+        args = parser.parse_args(["agent", "run", "examples/tecnopolo"])
+
+        self.assertEqual(args.max_steps, 16)
+
+    def test_examples_directory_goals_are_swmm_requests(self) -> None:
+        self.assertTrue(_looks_like_swmm_request("examples/tecnopolo/。你帮我跑一下这个我看看"))
+        self.assertEqual(
+            _workflow_route_args("examples/tecnopolo/。你帮我跑一下这个我看看")["inp_path"],
+            "examples/tecnopolo/tecnopolo_r1_199401.inp",
         )
 
     def test_agent_dry_run_plans_acceptance_audit(self) -> None:
@@ -644,6 +658,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             result = registry.execute(ToolCall("select_workflow_mode", {"goal": "run inp", "inp_path": str(inp)}), Path(tmp))
 
         payload = result["results"]
+        self.assertEqual(payload["mode"], "prepared_inp_cli")
+        self.assertFalse(payload["missing_inputs"])
         self.assertTrue(payload["node_suggestions"])
         self.assertEqual(payload["node_suggestions"][0], "OU2")
         options = payload["plot_selection_options"]

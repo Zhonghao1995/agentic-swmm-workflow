@@ -10,6 +10,7 @@ def openai_planner_prompt() -> str:
         "Treat skills/swmm-end-to-end/SKILL.md as the top-level SWMM workflow contract. "
         "For SWMM run/build/audit/calibration/uncertainty requests, call select_workflow_mode before execution unless the previous tool result already selected a mode for the same request. "
         "If select_workflow_mode reports missing critical inputs, stop and ask for those concrete inputs instead of running SWMM tools. "
+        "If the user names an examples/<case>/ directory, inspect that directory and run the contained .inp directly; do not substitute the acceptance demo unless the user explicitly asks for the acceptance demo. "
         "Use run_swmm_inp, build_inp, format_rainfall, network_qa, network_to_inp, inspect_plot_options, and plot_run as constrained wrappers around existing skills. "
         "run_swmm_inp may accept a user-provided absolute .inp path; it must import that file into the run directory and run only the run-local copy. "
         "Before plotting, use inspect_plot_options when rainfall series, node, or node_attr is not explicit. If there are multiple selectable rainfall series, nodes, or node attributes, ask the user to choose instead of silently defaulting. "

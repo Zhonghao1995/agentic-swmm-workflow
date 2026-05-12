@@ -219,7 +219,9 @@ def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if run_dir is None:
         run_id = str(call.args.get("run_id") or f"{_safe_name(inp.stem)}-{int(time.time())}")
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
-    command = ["run", "--inp", str(inp), "--run-dir", str(run_dir), "--node", str(call.args.get("node") or "O1")]
+    default_node = _node_suggestions(str(inp), limit=1)
+    node = str(call.args.get("node") or (default_node[0] if default_node else "O1"))
+    command = ["run", "--inp", str(inp), "--run-dir", str(run_dir), "--node", node]
     return _run_cli_tool(call, session_dir, command)
 
 
@@ -286,7 +288,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
     wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
     wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
-    wants_demo = any(word in goal for word in ("demo", "acceptance", "tecnopolo", "tuflow", "??", "??"))
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
     has_inp = bool(provided.get("inp_path"))
     full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
     has_full_build = all(provided.get(key) for key in full_build_inputs)
@@ -301,6 +303,11 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         required = ["inp_path", "fuzzy_config", "node"]
         next_tools = ["run_swmm_inp", "audit_run"]
         boundary = "Uncertainty runs produce scenario evidence, not calibrated predictive uncertainty unless supported by observed-data validation."
+    elif has_inp:
+        mode = "prepared_inp_cli"
+        required = ["inp_path"]
+        next_tools = ["run_swmm_inp", "audit_run", "inspect_plot_options", "plot_run"]
+        boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
     elif wants_demo:
         mode = "prepared_demo"
         required = []
@@ -313,11 +320,6 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             required.append("baseline_run_dir")
         next_tools = ["audit_run"]
         boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
-    elif has_inp:
-        mode = "prepared_inp_cli"
-        required = ["inp_path", "node"]
-        next_tools = ["run_swmm_inp", "audit_run", "inspect_plot_options", "plot_run"]
-        boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
     elif has_full_build:
         mode = "full_modular_build"
         required = full_build_inputs

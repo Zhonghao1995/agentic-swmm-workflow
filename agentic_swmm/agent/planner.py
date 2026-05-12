@@ -13,6 +13,7 @@ from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.openai_api import OpenAIProvider
+from agentic_swmm.utils.paths import repo_root
 
 
 @dataclass
@@ -151,6 +152,9 @@ def _looks_like_swmm_request(goal: str) -> bool:
             "rainfall",
             "outfall",
             "node",
+            "tecnopolo",
+            "example",
+            "examples/",
             "运行",
             "审计",
             "校准",
@@ -162,7 +166,7 @@ def _looks_like_swmm_request(goal: str) -> bool:
 
 def _workflow_route_args(goal: str) -> dict[str, Any]:
     args: dict[str, Any] = {"goal": goal}
-    inp = _extract_inp_path(goal)
+    inp = _extract_inp_path(goal) or _extract_example_inp_path(goal)
     if inp:
         args["inp_path"] = inp
     node = _extract_after_label(goal, ("node", "outfall", "节点", "出口"))
@@ -177,6 +181,21 @@ def _extract_inp_path(text: str) -> str | None:
         return quoted.group(1)
     match = re.search(r"([A-Za-z]:\\[^\n\r]+?\.inp|(?:\.{0,2}/)?[^\s\"']+\.inp)", text, flags=re.I)
     return match.group(1).rstrip(".,;)]}") if match else None
+
+
+def _extract_example_inp_path(text: str) -> str | None:
+    match = re.search(r"(examples/[^\s，。；;,)]+)", text, flags=re.I)
+    if not match:
+        return None
+    raw = match.group(1).rstrip("/.,;)]}。")
+    candidate = (repo_root() / raw).resolve()
+    if candidate.is_file() and candidate.suffix.lower() == ".inp":
+        return raw
+    if candidate.is_dir():
+        matches = sorted(path for path in candidate.glob("*.inp") if path.is_file())
+        if len(matches) == 1:
+            return str(matches[0].resolve().relative_to(repo_root().resolve()))
+    return raw
 
 
 def _extract_after_label(text: str, labels: tuple[str, ...]) -> str | None:

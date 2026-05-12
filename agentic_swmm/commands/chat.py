@@ -14,7 +14,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--model", help="Model override for this request.")
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")
     parser.add_argument("--session-dir", help="Directory for trace, tool outputs, and final report.")
-    parser.add_argument("--max-steps", type=int, default=8, help="Maximum tool calls to execute.")
+    parser.add_argument("--max-steps", type=int, default=16, help="Maximum tool calls to execute.")
     parser.add_argument("--verbose", action="store_true", help="Show full planner/tool details in the terminal.")
     parser.set_defaults(func=main)
 
