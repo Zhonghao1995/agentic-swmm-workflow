@@ -52,6 +52,10 @@ def setup_state_path() -> Path:
     return config_dir() / "setup_state.json"
 
 
+def mcp_schema_cache_dir() -> Path:
+    return config_dir() / "mcp_schema_cache"
+
+
 def default_values() -> dict[str, Any]:
     return {
         "provider": {

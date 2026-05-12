@@ -8,11 +8,11 @@ from agentic_swmm.utils.paths import repo_root
 
 def agent_say(text: str) -> None:
     if not text:
-        print("agent>")
+        print("aiswmm>")
         return
     lines = text.splitlines() or [text]
     for line in lines:
-        print(f"agent> {line}" if line else "agent>")
+        print(f"aiswmm> {line}" if line else "aiswmm>")
 
 
 def display_path(path: Path) -> str:

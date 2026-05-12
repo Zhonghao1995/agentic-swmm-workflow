@@ -34,7 +34,7 @@ ALLOWED_TOOLS = AgentToolRegistry().names
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    parser = subparsers.add_parser("agent", help="Run a constrained local Agentic SWMM executor.")
+    parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     parser.add_argument("--planner", choices=["rule", "openai"], default="rule", help="Planner backend. Defaults to the deterministic rule planner.")
     parser.add_argument("--provider", choices=["openai"], help="Provider to use with --planner openai. Defaults to config provider.default.")
@@ -65,7 +65,7 @@ def main(args: argparse.Namespace) -> int:
     if len(preview_plan) > args.max_steps:
         preview_plan = preview_plan[: args.max_steps]
 
-    _agent_say("Agentic SWMM executor")
+    _agent_say("aiswmm executor")
     _agent_say(f"Goal: {goal}")
     _agent_say(f"Evidence folder: {_display_path(session_dir)}")
     if args.verbose:
@@ -106,7 +106,7 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
 
     date_dir, session_label = _new_interactive_session(base_dir)
 
-    _agent_say("Agentic SWMM interactive agent")
+    _agent_say("aiswmm interactive agent")
     _agent_say("Mode: OpenAI planner with constrained local tools")
     _agent_say(f"Run base: {_display_path(base_dir)}")
     _agent_say(f"Date folder: {_display_path(date_dir)}")
@@ -208,7 +208,7 @@ def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, 
 
     provider = OpenAIProvider(model=model)
 
-    _agent_say("Agentic SWMM executor")
+    _agent_say("aiswmm executor")
     _agent_say(f"Goal: {goal}")
     _agent_say(f"Planner: openai ({model})")
     _agent_say(f"Evidence folder: {_display_path(session_dir)}")

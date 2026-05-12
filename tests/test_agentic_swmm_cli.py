@@ -177,8 +177,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("agent> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm executor", proc.stdout)
+            self.assertIn("aiswmm> Planner: openai", proc.stdout)
             self.assertIn("mocked agent answer", proc.stdout)
 
     def test_cli_without_command_defaults_to_openai_agent(self) -> None:
@@ -196,10 +196,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("Agentic SWMM interactive agent", proc.stdout)
-            self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("agent> Planner: openai", proc.stdout)
-            self.assertIn("agent> Goal: inspect project", proc.stdout)
+            self.assertIn("aiswmm interactive agent", proc.stdout)
+            self.assertIn("aiswmm executor", proc.stdout)
+            self.assertIn("aiswmm> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
             self.assertIn("mocked default agent", proc.stdout)
 
     def test_interactive_new_session_command_switches_context_without_nested_dirs(self) -> None:
@@ -232,7 +232,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             self.assertIn("New session:", proc.stdout)
             self.assertIn("Date folder:", proc.stdout)
-            self.assertIn("agent> Goal: inspect project", proc.stdout)
+            self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
             date_dirs = [path for path in session_base.iterdir() if path.is_dir()]
             self.assertEqual(len(date_dirs), 1)
             output_dirs = [path for path in date_dirs[0].iterdir() if path.is_dir()]
@@ -261,8 +261,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("Agentic SWMM executor", proc.stdout)
-            self.assertIn("agent> Goal: inspect the project", proc.stdout)
+            self.assertIn("aiswmm executor", proc.stdout)
+            self.assertIn("aiswmm> Goal: inspect the project", proc.stdout)
             self.assertIn("mocked natural language agent", proc.stdout)
 
     def test_default_router_preserves_explicit_low_level_run(self) -> None:
@@ -541,7 +541,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("Agentic SWMM executor", proc.stdout)
+            self.assertIn("aiswmm executor", proc.stdout)
             self.assertIn("demo_acceptance", proc.stdout)
             self.assertIn("audit_run", proc.stdout)
             report = Path(tmp) / "agent-session" / "final_report.md"
@@ -581,7 +581,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("agent> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm> Planner: openai", proc.stdout)
             self.assertIn("doctor", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
             self.assertIn("- planner: openai", report)
@@ -943,7 +943,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 "inputSchema": {"type": "object", "properties": {"network_json": {"type": "string"}}, "required": ["network_json"]},
             }
         ]
-        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}), patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
             result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
 
         self.assertTrue(result["ok"])
@@ -952,9 +952,33 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(result["mapped_tools"][0]["arguments"]["server"], "swmm-network")
         self.assertIn("network_json", result["mapped_tools"][0]["arguments"]["arguments_schema"]["properties"])
 
+    def test_mcp_tool_list_uses_schema_cache(self) -> None:
+        registry = AgentToolRegistry()
+        fake_tools = [{"name": "cached_run", "description": "Cached run.", "inputSchema": {"type": "object", "properties": {}}}]
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}), patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
+            first = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner"}), Path(tmp))
+            second = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner"}), Path(tmp))
+
+        self.assertTrue(first["ok"])
+        self.assertTrue(second["ok"])
+        self.assertEqual(first["cache"], "miss")
+        self.assertEqual(second["cache"], "hit")
+        self.assertEqual(mocked.call_count, 1)
+
+    def test_mcp_tool_list_refresh_bypasses_schema_cache(self) -> None:
+        registry = AgentToolRegistry()
+        fake_tools = [{"name": "cached_run", "description": "Cached run.", "inputSchema": {"type": "object", "properties": {}}}]
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}), patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
+            registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner"}), Path(tmp))
+            refreshed = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner", "refresh": True}), Path(tmp))
+
+        self.assertTrue(refreshed["ok"])
+        self.assertEqual(refreshed["cache"], "refresh")
+        self.assertEqual(mocked.call_count, 2)
+
     def test_mcp_tool_list_honors_short_timeout(self) -> None:
         registry = AgentToolRegistry()
-        with tempfile.TemporaryDirectory() as tmp, patch("agentic_swmm.agent.mcp_client.list_tools", side_effect=RuntimeError("MCP response timed out.")) as mocked:
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}), patch("agentic_swmm.agent.mcp_client.list_tools", side_effect=RuntimeError("MCP response timed out.")) as mocked:
             result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-runner", "timeout_seconds": 3}), Path(tmp))
 
         self.assertFalse(result["ok"])
