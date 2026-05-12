@@ -288,7 +288,26 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
     wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
     wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
-    wants_plot = any(word in goal for word in ("plot", "figure", "graph", "作图", "画图", "图"))
+    wants_plot = any(
+        word in goal
+        for word in (
+            "plot",
+            "figure",
+            "graph",
+            "作图",
+            "画图",
+            "图",
+            "rainfall",
+            "node",
+            "outfall",
+            "total_inflow",
+            "lateral_inflow",
+            "flow_lost_flooding",
+            "volume_stored_ponded",
+            "depth_above_invert",
+            "hydraulic_head",
+        )
+    )
     wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
     has_inp = bool(provided.get("inp_path"))
     has_run_dir = bool(provided.get("run_dir"))

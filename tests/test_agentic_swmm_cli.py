@@ -380,6 +380,23 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(outcome.plan[-1].args["node_attr"], "Total_inflow")
         self.assertIn("fig_J2_Total_inflow.png", outcome.plan[-1].args["out_png"])
 
+    def test_plot_selection_variable_with_run_dir_routes_to_existing_run_plot(self) -> None:
+        registry = AgentToolRegistry()
+        result = registry.execute(
+            ToolCall(
+                "select_workflow_mode",
+                {
+                    "goal": "Total_inflow J2 MACAO_94_23\n\nPrevious run directory: runs/2026-05-11/204519_tecnopolo_run",
+                    "run_dir": "runs/2026-05-11/204519_tecnopolo_run",
+                },
+            ),
+            Path(tempfile.gettempdir()),
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["results"]["mode"], "existing_run_plot")
+        self.assertEqual(result["results"]["missing_inputs"], [])
+
     def test_plot_option_request_does_not_redraw_default_peak(self) -> None:
         route = {
             "mode": "existing_run_plot",
