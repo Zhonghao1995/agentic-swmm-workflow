@@ -62,57 +62,112 @@
     {
       "id": "runner",
       "skills": ["swmm-runner"],
-      "keywords": [".inp", "run", "runner", "swmm5", "运行", "跑一下"]
+      "keywords": [".inp", "run", "runner", "swmm5", "运行", "跑一下"],
+      "required_inputs": ["inp_path"],
+      "optional_inputs": ["node", "run_dir"],
+      "preferred_tools": ["run_swmm_inp"],
+      "stop_conditions": ["missing inp_path", "swmm execution failure"],
+      "next_user_prompt": "Please provide a SWMM .inp path or an examples/<case>/ folder."
     },
     {
       "id": "audit",
       "skills": ["swmm-experiment-audit"],
-      "keywords": ["audit", "provenance", "comparison", "compare", "审计", "证据", "对比"]
+      "keywords": ["audit", "provenance", "comparison", "compare", "审计", "证据", "对比"],
+      "required_inputs": ["run_dir"],
+      "optional_inputs": ["baseline_run_dir", "objective", "workflow_mode"],
+      "preferred_tools": ["audit_run"],
+      "stop_conditions": ["missing run_dir"],
+      "next_user_prompt": "Please provide the run directory to audit or compare."
     },
     {
       "id": "plot",
       "skills": ["swmm-plot"],
-      "keywords_from": "plot_keywords"
+      "keywords_from": "plot_keywords",
+      "required_inputs": ["run_dir"],
+      "optional_inputs": ["rain_ts", "node", "node_attr", "out_png"],
+      "preferred_tools": ["inspect_plot_options", "plot_run"],
+      "stop_conditions": ["missing run_dir", "ambiguous rainfall/node/node_attr selection"],
+      "next_user_prompt": "Choose a rainfall series, node/outfall, and plot variable before plotting."
     },
     {
       "id": "calibration",
       "skills": ["swmm-calibration"],
-      "keywords": ["calibration", "calibrate", "validation", "sensitivity", "observed", "nse", "kge", "校准", "率定", "敏感性", "观测"]
+      "keywords": ["calibration", "calibrate", "validation", "sensitivity", "observed", "nse", "kge", "校准", "率定", "敏感性", "观测"],
+      "required_inputs": ["inp_path", "observed_flow", "node"],
+      "optional_inputs": ["parameter_sets", "search_space", "metric"],
+      "preferred_tools": ["run_swmm_inp", "audit_run"],
+      "stop_conditions": ["missing observed data", "no simulated-observed overlap"],
+      "next_user_prompt": "Provide observed flow data, target node, and parameter/search settings."
     },
     {
       "id": "uncertainty",
       "skills": ["swmm-uncertainty"],
-      "keywords": ["uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊"]
+      "keywords": ["uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊"],
+      "required_inputs": ["inp_path", "fuzzy_config", "node"],
+      "optional_inputs": ["alpha_levels", "sample_policy", "output_metric"],
+      "preferred_tools": ["run_swmm_inp", "audit_run"],
+      "stop_conditions": ["missing fuzzy parameter bounds", "baseline outside membership bounds"],
+      "next_user_prompt": "Provide fuzzy parameter bounds, alpha levels, target node, and output metric."
     },
     {
       "id": "gis",
       "skills": ["swmm-gis"],
-      "keywords": ["gis", "dem", "geopackage", "shapefile", "geojson", "subcatchment", "pour point", "流域", "汇水区"]
+      "keywords": ["gis", "dem", "geopackage", "shapefile", "geojson", "subcatchment", "pour point", "流域", "汇水区"],
+      "required_inputs": ["gis_source"],
+      "optional_inputs": ["dem", "pour_point", "subcatchment_id_field"],
+      "preferred_tools": ["call_mcp_tool"],
+      "stop_conditions": ["missing trustworthy GIS source"],
+      "next_user_prompt": "Provide GIS/DEM/subcatchment sources and the intended outlet or node-linking rule."
     },
     {
       "id": "climate",
       "skills": ["swmm-climate"],
-      "keywords": ["rainfall", "raingage", "timeseries", "climate", "降雨", "雨量"]
+      "keywords": ["rainfall", "raingage", "timeseries", "climate", "降雨", "雨量"],
+      "required_inputs": ["rainfall_input"],
+      "optional_inputs": ["timestamp_column", "value_column", "units", "raingage_id"],
+      "preferred_tools": ["format_rainfall"],
+      "stop_conditions": ["missing rainfall file", "invalid timestamps or units"],
+      "next_user_prompt": "Provide rainfall timeseries, timestamp/value columns, units, and raingage id."
     },
     {
       "id": "network",
       "skills": ["swmm-network"],
-      "keywords": ["network", "conduit", "junction", "outfall", "xsection", "pipe", "管网", "节点", "出口"]
+      "keywords": ["network", "conduit", "junction", "outfall", "xsection", "pipe", "管网", "节点", "出口"],
+      "required_inputs": ["network_json"],
+      "optional_inputs": ["coordinates", "xsections", "outfalls"],
+      "preferred_tools": ["network_qa", "network_to_inp"],
+      "stop_conditions": ["missing network_json", "invalid connectivity"],
+      "next_user_prompt": "Provide network_json or structured junction/conduit/outfall data."
     },
     {
       "id": "params",
       "skills": ["swmm-params"],
-      "keywords": ["landuse", "land use", "soil", "green-ampt", "parameter", "参数", "土地利用", "土壤"]
+      "keywords": ["landuse", "land use", "soil", "green-ampt", "parameter", "参数", "土地利用", "土壤"],
+      "required_inputs": ["landuse_input", "soil_input"],
+      "optional_inputs": ["parameter_policy", "lid_settings"],
+      "preferred_tools": ["call_mcp_tool"],
+      "stop_conditions": ["missing land use or soil source"],
+      "next_user_prompt": "Provide land use and soil inputs or accepted parameter tables."
     },
     {
       "id": "builder",
       "skills": ["swmm-builder"],
-      "keywords": ["build", "builder", "assemble", "network_json", "subcatchments_csv", "生成inp", "构建"]
+      "keywords": ["build", "builder", "assemble", "network_json", "subcatchments_csv", "生成inp", "构建"],
+      "required_inputs": ["subcatchments_csv", "params_json", "network_json"],
+      "optional_inputs": ["rainfall_json", "raingage_json", "timeseries_text", "config_json"],
+      "preferred_tools": ["build_inp"],
+      "stop_conditions": ["missing builder-ready inputs"],
+      "next_user_prompt": "Provide subcatchments, parameter JSON, network JSON, and rainfall references."
     },
     {
       "id": "modeling-memory",
       "skills": ["swmm-modeling-memory"],
-      "keywords": ["memory", "lessons", "failure pattern", "skill update", "建模记忆", "经验"]
+      "keywords": ["memory", "lessons", "failure pattern", "skill update", "建模记忆", "经验"],
+      "required_inputs": ["runs_dir"],
+      "optional_inputs": ["out_dir"],
+      "preferred_tools": ["summarize_memory"],
+      "stop_conditions": ["missing audited runs"],
+      "next_user_prompt": "Provide a runs directory containing audit artifacts."
     }
   ]
 }

@@ -308,7 +308,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
         self.assertEqual(payload["schema_version"], "1.0")
         self.assertIn("swmm-end-to-end", payload["always_load_skills"])
-        self.assertTrue(any(intent["id"] == "uncertainty" for intent in payload["intents"]))
+        uncertainty = next(intent for intent in payload["intents"] if intent["id"] == "uncertainty")
+        self.assertIn("required_inputs", uncertainty)
+        self.assertIn("preferred_tools", uncertainty)
+        self.assertIn("stop_conditions", uncertainty)
+        self.assertIn("next_user_prompt", uncertainty)
         self.assertIn("swmm-runner", payload["mcp_enabled_skills"])
 
     def test_relevant_skill_selection_is_dynamic(self) -> None:
@@ -423,6 +427,46 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(outcome.plan[-1].args["node"], "J2")
         self.assertEqual(outcome.plan[-1].args["node_attr"], "Depth_above_invert")
         self.assertIn("fig_J2_Depth_above_invert.png", outcome.plan[-1].args["out_png"])
+
+    def test_session_state_tracks_workflow_state_for_plot_run(self) -> None:
+        from agentic_swmm.agent.state import write_session_state
+
+        route = {
+            "mode": "existing_run_plot",
+            "missing_inputs": [],
+            "provided_values": {"run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"},
+        }
+        executor = FakePreparedInpExecutor(route)
+        planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            outcome = planner.run(
+                goal=(
+                    "换成 node J2 的水深图\n\n"
+                    "Previous run directory: runs/agent/interactive/session/runs/003-tecnopolo"
+                ),
+                session_dir=session_dir,
+                trace_path=session_dir / "agent_trace.jsonl",
+                executor=executor,
+            )
+            state_path, context_path = write_session_state(
+                session_dir=session_dir,
+                goal="换成 node J2 的水深图",
+                planner="openai",
+                model="gpt-test",
+                allowed_tools=AgentToolRegistry().sorted_names(),
+                outcome=outcome,
+            )
+
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            context_text = context_path.read_text(encoding="utf-8")
+
+        self.assertEqual(state["workflow_state"]["active_run_dir"], "runs/agent/interactive/session/runs/003-tecnopolo")
+        self.assertEqual(state["workflow_state"]["selected_node"], "J2")
+        self.assertEqual(state["workflow_state"]["selected_variable"], "Depth_above_invert")
+        self.assertIn("plot", state["workflow_state"]["selected_intents"])
+        self.assertTrue(state["intent_contracts"])
+        self.assertIn("Workflow State", context_text)
 
     def test_prepared_inp_workflow_stops_to_guide_plot_choice(self) -> None:
         route = {
@@ -881,6 +925,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             state = json.loads((session_dir / "session_state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["planner"], "openai")
             self.assertIn("retry_policy", state)
+            self.assertIn("intent_contracts", state)
+            self.assertIn("workflow_state", state)
             self.assertTrue((session_dir / "context_summary.md").exists())
 
     def test_mcp_tool_list_returns_mapped_schemas(self) -> None:

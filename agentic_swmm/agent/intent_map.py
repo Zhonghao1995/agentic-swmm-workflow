@@ -53,6 +53,27 @@ def select_relevant_skills(goal: str) -> list[str]:
     return selected
 
 
+def select_relevant_intents(goal: str) -> list[dict[str, Any]]:
+    lowered = goal.lower()
+    return [intent for intent in _intent_records() if _contains_any(lowered, _intent_keywords(intent))]
+
+
+def intent_contracts(goal: str) -> list[dict[str, Any]]:
+    contracts: list[dict[str, Any]] = []
+    for intent in select_relevant_intents(goal):
+        contracts.append(
+            {
+                "id": str(intent.get("id") or ""),
+                "required_inputs": _string_list(intent.get("required_inputs")),
+                "optional_inputs": _string_list(intent.get("optional_inputs")),
+                "preferred_tools": _string_list(intent.get("preferred_tools")),
+                "stop_conditions": _string_list(intent.get("stop_conditions")),
+                "next_user_prompt": str(intent.get("next_user_prompt") or ""),
+            }
+        )
+    return contracts
+
+
 def select_relevant_mcp_servers(skill_names: list[str]) -> list[str]:
     mcp_enabled = set(_string_list(load_intent_map().get("mcp_enabled_skills")))
     return [name for name in skill_names if name in mcp_enabled]
