@@ -54,7 +54,7 @@ RUN python -m pip install --no-cache-dir --upgrade pip \
        fi
 
 RUN set -eux; \
-    find /app/skills -type f -path '*/scripts/mcp/package.json' -print | sort | while read -r package_json; do \
+    find /app/mcp -mindepth 2 -maxdepth 2 -type f -name package.json -print | sort | while read -r package_json; do \
       mcp_dir="$(dirname "$package_json")"; \
       if [ -f "$mcp_dir/package-lock.json" ]; then \
         npm --prefix "$mcp_dir" ci --omit=dev; \

@@ -473,8 +473,7 @@ function Install-McpRequirements {
     if (-not $npmCmd) {
         Fail "npm is unavailable."
     }
-    Get-ChildItem -Path (Join-Path $RepoRoot 'skills') -Filter package.json -Recurse |
-        Where-Object { $_.FullName -like '*\scripts\mcp\package.json' } |
+    Get-ChildItem -Path (Join-Path $RepoRoot 'mcp') -Filter package.json -Recurse |
         Sort-Object FullName |
         ForEach-Object {
             $dir = Split-Path -Parent $_.FullName

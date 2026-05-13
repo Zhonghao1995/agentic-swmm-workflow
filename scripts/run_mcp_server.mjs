@@ -8,14 +8,14 @@ const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
 
 const servers = {
-  "swmm-builder": "skills/swmm-builder/scripts/mcp",
-  "swmm-calibration": "skills/swmm-calibration/scripts/mcp",
-  "swmm-climate": "skills/swmm-climate/scripts/mcp",
-  "swmm-gis": "skills/swmm-gis/scripts/mcp",
-  "swmm-network": "skills/swmm-network/scripts/mcp",
-  "swmm-params": "skills/swmm-params/scripts/mcp",
-  "swmm-plot": "skills/swmm-plot/scripts/mcp",
-  "swmm-runner": "skills/swmm-runner/scripts/mcp",
+  "swmm-builder": "mcp/swmm-builder",
+  "swmm-calibration": "mcp/swmm-calibration",
+  "swmm-climate": "mcp/swmm-climate",
+  "swmm-gis": "mcp/swmm-gis",
+  "swmm-network": "mcp/swmm-network",
+  "swmm-params": "mcp/swmm-params",
+  "swmm-plot": "mcp/swmm-plot",
+  "swmm-runner": "mcp/swmm-runner",
 };
 
 const serverName = process.argv[2];
@@ -59,4 +59,3 @@ child.on("exit", (code, signal) => {
   }
   process.exit(code ?? 0);
 });
-

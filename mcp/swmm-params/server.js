@@ -10,8 +10,8 @@ import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
-const scriptsDir = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(__dirname, '../..');
+const scriptsDir = path.resolve(__dirname, '../../skills/swmm-params/scripts');
 const landuseScript = path.join(scriptsDir, 'landuse_to_swmm_params.py');
 const soilScript = path.join(scriptsDir, 'soil_to_greenampt.py');
 const mergeScript = path.join(scriptsDir, 'merge_swmm_params.py');

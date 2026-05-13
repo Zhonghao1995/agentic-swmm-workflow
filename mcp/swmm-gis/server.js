@@ -16,9 +16,9 @@ import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../../../..");
-const pourPointPy = path.resolve(__dirname, "../find_pour_point.py");
-const preprocessPy = path.resolve(__dirname, "../preprocess_subcatchments.py");
+const repoRoot = path.resolve(__dirname, "../..");
+const pourPointPy = path.resolve(__dirname, "../../skills/swmm-gis/scripts/find_pour_point.py");
+const preprocessPy = path.resolve(__dirname, "../../skills/swmm-gis/scripts/preprocess_subcatchments.py");
 
 function resolvePython() {
   if (process.env.PYTHON) return process.env.PYTHON;

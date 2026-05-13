@@ -22,9 +22,9 @@ MCP_SERVERS = [
 ]
 
 LONG_TERM_MEMORY_FILES = [
-    "agentic-ai/memory/identification_memory.md",
-    "agentic-ai/memory/operational_memory.md",
-    "agentic-ai/memory/evidence_memory.md",
+    "agent/memory/identification_memory.md",
+    "agent/memory/operational_memory.md",
+    "agent/memory/evidence_memory.md",
 ]
 
 MODELING_MEMORY_FILES = [
@@ -56,7 +56,7 @@ def discover_mcp_servers() -> list[dict[str, Any]]:
     node = shutil.which("node") or sys.executable
     records = []
     for server in MCP_SERVERS:
-        server_dir = root / "skills" / server / "scripts" / "mcp"
+        server_dir = root / "mcp" / server
         records.append(
             {
                 "name": server,

@@ -7,9 +7,10 @@ from setuptools import setup
 
 
 RESOURCE_DIRS = (
-    "agentic-ai",
+    "agent",
     "examples",
     "integrations",
+    "mcp",
     "scripts",
     "skills",
     "web",

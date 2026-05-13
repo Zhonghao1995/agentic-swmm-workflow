@@ -143,7 +143,7 @@ OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-
 For agent-orchestrated runs, preload the Agentic AI memory package and then use the top-level end-to-end skill:
 
 ```text
-agentic-ai/memory/
+agent/memory/
 skills/swmm-end-to-end/SKILL.md
 ```
 

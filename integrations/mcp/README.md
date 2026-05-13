@@ -88,12 +88,12 @@ See [Skill installation](../skills/README.md).
 
 Recommended preload order:
 
-1. `agentic-ai/memory/identification_memory.md`
-2. `agentic-ai/memory/soul.md`
-3. `agentic-ai/memory/operational_memory.md`
-4. `agentic-ai/memory/modeling_workflow_memory.md`
-5. `agentic-ai/memory/evidence_memory.md`
-6. `agentic-ai/memory/user_bridge_memory.md`
+1. `agent/memory/identification_memory.md`
+2. `agent/memory/soul.md`
+3. `agent/memory/operational_memory.md`
+4. `agent/memory/modeling_workflow_memory.md`
+5. `agent/memory/evidence_memory.md`
+6. `agent/memory/user_bridge_memory.md`
 7. `skills/swmm-end-to-end/SKILL.md`
 8. `docs/openclaw-execution-path.md`
 

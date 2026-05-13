@@ -6,7 +6,7 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const repoRoot = path.resolve(path.dirname(__filename), "..");
-const runnerPackage = path.join(repoRoot, "skills", "swmm-runner", "scripts", "mcp", "package.json");
+const runnerPackage = path.join(repoRoot, "mcp", "swmm-runner", "package.json");
 const requireFromRunner = createRequire(runnerPackage);
 
 const { Client } = await import(pathToFileURL(requireFromRunner.resolve("@modelcontextprotocol/sdk/client/index.js")));
@@ -88,4 +88,3 @@ console.log(JSON.stringify({ ok: results.every((result) => result.ok), results }
 if (!results.every((result) => result.ok)) {
   process.exit(1);
 }
-

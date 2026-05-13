@@ -14,8 +14,8 @@ import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../../../..");
-const plotPy = path.resolve(__dirname, "../plot_rain_runoff_si.py");
+const repoRoot = path.resolve(__dirname, "../..");
+const plotPy = path.resolve(__dirname, "../../skills/swmm-plot/scripts/plot_rain_runoff_si.py");
 
 function resolvePython() {
   if (process.env.PYTHON) return process.env.PYTHON;

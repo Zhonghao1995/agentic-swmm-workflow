@@ -10,8 +10,8 @@ import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
-const scriptsDir = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(__dirname, '../..');
+const scriptsDir = path.resolve(__dirname, '../../skills/swmm-builder/scripts');
 const buildScript = path.join(scriptsDir, 'build_swmm_inp.py');
 
 function resolvePython() {

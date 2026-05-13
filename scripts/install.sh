@@ -11,7 +11,7 @@ Bootstrap local dependencies for agentic-swmm-workflow.
 Options:
   --yes          Run non-interactively.
   --skip-python  Skip virtualenv creation and pip installs.
-  --skip-mcp     Skip npm installs for skills/*/scripts/mcp packages.
+  --skip-mcp     Skip npm installs for top-level mcp/* packages.
   --skip-swmm    Skip SWMM engine installation/build.
   --skip-setup   Skip aiswmm orchestration setup after installation.
   --provider NAME  Provider to register with aiswmm setup. Default: openai.
@@ -461,7 +461,7 @@ install_mcp_requirements() {
     else
       (cd "$mcp_dir" && npm install)
     fi
-  done < <(find "$REPO_ROOT/skills" -type f -path '*/scripts/mcp/package.json' | sort)
+  done < <(find "$REPO_ROOT/mcp" -mindepth 2 -maxdepth 2 -type f -name package.json | sort)
   log "Installed MCP deps in $mcp_count package(s)"
 }
 
