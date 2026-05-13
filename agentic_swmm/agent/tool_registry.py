@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import importlib.util
 import json
 import re
 import subprocess
@@ -18,6 +19,7 @@ from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_pa
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR, NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, _find_inp, _find_out, _read_manifest, rainfall_timeseries_options
+from agentic_swmm.config import runtime_state_path
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import discover_skills, load_mcp_registry
 from agentic_swmm.utils.paths import repo_root, script_path
@@ -311,6 +313,11 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
     has_inp = bool(provided.get("inp_path"))
     has_run_dir = bool(provided.get("run_dir"))
+    if (wants_plot or wants_audit) and not has_run_dir:
+        active_run_dir = _active_run_dir_from_global_state()
+        if active_run_dir:
+            provided["run_dir"] = active_run_dir
+            has_run_dir = True
     full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
     has_full_build = all(provided.get(key) for key in full_build_inputs)
 
@@ -678,6 +685,20 @@ def _workflow_user_prompt(mode: str, missing: list[str]) -> str:
     return "Please provide: " + ", ".join(missing)
 
 
+def _active_run_dir_from_global_state() -> str | None:
+    path = runtime_state_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get("active_run_dir")
+    return str(value) if value else None
+
+
 def _run_cli_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> dict[str, Any]:
     return _run_process_tool(call, session_dir, [sys.executable, "-m", "agentic_swmm.cli", *cli_args], cwd=repo_root())
 
@@ -714,6 +735,8 @@ def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         if resolved is None:
             return _failure(call, f"test path must be inside repository: {path}")
     timeout = int(call.args.get("timeout_seconds") or 120)
+    if importlib.util.find_spec("pytest") is None and len(test_paths) == 1 and test_paths[0].endswith(".py"):
+        return _run_process_tool(call, session_dir, [sys.executable, test_paths[0]], cwd=repo_root(), timeout=timeout)
     return _run_process_tool(call, session_dir, [sys.executable, "-m", "pytest", *test_paths], cwd=repo_root(), timeout=timeout)
 
 

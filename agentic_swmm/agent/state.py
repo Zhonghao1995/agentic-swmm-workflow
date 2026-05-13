@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.intent_map import intent_contracts, select_relevant_intents
+from agentic_swmm.config import runtime_state_path
 
 
 def write_session_state(
@@ -44,7 +45,98 @@ def write_session_state(
     context_path = session_dir / "context_summary.md"
     state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     context_path.write_text(_context_markdown(payload), encoding="utf-8")
+    _write_global_runtime_state(payload)
+    _write_case_runtime_state(payload)
     return state_path, context_path
+
+
+def _write_global_runtime_state(session_payload: dict[str, Any]) -> None:
+    workflow_state = session_payload.get("workflow_state") if isinstance(session_payload.get("workflow_state"), dict) else {}
+    active_run_dir = workflow_state.get("active_run_dir")
+    if not active_run_dir:
+        return
+    target = runtime_state_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict[str, Any] = {}
+    if target.exists():
+        try:
+            loaded = json.loads(target.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = {}
+        if isinstance(loaded, dict):
+            existing = loaded
+
+    case_id = _case_id_from_run_dir(str(active_run_dir))
+    recent_case = {
+        "case_id": case_id,
+        "active_run_dir": str(active_run_dir),
+        "source_inp": workflow_state.get("selected_case"),
+        "last_opened_at": session_payload["created_at_utc"],
+    }
+    recent_cases = [recent_case]
+    for item in existing.get("recent_cases", []):
+        if not isinstance(item, dict) or item.get("case_id") == case_id:
+            continue
+        recent_cases.append(item)
+        if len(recent_cases) >= 10:
+            break
+
+    payload = {
+        **existing,
+        "active_case_id": case_id,
+        "active_run_dir": str(active_run_dir),
+        "recent_cases": recent_cases,
+        "last_opened_at": session_payload["created_at_utc"],
+        "default_language": existing.get("default_language"),
+        "mode": existing.get("mode", "constrained"),
+    }
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_case_runtime_state(session_payload: dict[str, Any]) -> None:
+    workflow_state = session_payload.get("workflow_state") if isinstance(session_payload.get("workflow_state"), dict) else {}
+    active_run_dir = workflow_state.get("active_run_dir")
+    if not active_run_dir:
+        return
+    run_dir = Path(str(active_run_dir))
+    run_dir.mkdir(parents=True, exist_ok=True)
+    case_state = {
+        "case_id": _case_id_from_run_dir(str(active_run_dir)),
+        "source_inp": workflow_state.get("selected_case"),
+        "active_run_dir": str(active_run_dir),
+        "last_successful_stage": _last_successful_stage(workflow_state),
+        "available_next_actions": _available_next_actions(workflow_state),
+        "selected_node": workflow_state.get("selected_node"),
+        "selected_rainfall": workflow_state.get("selected_rainfall"),
+        "selected_plot_variable": workflow_state.get("selected_variable"),
+        "pending_clarification": workflow_state.get("pending_user_choice"),
+        "tool_history": session_payload.get("plan", []),
+        "artifact_index": workflow_state.get("completed_artifacts", []),
+        "updated_at_utc": session_payload["created_at_utc"],
+    }
+    (run_dir / "aiswmm_state.json").write_text(json.dumps(case_state, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _last_successful_stage(workflow_state: dict[str, Any]) -> str | None:
+    artifacts = workflow_state.get("completed_artifacts")
+    if not isinstance(artifacts, list):
+        return None
+    for item in reversed(artifacts):
+        if isinstance(item, dict) and item.get("kind"):
+            return str(item["kind"])
+    return None
+
+
+def _available_next_actions(workflow_state: dict[str, Any]) -> list[str]:
+    actions = ["audit", "plot", "summarize_memory"]
+    if workflow_state.get("pending_user_choice"):
+        actions.insert(0, "answer_clarification")
+    return actions
+
+
+def _case_id_from_run_dir(run_dir: str) -> str:
+    name = Path(run_dir).name
+    return name or "active"
 
 
 def _compact_result(result: dict[str, Any]) -> dict[str, Any]:
