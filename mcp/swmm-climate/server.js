@@ -10,8 +10,8 @@ import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
-const scriptsDir = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(__dirname, '../..');
+const scriptsDir = path.resolve(__dirname, '../../skills/swmm-climate/scripts');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
 

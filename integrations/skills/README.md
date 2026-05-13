@@ -45,7 +45,7 @@ The installer copies every `skills/*` directory that contains `SKILL.md`, includ
 - `swmm-modeling-memory`
 - `swmm-uncertainty`
 
-The copied skill directories include their local scripts and any nested `scripts/mcp/` code.
+The copied skill directories include their local workflow scripts. MCP server code lives separately under the repository-level `mcp/` directory.
 
 ## Skill And MCP Boundary
 
@@ -54,7 +54,7 @@ Skills and MCP servers are related but not the same runtime object.
 - A skill tells the agent what the workflow is, when to call tools, what evidence boundaries matter, and when to stop.
 - An MCP server exposes executable tools over the Model Context Protocol.
 
-Agentic SWMM skills contain or reference MCP server code, but most agent runtimes do not automatically register MCP servers just because a skill was installed.
+Agentic SWMM skills describe the workflow-stage contract. Repository-level MCP servers in `mcp/` expose selected skill scripts as protocol tools, but most agent runtimes do not automatically register MCP servers just because a skill was installed.
 
 The recommended setup is:
 
@@ -69,12 +69,11 @@ For Hermes and OpenClaw, keep the skill and memory files as explicit preload/con
 
 Before using `swmm-end-to-end`, load the public memory files:
 
-1. `agentic-ai/memory/identification_memory.md`
-2. `agentic-ai/memory/soul.md`
-3. `agentic-ai/memory/operational_memory.md`
-4. `agentic-ai/memory/modeling_workflow_memory.md`
-5. `agentic-ai/memory/evidence_memory.md`
-6. `agentic-ai/memory/user_bridge_memory.md`
+1. `agent/memory/identification_memory.md`
+2. `agent/memory/soul.md`
+3. `agent/memory/operational_memory.md`
+4. `agent/memory/modeling_workflow_memory.md`
+5. `agent/memory/evidence_memory.md`
+6. `agent/memory/user_bridge_memory.md`
 
 Those files are startup context, not executable tools.
-

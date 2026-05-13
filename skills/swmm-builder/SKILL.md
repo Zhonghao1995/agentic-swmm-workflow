@@ -88,7 +88,7 @@ Validation behavior:
 
 ## MCP
 MCP wrapper location:
-- `scripts/mcp/server.js`
+- `mcp/swmm-builder/server.js`
 
 Exposed tools:
 - `build_inp`

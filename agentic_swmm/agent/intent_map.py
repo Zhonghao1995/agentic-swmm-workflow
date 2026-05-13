@@ -7,7 +7,7 @@ from typing import Any
 from agentic_swmm.utils.paths import resource_path
 
 
-INTENT_MAP_PATH = ("agentic-ai", "config", "intent_map.json")
+INTENT_MAP_PATH = ("agent", "config", "intent_map.json")
 
 
 @lru_cache(maxsize=1)

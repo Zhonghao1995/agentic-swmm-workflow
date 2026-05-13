@@ -14,7 +14,7 @@ def packaged_resource_root() -> Path:
 
 def resource_root() -> Path:
     source_root = repo_root()
-    if (source_root / "skills").exists() and (source_root / "agentic-ai" / "memory").exists():
+    if (source_root / "skills").exists() and (source_root / "agent" / "memory").exists():
         return source_root
     installed_root = packaged_resource_root()
     if installed_root.exists():

@@ -242,7 +242,7 @@ agentic-swmm audit --run-dir runs/<case>
 
 ## Public Memory Preload
 
-Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agentic-ai/memory/` when available:
+Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/memory/` when available:
 
 1. `identification_memory.md`
 2. `operational_memory.md`

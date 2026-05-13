@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
-const scriptsDir = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(__dirname, '../..');
+const scriptsDir = path.resolve(__dirname, '../../skills/swmm-network/scripts');
 const importScript = path.join(scriptsDir, 'network_import.py');
 const qaScript = path.join(scriptsDir, 'network_qa.py');
 const exportScript = path.join(scriptsDir, 'network_to_inp.py');
