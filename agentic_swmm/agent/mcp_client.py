@@ -56,6 +56,10 @@ def call_mcp(command: str, args: list[str], method: str, params: dict[str, Any] 
 
 
 def list_tools(command: str, args: list[str], *, timeout: int = 20) -> list[dict[str, Any]]:
+    routed = _route_through_pool(command, args)
+    if routed is not None:
+        pool, server_name = routed
+        return pool.list_tools(server_name, timeout=timeout)
     response = call_mcp(command, args, "tools/list", {}, timeout=timeout)
     result = response.get("result") if isinstance(response.get("result"), dict) else {}
     tools = result.get("tools", [])
@@ -63,9 +67,50 @@ def list_tools(command: str, args: list[str], *, timeout: int = 20) -> list[dict
 
 
 def call_tool(command: str, args: list[str], tool_name: str, arguments: dict[str, Any], *, timeout: int = 60) -> dict[str, Any]:
+    routed = _route_through_pool(command, args)
+    if routed is not None:
+        pool, server_name = routed
+        return pool.call_tool(server_name, tool_name, arguments, timeout=timeout)
     response = call_mcp(command, args, "tools/call", {"name": tool_name, "arguments": arguments}, timeout=timeout)
     result = response.get("result")
     return result if isinstance(result, dict) else {"result": result}
+
+
+def _route_through_pool(command: str, args: list[str]) -> tuple[Any, str] | None:
+    """If a session pool is bound and one of its specs matches ``(command,
+    args)``, return ``(pool, server_name)`` so callers can route through it.
+    Returns ``None`` otherwise — caller falls back to spawn-per-call.
+
+    Matching policy: command equality + args equality. We treat ``args`` as
+    a canonical list (e.g. ``["mcp/swmm-builder/server.js"]``); the runtime
+    registry uses absolute or repo-relative paths consistently within one
+    session, so equality is enough. Defensive against silent mismatches.
+    """
+
+    # Late import: ``mcp_pool`` imports from this module, so we cannot do
+    # this at module top level without creating a circular import.
+    from agentic_swmm.agent import mcp_pool
+
+    pool = mcp_pool.session_pool()
+    if pool is None:
+        return None
+    handles = getattr(pool, "_handles", None)
+    if not isinstance(handles, dict):
+        return None
+    for name, handle in handles.items():
+        spec = getattr(handle, "spec", None)
+        if spec is None:
+            # Test doubles may stash the spec on a `specs` list instead of
+            # using ``MCPServerHandle``; fall back to that shape.
+            continue
+        if spec.command == command and list(spec.args) == list(args):
+            return pool, name
+    # Test doubles: a pool that exposes ``specs`` directly (see
+    # ``tests/test_mcp_client_pool_routing.py``).
+    for spec in getattr(pool, "specs", []):
+        if getattr(spec, "command", None) == command and list(getattr(spec, "args", [])) == list(args):
+            return pool, spec.name
+    return None
 
 
 def _preflight(command: str, args: list[str]) -> None:
