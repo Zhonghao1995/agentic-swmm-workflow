@@ -285,6 +285,22 @@ class AgenticSwmmCliTests(unittest.TestCase):
             ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
         )
 
+    def test_default_router_preserves_run_help_flags(self) -> None:
+        # Regression: ``aiswmm run --help`` must reach the run subparser,
+        # not be hijacked to ``aiswmm agent run --help``. The dispatcher
+        # used to detect missing ``--inp`` and route to the agent so the
+        # natural-language planner could prompt for missing inputs, but
+        # ``--help`` is the user asking for the run command's usage —
+        # never a goal description.
+        self.assertEqual(
+            _route_default_to_agent(["run", "--help"]),
+            ["run", "--help"],
+        )
+        self.assertEqual(
+            _route_default_to_agent(["run", "-h"]),
+            ["run", "-h"],
+        )
+
     def test_agent_resolves_bare_inp_names_from_examples(self) -> None:
         self.assertEqual(
             _find_repo_inp("tecnopolo_r1_199401.inp"),
