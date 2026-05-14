@@ -105,10 +105,10 @@ jobs:
 
       - name: Verify audit outputs
         run: |
-          test -f runs/acceptance/ci-audit/experiment_provenance.json
-          test -f runs/acceptance/ci-audit/comparison.json
-          test -f runs/acceptance/ci-audit/experiment_note.md
-          test -f runs/acceptance/ci-audit/model_diagnostics.json
+          test -f runs/acceptance/ci-audit/09_audit/experiment_provenance.json
+          test -f runs/acceptance/ci-audit/09_audit/comparison.json
+          test -f runs/acceptance/ci-audit/09_audit/experiment_note.md
+          test -f runs/acceptance/ci-audit/09_audit/model_diagnostics.json
 
       - name: Refresh modeling memory
         run: |
