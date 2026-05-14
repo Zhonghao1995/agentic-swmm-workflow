@@ -857,9 +857,14 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     goal = str(call.args.get("goal") or "").lower()
     provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
 
-    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
-    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
-    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
+    # NOTE: Chinese keywords are part of the bilingual goal-routing contract.
+    # The `??` placeholders previously here were a non-UTF-8 sync regression
+    # (P0-2 in #79). Do not replace these with ASCII placeholders again — the
+    # regression test in `tests/test_select_workflow_mode_bilingual.py` will
+    # trip on any reintroduced `??` pair.
+    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定"))
+    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性"))
+    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "审计" in goal or "比较" in goal
     wants_plot = any(
         word in goal
         for word in (
@@ -880,7 +885,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             "hydraulic_head",
         )
     )
-    wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "演示", "验收"))
     has_inp = bool(provided.get("inp_path"))
     has_run_dir = bool(provided.get("run_dir"))
     if (wants_plot or wants_audit) and not has_run_dir:
@@ -919,7 +924,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     elif wants_audit and not has_inp:
         mode = "audit_only_or_comparison"
         required = ["run_dir"]
-        if "compare" in goal or "comparison" in goal or "??" in goal:
+        if "compare" in goal or "comparison" in goal or "比较" in goal:
             required.append("baseline_run_dir")
         next_tools = ["audit_run"]
         boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
