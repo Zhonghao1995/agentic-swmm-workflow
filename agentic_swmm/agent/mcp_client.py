@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import select
+import shutil
 import subprocess
 import threading
 import time
@@ -17,6 +18,7 @@ class McpClientError(RuntimeError):
 
 
 def call_mcp(command: str, args: list[str], method: str, params: dict[str, Any] | None = None, *, timeout: int = 20) -> dict[str, Any]:
+    _preflight(command, args)
     proc = subprocess.Popen(
         [command, *args],
         cwd=repo_root(),
@@ -64,6 +66,36 @@ def call_tool(command: str, args: list[str], tool_name: str, arguments: dict[str
     response = call_mcp(command, args, "tools/call", {"name": tool_name, "arguments": arguments}, timeout=timeout)
     result = response.get("result")
     return result if isinstance(result, dict) else {"result": result}
+
+
+def _preflight(command: str, args: list[str]) -> None:
+    """Surface a friendly error before ``subprocess.Popen`` when the toolchain
+    or installed dependencies are missing. Without this the caller would see
+    either a 20 s timeout (no response on the pipe) or a cryptic
+    ``FileNotFoundError`` from ``Popen`` itself.
+    """
+    if command == "node" and shutil.which("node") is None:
+        raise McpClientError(
+            "node is not on PATH; MCP servers require Node.js. "
+            "Install Node 18+ (or run: aiswmm setup --install-mcp)."
+        )
+    for arg in args:
+        if not isinstance(arg, str):
+            continue
+        if not arg.endswith("server.js"):
+            continue
+        server_path = Path(arg)
+        if not server_path.is_absolute():
+            server_path = repo_root() / server_path
+        server_dir = server_path.parent
+        node_modules = server_dir / "node_modules"
+        if node_modules.exists():
+            continue
+        server_name = server_dir.name or str(server_dir)
+        raise McpClientError(
+            f"MCP server {server_name} has no node_modules. "
+            "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)"
+        )
 
 
 def _send(proc: subprocess.Popen[bytes], payload: dict[str, Any]) -> None:
