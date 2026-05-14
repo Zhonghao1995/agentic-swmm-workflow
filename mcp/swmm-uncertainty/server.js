@@ -8,9 +8,15 @@
  * - swmm_rainfall_ensemble   Rainfall ensemble — perturbation of an observed
  *                            series, or IDF-curve design storms with sampled
  *                            (a, b, c) parameters.
+ * - swmm_uncertainty_source_decomposition  Integrate raw uncertainty outputs
+ *                            (Sobol' / Morris / DREAM-ZS / SCE-UA / rainfall
+ *                            ensemble / MC propagation) under <run_dir>/09_audit/
+ *                            into uncertainty_source_summary.md +
+ *                            uncertainty_source_decomposition.json (#55).
  *
  * Sensitivity tools wrap `skills/swmm-uncertainty/scripts/sensitivity.py`.
  * The rainfall ensemble wraps `skills/swmm-uncertainty/scripts/rainfall_ensemble.py`.
+ * Source decomposition wraps `skills/swmm-uncertainty/scripts/source_decomposition.py`.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -31,6 +37,10 @@ const sensitivityPy = path.resolve(
 const rainfallEnsemblePy = path.resolve(
   __dirname,
   "../../skills/swmm-uncertainty/scripts/rainfall_ensemble.py",
+);
+const sourceDecompositionPy = path.resolve(
+  __dirname,
+  "../../skills/swmm-uncertainty/scripts/source_decomposition.py",
 );
 
 function runPy(scriptPath, args) {
@@ -89,6 +99,10 @@ const RainfallEnsembleArgs = z.object({
   swmmNode: z.string().default("O1"),
   seed: z.number().int().default(42),
   dryRun: z.boolean().default(false),
+});
+
+const SourceDecompositionArgs = z.object({
+  runDir: z.string(),
 });
 
 function commonArgs(a) {
@@ -239,6 +253,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
     },
     {
+      name: "swmm_uncertainty_source_decomposition",
+      description:
+        "Integrate raw uncertainty outputs in <runDir>/09_audit/ (Sobol' / Morris / DREAM-ZS / SCE-UA / rainfall ensemble / MC propagation) into uncertainty_source_summary.md + uncertainty_source_decomposition.json (schema_version 1.0). Pure function; safe to re-invoke; emits an Evidence Boundary table so no method is silently absent.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          runDir: {
+            type: "string",
+            description: "Path to the run directory (the one containing the 09_audit/ folder).",
+          },
+        },
+        required: ["runDir"],
+      },
+    },
+    {
       name: "swmm_rainfall_ensemble",
       description:
         "Generate a rainfall ensemble. Method 'perturbation' samples N noisy copies of an observed rainfall timeseries (gaussian_iid, multiplicative, autocorrelated, or intensity_scaling). Method 'idf' synthesises N design hyetographs (Chicago, Huff, or SCS Type II) by sampling IDF (a, b, c) parameters from their confidence intervals. Each realisation is written as a CSV; if a base INP is supplied, every realisation is patched and run through swmm5 and the summary aggregates peak flow + total volume.",
@@ -336,6 +365,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (a.baseInp) pyArgs.push("--base-inp", a.baseInp);
     if (a.dryRun) pyArgs.push("--dry-run");
     const stdout = await runPy(rainfallEnsemblePy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_uncertainty_source_decomposition") {
+    const a = SourceDecompositionArgs.parse(args);
+    // The script writes into <runDir>/09_audit/, which must already exist
+    // for this to be a no-op for callers; we still mkdir defensively so a
+    // brand-new run dir does not raise on the first audit invocation.
+    fs.mkdirSync(path.join(a.runDir, "09_audit"), { recursive: true });
+    const stdout = await runPy(sourceDecompositionPy, [a.runDir]);
     return { content: [{ type: "text", text: stdout }] };
   }
   throw new Error(`Unknown tool: ${name}`);

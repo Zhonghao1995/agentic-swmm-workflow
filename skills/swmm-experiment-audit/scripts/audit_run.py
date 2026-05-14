@@ -1591,6 +1591,73 @@ def render_human_decisions_section(decisions: list[Any]) -> str:
     )
 
 
+# Files that indicate at least one uncertainty method has produced a
+# raw artefact for this run. If any of these exist in 09_audit/ we
+# call source_decomposition.decompose at audit-end so the integrated
+# uncertainty_source_summary.md is always up-to-date alongside the
+# audit note.
+_UNCERTAINTY_RAW_ARTEFACTS = (
+    "sensitivity_indices.json",
+    "posterior_samples.csv",
+    "rainfall_ensemble_summary.json",
+    "candidate_calibration.json",
+    "uncertainty_summary.json",
+)
+
+
+def _has_uncertainty_outputs(audit_dir: Path) -> bool:
+    """Return True iff at least one uncertainty raw artefact is present."""
+    if not audit_dir.is_dir():
+        return False
+    return any((audit_dir / name).is_file() for name in _UNCERTAINTY_RAW_ARTEFACTS)
+
+
+def maybe_run_source_decomposition(run_dir: Path, audit_dir: Path) -> dict[str, Any] | None:
+    """Call the uncertainty-source-decomposition module if it applies.
+
+    Returns the result summary dict on success, or ``None`` when:
+    - no uncertainty raw artefacts are present (no-op by design), or
+    - the integration module is missing (e.g. a downstream clone of
+      this script that did not pick up #55 yet).
+
+    The module is loaded by file path because the audit script is run
+    as a subprocess by ``aiswmm audit`` and must stay self-contained
+    (it cannot rely on the ``agentic_swmm`` package being importable).
+    """
+    if not _has_uncertainty_outputs(audit_dir):
+        return None
+    module_path = (
+        REPO_ROOT / "skills" / "swmm-uncertainty" / "scripts" / "source_decomposition.py"
+    )
+    if not module_path.is_file():
+        return None
+    import importlib.util as _ilu
+
+    spec = _ilu.spec_from_file_location("_audit_source_decomposition_hook", module_path)
+    if spec is None or spec.loader is None:
+        return None
+    module = _ilu.module_from_spec(spec)
+    sys.modules["_audit_source_decomposition_hook"] = module
+    try:
+        spec.loader.exec_module(module)
+        result = module.decompose(run_dir=run_dir)
+    except Exception as exc:  # noqa: BLE001
+        # The hook is best-effort; a failure here should not block the
+        # main audit pipeline. Print to stderr so an operator can debug
+        # without losing the audit outputs.
+        print(
+            f"warning: source_decomposition hook failed: {exc}",
+            file=sys.stderr,
+        )
+        return None
+    return {
+        "uncertainty_source_summary": str(result.markdown_path),
+        "uncertainty_source_decomposition": str(result.json_path),
+        "methods_present": result.methods_present,
+        "methods_absent": result.methods_absent,
+    }
+
+
 def validate_run_layout(run_dir: Path) -> str | None:
     """Pre-flight check for the audit-cleanup invariant (PRD M6).
 
@@ -1677,6 +1744,12 @@ def main() -> None:
                 obsidian_note,
             )
 
+    # Issue #55: when any uncertainty raw artefact exists, refresh the
+    # integrated uncertainty_source_summary.md / .json so the audit
+    # always shows the latest decomposition next to the run's audit
+    # note. No-op when no uncertainty outputs are present.
+    source_decomposition = maybe_run_source_decomposition(run_dir, audit_dir)
+
     print(
         json.dumps(
             {
@@ -1688,6 +1761,7 @@ def main() -> None:
                 "experiment_note": str(out_note),
                 "model_diagnostics": str(out_model_diagnostics),
                 "obsidian_note": str(obsidian_note) if obsidian_note else None,
+                "uncertainty_source_decomposition": source_decomposition,
             },
             indent=2,
         )
