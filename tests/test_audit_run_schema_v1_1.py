@@ -1,6 +1,7 @@
-"""Tests for the schema-1.1 bump + pre-migration validator in audit_run.py.
+"""Tests for the schema-1.2 bump + pre-migration validator in audit_run.py.
 
-PRD: ``.claude/prds/PRD_audit.md`` M6.
+PRD: ``.claude/prds/PRD_audit.md`` M6, updated by PRD-Z which bumps
+the schema 1.1 -> 1.2 to add an optional ``human_decisions`` array.
 """
 from __future__ import annotations
 
@@ -58,7 +59,7 @@ def _seed_runner(run_dir: Path) -> None:
 
 
 class SchemaBumpTests(unittest.TestCase):
-    def test_audit_writes_schema_1_1_into_09_audit(self) -> None:
+    def test_audit_writes_schema_1_2_into_09_audit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-a"
@@ -81,7 +82,9 @@ class SchemaBumpTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             prov = json.loads((run_dir / "09_audit" / "experiment_provenance.json").read_text(encoding="utf-8"))
-            self.assertEqual(prov["schema_version"], "1.1")
+            # PRD-Z: schema bumped 1.1 -> 1.2, human_decisions is optional.
+            self.assertEqual(prov["schema_version"], "1.2")
+            self.assertEqual(prov["human_decisions"], [])
             self.assertTrue((run_dir / "09_audit" / "experiment_note.md").exists())
             self.assertTrue((run_dir / "09_audit" / "comparison.json").exists())
             # Legacy root-level paths must NOT be written by the bumped script.

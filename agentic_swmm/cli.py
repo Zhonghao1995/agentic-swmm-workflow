@@ -5,6 +5,10 @@ import sys
 
 from agentic_swmm import __version__
 from agentic_swmm.commands import agent, audit, capabilities, config, demo, doctor, mcp, memory, model, plot, run, setup, skill
+from agentic_swmm.commands.expert import calibration as expert_calibration
+from agentic_swmm.commands.expert import pour_point as expert_pour_point
+from agentic_swmm.commands.expert import publish as expert_publish
+from agentic_swmm.commands.expert import thresholds as expert_thresholds
 
 
 COMMANDS = {
@@ -21,6 +25,13 @@ COMMANDS = {
     "plot",
     "memory",
     "demo",
+    # Expert-only commands (PRD-Z). Listed here so the default-router
+    # does not punt them to the agent; the agent itself has no
+    # ToolSpec entries for these names.
+    "calibration",
+    "pour_point",
+    "thresholds",
+    "publish",
 }
 
 
@@ -45,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     plot.register(subparsers)
     memory.register(subparsers)
     demo.register(subparsers)
+    # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
+    # so the help renders an "expert-only" grouping naturally; none of
+    # them is registered as an agent ToolSpec or as an MCP tool.
+    expert_calibration.register(subparsers)
+    expert_pour_point.register(subparsers)
+    expert_thresholds.register(subparsers)
+    expert_publish.register(subparsers)
     return parser
 
 

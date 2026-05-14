@@ -1433,6 +1433,16 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
             sections.append(f"- {warning}")
         sections.append("")
 
+    # PRD-Z: inject the ## Human Decisions section when non-empty. This
+    # lands just before "## Evidence Notes" so the human-authority
+    # record is visible immediately after the comparison/warnings/QA
+    # blocks that describe the run's provenance.
+    decisions = provenance.get("human_decisions") or []
+    human_decisions_block = render_human_decisions_section(decisions)
+    if human_decisions_block:
+        sections.extend(human_decisions_block.splitlines())
+        sections.append("")
+
     sections.extend(
         [
             "## Evidence Notes",
@@ -1489,6 +1499,98 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
+def _load_preserved_human_decisions(audit_dir: Path) -> list[Any]:
+    """Return ``human_decisions`` carried over from a prior audit (PRD-Z).
+
+    Re-auditing a run writes a fresh ``experiment_provenance.json``,
+    which would otherwise drop any human_decisions recorded between the
+    previous audit and the current one. The aiswmm audit command backs
+    up the prior file to ``experiment_provenance.<utc>.json.bak`` before
+    invoking this script, so we look in two places:
+
+    1. The canonical ``experiment_provenance.json`` (still present when
+       the script is invoked directly without going through `aiswmm
+       audit`, e.g. in tests).
+    2. The newest ``*.json.bak`` sibling (most recent prior audit).
+
+    Decisions are returned as a list of dicts so the script can splice
+    them into the new provenance without depending on the HITL package.
+    """
+    candidates = []
+    canonical = audit_dir / "experiment_provenance.json"
+    if canonical.is_file():
+        candidates.append(canonical)
+    if audit_dir.is_dir():
+        backups = sorted(
+            audit_dir.glob("experiment_provenance.*.json.bak"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        candidates.extend(backups)
+    for path in candidates:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            value = payload.get("human_decisions")
+            if isinstance(value, list) and value:
+                return value
+    return []
+
+
+def render_human_decisions_section(decisions: list[Any]) -> str:
+    """Render the ``## Human Decisions`` markdown block, or ``""``.
+
+    Mirror of :func:`agentic_swmm.audit.provenance_v1_2.render_human_decisions_section`,
+    duplicated here so the script stays self-contained (the audit
+    script is run as a subprocess by `aiswmm audit` and must not
+    depend on the agentic_swmm Python package being importable from
+    its CWD).
+    """
+    rows: list[list[str]] = []
+    for entry in decisions:
+        if not isinstance(entry, dict):
+            continue
+        def _cell(value: Any) -> str:
+            if value in (None, ""):
+                return "—"
+            text = str(value).replace("|", "\\|").replace("\n", " ")
+            if len(text) > 140:
+                text = text[:137] + "..."
+            return text
+
+        rows.append(
+            [
+                _cell(entry.get("action")),
+                _cell(entry.get("by")),
+                _cell(entry.get("at_utc")),
+                _cell(entry.get("pattern")),
+                _cell(entry.get("evidence_ref")),
+                _cell(entry.get("decision_text")),
+            ]
+        )
+    if not rows:
+        return ""
+    header = "| Action | By | At (UTC) | Pattern | Evidence | Note |"
+    sep = "|---|---|---|---|---|---|"
+    body_lines = ["| " + " | ".join(row) + " |" for row in rows]
+    return "\n".join(
+        [
+            "## Human Decisions",
+            "",
+            "Human-authored decisions recorded for this run. Each row "
+            "is a checkpoint where the modeller (not the agent) "
+            "approved or denied a course of action.",
+            "",
+            header,
+            sep,
+            *body_lines,
+            "",
+        ]
+    )
+
+
 def validate_run_layout(run_dir: Path) -> str | None:
     """Pre-flight check for the audit-cleanup invariant (PRD M6).
 
@@ -1541,6 +1643,11 @@ def main() -> None:
     out_comparison = args.out_comparison or (audit_dir / "comparison.json")
     out_note = args.out_note or (audit_dir / "experiment_note.md")
     out_model_diagnostics = args.out_model_diagnostics or (audit_dir / "model_diagnostics.json")
+
+    # PRD-Z: preserve human_decisions across re-audit and bump schema to 1.2.
+    preserved_decisions = _load_preserved_human_decisions(audit_dir)
+    provenance["schema_version"] = "1.2"
+    provenance["human_decisions"] = preserved_decisions
     obsidian_note = None
     if args.obsidian_dir and not args.no_obsidian:
         note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"

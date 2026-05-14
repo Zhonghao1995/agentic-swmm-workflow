@@ -97,6 +97,11 @@ class AgentToolRegistry:
             "recovery",
             "fallback_tools",
             "node_suggestions",
+            # PRD-Z `request_expert_review` adds two fields that the
+            # planner needs to see: ``approved`` (Y/N answer) and
+            # ``decision_id`` (the ID of the human_decisions record).
+            "approved",
+            "decision_id",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -196,6 +201,30 @@ def _build_tools() -> dict[str, ToolSpec]:
             _record_fact_tool,
             is_read_only=False,
         ),
+        ToolSpec(
+            "request_expert_review",
+            (
+                "Pause the agent and request expert review.\n"
+                "USE WHEN: a QA threshold has been crossed and a "
+                "hydrologically consequential decision must be human-approved "
+                "before continuing. Pattern must match one of the documented "
+                "HITL thresholds (see docs/hitl-thresholds.md).\n"
+                "DO NOT USE WHEN: low-stakes confirmation or routine reasoning."
+            ),
+            _object(
+                {
+                    "run_dir": {"type": "string"},
+                    "pattern": {"type": "string"},
+                    "evidence_ref": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                ["run_dir", "pattern", "evidence_ref", "message"],
+            ),
+            _request_expert_review_tool,
+            # is_read_only=False — QUICK profile must NEVER auto-approve
+            # the HITL pause (PRD-Z hard requirement).
+            is_read_only=False,
+        ),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
@@ -210,6 +239,18 @@ def _build_tools() -> dict[str, ToolSpec]:
 
 def _doctor_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, ["doctor"])
+
+
+def _request_expert_review_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Thin shim around :func:`agentic_swmm.hitl.request_expert_review`.
+
+    The real handler lives in the ``hitl`` package so the tool wiring
+    and the pause/prompt/record logic can evolve independently. The
+    shim is the integration seam the registry calls through.
+    """
+    from agentic_swmm.hitl.request_expert_review import request_expert_review
+
+    return request_expert_review(call, session_dir)
 
 
 def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
