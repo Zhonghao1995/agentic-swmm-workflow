@@ -8,6 +8,7 @@ import random
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,133 @@ from candidate_writer import write_candidate_artefacts
 from inp_patch import patch_inp_text
 from metrics import align_series, compute_metrics, score_from_metrics
 from obs_reader import read_series
+
+
+# PRD-GF-CORE: gap-fill emission helpers.
+#
+# The agent runtime intercepts ``{"ok": False, "gap_signal": ...}``
+# results and routes them through the proposer/UI/recorder. When a
+# Python caller (e.g. a test or an MCP wrapper) invokes
+# :func:`prepare_calibration_inputs` and the observed-flow file or
+# the calibration target field is missing, we emit a structured gap
+# signal instead of raising. The legacy CLI still raises
+# ``SystemExit`` / ``FileNotFoundError`` for backwards compatibility
+# with the long-form ``aiswmm`` recipes that drive this script via
+# subprocess; only the new in-process entry point speaks gap-fill.
+
+_VALID_CALIBRATION_TARGETS = {"flow", "depth", "head", "volume"}
+
+
+def _new_gap_id() -> str:
+    """Return a short ``gap-<hex>`` identifier (mirrors gap_fill.protocol)."""
+    return f"gap-{uuid.uuid4().hex[:12]}"
+
+
+def emit_observed_flow_gap_signal(observed_path: str | None) -> dict[str, Any]:
+    """Build the L1 ``gap_signal`` result for a missing observed-flow file.
+
+    Used when ``observed_path`` is ``None`` or points at a path that
+    does not exist. The shape matches the runtime's interception
+    contract.
+    """
+    return {
+        "tool": "swmm_calibrate",
+        "args": {"observed": observed_path},
+        "ok": False,
+        "summary": "missing observed flow file",
+        "gap_signal": {
+            "gap_id": _new_gap_id(),
+            "severity": "L1",
+            "kind": "file_path",
+            "field": "observed",
+            "context": {
+                "tool": "swmm_calibrate",
+                "step": "load_observed_series",
+                "provided_path": observed_path,
+            },
+        },
+    }
+
+
+def emit_calibration_target_gap_signal(provided: str | None) -> dict[str, Any]:
+    """Build the L3 ``gap_signal`` result for a missing calibration target.
+
+    Used when the caller did not specify which series the calibration
+    objective should target (flow / depth / head / volume). The
+    proposer's registry layer is unlikely to know — most calibration
+    tasks default to ``flow`` — so the agent UI prompts the user to
+    pick.
+    """
+    return {
+        "tool": "swmm_calibrate",
+        "args": {"calibration_target": provided},
+        "ok": False,
+        "summary": "missing calibration target field",
+        "gap_signal": {
+            "gap_id": _new_gap_id(),
+            "severity": "L3",
+            "kind": "param_value",
+            "field": "calibration_target",
+            "context": {
+                "tool": "swmm_calibrate",
+                "step": "select_target_series",
+                "allowed_values": sorted(_VALID_CALIBRATION_TARGETS),
+            },
+            "suggestion": {"default": "flow"},
+        },
+    }
+
+
+def prepare_calibration_inputs(
+    *,
+    observed: str | Path | None,
+    calibration_target: str | None,
+) -> dict[str, Any]:
+    """Validate the two PRD-GF-CORE-tracked calibration inputs.
+
+    Returns one of:
+
+    - ``{"ok": True, ...}`` when both inputs are present and the file
+      exists on disk.
+    - An L1 ``gap_signal`` result when the observed file is missing.
+    - An L3 ``gap_signal`` result when the calibration target is
+      missing or invalid.
+
+    The function does **not** load the file or run a calibration — it
+    is a thin validation gate. The agent runtime calls this before
+    invoking the full CLI; on a gap signal the runtime routes through
+    the gap-fill state machine and re-invokes with merged args.
+
+    Two emit points (per PRD-GF-CORE):
+
+    1. **L1** — ``observed`` is ``None``, empty string, or points at
+       a path that does not exist.
+    2. **L3** — ``calibration_target`` is ``None``, empty string, or
+       not in ``{"flow", "depth", "head", "volume"}``.
+
+    Order of checks: L1 first, then L3. The runtime's batching
+    contract accepts both at once if a single call carries both gaps.
+    """
+    obs_str = str(observed) if observed is not None else None
+    if not obs_str or not obs_str.strip():
+        return emit_observed_flow_gap_signal(None)
+    if not Path(obs_str).is_file():
+        return emit_observed_flow_gap_signal(obs_str)
+
+    if not calibration_target or not str(calibration_target).strip():
+        return emit_calibration_target_gap_signal(None)
+    if str(calibration_target) not in _VALID_CALIBRATION_TARGETS:
+        return emit_calibration_target_gap_signal(str(calibration_target))
+
+    return {
+        "tool": "swmm_calibrate",
+        "args": {
+            "observed": obs_str,
+            "calibration_target": str(calibration_target),
+        },
+        "ok": True,
+        "summary": "calibration inputs valid",
+    }
 
 
 @dataclass(frozen=True)

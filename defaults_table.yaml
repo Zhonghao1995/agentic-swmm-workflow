@@ -1,0 +1,117 @@
+# Cold-start defaults table for gap-fill (PRD-GF-CORE).
+#
+# Each entry is a name → (value, applies_when, source) record. The
+# proposer (agentic_swmm.gap_fill.proposer) consults this file BEFORE
+# any LLM call; a registry hit yields a HIGH-confidence proposal with
+# source="registry" and registry_ref pointing back at the entry.
+#
+# Citation discipline: every entry carries a textbook / standards
+# reference. Values are region-agnostic — the standards manuals these
+# come from are global references for SWMM parameter ranges.
+#
+# Downstream PRDs (GF-PROMOTE) will layer a case-level registry on top
+# of this table; the table itself stays as the project-wide default.
+
+schema_version: 1
+entries:
+  # ---- Manning's n (surface roughness) ----
+  manning_n_paved:
+    value: 0.013
+    applies_when: "surface_class == paved"
+    source: "EPA SWMM 5 Reference Manual, Table 8-1"
+  manning_n_grass:
+    value: 0.150
+    applies_when: "surface_class == grass"
+    source: "EPA SWMM 5 Reference Manual, Table 8-1"
+  manning_n_roof:
+    value: 0.014
+    applies_when: "surface_class == roof"
+    source: "EPA SWMM 5 Reference Manual, Table 8-1"
+  manning_n_concrete_channel:
+    value: 0.013
+    applies_when: "channel_class == concrete"
+    source: "Chow (1959) Open-Channel Hydraulics, Table 5-6"
+  manning_n_natural_channel:
+    value: 0.035
+    applies_when: "channel_class == natural"
+    source: "Chow (1959) Open-Channel Hydraulics, Table 5-6"
+  manning_n_dense_vegetation:
+    value: 0.080
+    applies_when: "surface_class == dense_vegetation"
+    source: "Chow (1959) Open-Channel Hydraulics, Table 5-6"
+
+  # ---- Horton infiltration parameters ----
+  horton_max_infiltration_rate:
+    value: 3.0
+    applies_when: "infiltration_method == horton; sandy_loam"
+    source: "EPA SWMM 5 Reference Manual, Table 4-7 (in/hr)"
+  horton_min_infiltration_rate:
+    value: 0.5
+    applies_when: "infiltration_method == horton; sandy_loam"
+    source: "EPA SWMM 5 Reference Manual, Table 4-7 (in/hr)"
+  horton_decay_constant:
+    value: 4.0
+    applies_when: "infiltration_method == horton"
+    source: "EPA SWMM 5 Reference Manual, Table 4-7 (1/hr)"
+
+  # ---- Curve Number defaults (NRCS) ----
+  curve_number_residential:
+    value: 85
+    applies_when: "land_use == residential AND hydrologic_soil_group == C"
+    source: "NRCS TR-55, Table 2-2a"
+  curve_number_commercial:
+    value: 92
+    applies_when: "land_use == commercial AND hydrologic_soil_group == C"
+    source: "NRCS TR-55, Table 2-2a"
+  curve_number_impervious:
+    value: 98
+    applies_when: "land_use == impervious_surface"
+    source: "NRCS TR-55, Table 2-2a"
+  curve_number_open_space:
+    value: 79
+    applies_when: "land_use == open_space AND hydrologic_soil_group == C"
+    source: "NRCS TR-55, Table 2-2a"
+  curve_number_woods:
+    value: 73
+    applies_when: "land_use == woods AND hydrologic_soil_group == C"
+    source: "NRCS TR-55, Table 2-2a"
+
+  # ---- Depression storage (mm) ----
+  depression_storage_impervious:
+    value: 1.27
+    applies_when: "surface_class == impervious"
+    source: "EPA SWMM 5 Reference Manual, Table 8-2 (mm)"
+  depression_storage_pervious:
+    value: 2.54
+    applies_when: "surface_class == pervious"
+    source: "EPA SWMM 5 Reference Manual, Table 8-2 (mm)"
+
+  # ---- Percent imperviousness with no depression storage ----
+  pct_imperv_no_depression_storage:
+    value: 25.0
+    applies_when: "subcatchment_default"
+    source: "EPA SWMM 5 Reference Manual, Section 3.1"
+
+  # ---- Time of concentration tier buckets (minutes) ----
+  time_of_concentration_small_urban:
+    value: 15.0
+    applies_when: "area_ha < 10 AND land_use == urban"
+    source: "NRCS TR-55, Chapter 3 (sheet+shallow concentrated flow)"
+  time_of_concentration_medium_urban:
+    value: 30.0
+    applies_when: "10 <= area_ha < 100 AND land_use == urban"
+    source: "NRCS TR-55, Chapter 3"
+  time_of_concentration_large_urban:
+    value: 60.0
+    applies_when: "area_ha >= 100 AND land_use == urban"
+    source: "NRCS TR-55, Chapter 3"
+
+  # ---- Green-Ampt parameters ----
+  green_ampt_suction_silt_loam:
+    value: 6.6
+    applies_when: "infiltration_method == green_ampt AND soil == silt_loam"
+    source: "EPA SWMM 5 Reference Manual, Table 4-8 (inches)"
+  green_ampt_conductivity_silt_loam:
+    value: 0.13
+    applies_when: "infiltration_method == green_ampt AND soil == silt_loam"
+    source: "EPA SWMM 5 Reference Manual, Table 4-8 (in/hr)"

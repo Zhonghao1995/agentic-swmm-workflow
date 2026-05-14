@@ -74,6 +74,11 @@ INFILTRATION_EXTRAS: dict[str, tuple[str, ...]] = {
 # Static rationale fragments. These describe *why* each extra is in the
 # recommended set; the prose stays terse because the broader hydrology
 # rationale lives in docs/hitl-thresholds.md and PRD-Z.
+#
+# PRD-GF-CORE: as of the gap-fill refactor, citations on a per-parameter
+# basis are loaded from ``defaults_table.yaml`` (single source of truth
+# across the runtime). The static templates below remain as fallbacks
+# for parameters that do not have a defaults_table entry yet.
 RATIONALE_TEMPLATES: dict[str, str] = {
     "Decay": "Horton infiltration detected in [INFILTRATION] section.",
     "Suction": "Green-Ampt infiltration detected in [INFILTRATION] section.",
@@ -86,6 +91,88 @@ RATIONALE_TEMPLATES: dict[str, str] = {
     "MaxRate": "Horton infiltration detected in [INFILTRATION] section.",
     "MinRate": "Horton infiltration detected in [INFILTRATION] section.",
 }
+
+
+# PRD-GF-CORE: alias map from SWMM-canonical parameter names used in
+# this recommender to the registry entry names in
+# ``defaults_table.yaml``. Parallel to the alias map in
+# ``agentic_swmm.gap_fill.proposer`` but local to this script — the
+# recommender is shipped as a standalone CLI under skills/, so we
+# cannot import the agentic_swmm package.
+_DEFAULTS_TABLE_ALIASES: dict[str, str] = {
+    "MaxRate": "horton_max_infiltration_rate",
+    "MinRate": "horton_min_infiltration_rate",
+    "Decay": "horton_decay_constant",
+}
+
+
+def _defaults_table_path() -> Path:
+    """Resolve the project-root ``defaults_table.yaml``.
+
+    The recommender script lives at
+    ``skills/swmm-uncertainty/scripts/parameter_recommender.py``;
+    the table is at the repo root three levels up. Tests can
+    override via ``AISWMM_DEFAULTS_TABLE``.
+    """
+    import os
+
+    override = os.environ.get("AISWMM_DEFAULTS_TABLE")
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[3] / "defaults_table.yaml"
+
+
+def _load_defaults_table() -> dict[str, dict[str, Any]]:
+    """Return the ``entries`` map of the defaults table, or empty.
+
+    Missing file / missing PyYAML / malformed YAML all map to an
+    empty dict. The recommender then falls back to the static
+    ``RATIONALE_TEMPLATES`` so behaviour is preserved when the table
+    is unavailable.
+    """
+    path = _defaults_table_path()
+    if not path.is_file():
+        return {}
+    try:
+        import yaml
+    except ImportError:  # pragma: no cover - defensive
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    entries = payload.get("entries")
+    if not isinstance(entries, dict):
+        return {}
+    return {str(k): dict(v) for k, v in entries.items() if isinstance(v, dict)}
+
+
+def _rationale_for(param: str, method: str, table: dict[str, dict[str, Any]]) -> str:
+    """Return the rationale string for ``param``.
+
+    Lookup order:
+
+    1. ``defaults_table.yaml`` entry pointed at by the alias map —
+       returns ``"<reason from static template> Source: <citation>"``
+       so the modeller sees both the trigger and the literature ref.
+    2. Static ``RATIONALE_TEMPLATES`` entry — preserves the pre-PRD
+       behaviour for parameters we do not have a defaults entry for.
+    3. Generic ``f"Detected from [INFILTRATION] section ({method})"``
+       fallback.
+    """
+    base = RATIONALE_TEMPLATES.get(param, "")
+    entry_name = _DEFAULTS_TABLE_ALIASES.get(param)
+    if entry_name and entry_name in table:
+        citation = table[entry_name].get("source")
+        if citation:
+            if base:
+                return f"{base} Source: {citation}"
+            return f"Source: {citation}"
+    if base:
+        return base
+    return f"Detected from [INFILTRATION] section ({method})."
 
 
 def _normalise_method(token: str) -> str:
@@ -194,18 +281,20 @@ def recommend(inp_path: Path) -> dict[str, Any]:
     # must have a rationale (the test asserts this directly). We also
     # provide rationale entries for core parameters where there is a
     # useful evidence-boundary note (e.g. MaxRate/MinRate for Horton).
+    #
+    # PRD-GF-CORE: each rationale string is enriched with the citation
+    # from defaults_table.yaml when available. The yaml lookup is
+    # one-shot — we read once and pass the dict to `_rationale_for`.
+    defaults = _load_defaults_table()
     core_set = set(CORE_REQUIRED)
     for param in recommended:
         if param in core_set:
             # Only fill rationale for core params that match the
             # detected method, to keep the output noise-free.
             if param in ("MaxRate", "MinRate") and method.endswith("horton"):
-                rationale[param] = RATIONALE_TEMPLATES[param]
+                rationale[param] = _rationale_for(param, method, defaults)
             continue
-        rationale[param] = RATIONALE_TEMPLATES.get(
-            param,
-            f"Detected from [INFILTRATION] section ({method}).",
-        )
+        rationale[param] = _rationale_for(param, method, defaults)
 
     return {
         "core_required": list(CORE_REQUIRED),
