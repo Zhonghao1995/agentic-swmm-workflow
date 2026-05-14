@@ -46,7 +46,7 @@ Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://
 
 Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
 
-## Try it in one command
+## Try it in one command（Alpha）
 
 macOS and Linux:
 
