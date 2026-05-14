@@ -334,7 +334,17 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
     if argv[0] == "chat":
         return ["agent", "--planner", "openai", *argv[1:]] if len(argv) > 1 else ["agent", "--planner", "openai", "--interactive"]
     if argv[0] in COMMANDS:
-        if argv[0] == "run" and "--inp" not in argv:
+        if (
+            argv[0] == "run"
+            and "--inp" not in argv
+            and "--help" not in argv
+            and "-h" not in argv
+        ):
+            # ``aiswmm run`` without ``--inp`` falls through to the
+            # natural-language planner so the user can describe the
+            # model in prose. ``--help``/``-h`` short-circuit this so
+            # ``aiswmm run --help`` actually shows the run subparser's
+            # usage.
             return ["agent", "--planner", "openai", *argv]
         return argv
     if argv[0] in {"-h", "--help", "--version"}:
