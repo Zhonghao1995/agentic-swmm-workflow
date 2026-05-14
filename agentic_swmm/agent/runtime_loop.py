@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent import ui_colors
+from agentic_swmm.agent import welcome as _welcome
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import _looks_like_swmm_request
@@ -59,6 +60,17 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     from agentic_swmm.commands.agent import resolve_profile_string
 
     profile_name = resolve_profile_string(args)
+
+    # Issue #57 (UX-2): print the logo + first-run welcome (or the
+    # compact returning-user banner) before the existing one-line
+    # startup banner. The welcome module owns its own NO_COLOR /
+    # AISWMM_DISABLE_WELCOME / first-run-marker handling, so the
+    # call here is a single line and any failure inside the welcome
+    # is swallowed (decoration must not block the agent from booting).
+    _welcome.print_welcome(
+        session_label=session_label,
+        profile_name=profile_name,
+    )
 
     # PRD_runtime user story 6: one-line startup banner.
     # The ``profile=`` segment was added when QUICK became the default
