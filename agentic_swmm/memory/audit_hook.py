@@ -276,6 +276,20 @@ def trigger_memory_refresh(
     except Exception as exc:
         result["errors"].append(f"memory MOC write failed: {exc}")
 
+    # ME-1 (issue #61): bump lifecycle metadata for the patterns that
+    # this run matched and recompute confidence_score for all patterns.
+    # This runs AFTER the summariser regenerates lessons_learned.md so
+    # the bump is the last write to disk.
+    try:
+        from agentic_swmm.memory.lessons_metadata import update_metadata_for_run
+
+        meta_summary = update_metadata_for_run(
+            lessons_path=Path(lessons_path), run_dir=run_dir
+        )
+        result["lifecycle_metadata"] = meta_summary
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        result["errors"].append(f"lifecycle metadata update failed: {exc}")
+
     if no_rag:
         return result
 
