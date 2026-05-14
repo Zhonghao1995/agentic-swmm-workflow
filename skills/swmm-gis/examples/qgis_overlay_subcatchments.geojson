@@ -1,0 +1,50 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "Q1",
+        "outlet_hint": "J1",
+        "landuse_class": "Rural",
+        "soil_texture": "loam",
+        "slope_pct": 1.4
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-60, -60], [-10, -60], [-10, -10], [-60, -10], [-60, -60]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "Q2",
+        "outlet_hint": "J2",
+        "landuse_class": "Natural Park Zone",
+        "soil_texture": "sandy loam",
+        "dem_flow_length_m": 80,
+        "dem_elev_mean_m": 103.0,
+        "dem_elev_outlet_m": 101.8
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[30, 10], [90, 10], [90, 70], [30, 70], [30, 10]]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "subcatchment_id": "Q3",
+        "outlet_hint": "OF1",
+        "landuse_class": "Recreation and Open Space",
+        "soil_texture": "silt loam",
+        "width_m": 95,
+        "slope_pct": 0.8
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[140, -40], [210, -40], [210, 20], [140, 20], [140, -40]]]
+      }
+    }
+  ]
+}

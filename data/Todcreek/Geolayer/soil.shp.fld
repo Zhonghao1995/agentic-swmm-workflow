@@ -1,0 +1,16 @@
+﻿
+[TatukGIS Fields]
+AREA_HA=Area_Ha
+AVG_ELEV=Avg_Elev
+AVG_SLOPE=Avg_Slope
+DRAIN_1=Drain_1
+DRAIN_2=Drain_2
+DRAIN_3=Drain_3
+MAX_ELEV=Max_Elev
+MAX_SLOPE=Max_Slope
+MIN_ELEV=Min_Elev
+MIN_SLOPE=Min_Slope
+SHAPE_AREA=Shape_Area
+SHAPE_LE_1=Shape_Le_1
+SHAPE_LENG=Shape_Leng
+
