@@ -203,6 +203,87 @@ def _refresh_rag_corpus(memory_dir: Path, rag_dir: Path, runs_dir: Path) -> tupl
         return 1, str(exc)
 
 
+def _resolve_config_path(project_root: Path | None) -> Path:
+    """Resolve the path to ``memory_evolution_config.md``.
+
+    Honours ``AISWMM_MEMORY_EVOLUTION_CONFIG`` so tests can swap in a
+    fixture; otherwise lives at ``<project_root>/agent/memory/curated/
+    memory_evolution_config.md``.
+    """
+    override = os.environ.get("AISWMM_MEMORY_EVOLUTION_CONFIG")
+    if override:
+        return Path(override)
+    if project_root is not None:
+        return project_root / "agent" / "memory" / "curated" / "memory_evolution_config.md"
+    return Path("agent/memory/curated/memory_evolution_config.md")
+
+
+def _stage_archive_change(memory_dir: Path, archive_path: Path) -> None:
+    """Best-effort ``git add`` of the archive so the move is tracked.
+
+    Failures (no git binary, not a repo, permission denied) are silently
+    swallowed — the filesystem write is already complete, and we never
+    want to crash the audit pipeline because git wasn't happy.
+    """
+    if not archive_path.is_file():
+        return
+    try:
+        subprocess.run(
+            ["git", "add", "--", str(archive_path), str(memory_dir / "lessons_learned.md")],
+            cwd=str(memory_dir.parent.parent),
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+
+
+def _run_decay_pass(
+    *,
+    lessons_path: Path,
+    memory_dir: Path,
+    run_dir: Path,
+    project_root: Path | None,
+) -> dict[str, Any]:
+    """Run :func:`apply_decay` and write ``09_audit/decay_report.json``.
+
+    Returns the report-as-dict so the caller can attach it to its own
+    summary. Failure modes degrade gracefully: a missing lessons file
+    yields ``{"skipped": True, "reason": ...}`` rather than raising.
+    """
+    from agentic_swmm.memory.lessons_lifecycle import apply_decay, load_config
+
+    if not lessons_path.is_file():
+        return {"skipped": True, "reason": "lessons_learned.md not found"}
+
+    archive_path = memory_dir / "lessons_archived.md"
+    config = load_config(_resolve_config_path(project_root))
+
+    report = apply_decay(lessons_path, archive_path, config)
+    payload: dict[str, Any] = report.to_dict()
+    payload["generated_at_utc"] = datetime.now(timezone.utc).isoformat(
+        timespec="seconds"
+    )
+    payload["config"] = {
+        "half_life_days": config.get("half_life_days"),
+        "active_threshold": config.get("active_threshold"),
+        "dormant_threshold": config.get("dormant_threshold"),
+    }
+
+    audit_dir = run_dir / "09_audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    out_path = audit_dir / "decay_report.json"
+    out_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+    if report.retired:
+        _stage_archive_change(memory_dir, archive_path)
+    payload["report_path"] = str(out_path)
+    return payload
+
+
 def _bump_corpus_mtime(rag_dir: Path) -> Path:
     rag_dir.mkdir(parents=True, exist_ok=True)
     corpus = rag_dir / "corpus.jsonl"
@@ -289,6 +370,22 @@ def trigger_memory_refresh(
         result["lifecycle_metadata"] = meta_summary
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"lifecycle metadata update failed: {exc}")
+
+    # ME-2 (issue #62): apply confidence decay + status transitions
+    # AFTER the metadata bump. Retired patterns are moved into
+    # ``lessons_archived.md`` and a structured summary is written to
+    # ``09_audit/decay_report.json`` so downstream tooling can surface
+    # what changed.
+    try:
+        decay_summary = _run_decay_pass(
+            lessons_path=Path(lessons_path),
+            memory_dir=memory_dir,
+            run_dir=run_dir,
+            project_root=project_root,
+        )
+        result["decay"] = decay_summary
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        result["errors"].append(f"lessons decay pass failed: {exc}")
 
     if no_rag:
         return result
