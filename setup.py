@@ -40,6 +40,10 @@ PUBLIC_SKILLS = {
 
 PUBLIC_AGENT_FILES = {
     Path("agent/config/intent_map.json"),
+    # Curated cross-session project facts (PRD session-db-facts). Only
+    # the tracked facts.md is shipped; the gitignored staging file
+    # never makes it into the wheel.
+    Path("agent/memory/curated/facts.md"),
 }
 
 EXCLUDED_DIRS = {

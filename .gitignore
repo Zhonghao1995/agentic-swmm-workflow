@@ -24,6 +24,18 @@ data/
 runs/*
 !runs/README.md
 
+# Cross-session SQLite store (PRD session-db-facts). The DB is fully
+# reconstructable from runs/**/agent_trace.jsonl via
+# scripts/backfill_sessions.py, so it is local-only.
+runs/sessions.sqlite
+runs/sessions.sqlite-journal
+runs/sessions.sqlite-wal
+runs/sessions.sqlite-shm
+
+# LLM-curated facts staging file. The promoted, user-reviewed
+# agent/memory/curated/facts.md is tracked; staging is not.
+agent/memory/curated/facts_staging.md
+
 # Small reproducible Tod Creek raw-GIS case used by swmm-gis/QGIS examples.
 !data/
 !data/Todcreek/
