@@ -17,6 +17,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 # read-only (True) covers ``read_file``, ``list_*``, ``search_files``,
 # ``git_diff``, ``web_*``, ``inspect_plot_options``, ``read_skill``,
 # ``list_skills``, ``list_mcp_servers``, ``list_mcp_tools``.
+# PRD-Y adds ``select_skill`` — it only returns the skill's tool subset.
 EXPECTED_READ_ONLY: set[str] = {
     "git_diff",
     "inspect_plot_options",
@@ -30,6 +31,7 @@ EXPECTED_READ_ONLY: set[str] = {
     "recall_memory_search",
     "recall_session_history",
     "search_files",
+    "select_skill",
     "web_fetch_url",
     "web_search",
 }

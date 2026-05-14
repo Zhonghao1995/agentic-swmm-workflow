@@ -99,11 +99,15 @@ class AgentToolRegistry:
             "recovery",
             "fallback_tools",
             "node_suggestions",
-            # PRD-Z `request_expert_review` adds two fields that the
-            # planner needs to see: ``approved`` (Y/N answer) and
-            # ``decision_id`` (the ID of the human_decisions record).
+            # PRD-Z `request_expert_review` adds two fields the planner
+            # needs to see: ``approved`` (Y/N answer) and ``decision_id``
+            # (the ID of the human_decisions record).
             "approved",
             "decision_id",
+            # PRD-Y: ``select_skill`` returns the skill's tool subset; the
+            # planner needs to see both the tool list and the bound name.
+            "skill_name",
+            "source",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -335,6 +339,22 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
+        ToolSpec(
+            "select_skill",
+            (
+                "Commit to a workflow skill and receive its full tool list.\n"
+                "USE WHEN: you are about to invoke a deterministic SWMM operation "
+                "and have identified which skill provides it (e.g. swmm-builder, "
+                "swmm-runner, swmm-plot). The response gives you the skill's "
+                "tools (name + description + parameters); pick one and call it next.\n"
+                "DO NOT USE WHEN: you only need agent-internal tools (memory recall, "
+                "workflow mode selection, plot option inspection, file / dir / git "
+                "inspection). Those are always available without selecting a skill."
+            ),
+            _object({"skill_name": {"type": "string"}}, ["skill_name"]),
+            _select_skill_tool,
+            is_read_only=True,
+        ),
         ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
@@ -718,6 +738,52 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "user_prompt": user_prompt,
     }
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"rain={len(rainfall_options)} nodes={len(node_options)} attrs={len(node_attribute_options)}"}
+
+
+def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Return the skill's tool subset (PRD-Y two-level planner surface).
+
+    Lazy-imports ``SkillRouter`` because ``skill_router`` already imports
+    from ``tool_registry`` — keeping the import inside the handler avoids
+    a load-time cycle.
+    """
+
+    from agentic_swmm.agent.skill_router import AGENT_INTERNAL_SKILL, SkillRouter
+
+    skill_name = call.args.get("skill_name")
+    if not isinstance(skill_name, str) or not skill_name.strip():
+        return _failure(call, "skill_name is required")
+    skill_name = skill_name.strip()
+    router = SkillRouter(AgentToolRegistry())
+    try:
+        bundle = router.tools_for(skill_name)
+    except KeyError:
+        known = ", ".join(router.list_skills())
+        return _failure(call, f"unknown skill: {skill_name} (known: {known})")
+    entries = [
+        {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+            "is_read_only": bool(tool.is_read_only),
+        }
+        for tool in bundle.tools
+    ]
+    summary = (
+        f"selected skill {skill_name}: {len(entries)} tool(s) "
+        f"({bundle.source})"
+    )
+    if skill_name == AGENT_INTERNAL_SKILL:
+        summary += " — available without further select_skill calls"
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "skill_name": skill_name,
+        "source": bundle.source,
+        "tools": entries,
+        "summary": summary,
+    }
 
 
 def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
