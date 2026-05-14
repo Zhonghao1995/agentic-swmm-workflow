@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent import mcp_cache, mcp_client
+from agentic_swmm.agent.mcp_client import McpClientError
+from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
@@ -111,6 +113,110 @@ def _object(properties: dict[str, Any], required: list[str] | None = None) -> di
     if required:
         schema["required"] = required
     return schema
+
+
+# ---------------------------------------------------------------------------
+# MCP-routed handler factory (PRD-Y "Handler rewrite — uniform pattern")
+# ---------------------------------------------------------------------------
+#
+# Every deterministic-SWMM ToolSpec's handler is built from this factory so
+# the audit trail of "agent → skill → MCP → Python script" is one
+# transport. The factory itself is intentionally small: per-tool argument
+# mapping (snake_case → camelCase, default-node detection, output-dir
+# resolution) lives in dedicated ``_*_mcp_args`` builders below so we keep
+# the handler body uniform.
+
+
+def _make_mcp_routed_handler(
+    server: str,
+    tool: str,
+    *,
+    args_mapper: Callable[[ToolCall, Path], dict[str, Any] | dict[str, Any]] | None = None,
+) -> Callable[[ToolCall, Path], dict[str, Any]]:
+    """Build a ToolSpec handler that forwards the call through ``MCPPool``.
+
+    ``args_mapper`` is an optional pre-call hook that may:
+    * translate ToolSpec snake_case argument names into the MCP server's
+      camelCase property names,
+    * resolve relative paths / inject defaults (e.g. node auto-detect),
+    * return a fail-soft result dict early when validation fails — that
+      dict is returned verbatim so handlers behave the same way the
+      old in-process subprocess handlers did when args were bad.
+
+    The handler returns a flat ``{tool, args, ok, results, summary}``
+    dict shaped like the historical subprocess handlers, so existing
+    planner / reporting code does not need updating.
+    """
+
+    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+        if args_mapper is None:
+            mcp_args: dict[str, Any] = dict(call.args)
+        else:
+            mapped = args_mapper(call, session_dir)
+            if isinstance(mapped, dict) and mapped.get("ok") is False and "summary" in mapped:
+                # ``_failure``-shaped early return — surface it unchanged.
+                return mapped
+            mcp_args = mapped if isinstance(mapped, dict) else {}
+        pool = ensure_session_pool()
+        if pool is None:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": (
+                    f"MCP transport unavailable for {server}.{tool}: "
+                    "no MCP server registry configured. "
+                    "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)."
+                ),
+            }
+        try:
+            result = pool.call_tool(server, tool, mcp_args)
+        except McpClientError as exc:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": f"MCP transport failed: {exc}",
+            }
+        return _wrap_mcp_result(call, server, tool, result)
+
+    return handler
+
+
+def _wrap_mcp_result(
+    call: ToolCall,
+    server: str,
+    tool: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Convert the raw MCP ``tools/call`` result into a ToolSpec response.
+
+    The MCP server returns a JSON-RPC ``result`` object — usually with a
+    ``content`` array of text blocks. We pass the body through under the
+    ``results`` key, and synthesise an ``excerpt`` from the joined text
+    blocks so existing reporting code that reads ``stdout_tail`` /
+    ``excerpt`` still surfaces useful context to the user.
+    """
+
+    excerpt = ""
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        chunks = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = str(item.get("text") or "")
+                if text:
+                    chunks.append(text)
+        excerpt = "\n".join(chunks)[:4000]
+    summary = f"called {server}.{tool}"
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": result,
+        "excerpt": excerpt,
+        "summary": summary,
+    }
 
 
 def _build_tools() -> dict[str, ToolSpec]:
