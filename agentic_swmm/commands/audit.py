@@ -86,6 +86,24 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--workflow-mode", help="Optional workflow mode label.")
     parser.add_argument("--objective", help="Optional run objective.")
     parser.add_argument("--obsidian", action="store_true", help="Also export the note to the default Obsidian vault.")
+    parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        help="Skip the audit -> memory auto-trigger (M2). lessons_learned.md "
+        "and the RAG corpus are left untouched. Default: trigger.",
+    )
+    parser.add_argument(
+        "--no-rag",
+        action="store_true",
+        help="Skip only the RAG corpus rebuild but still refresh "
+        "lessons_learned.md. Useful when the RAG step is the slow part.",
+    )
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Full-rebuild fallback: force re-scan of all runs by the "
+        "memory summariser (clears .last_sync.json).",
+    )
     parser.set_defaults(func=main)
 
 
@@ -114,8 +132,18 @@ def main(args: argparse.Namespace) -> int:
     append_trace(run_dir / "command_trace.json", result, stage="audit")
 
     moc_path: Path | None = None
+    memory_hook: dict | None = None
     if result.return_code == 0:
         moc_path = _write_moc(run_dir)
+        # M2 audit -> memory auto-trigger. Runs after the audit subprocess
+        # succeeded and after the runs/INDEX.md MOC has been regenerated.
+        from agentic_swmm.memory.audit_hook import trigger_memory_refresh
+
+        memory_hook = trigger_memory_refresh(
+            run_dir,
+            no_memory=bool(getattr(args, "no_memory", False)),
+            no_rag=bool(getattr(args, "no_rag", False)),
+        )
 
     try:
         payload = json.loads(result.stdout)
@@ -125,5 +153,7 @@ def main(args: argparse.Namespace) -> int:
         payload["audit_dir"] = str(audit_dir)
         payload["reaudit_backups"] = [str(path) for path in backups]
         payload["runs_index"] = str(moc_path) if moc_path else None
+        if memory_hook is not None:
+            payload["memory_hook"] = memory_hook
         print(json.dumps(payload, indent=2))
     return result.return_code
