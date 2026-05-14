@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import json
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ from agentic_swmm.agent import welcome as _welcome
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import _looks_like_swmm_request
+from agentic_swmm.agent.prompts import WARM_INTRO_TEMPLATE
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
 from agentic_swmm.agent.runtime import run_openai_plan
@@ -104,6 +106,23 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             continue
 
         turn += 1
+
+        # Issue #59 (UX-4): on the *first* user prompt of a session,
+        # detect open-shaped requests (greetings, identity questions,
+        # short/verbless) and emit the warm intro before any tool
+        # call. Task-shaped first prompts (run/build/calibrate/...)
+        # fall through to the normal planner dispatch.
+        intro_text = maybe_warm_intro(prompt, turn=turn)
+        if intro_text is not None:
+            print()
+            _agent_say(intro_text)
+            print()
+            # Hold the planner so the user can answer the "what would
+            # you like to work on?" line; the next loop iteration is
+            # treated as the real first task message.
+            turn = 0
+            continue
+
         use_active_run = active_run_dir is not None and _looks_like_run_continuation(prompt)
         goal = prompt
         is_chat_turn = False
@@ -379,6 +398,151 @@ def _looks_like_run_continuation(prompt: str) -> bool:
             "刚才的运行",
         )
     )
+
+
+# Issue #59 (UX-4): first-message warm intro classifier + hook.
+#
+# Task verbs cover EN + ZH. Any one of these in the *first* prompt
+# means the user already told us what they want; the planner should
+# dispatch directly. The Chinese verbs match common phrasings users
+# type unprompted (跑/做/建/检/测/校准 + 审计).
+_TASK_VERB_TOKENS: tuple[str, ...] = (
+    "run",
+    "build",
+    "plot",
+    "calibrate",
+    "audit",
+    "check",
+    "test",
+    "compare",
+    "simulate",
+    "execute",
+    "inspect",
+    "summarize",
+    "show",
+    "list",
+    "read",
+    "create",
+    "generate",
+    "make",
+    "fix",
+    "跑",
+    "做",
+    "建",
+    "审计",
+    "校准",
+    "验证",
+    "对比",
+    "比较",
+    "运行",
+)
+
+# Greeting / identity-probe tokens. Match as substring on the lowered
+# prompt so "Hi!", "Hello there", and "你好啊" all classify open-shaped.
+_OPEN_GREETING_TOKENS: tuple[str, ...] = (
+    "你好",
+    "您好",
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "what can you do",
+    "what are you",
+    "who are you",
+    "tell me about yourself",
+    "tell me what you",
+    "what do you do",
+    "introduce yourself",
+)
+
+
+def is_open_shaped_prompt(prompt: str) -> bool:
+    """Return True iff ``prompt`` looks open-shaped on the first turn.
+
+    Open-shaped covers three cases that all justify the warm intro:
+
+    1. Greetings (``hi`` / ``hello`` / ``你好`` / ...).
+    2. Identity questions (``what can you do`` / ``who are you`` / ...).
+    3. Short or verbless prompts (< 5 words AND no task verb).
+
+    A prompt is *task-shaped* (returns False) the moment it contains
+    one of the EN/ZH task verbs in ``_TASK_VERB_TOKENS``. This keeps
+    "run the tecnopolo demo" from triggering the intro even though it
+    is short.
+    """
+    text = prompt.strip()
+    if not text:
+        return True
+    lowered = text.lower()
+
+    # Task verbs win first — they are an unambiguous signal that the
+    # user wants us to act. ZH tokens stay as-is (no case folding).
+    if _contains_task_verb(lowered, text):
+        return False
+
+    # Explicit greetings / identity probes.
+    if any(token in lowered for token in _OPEN_GREETING_TOKENS):
+        return True
+
+    # Fallback: a very short prompt without any task verb is treated
+    # as open-shaped. Splitting on whitespace handles both EN ("hi
+    # there") and the common ZH case where users type a single hanzi
+    # phrase like "在吗" or "ready".
+    if len(lowered.split()) < 5:
+        return True
+
+    return False
+
+
+def _contains_task_verb(lowered: str, raw: str) -> bool:
+    """Substring-match task verbs against the prompt.
+
+    EN tokens are checked against the lowercased text; ZH tokens are
+    checked against the raw text so we don't normalise away hanzi.
+    """
+    for token in _TASK_VERB_TOKENS:
+        if token.isascii():
+            if re.search(rf"\b{re.escape(token)}\b", lowered):
+                return True
+        else:
+            if token in raw:
+                return True
+    return False
+
+
+def maybe_warm_intro(prompt: str, *, turn: int) -> str | None:
+    """Return the warm-intro text for the first message, or None.
+
+    Returns ``None`` (so the runtime falls through to the normal
+    planner dispatch) when:
+
+    - ``turn`` is not 1 (intro only ever fires on the first message),
+    - ``AISWMM_DISABLE_WELCOME=1`` is set (consistent with UX-2 #57),
+    - or the prompt is task-shaped (``is_open_shaped_prompt`` is False).
+
+    The template itself lives in ``agentic_swmm.agent.prompts`` so the
+    string and the runtime hook can be tested in isolation.
+    """
+    if turn != 1:
+        return None
+    if _welcome_disabled():
+        return None
+    if not is_open_shaped_prompt(prompt):
+        return None
+    return WARM_INTRO_TEMPLATE
+
+
+def _welcome_disabled() -> bool:
+    """Mirror ``welcome._is_disabled`` so the same env var controls both.
+
+    Kept as a tiny local helper instead of importing ``welcome._is_disabled``
+    directly because that one is module-private — referring to a private
+    name across modules would couple us to its location.
+    """
+    value = os.environ.get("AISWMM_DISABLE_WELCOME")
+    if value is None:
+        return False
+    return value.strip() not in {"", "0", "false", "False", "no", "No"}
 
 
 def _is_swmm_run_dir(path: Path) -> bool:

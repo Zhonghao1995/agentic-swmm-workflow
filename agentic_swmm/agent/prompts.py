@@ -5,6 +5,26 @@ from typing import Iterable
 from agentic_swmm.runtime.registry import enabled_startup_memory_files
 
 
+# Issue #59 (UX-4): warm self-introduction template emitted on the
+# *first* message of an interactive session when the prompt looks
+# open-shaped (greetings, identity questions, very short / verbless
+# prompts). The template intentionally stays short — three sentences
+# of identity + a one-line boundary clause + three quick-start
+# handles. The boundary clause ("audit trail so you can verify what I
+# did") keeps the warmth honest against the rest of the agent's
+# evidence-discipline vocabulary.
+WARM_INTRO_TEMPLATE = (
+    "Hi! I'm Agentic SWMM, your stormwater modeling collaborator. "
+    "I can help with building EPA SWMM inputs, running simulations, "
+    "calibrating against observed data, and quantifying uncertainty — "
+    "always with an audit trail so you can verify what I did. "
+    "What would you like to work on? Some quick starts: "
+    '"run the tecnopolo demo", '
+    '"show me what skills you have", '
+    '"help me build a model for my project".'
+)
+
+
 def openai_planner_prompt(extras: Iterable[str] | None = None) -> str:
     base = (
         "You are the Agentic SWMM tool-calling planner. "
