@@ -46,10 +46,51 @@ jobs:
       - name: Install MCP server dependencies
         run: bash scripts/install_mcp_deps.sh
 
-      - name: Install SWMM engine
+      - name: Cache SWMM 5 install prefix
+        id: cache-swmm5
+        uses: actions/cache@v4
+        with:
+          path: ~/swmm5-install
+          key: swmm5-v5.2.4-${{ runner.os }}-bin+lib
+
+      - name: Build SWMM 5 from source
+        if: steps.cache-swmm5.outputs.cache-hit != 'true'
         run: |
-          scripts/install.sh --yes --skip-python --skip-mcp
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -e
+          git clone --depth 1 --branch v5.2.4 \
+            https://github.com/USEPA/Stormwater-Management-Model.git /tmp/swmm5-src
+          cmake -S /tmp/swmm5-src -B /tmp/swmm5-build \
+            -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/swmm5-build --config Release -j"$(nproc)"
+          SWMM_BIN=$(find /tmp/swmm5-build \
+            \( -name 'runswmm' -o -name 'swmm5' \) \
+            -type f -executable | head -1)
+          SWMM_LIB=$(find /tmp/swmm5-build -name 'libswmm5.so*' -type f | head -1)
+          if [ -z "$SWMM_BIN" ] || [ -z "$SWMM_LIB" ]; then
+            echo "::error::SWMM 5 build artifacts missing"
+            echo "binary candidate: $SWMM_BIN"
+            echo "lib candidate: $SWMM_LIB"
+            echo "--- all executables under build dir ---"
+            find /tmp/swmm5-build -type f -executable
+            echo "--- all *.so* under build dir ---"
+            find /tmp/swmm5-build -name '*.so*'
+            exit 1
+          fi
+          mkdir -p "$HOME/swmm5-install/bin" "$HOME/swmm5-install/lib"
+          cp "$SWMM_BIN" "$HOME/swmm5-install/bin/swmm5"
+          chmod +x "$HOME/swmm5-install/bin/swmm5"
+          # Copy the .so plus any soname symlinks living next to it
+          cp -P "$(dirname "$SWMM_LIB")"/libswmm5.so* "$HOME/swmm5-install/lib/"
+
+      - name: Expose SWMM 5 to subsequent steps
+        run: |
+          echo "$HOME/swmm5-install/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$HOME/swmm5-install/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Verify SWMM 5 is callable
+        run: |
+          # PATH from previous step is already on; LD_LIBRARY_PATH too
+          swmm5 --version
 
       - name: Syntax check
         run: |
@@ -88,10 +129,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install SWMM engine
+      - name: Cache SWMM 5 install prefix
+        id: cache-swmm5
+        uses: actions/cache@v4
+        with:
+          path: ~/swmm5-install
+          key: swmm5-v5.2.4-${{ runner.os }}-bin+lib
+
+      - name: Build SWMM 5 from source
+        if: steps.cache-swmm5.outputs.cache-hit != 'true'
         run: |
-          scripts/install.sh --yes --skip-python --skip-mcp
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          set -e
+          git clone --depth 1 --branch v5.2.4 \
+            https://github.com/USEPA/Stormwater-Management-Model.git /tmp/swmm5-src
+          cmake -S /tmp/swmm5-src -B /tmp/swmm5-build \
+            -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/swmm5-build --config Release -j"$(nproc)"
+          SWMM_BIN=$(find /tmp/swmm5-build \
+            \( -name 'runswmm' -o -name 'swmm5' \) \
+            -type f -executable | head -1)
+          SWMM_LIB=$(find /tmp/swmm5-build -name 'libswmm5.so*' -type f | head -1)
+          if [ -z "$SWMM_BIN" ] || [ -z "$SWMM_LIB" ]; then
+            echo "::error::SWMM 5 build artifacts missing"
+            echo "binary candidate: $SWMM_BIN"
+            echo "lib candidate: $SWMM_LIB"
+            echo "--- all executables under build dir ---"
+            find /tmp/swmm5-build -type f -executable
+            echo "--- all *.so* under build dir ---"
+            find /tmp/swmm5-build -name '*.so*'
+            exit 1
+          fi
+          mkdir -p "$HOME/swmm5-install/bin" "$HOME/swmm5-install/lib"
+          cp "$SWMM_BIN" "$HOME/swmm5-install/bin/swmm5"
+          chmod +x "$HOME/swmm5-install/bin/swmm5"
+          # Copy the .so plus any soname symlinks living next to it
+          cp -P "$(dirname "$SWMM_LIB")"/libswmm5.so* "$HOME/swmm5-install/lib/"
+
+      - name: Expose SWMM 5 to subsequent steps
+        run: |
+          echo "$HOME/swmm5-install/bin" >> "$GITHUB_PATH"
+          echo "LD_LIBRARY_PATH=$HOME/swmm5-install/lib:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
+      - name: Verify SWMM 5 is callable
+        run: |
+          # PATH from previous step is already on; LD_LIBRARY_PATH too
+          swmm5 --version
 
       - name: Run acceptance workflow
         run: |
