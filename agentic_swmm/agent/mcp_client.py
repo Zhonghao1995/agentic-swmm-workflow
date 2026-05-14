@@ -70,54 +70,43 @@ def _send(proc: subprocess.Popen[bytes], payload: dict[str, Any]) -> None:
     if proc.stdin is None:
         raise McpClientError("MCP process stdin is unavailable.")
     data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data)
+    proc.stdin.write(data + b"\n")
     proc.stdin.flush()
 
 
 def _read(proc: subprocess.Popen[bytes], *, timeout: int) -> dict[str, Any]:
     if proc.stdout is None:
         raise McpClientError("MCP process stdout is unavailable.")
-    header = _read_until(proc.stdout, b"\r\n\r\n", timeout=timeout)
-    headers = header.decode("ascii", errors="replace").split("\r\n")
-    length = None
-    for line in headers:
-        if line.lower().startswith("content-length:"):
-            length = int(line.split(":", 1)[1].strip())
-            break
-    if length is None:
-        raise McpClientError("MCP response missing Content-Length header.")
-    body = _read_exact(proc.stdout, length, timeout=timeout)
-    parsed = json.loads(body.decode("utf-8"))
+    line = _readline(proc.stdout, timeout=timeout)
+    parsed = json.loads(line.decode("utf-8"))
     return parsed if isinstance(parsed, dict) else {"result": parsed}
 
 
-def _read_until(stream: Any, marker: bytes, *, timeout: int) -> bytes:
+def _readline(stream: Any, *, timeout: int) -> bytes:
     deadline = time.monotonic() + timeout
     data = b""
-    while marker not in data:
+    while not data.endswith(b"\n"):
         _wait_readable(stream, deadline)
         chunk = stream.read(1)
         if not chunk:
-            raise McpClientError("MCP process ended before sending a complete response.")
+            raise McpClientError("MCP process ended before sending a complete line.")
         data += chunk
-        if len(data) > 100_000:
-            raise McpClientError("MCP response header is too large.")
-    return data[: data.index(marker)]
-
-
-def _read_exact(stream: Any, length: int, *, timeout: int) -> bytes:
-    deadline = time.monotonic() + timeout
-    data = b""
-    while len(data) < length:
-        _wait_readable(stream, deadline)
-        chunk = stream.read(length - len(data))
-        if not chunk:
-            raise McpClientError("MCP response ended before the declared body length.")
-        data += chunk
-    return data
+        if len(data) > 5_000_000:
+            raise McpClientError("MCP response line is too large.")
+    return data.rstrip(b"\r\n")
 
 
 def _wait_readable(stream: Any, deadline: float) -> None:
+    # If the BufferedReader already has bytes buffered in user space the OS
+    # pipe will look idle to select(), so check the in-process buffer first.
+    peek = getattr(stream, "peek", None)
+    if peek is not None:
+        try:
+            if peek(1):
+                return
+        except ValueError:
+            # stream is closed; let the subsequent read() surface the EOF.
+            return
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise McpClientError("MCP response timed out.")
