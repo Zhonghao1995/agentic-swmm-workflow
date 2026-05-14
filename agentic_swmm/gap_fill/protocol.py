@@ -30,8 +30,12 @@ from typing import Any
 
 
 # Severity literal — the subset of the wider 5-level taxonomy in scope
-# for PRD-GF-CORE. GF-L5 will extend this with ``"L5"``.
-_VALID_SEVERITIES = frozenset({"L1", "L3"})
+# for PRD-GF-CORE plus L5 (PRD-GF-L5). L1/L3 share the proposer-driven
+# accept/edit/reject flow; L5 is a separate subjective-judgement flow
+# where the LLM enumerates candidates and the human picks. Both live in
+# the same dataclass so one ledger (``gap_decisions.json``) carries the
+# full audit trail.
+_VALID_SEVERITIES = frozenset({"L1", "L3", "L5"})
 
 # ``kind`` is mechanically aligned with severity: L1 means "missing
 # file on disk", L3 means "missing parameter value". The pair is
@@ -127,9 +131,14 @@ class GapSignal:
     suggestion: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        if self.severity not in _VALID_SEVERITIES:
+        # GapSignal is the L1/L3 in-band detection path. L5 is detected
+        # by the LLM itself via the ``request_gap_judgement`` tool and
+        # never produces a ``GapSignal`` — keeping signals strict to
+        # L1/L3 prevents accidental misuse of the proposer pipeline on
+        # subjective judgements.
+        if self.severity not in {"L1", "L3"}:
             raise ValueError(
-                f"GapSignal.severity must be one of {sorted(_VALID_SEVERITIES)}; "
+                f"GapSignal.severity must be 'L1' or 'L3'; "
                 f"got {self.severity!r}"
             )
         if self.kind not in _VALID_KINDS:
@@ -209,6 +218,38 @@ class ProposerInfo:
 
 
 @dataclass(frozen=True)
+class GapCandidate:
+    """One enumerated option for an L5 subjective judgement (PRD-GF-L5).
+
+    The LLM enumerator produces an ordered list of these — each
+    summarises the option and articulates the hydrological tradeoff.
+    The enumerator must **not** recommend or rank; ``id`` is just a
+    stable handle (e.g. ``"cand_1"``) the UI / recorder uses to
+    cross-reference the user's pick.
+    """
+
+    id: str
+    summary: str
+    tradeoff: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "GapCandidate":
+        for key in ("id", "summary", "tradeoff"):
+            if key not in payload:
+                raise ValueError(
+                    f"GapCandidate payload missing required key: {key!r}"
+                )
+        return cls(
+            id=str(payload["id"]),
+            summary=str(payload["summary"]),
+            tradeoff=str(payload["tradeoff"]),
+        )
+
+
+@dataclass(frozen=True)
 class GapDecision:
     """The recorded outcome of one gap-fill cycle.
 
@@ -234,10 +275,26 @@ class GapDecision:
       (env-var registry-only mode), or ``"auto_approve"`` (env-var
       auto-approve mode).
     - ``decided_at``: ISO-8601 UTC stamp.
-    - ``resume_mode``: always ``"tool_retry"`` for CORE; GF-L5 may
-      add ``"replan"``.
+    - ``resume_mode``: ``"tool_retry"`` for L1/L3; ``"llm_replan"``
+      for L5 (PRD-GF-L5 — the planner re-plans on the next turn
+      rather than blindly retrying the same tool).
     - ``human_decisions_ref``: pointer back to the matching entry in
       ``experiment_provenance.json``.
+
+    PRD-GF-L5 fields (optional — only populated when ``severity="L5"``):
+
+    - ``gap_kind``: short label for the subjective gap (e.g.
+      ``"pour_point"``, ``"storm_event_selection"``).
+    - ``candidates``: ordered list of :class:`GapCandidate` the LLM
+      enumerated. Empty for L1/L3.
+    - ``user_pick``: the ``GapCandidate.id`` the modeller selected.
+      ``None`` for L1/L3.
+    - ``user_note``: free-form text capturing *why* the modeller
+      chose this option. ``None`` allowed (the prompt makes it
+      optional).
+    - ``enumerator_llm_call_id``: cross-reference into
+      ``09_audit/llm_calls.jsonl`` for the LLM call that produced the
+      ``candidates`` list. ``None`` for L1/L3.
     """
 
     decision_id: str
@@ -252,6 +309,14 @@ class GapDecision:
     decided_at: str
     resume_mode: str
     human_decisions_ref: str | None
+    # L5-only fields (PRD-GF-L5). Default to empty / None so L1/L3
+    # callers stay positional-arg compatible and any pre-L5 reader of
+    # ``gap_decisions.json`` keeps deserialising cleanly.
+    gap_kind: str | None = None
+    candidates: tuple[GapCandidate, ...] = ()
+    user_pick: str | None = None
+    user_note: str | None = None
+    enumerator_llm_call_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.severity not in _VALID_SEVERITIES:
@@ -264,9 +329,19 @@ class GapDecision:
                 f"GapDecision.decided_by must be one of "
                 f"{sorted(_VALID_DECIDED_BY)}; got {self.decided_by!r}"
             )
+        # L5 is human-judgement only. The decision_by literal set
+        # already accepts ``"auto_registry"`` and ``"auto_approve"``
+        # for L1/L3, but those modes must never set the L5 severity:
+        # subjective judgement cannot come from a table or be
+        # rubber-stamped (PRD-GF-L5 failure-path matrix).
+        if self.severity == "L5" and self.decided_by != "human":
+            raise ValueError(
+                "GapDecision.severity 'L5' requires decided_by='human'; "
+                f"got {self.decided_by!r}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "decision_id": self.decision_id,
             "gap_id": self.gap_id,
             "severity": self.severity,
@@ -280,6 +355,20 @@ class GapDecision:
             "resume_mode": self.resume_mode,
             "human_decisions_ref": self.human_decisions_ref,
         }
+        # Emit the L5 block only when it has content — keeps the
+        # ledger free of stale empty keys for the common L1/L3 path
+        # and lets old readers (pre-L5) ignore the section entirely.
+        if self.severity == "L5" or self.candidates or self.user_pick:
+            payload.update(
+                {
+                    "gap_kind": self.gap_kind,
+                    "candidates": [c.to_dict() for c in self.candidates],
+                    "user_pick": self.user_pick,
+                    "user_note": self.user_note,
+                    "enumerator_llm_call_id": self.enumerator_llm_call_id,
+                }
+            )
+        return payload
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "GapDecision":
@@ -299,6 +388,9 @@ class GapDecision:
         for key in required:
             if key not in payload:
                 raise ValueError(f"GapDecision payload missing required key: {key!r}")
+        raw_candidates = payload.get("candidates") or []
+        if not isinstance(raw_candidates, list):
+            raise ValueError("GapDecision.candidates must be a list")
         return cls(
             decision_id=str(payload["decision_id"]),
             gap_id=str(payload["gap_id"]),
@@ -312,6 +404,11 @@ class GapDecision:
             decided_at=str(payload["decided_at"]),
             resume_mode=str(payload["resume_mode"]),
             human_decisions_ref=payload.get("human_decisions_ref"),
+            gap_kind=payload.get("gap_kind"),
+            candidates=tuple(GapCandidate.from_dict(c) for c in raw_candidates),
+            user_pick=payload.get("user_pick"),
+            user_note=payload.get("user_note"),
+            enumerator_llm_call_id=payload.get("enumerator_llm_call_id"),
         )
 
 
@@ -356,6 +453,7 @@ class GapBatch:
 
 __all__ = [
     "GapBatch",
+    "GapCandidate",
     "GapDecision",
     "GapSignal",
     "ProposerInfo",

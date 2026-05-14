@@ -267,6 +267,23 @@ class OpenAIPlanner:
                         },
                     )
                 outputs.append({"type": "function_call_output", "call_id": provider_call.call_id, "output": json.dumps(self.registry.output_for_model(result), sort_keys=True)})
+                # CONCURRENCY-OWNER: PRD-GF-L5
+                # L5 subjective-judgement replan injection. When the
+                # ``request_gap_judgement`` tool resolves with
+                # ``resume_mode="llm_replan"`` we fetch the recorded
+                # decision (gap_kind, user_pick + summary, user_note)
+                # from ``09_audit/gap_decisions.json`` and inject a
+                # structured user_clarification message into the next
+                # turn's input_items. The planner does not retry the
+                # same tool — the LLM re-plans with the judgement in
+                # context. See PRD-GF-L5 "Resume mode: llm_replan".
+                if result.get("ok") and result.get("resume_mode") == "llm_replan":
+                    _user_clarification = _build_l5_replan_clarification(
+                        session_dir=session_dir,
+                        decision_id=str(result.get("decision_id") or ""),
+                    )
+                    if _user_clarification is not None:
+                        outputs.append(_user_clarification)
                 if not result.get("ok"):
                     step_had_failure = True
                     # Track consecutive failures of the same tool name.
@@ -710,3 +727,67 @@ def _existing_run_plot_done_text(run_dir: Path, choice: dict[str, str], *, plot_
         f"Selection: {details}\n\n"
         "Evidence boundary: the plot was generated from the existing run artifacts."
     )
+
+
+# CONCURRENCY-OWNER: PRD-GF-L5
+def _build_l5_replan_clarification(
+    *,
+    session_dir: Path,
+    decision_id: str,
+) -> dict[str, Any] | None:
+    """Build the user_clarification message for an L5 replan turn.
+
+    Returns a ``{"role": "user", "content": <text>}`` dict shaped for
+    the next ``respond_with_tools`` ``input_items`` list. The content
+    follows the format from PRD-GF-L5::
+
+        [gap_decision]
+        gap_kind: <kind>
+        user_pick: <id> (<summary>)
+        user_note: "<free-form text>"
+        resume: re-plan from here. ...
+
+    Returns ``None`` when the decision cannot be loaded — we silently
+    skip injection rather than crashing the planner loop, since the
+    function_call_output already carries enough information for the
+    LLM to react.
+    """
+    # Late import keeps the planner module free of a gap-fill dep at
+    # the top of the file — the injection is a leaf concern.
+    from agentic_swmm.gap_fill.recorder import read_gap_decisions
+
+    if not decision_id:
+        return None
+    try:
+        decisions = read_gap_decisions(session_dir)
+    except Exception:  # pragma: no cover - defensive
+        return None
+    match = next(
+        (d for d in decisions if d.decision_id == decision_id and d.severity == "L5"),
+        None,
+    )
+    if match is None:
+        return None
+
+    pick_summary = ""
+    for cand in match.candidates:
+        if cand.id == match.user_pick:
+            pick_summary = cand.summary
+            break
+    user_pick_line = (
+        f"user_pick: {match.user_pick} ({pick_summary})"
+        if pick_summary
+        else f"user_pick: {match.user_pick}"
+    )
+    note_line = (
+        f'user_note: "{match.user_note}"' if match.user_note else "user_note: (none)"
+    )
+    content = (
+        "[gap_decision]\n"
+        f"gap_kind: {match.gap_kind}\n"
+        f"{user_pick_line}\n"
+        f"{note_line}\n"
+        "resume: re-plan from here. The human has resolved the subjective "
+        "judgement above; decide the next step in context of this choice."
+    )
+    return {"role": "user", "content": content}
