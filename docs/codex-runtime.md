@@ -68,12 +68,13 @@ python3 skills/swmm-experiment-audit/scripts/audit_run.py \
   --compare-to runs/<baseline-case>
 ```
 
-The audit command writes canonical files into the run directory:
+The audit command writes canonical files into the run directory's
+`09_audit/` subdir (schema 1.1):
 
 ```text
-runs/<case>/experiment_provenance.json
-runs/<case>/comparison.json
-runs/<case>/experiment_note.md
+runs/<case>/09_audit/experiment_provenance.json
+runs/<case>/09_audit/comparison.json
+runs/<case>/09_audit/experiment_note.md
 ```
 
 It also writes a readable note into:

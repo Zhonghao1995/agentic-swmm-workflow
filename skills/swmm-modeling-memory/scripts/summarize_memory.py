@@ -12,6 +12,21 @@ from typing import Any
 
 
 AUDIT_FILES = ("experiment_provenance.json", "comparison.json", "experiment_note.md", "model_diagnostics.json")
+# Schema 1.1 stores audit artefacts in <run-dir>/09_audit/. Old runs that
+# still have files at run-dir root are tolerated as a read-only fallback.
+AUDIT_SUBDIR = "09_audit"
+
+
+def audit_dir_for(run_dir: Path) -> Path:
+    """Return the canonical audit subdir under ``run_dir``.
+
+    Falls back to ``run_dir`` itself when the legacy root-level layout is
+    in use (so summarisation of un-migrated runs still works).
+    """
+    new = run_dir / AUDIT_SUBDIR
+    if new.is_dir() and any((new / name).exists() for name in AUDIT_FILES):
+        return new
+    return run_dir
 MARKDOWN_OUTPUTS = (
     "modeling_memory_index.md",
     "project_memory_index.md",
@@ -94,12 +109,31 @@ def stringify_items(items: list[Any]) -> list[str]:
 
 
 def discover_run_dirs(runs_dir: Path) -> list[Path]:
+    """Discover run directories that carry audit artefacts.
+
+    Recognises both the 1.1 layout (``<run-dir>/09_audit/<file>``) and the
+    legacy root-level layout (``<run-dir>/<file>``). The returned paths
+    are always run dirs, never the ``09_audit`` subdir itself.
+    """
     if not runs_dir.exists():
         return []
     candidates: set[Path] = set()
     for name in AUDIT_FILES:
         for path in runs_dir.rglob(name):
-            candidates.add(path.parent)
+            parent = path.parent
+            # If the file lives inside a 09_audit/ subdir, the actual
+            # run dir is the grandparent. Otherwise, the parent is the
+            # run dir (legacy root layout).
+            if parent.name == AUDIT_SUBDIR:
+                parent = parent.parent
+            # Skip anything that ended up under .archive/ during cleanup.
+            try:
+                rel = parent.relative_to(runs_dir)
+            except ValueError:
+                continue
+            if any(part == ".archive" for part in rel.parts):
+                continue
+            candidates.add(parent)
     return sorted(candidates)
 
 
@@ -380,16 +414,17 @@ def detect_failure_patterns(
 
 
 def build_record(run_dir: Path, runs_dir: Path) -> dict[str, Any]:
-    provenance_path = run_dir / "experiment_provenance.json"
-    comparison_path = run_dir / "comparison.json"
-    note_path = run_dir / "experiment_note.md"
-    diagnostics_path = run_dir / "model_diagnostics.json"
+    audit_dir = audit_dir_for(run_dir)
+    provenance_path = audit_dir / "experiment_provenance.json"
+    comparison_path = audit_dir / "comparison.json"
+    note_path = audit_dir / "experiment_note.md"
+    diagnostics_path = audit_dir / "model_diagnostics.json"
     provenance = read_json(provenance_path)
     comparison = read_json(comparison_path)
     model_diagnostics = read_json(diagnostics_path)
     note_text = read_text(note_path)
 
-    audit_files_found = [name for name in AUDIT_FILES if (run_dir / name).exists()]
+    audit_files_found = [name for name in AUDIT_FILES if (audit_dir / name).exists()]
     audit_files_missing = [name for name in AUDIT_FILES if name not in audit_files_found]
     artifacts_found, artifacts_missing = collect_artifact_ids(provenance)
     qa_status = infer_qa_status(provenance)

@@ -262,9 +262,9 @@ Recommended stage layout:
 - optional `runs/<case>/09_calibration/...`
 - optional `runs/<case>/09_uncertainty/...`
 - optional `runs/<case>/09_lid/...`
-- `runs/<case>/experiment_provenance.json`
-- `runs/<case>/comparison.json`
-- `runs/<case>/experiment_note.md`
+- `runs/<case>/09_audit/experiment_provenance.json`
+- `runs/<case>/09_audit/comparison.json`
+- `runs/<case>/09_audit/experiment_note.md`
 
 ## Preflight
 Before running any operating mode, every MCP server under `mcp/<server>/`
@@ -328,7 +328,7 @@ error output (a dedicated `--list-tools` flag is on the framework backlog).
 - Run `swmm-experiment-audit` after success, failure, or early stop.
 - Use the run directory as the single audit input.
 - Pass `--compare-to <baseline-run-dir>` when the user requests baseline/scenario or before/after comparison.
-- The audit must write `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
+- The audit must write `09_audit/experiment_provenance.json`, `09_audit/comparison.json`, and Obsidian-compatible `09_audit/experiment_note.md` inside the run directory.
 - The audit should also use the default Obsidian export unless the user explicitly asks for `--no-obsidian`.
 - The default Obsidian vault is `~/Documents/Agentic-SWMM-Obsidian-Vault`, with `10_Memory_Layer` for durable lessons and `20_Audit_Layer` for run-level evidence.
 - Do not include chat transcripts or conversational content in audit outputs.
@@ -362,9 +362,9 @@ At minimum, the orchestrator should leave behind:
 - run `.out`
 - `manifest.json`
 - a short machine-readable QA summary
-- `experiment_provenance.json`
-- `comparison.json`
-- Obsidian-compatible `experiment_note.md`
+- `09_audit/experiment_provenance.json`
+- `09_audit/comparison.json`
+- Obsidian-compatible `09_audit/experiment_note.md`
 
 If plotting is requested, also produce:
 - rainfall-runoff figure artifact
