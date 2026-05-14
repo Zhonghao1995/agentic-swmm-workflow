@@ -8,7 +8,7 @@ from typing import Any
 
 CONFIG_DIR_ENV = "AISWMM_CONFIG_DIR"
 DEFAULT_PROVIDER = "openai"
-DEFAULT_OPENAI_MODEL = "gpt-5.5"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 
 @dataclass(frozen=True)

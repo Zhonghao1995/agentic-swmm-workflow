@@ -155,7 +155,18 @@ def load_mcp_registry() -> list[dict[str, Any]]:
         return discover_mcp_servers()
     payload = json.loads(path.read_text(encoding="utf-8"))
     records = payload.get("mcp_servers", [])
-    return records if isinstance(records, list) else []
+    if not isinstance(records, list):
+        records = []
+    registered = {record.get("name") for record in records if isinstance(record, dict)}
+    missing = sorted(set(MCP_SERVERS) - registered)
+    if missing:
+        sys.stderr.write(
+            f"warn: {path} is missing MCP servers {missing}; "
+            "falling back to in-process discovery from this checkout. "
+            "Run `aiswmm setup` to refresh the registry.\n"
+        )
+        return discover_mcp_servers()
+    return records
 
 
 def load_memory_registry() -> list[dict[str, Any]]:
