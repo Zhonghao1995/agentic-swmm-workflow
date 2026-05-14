@@ -7,6 +7,7 @@ import sys
 from agentic_swmm import __version__
 from agentic_swmm.commands import agent, audit, capabilities, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
+from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
 from agentic_swmm.commands.expert import publish as expert_publish
 from agentic_swmm.commands.expert import thresholds as expert_thresholds
@@ -37,6 +38,8 @@ COMMANDS = {
     "pour_point",
     "thresholds",
     "publish",
+    # PRD-GF-PROMOTE: expert-only gap-fill case-level promotion.
+    "gap",
     # PRD-CASE-ID: case-level namespace surface. ``case`` covers
     # ``init``/``show``; ``list`` is the top-level lister
     # (``aiswmm list cases``) per the PRD's CLI surface table.
@@ -98,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     expert_pour_point.register(subparsers)
     expert_thresholds.register(subparsers)
     expert_publish.register(subparsers)
+    expert_gap_promote.register(subparsers)
     # CONCURRENCY-OWNER: PRD-CASE-ID
     _register_case_commands(subparsers)
     # CONCURRENCY-OWNER: PRD-CASE-ID — attach --case-id to existing

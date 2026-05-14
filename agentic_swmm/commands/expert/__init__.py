@@ -19,6 +19,7 @@ auto-upgraded on first write — see PRD-Z for the provenance contract.
 
 from agentic_swmm.commands.expert import (
     calibration,
+    gap_promote,
     memory_reflect,
     pour_point,
     publish,
@@ -27,6 +28,7 @@ from agentic_swmm.commands.expert import (
 
 __all__ = [
     "calibration",
+    "gap_promote",
     "memory_reflect",
     "pour_point",
     "publish",
