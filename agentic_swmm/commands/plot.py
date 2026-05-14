@@ -178,8 +178,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--focus-day", help="Optional focus day in YYYY-MM-DD format.")
     parser.add_argument("--window-start", help="Optional HH:MM start time when --focus-day is set.")
     parser.add_argument("--window-end", help="Optional HH:MM end time when --focus-day is set.")
-    parser.add_argument("--auto-window-mode", choices=["flow-peak", "rain", "full"], default="flow-peak")
-    parser.add_argument("--window-hours", type=float, default=12.0, help="Hours shown around peak flow in flow-peak mode.")
+    # TODO(plot-feature): re-introduce --auto-window-mode / --window-hours here
+    # once plot_rain_runoff_si.py grows matching argparse + flow-peak window
+    # logic. Removed because the previous version advertised and forwarded
+    # them but the target script never accepted them, causing every plot_run
+    # invocation to fail with argparse exit code 2.
     parser.add_argument("--pad-hours", type=float, default=2.0, help="Padding for rain auto-window mode.")
     parser.set_defaults(func=main)
 
@@ -218,10 +221,6 @@ def main(args: argparse.Namespace) -> int:
         rain_kind,
         "--out-png",
         str(out_png),
-        "--auto-window-mode",
-        args.auto_window_mode,
-        "--window-hours",
-        str(args.window_hours),
         "--pad-hours",
         str(args.pad_hours),
     )
