@@ -48,12 +48,10 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
 
     date_dir, session_label = _new_interactive_session(base_dir)
 
-    _agent_say("aiswmm interactive agent")
-    _agent_say("Mode: OpenAI planner with constrained local tools")
-    _agent_say(f"Run base: {_display_path(base_dir)}")
-    _agent_say(f"Date folder: {_display_path(date_dir)}")
-    _agent_say(f"Session: {session_label}")
-    _agent_say("Type /exit to quit, or /new-session to start a fresh session\n")
+    # PRD_runtime user story 6: one-line startup banner.
+    _agent_say(
+        f"aiswmm interactive ({session_label}, {_display_path(date_dir)}) — /exit, /new-session"
+    )
 
     turn = 0
     active_run_dir: Path | None = None

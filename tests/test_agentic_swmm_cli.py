@@ -196,7 +196,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm interactive agent", proc.stdout)
+            # Runtime UX PRD trimmed the startup banner to a single line —
+            # match the new "aiswmm interactive (...)" header.
+            self.assertIn("aiswmm interactive", proc.stdout)
             self.assertIn("aiswmm executor", proc.stdout)
             self.assertIn("aiswmm> Planner: openai", proc.stdout)
             self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
