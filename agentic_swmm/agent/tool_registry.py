@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent import mcp_cache, mcp_client
+from agentic_swmm.agent.mcp_client import McpClientError
+from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.types import ToolCall
@@ -97,11 +99,15 @@ class AgentToolRegistry:
             "recovery",
             "fallback_tools",
             "node_suggestions",
-            # PRD-Z `request_expert_review` adds two fields that the
-            # planner needs to see: ``approved`` (Y/N answer) and
-            # ``decision_id`` (the ID of the human_decisions record).
+            # PRD-Z `request_expert_review` adds two fields the planner
+            # needs to see: ``approved`` (Y/N answer) and ``decision_id``
+            # (the ID of the human_decisions record).
             "approved",
             "decision_id",
+            # PRD-Y: ``select_skill`` returns the skill's tool subset; the
+            # planner needs to see both the tool list and the bound name.
+            "skill_name",
+            "source",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
@@ -111,6 +117,115 @@ def _object(properties: dict[str, Any], required: list[str] | None = None) -> di
     if required:
         schema["required"] = required
     return schema
+
+
+# ---------------------------------------------------------------------------
+# MCP-routed handler factory (PRD-Y "Handler rewrite — uniform pattern")
+# ---------------------------------------------------------------------------
+#
+# Every deterministic-SWMM ToolSpec's handler is built from this factory so
+# the audit trail of "agent → skill → MCP → Python script" is one
+# transport. The factory itself is intentionally small: per-tool argument
+# mapping (snake_case → camelCase, default-node detection, output-dir
+# resolution) lives in dedicated ``_*_mcp_args`` builders below so we keep
+# the handler body uniform.
+
+
+def _make_mcp_routed_handler(
+    server: str,
+    tool: str,
+    *,
+    args_mapper: Callable[[ToolCall, Path], dict[str, Any] | dict[str, Any]] | None = None,
+) -> Callable[[ToolCall, Path], dict[str, Any]]:
+    """Build a ToolSpec handler that forwards the call through ``MCPPool``.
+
+    ``args_mapper`` is an optional pre-call hook that may:
+    * translate ToolSpec snake_case argument names into the MCP server's
+      camelCase property names,
+    * resolve relative paths / inject defaults (e.g. node auto-detect),
+    * return a fail-soft result dict early when validation fails — that
+      dict is returned verbatim so handlers behave the same way the
+      old in-process subprocess handlers did when args were bad.
+
+    The handler returns a flat ``{tool, args, ok, results, summary}``
+    dict shaped like the historical subprocess handlers, so existing
+    planner / reporting code does not need updating.
+    """
+
+    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+        if args_mapper is None:
+            mcp_args: dict[str, Any] = dict(call.args)
+        else:
+            mapped = args_mapper(call, session_dir)
+            if isinstance(mapped, dict) and mapped.get("ok") is False and "summary" in mapped:
+                # ``_failure``-shaped early return — surface it unchanged.
+                return mapped
+            mcp_args = mapped if isinstance(mapped, dict) else {}
+        pool = ensure_session_pool()
+        if pool is None:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": (
+                    f"MCP transport unavailable for {server}.{tool}: "
+                    "no MCP server registry configured. "
+                    "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)."
+                ),
+            }
+        try:
+            result = pool.call_tool(server, tool, mcp_args)
+        except McpClientError as exc:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": f"MCP transport failed: {exc}",
+            }
+        return _wrap_mcp_result(call, server, tool, result)
+
+    # Synthetic introspection attribute — the lock-in test
+    # ``tests/test_handler_lockin_no_direct_subprocess.py`` reads this to
+    # verify that every deterministic-SWMM ToolSpec handler is built via
+    # this factory and not a legacy subprocess shim.
+    handler._mcp_routing = {"server": server, "tool": tool}  # type: ignore[attr-defined]
+    return handler
+
+
+def _wrap_mcp_result(
+    call: ToolCall,
+    server: str,
+    tool: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Convert the raw MCP ``tools/call`` result into a ToolSpec response.
+
+    The MCP server returns a JSON-RPC ``result`` object — usually with a
+    ``content`` array of text blocks. We pass the body through under the
+    ``results`` key, and synthesise an ``excerpt`` from the joined text
+    blocks so existing reporting code that reads ``stdout_tail`` /
+    ``excerpt`` still surfaces useful context to the user.
+    """
+
+    excerpt = ""
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        chunks = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = str(item.get("text") or "")
+                if text:
+                    chunks.append(text)
+        excerpt = "\n".join(chunks)[:4000]
+    summary = f"called {server}.{tool}"
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": result,
+        "excerpt": excerpt,
+        "summary": summary,
+    }
 
 
 def _build_tools() -> dict[str, ToolSpec]:
@@ -229,6 +344,22 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
+        ToolSpec(
+            "select_skill",
+            (
+                "Commit to a workflow skill and receive its full tool list.\n"
+                "USE WHEN: you are about to invoke a deterministic SWMM operation "
+                "and have identified which skill provides it (e.g. swmm-builder, "
+                "swmm-runner, swmm-plot). The response gives you the skill's "
+                "tools (name + description + parameters); pick one and call it next.\n"
+                "DO NOT USE WHEN: you only need agent-internal tools (memory recall, "
+                "workflow mode selection, plot option inspection, file / dir / git "
+                "inspection). Those are always available without selecting a skill."
+            ),
+            _object({"skill_name": {"type": "string"}}, ["skill_name"]),
+            _select_skill_tool,
+            is_read_only=True,
+        ),
         ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
@@ -292,20 +423,58 @@ def _demo_acceptance_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, command)
 
 
-def _audit_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    command = ["audit", "--run-dir", str(call.args["run_dir"])]
+# ---------------------------------------------------------------------------
+# Deterministic-SWMM handlers — MCP-routed (PRD-Y)
+# ---------------------------------------------------------------------------
+#
+# Each handler below is the output of ``_make_mcp_routed_handler`` paired
+# with a per-tool ``_*_args_mapper`` function. The mapper:
+#   1. validates required snake_case arguments (paths exist / are in-repo
+#      / have the right suffix) and returns a ``_failure`` dict on
+#      problems so the planner sees the same fail-soft shape it always
+#      did,
+#   2. translates snake_case ToolSpec argument names into the camelCase
+#      property names each MCP server expects (mirrors
+#      ``mcp/<server>/server.js`` schemas).
+
+
+def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``audit_run`` args to ``swmm-experiment-audit`` MCP schema."""
+
+    run_dir = call.args.get("run_dir")
+    if not isinstance(run_dir, str) or not run_dir.strip():
+        return _failure(call, "missing required argument: run_dir")
+    args: dict[str, Any] = {"runDir": run_dir}
     if call.args.get("workflow_mode"):
-        command.extend(["--workflow-mode", str(call.args["workflow_mode"])])
+        args["workflowMode"] = str(call.args["workflow_mode"])
     if call.args.get("objective"):
-        command.extend(["--objective", str(call.args["objective"])])
-    return _run_cli_tool(call, session_dir, command)
+        args["objective"] = str(call.args["objective"])
+    return args
 
 
-def _summarize_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    command = ["memory", "--runs-dir", str(call.args["runs_dir"])]
-    if call.args.get("out_dir"):
-        command.extend(["--out-dir", str(call.args["out_dir"])])
-    return _run_cli_tool(call, session_dir, command)
+_audit_run_tool = _make_mcp_routed_handler(
+    "swmm-experiment-audit", "audit_run", args_mapper=_audit_run_args
+)
+
+
+def _summarize_memory_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``summarize_memory`` args to ``swmm-modeling-memory`` MCP schema.
+
+    The MCP server requires both ``runsDir`` and ``outDir``; if the caller
+    omits ``out_dir`` we default to ``memory/modeling-memory`` (the same
+    default the CLI used).
+    """
+
+    runs_dir = call.args.get("runs_dir")
+    if not isinstance(runs_dir, str) or not runs_dir.strip():
+        return _failure(call, "missing required argument: runs_dir")
+    out_dir = call.args.get("out_dir") or "memory/modeling-memory"
+    return {"runsDir": str(runs_dir), "outDir": str(out_dir)}
+
+
+_summarize_memory_tool = _make_mcp_routed_handler(
+    "swmm-modeling-memory", "summarize_memory", args_mapper=_summarize_memory_args
+)
 
 
 # -- Memory recall tools (PRD M1, M6, M7.1) -----------------------------------
@@ -542,7 +711,14 @@ def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read skill {skill_name}"}
 
 
-def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``run_swmm_inp`` args to ``swmm-runner.swmm_run`` MCP schema.
+
+    Path validation (in-repo + suffix) and default ``run_dir`` / ``node``
+    selection mirror the historical in-process handler so behaviour is
+    identical for the caller.
+    """
+
     inp = _resolve_inp_for_run(call)
     if isinstance(inp, dict):
         return inp
@@ -554,8 +730,12 @@ def _run_swmm_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
     default_node = _node_suggestions(str(inp), limit=1)
     node = str(call.args.get("node") or (default_node[0] if default_node else "O1"))
-    command = ["run", "--inp", str(inp), "--run-dir", str(run_dir), "--node", node]
-    return _run_cli_tool(call, session_dir, command)
+    return {"inp": str(inp), "runDir": str(run_dir), "node": node}
+
+
+_run_swmm_inp_tool = _make_mcp_routed_handler(
+    "swmm-runner", "swmm_run", args_mapper=_run_swmm_inp_args
+)
 
 
 def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -612,6 +792,52 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "user_prompt": user_prompt,
     }
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"rain={len(rainfall_options)} nodes={len(node_options)} attrs={len(node_attribute_options)}"}
+
+
+def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Return the skill's tool subset (PRD-Y two-level planner surface).
+
+    Lazy-imports ``SkillRouter`` because ``skill_router`` already imports
+    from ``tool_registry`` — keeping the import inside the handler avoids
+    a load-time cycle.
+    """
+
+    from agentic_swmm.agent.skill_router import AGENT_INTERNAL_SKILL, SkillRouter
+
+    skill_name = call.args.get("skill_name")
+    if not isinstance(skill_name, str) or not skill_name.strip():
+        return _failure(call, "skill_name is required")
+    skill_name = skill_name.strip()
+    router = SkillRouter(AgentToolRegistry())
+    try:
+        bundle = router.tools_for(skill_name)
+    except KeyError:
+        known = ", ".join(router.list_skills())
+        return _failure(call, f"unknown skill: {skill_name} (known: {known})")
+    entries = [
+        {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters,
+            "is_read_only": bool(tool.is_read_only),
+        }
+        for tool in bundle.tools
+    ]
+    summary = (
+        f"selected skill {skill_name}: {len(entries)} tool(s) "
+        f"({bundle.source})"
+    )
+    if skill_name == AGENT_INTERNAL_SKILL:
+        summary += " — available without further select_skill calls"
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "skill_name": skill_name,
+        "source": bundle.source,
+        "tools": entries,
+        "summary": summary,
+    }
 
 
 def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -720,49 +946,112 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
 
-def _plot_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``plot_run`` args to ``swmm-plot.plot_rain_runoff_si`` MCP schema.
+
+    The MCP server requires ``inp``/``out``/``outPng`` explicitly; the
+    legacy CLI handler resolved the first two from the run-dir manifest
+    internally. We do the same resolution here so the planner can keep
+    passing just ``run_dir``.
+    """
+
     run_dir = _required_repo_dir(call, "run_dir")
     if isinstance(run_dir, dict):
         return run_dir
-    command = ["plot", "--run-dir", str(run_dir), "--node", str(call.args.get("node") or "O1")]
-    if call.args.get("node_attr"):
-        command.extend(["--node-attr", str(call.args["node_attr"])])
-    for key, flag in (("rain_ts", "--rain-ts"), ("rain_kind", "--rain-kind")):
-        if call.args.get(key):
-            command.extend([flag, str(call.args[key])])
+    manifest = _read_manifest(run_dir)
+    inp_path = _find_inp(run_dir, manifest)
+    out_path = _find_out(run_dir, manifest)
+    if inp_path is None or not inp_path.is_file():
+        return _failure(call, f"could not resolve .inp from {run_dir}")
+    if out_path is None or not out_path.is_file():
+        return _failure(call, f"could not resolve .out from {run_dir}")
     if call.args.get("out_png"):
         out_png = _repo_output_path(str(call.args["out_png"]))
         if out_png is None or out_png.suffix.lower() != ".png":
             return _failure(call, "out_png must be a repository-relative .png path")
-        command.extend(["--out-png", str(out_png)])
-    return _run_cli_tool(call, session_dir, command)
+    else:
+        # The MCP server requires outPng. Match the historical CLI default
+        # (``07_plots/fig_<node>_<attr>.png`` under the run dir).
+        node_for_default = re.sub(
+            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node") or "node")
+        ).strip("_") or "node"
+        attr_for_default = re.sub(
+            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node_attr") or "series")
+        ).strip("_") or "series"
+        out_png = run_dir / "07_plots" / f"fig_{node_for_default}_{attr_for_default}.png"
+        out_png.parent.mkdir(parents=True, exist_ok=True)
+    args: dict[str, Any] = {
+        "inp": str(inp_path),
+        "out": str(out_path),
+        "outPng": str(out_png),
+    }
+    if call.args.get("node"):
+        args["node"] = str(call.args["node"])
+    if call.args.get("node_attr"):
+        args["nodeAttr"] = str(call.args["node_attr"])
+    if call.args.get("rain_ts"):
+        args["rainTs"] = str(call.args["rain_ts"])
+    if call.args.get("rain_kind"):
+        args["rainKind"] = str(call.args["rain_kind"])
+    return args
 
 
-def _network_qa_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+_plot_run_tool = _make_mcp_routed_handler(
+    "swmm-plot", "plot_rain_runoff_si", args_mapper=_plot_run_args
+)
+
+
+def _network_qa_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``network_qa`` args to ``swmm-network.qa`` MCP schema.
+
+    The MCP server's ``qa`` tool only accepts ``networkJsonPath`` — the
+    optional ``report_json`` from the ToolSpec surface is ignored; we
+    still validate it so the planner gets the same error message it
+    used to. (The QA JSON ends up in the MCP server's stdout content.)
+    """
+
     network_json = _required_repo_file(call, "network_json", suffix=".json")
     if isinstance(network_json, dict):
         return network_json
-    command = [str(script_path("skills", "swmm-network", "scripts", "network_qa.py")), str(network_json)]
     if call.args.get("report_json"):
         report = _repo_output_path(str(call.args["report_json"]))
         if report is None or report.suffix.lower() != ".json":
             return _failure(call, "report_json must be a repository-relative .json path")
-        command.extend(["--report-json", str(report)])
-    return _run_script_tool(call, session_dir, command)
+    return {"networkJsonPath": str(network_json)}
 
 
-def _network_to_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+_network_qa_tool = _make_mcp_routed_handler(
+    "swmm-network", "qa", args_mapper=_network_qa_args
+)
+
+
+def _network_to_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``network_to_inp`` args to ``swmm-network.export_inp`` MCP schema.
+
+    The MCP tool only accepts ``networkJsonPath`` (writes the .inp into a
+    tmp directory) — ``out_path`` semantics from the legacy ToolSpec
+    surface are preserved by post-processing the MCP response in
+    ``_wrap_mcp_result``. The validation here keeps the planner-facing
+    error parity.
+    """
+
     network_json = _required_repo_file(call, "network_json", suffix=".json")
     if isinstance(network_json, dict):
         return network_json
     out_path = _repo_output_path(str(call.args["out_path"]))
     if out_path is None or out_path.suffix.lower() not in {".inp", ".txt"}:
         return _failure(call, "out_path must be a repository-relative .inp or .txt path")
-    command = [str(script_path("skills", "swmm-network", "scripts", "network_to_inp.py")), str(network_json), "--out", str(out_path)]
-    return _run_script_tool(call, session_dir, command)
+    return {"networkJsonPath": str(network_json)}
 
 
-def _format_rainfall_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+_network_to_inp_tool = _make_mcp_routed_handler(
+    "swmm-network", "export_inp", args_mapper=_network_to_inp_args
+)
+
+
+def _format_rainfall_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``format_rainfall`` args to ``swmm-climate.format_rainfall`` MCP."""
+
     input_csv = _required_repo_file(call, "input_csv", suffix=".csv")
     if isinstance(input_csv, dict):
         return input_csv
@@ -772,14 +1061,33 @@ def _format_rainfall_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(call, "out_json must be a repository-relative .json path")
     if out_timeseries is None or out_timeseries.suffix.lower() not in {".txt", ".dat"}:
         return _failure(call, "out_timeseries must be a repository-relative .txt or .dat path")
-    command = [str(script_path("skills", "swmm-climate", "scripts", "format_rainfall.py")), "--input", str(input_csv), "--out-json", str(out_json), "--out-timeseries", str(out_timeseries)]
-    for arg_name, flag in (("series_name", "--series-name"), ("timestamp_column", "--timestamp-column"), ("value_column", "--value-column"), ("value_units", "--value-units"), ("unit_policy", "--unit-policy"), ("timestamp_policy", "--timestamp-policy")):
-        if call.args.get(arg_name):
-            command.extend([flag, str(call.args[arg_name])])
-    return _run_script_tool(call, session_dir, command)
+    args: dict[str, Any] = {
+        "inputCsvPath": str(input_csv),
+        "outputJsonPath": str(out_json),
+        "outputTimeseriesPath": str(out_timeseries),
+    }
+    snake_to_camel = {
+        "series_name": "seriesName",
+        "timestamp_column": "timestampColumn",
+        "value_column": "valueColumn",
+        "value_units": "valueUnits",
+        "unit_policy": "unitPolicy",
+        "timestamp_policy": "timestampPolicy",
+    }
+    for snake, camel in snake_to_camel.items():
+        if call.args.get(snake):
+            args[camel] = str(call.args[snake])
+    return args
 
 
-def _build_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+_format_rainfall_tool = _make_mcp_routed_handler(
+    "swmm-climate", "format_rainfall", args_mapper=_format_rainfall_args
+)
+
+
+def _build_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``build_inp`` args to ``swmm-builder.build_inp`` MCP schema."""
+
     resolved: dict[str, Path] = {}
     for key, suffix in {"subcatchments_csv": ".csv", "params_json": ".json", "network_json": ".json"}.items():
         path = _required_repo_file(call, key, suffix=suffix)
@@ -792,16 +1100,33 @@ def _build_inp_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(call, "out_inp must be a repository-relative .inp path")
     if out_manifest is None or out_manifest.suffix.lower() != ".json":
         return _failure(call, "out_manifest must be a repository-relative .json path")
-    command = [str(script_path("skills", "swmm-builder", "scripts", "build_swmm_inp.py")), "--subcatchments-csv", str(resolved["subcatchments_csv"]), "--params-json", str(resolved["params_json"]), "--network-json", str(resolved["network_json"]), "--out-inp", str(out_inp), "--out-manifest", str(out_manifest)]
-    for key, (flag, suffix) in {"rainfall_json": ("--rainfall-json", ".json"), "raingage_json": ("--raingage-json", ".json"), "timeseries_text": ("--timeseries-text", None), "config_json": ("--config-json", ".json")}.items():
-        if call.args.get(key):
-            path = _required_repo_file(call, key, suffix=suffix)
+    args: dict[str, Any] = {
+        "subcatchmentsCsvPath": str(resolved["subcatchments_csv"]),
+        "paramsJsonPath": str(resolved["params_json"]),
+        "networkJsonPath": str(resolved["network_json"]),
+        "outInpPath": str(out_inp),
+        "outManifestPath": str(out_manifest),
+    }
+    optional_paths = {
+        "rainfall_json": ("rainfallJsonPath", ".json"),
+        "raingage_json": ("raingageJsonPath", ".json"),
+        "timeseries_text": ("timeseriesTextPath", None),
+        "config_json": ("configJsonPath", ".json"),
+    }
+    for snake, (camel, suffix) in optional_paths.items():
+        if call.args.get(snake):
+            path = _required_repo_file(call, snake, suffix=suffix)
             if isinstance(path, dict):
                 return path
-            command.extend([flag, str(path)])
+            args[camel] = str(path)
     if call.args.get("default_gage_id"):
-        command.extend(["--default-gage-id", str(call.args["default_gage_id"])])
-    return _run_script_tool(call, session_dir, command)
+        args["defaultGageId"] = str(call.args["default_gage_id"])
+    return args
+
+
+_build_inp_tool = _make_mcp_routed_handler(
+    "swmm-builder", "build_inp", args_mapper=_build_inp_args
+)
 
 
 def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

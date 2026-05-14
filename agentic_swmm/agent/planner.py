@@ -214,6 +214,19 @@ class OpenAIPlanner:
                 result = executor.execute(call, index=len(plan))
                 status = "OK" if result.get("ok") else "FAILED"
                 self.emit(f"{status}: {result.get('summary') or 'completed'}")
+                # PRD-Y: ``skill_selected`` trace event. Sits between
+                # ``session_start`` and the first concrete ``tool_call``
+                # so audit notes can show which skill the agent
+                # committed to before any deterministic-SWMM tool ran.
+                if call.name == "select_skill" and result.get("ok"):
+                    write_event(
+                        trace_path,
+                        {
+                            "event": "skill_selected",
+                            "skill_name": str(result.get("skill_name") or ""),
+                            "tool_count": len(result.get("tools") or []),
+                        },
+                    )
                 outputs.append({"type": "function_call_output", "call_id": provider_call.call_id, "output": json.dumps(self.registry.output_for_model(result), sort_keys=True)})
                 if not result.get("ok"):
                     step_had_failure = True
