@@ -2,13 +2,11 @@
 
 ## Purpose
 
-This memory tells an agent how to guide a public repository user through a complete Agentic SWMM modelling and verification workflow in order.
-
-Use it after `operational_memory.md` and before `evidence_memory.md`.
+This memory tells me how to guide a public repository user through a complete Agentic SWMM modelling and verification workflow in order. I use it after `operational_memory.md` and before `evidence_memory.md`.
 
 ## User-facing workflow order
 
-When a user asks to build or verify a SWMM model, guide the session in this order:
+When you ask me to build or verify a SWMM model, I'll guide the session in this order:
 
 1. Define the modelling goal.
 2. Inventory available input files.
@@ -25,11 +23,11 @@ When a user asks to build or verify a SWMM model, guide the session in this orde
 13. Optionally run modeling-memory summarization.
 14. Report readiness and evidence boundaries.
 
-Do not skip directly to SWMM execution unless the required prepared inputs already exist.
+I won't skip directly to SWMM execution unless the required prepared inputs already exist.
 
 ## Step 1: Define the modelling goal
 
-Ask or infer the narrow modelling goal:
+I'll ask or infer the narrow modelling goal:
 
 - build only,
 - build + run,
@@ -40,11 +38,11 @@ Ask or infer the narrow modelling goal:
 - uncertainty propagation,
 - audit or comparison of an existing run.
 
-Default to build + run + QA when the user says they want a complete modelling workflow.
+If you tell me you want a "complete modelling workflow", I'll default to build + run + QA.
 
 ## Step 2: Inventory available input files
 
-Before selecting a path, check for these input classes:
+Before selecting a path, I'll check for these input classes:
 
 - subcatchment geometry or `subcatchments.csv`,
 - network source files or `network.json`,
@@ -55,58 +53,56 @@ Before selecting a path, check for these input classes:
 - observed flow file for calibration,
 - fuzzy parameter space for uncertainty.
 
-Report missing inputs by class and expected format. Do not ask for "all data" generically.
+I'll report missing inputs by class and expected format — I won't ask for "all data" generically.
 
 ## Step 3: Select the workflow mode
 
-Use this decision tree:
+I use this decision tree:
 
-- If a complete external `.inp` already exists, use prepared-input run/QA/audit.
-- If `subcatchments.csv`, `network.json`, params, and rainfall artifacts exist, use prepared-input build.
-- If raw GIS, network, rainfall, land use, and soil inputs exist, use full modular build.
-- If public examples are the only available data, use an example or benchmark path.
-- If the user wants real-data execution and Tod Creek fallback inputs exist, use the minimal Tod Creek fallback.
-- If only existing run artifacts exist, use audit-only or comparison mode.
+- If a complete external `.inp` already exists, I use prepared-input run/QA/audit.
+- If `subcatchments.csv`, `network.json`, params, and rainfall artifacts exist, I use prepared-input build.
+- If raw GIS, network, rainfall, land use, and soil inputs exist, I use the full modular build.
+- If public examples are the only available data, I use an example or benchmark path.
+- If you want real-data execution and Tod Creek fallback inputs exist, I use the minimal Tod Creek fallback.
+- If only existing run artifacts exist, I use audit-only or comparison mode.
 
-Explain the selected mode in one sentence before running tools.
+I'll explain the selected mode in one sentence before running tools.
 
 ## Step 4: Create a run directory
 
-Use a stable run directory:
+I use a stable run directory:
 
 ```text
 runs/<case>/
 ```
 
-If the user did not provide a case name, choose a short, filesystem-safe name from the scenario or input source.
-
-Keep all generated stage outputs inside this directory.
+If you didn't provide a case name, I'll choose a short, filesystem-safe name from the scenario or input source. I keep all generated stage outputs inside this directory.
 
 ## Step 5: Prepare or validate stage inputs
 
-For full modular builds, follow the stage order:
+For full modular builds, I follow the stage order:
 
 1. GIS or subcatchment preprocessing.
 2. Land use and soil parameter mapping.
 3. Rainfall formatting and raingage section generation.
 4. Network import or network QA.
 
-Stop if a critical input is missing. A full modular build requires a real network source or `network.json`; do not invent one.
+I stop if a critical input is missing. A full modular build requires a real network source or `network.json`; I won't invent one.
 
 ## Step 6: Build the SWMM input file
 
-Use `swmm-builder` to create:
+I use `swmm-builder` to create:
 
 ```text
 runs/<case>/05_builder/model.inp
 runs/<case>/05_builder/manifest.json
 ```
 
-Treat builder validation failures as hard stops unless the user explicitly asks for a diagnostic-only artifact.
+I treat builder validation failures as hard stops unless you explicitly ask for a diagnostic-only artifact.
 
 ## Step 7: Run SWMM
 
-Use `swmm-runner` to execute the built or provided `.inp`.
+I use `swmm-runner` to execute the built or provided `.inp`.
 
 Expected outputs:
 
@@ -116,7 +112,7 @@ runs/<case>/06_runner/model.out
 runs/<case>/06_runner/manifest.json
 ```
 
-Do not treat the run as successful until the return code and output artifacts are checked.
+I do not treat the run as successful until the return code and output artifacts are checked.
 
 ## Step 8: Run QA checks
 
@@ -135,13 +131,11 @@ runs/<case>/07_qa/continuity.json
 runs/<case>/07_qa/peak.json
 ```
 
-If QA fails, report the failed check and continue to audit the partial run.
+If QA fails, I'll report the failed check and continue to audit the partial run.
 
 ## Step 9: Create plots
 
-Create rainfall-runoff plots when the user asks for visualization, reporting, or paper-facing artifacts.
-
-Keep plots in:
+I'll create rainfall-runoff plots when you ask for visualization, reporting, or paper-facing artifacts. I keep plots in:
 
 ```text
 runs/<case>/08_plot/
@@ -149,24 +143,24 @@ runs/<case>/08_plot/
 
 ## Step 10: Calibration gate
 
-Run calibration only when:
+I'll only run calibration when:
 
-- the user requested calibration or model fitting,
+- you requested calibration or model fitting,
 - an observed flow file exists,
 - the observed series parses,
 - the observed and simulated periods overlap.
 
-If these conditions are not met, explain what is missing and continue with run/QA/audit.
+If those conditions are not met, I'll explain what is missing and continue with run/QA/audit. I won't claim a model is calibrated unless these checks pass.
 
 ## Step 11: Fuzzy uncertainty gate
 
-Run fuzzy uncertainty only when:
+I'll only run fuzzy uncertainty when:
 
-- the user asks for uncertainty propagation, or
+- you ask for uncertainty propagation, or
 - a fuzzy/interval parameter space is provided, or
 - the workflow explicitly includes scenario envelopes.
 
-Use `skills/swmm-uncertainty/` and keep uncertainty artifacts in:
+I use `skills/swmm-uncertainty/` and keep uncertainty artifacts in:
 
 ```text
 runs/<case>/09_uncertainty/
@@ -174,7 +168,7 @@ runs/<case>/09_uncertainty/
 
 ## Step 12: Experiment audit
 
-Always run the audit layer after success, failure, or early stop.
+I always run the audit layer after success, failure, or early stop.
 
 Expected outputs:
 
@@ -184,11 +178,11 @@ runs/<case>/comparison.json
 runs/<case>/experiment_note.md
 ```
 
-The audit record should preserve partial evidence. It should not pretend missing stages were completed.
+The audit record preserves partial evidence. I won't pretend missing stages were completed.
 
 ## Step 13: Optional modeling-memory summarization
 
-Run modeling-memory summarization when multiple audited runs exist or when the user wants lessons learned, failure-pattern extraction, or skill-improvement proposals.
+I'll run modeling-memory summarization when multiple audited runs exist or when you want lessons learned, failure-pattern extraction, or skill-improvement proposals.
 
 Use:
 
@@ -198,11 +192,11 @@ python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
   --out-dir memory/modeling-memory
 ```
 
-Treat generated skill update proposals as proposals only. Do not modify existing skills unless a human accepts the proposal after benchmark verification.
+I treat generated skill update proposals as proposals only. I won't modify existing skills unless a human accepts the proposal after benchmark verification.
 
 ## Step 14: Final readiness report
 
-End with a concise readiness report:
+I'll end with a concise readiness report:
 
 - selected workflow mode,
 - run directory,
@@ -214,4 +208,4 @@ End with a concise readiness report:
 - missing inputs or failed checks,
 - whether the result is runnable, checked, audited, calibrated, validated, or only a smoke test.
 
-Use precise language. A completed SWMM run is not automatically a calibrated or validated model.
+I use precise language. A completed SWMM run is not automatically a calibrated or validated model, and I'll keep the evidence boundary visible.
