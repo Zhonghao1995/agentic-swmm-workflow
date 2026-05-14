@@ -1,27 +1,24 @@
 name: CI
 
 on:
-  workflow_dispatch:
   push:
     paths:
       - ".github/workflows/ci.yml"
-      - "pyproject.toml"
       - "requirements.txt"
-      - "agentic_swmm/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
       - "tests/**"
+      - "mcp/**"
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
-      - "pyproject.toml"
       - "requirements.txt"
-      - "agentic_swmm/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
       - "tests/**"
+      - "mcp/**"
 
 jobs:
   smoke-test:
@@ -36,12 +33,23 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install coverage[toml] pytest
           pip install -r requirements.txt
-          pip install -e .
+
+      - name: Install MCP server dependencies
+        run: bash scripts/install_mcp_deps.sh
+
+      - name: Install SWMM engine
+        run: |
+          scripts/install.sh --yes --skip-python --skip-mcp
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Syntax check
         run: |
@@ -49,22 +57,8 @@ jobs:
 
       - name: Unit tests
         run: |
-          coverage run --source=agentic_swmm,skills -m unittest discover -s skills/swmm-uncertainty/tests -v
-          coverage run --append --source=agentic_swmm,skills -m unittest discover -s tests -v
-          coverage xml
-          coverage report --show-missing
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
-
-      - name: Build Python package
-        run: |
-          python -m pip install build
-          python -m build
+          python -m unittest discover -s skills/swmm-uncertainty/tests -v
+          python -m pytest tests/ -v
 
       - name: Fuzzy uncertainty dry run
         run: |
@@ -114,3 +108,12 @@ jobs:
           test -f runs/acceptance/ci-audit/experiment_provenance.json
           test -f runs/acceptance/ci-audit/comparison.json
           test -f runs/acceptance/ci-audit/experiment_note.md
+          test -f runs/acceptance/ci-audit/model_diagnostics.json
+
+      - name: Refresh modeling memory
+        run: |
+          python skills/swmm-modeling-memory/scripts/summarize_memory.py \
+            --runs-dir runs \
+            --out-dir memory/modeling-memory
+          test -f runs/acceptance/ci-audit/memory_summary.json
+          test -f memory/modeling-memory/project_memory_index.md

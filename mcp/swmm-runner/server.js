@@ -18,25 +18,11 @@ import fs from "node:fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, "../..");
 const runnerPy = path.resolve(__dirname, "../../skills/swmm-runner/scripts/swmm_runner.py");
-
-function resolvePython() {
-  if (process.env.PYTHON) return process.env.PYTHON;
-  const candidates = process.platform === "win32"
-    ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")]
-    : [path.join(repoRoot, ".venv", "bin", "python")];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return process.platform === "win32" ? "python" : "python3";
-}
-
-const pythonCmd = resolvePython();
 
 function runPy(args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(pythonCmd, [runnerPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn("python3", [runnerPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));
@@ -52,11 +38,29 @@ function runPy(args) {
 const RunArgs = z.object({
   inp: z.string(),
   runDir: z.string(),
-  node: z.string().default("O1"),
+  node: z.string().optional(),
   rptName: z.string().optional(),
   outName: z.string().optional(),
 });
-const RptNodeArgs = z.object({ rpt: z.string(), node: z.string().default("O1") });
+const RptNodeArgs = z.object({ rpt: z.string(), node: z.string() });
+
+function detectFirstOutfall(inpPath) {
+  const text = fs.readFileSync(inpPath, "utf8");
+  const lines = text.split(/\r?\n/);
+  let inSection = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("[")) {
+      inSection = trimmed.toUpperCase() === "[OUTFALLS]";
+      continue;
+    }
+    if (!inSection) continue;
+    if (!trimmed || trimmed.startsWith(";")) continue;
+    const token = trimmed.split(/\s+/)[0];
+    if (token) return token;
+  }
+  return null;
+}
 const RptArgs = z.object({ rpt: z.string() });
 const CompareArgs = z.object({ rpt: z.string(), rpt2: z.string() });
 
@@ -70,13 +74,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "swmm_run",
-        description: "Run swmm5 on an INP and write rpt/out + manifest.json into runDir.",
+        description: "Run swmm5 on an INP and write rpt/out + manifest.json into runDir. When 'node' is omitted, auto-detect the first entry of the .inp [OUTFALLS] section so the manifest's peak metric targets the real outfall.",
         inputSchema: {
           type: "object",
           properties: {
             inp: { type: "string" },
             runDir: { type: "string" },
-            node: { type: "string", default: "O1" },
+            node: { type: "string", description: "Optional. If omitted, the first [OUTFALLS] entry of the .inp is used." },
             rptName: { type: "string" },
             outName: { type: "string" }
           },
@@ -85,11 +89,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "swmm_peak",
-        description: "Parse peak flow and time-of-peak for a node/outfall from a SWMM .rpt.",
+        description: "Parse peak flow and time-of-peak for a specific node/outfall from a SWMM .rpt. The node name must be supplied (no default).",
         inputSchema: {
           type: "object",
-          properties: { rpt: { type: "string" }, node: { type: "string", default: "O1" } },
-          required: ["rpt"]
+          properties: { rpt: { type: "string" }, node: { type: "string" } },
+          required: ["rpt", "node"]
         }
       },
       {
@@ -120,7 +124,17 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === "swmm_run") {
     const a = RunArgs.parse(raw ?? {});
     fs.mkdirSync(a.runDir, { recursive: true });
-    const args = ["run", "--inp", a.inp, "--run-dir", a.runDir, "--node", a.node];
+    let node = a.node;
+    if (!node) {
+      node = detectFirstOutfall(a.inp);
+      if (!node) {
+        throw new Error(
+          "swmm_run: 'node' not supplied and could not auto-detect from .inp [OUTFALLS]. " +
+          "Either pass node explicitly or ensure the .inp has a non-empty [OUTFALLS] section."
+        );
+      }
+    }
+    const args = ["run", "--inp", a.inp, "--run-dir", a.runDir, "--node", node];
     if (a.rptName) args.push("--rpt-name", a.rptName);
     if (a.outName) args.push("--out-name", a.outName);
     const stdout = await runPy(args);

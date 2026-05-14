@@ -50,7 +50,7 @@ The merge script writes:
 
 ## MCP
 MCP wrapper location:
-- `mcp/swmm-params/server.js`
+- `scripts/mcp/server.js`
 
 Exposed tools:
 - `map_landuse` (`inputCsvPath`, optional `lookupCsvPath`, `outputPath`)
@@ -59,8 +59,8 @@ Exposed tools:
 
 Quick start:
 ```bash
-npm --prefix mcp/swmm-params install
-npm --prefix mcp/swmm-params run start
+npm --prefix skills/swmm-params/scripts/mcp install
+npm --prefix skills/swmm-params/scripts/mcp run start
 ```
 
 ## MVP limitations
