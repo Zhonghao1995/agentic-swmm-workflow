@@ -13,11 +13,8 @@
 #   -Yes              Legacy alias for -Auto.
 #   -SkipPython       Skip Python venv + Python deps steps.
 #   -SkipMcp          Skip MCP server npm install step.
-#   -SkipSwmm         Skip SWMM engine install step.
-#   -SkipSetup        Skip aiswmm orchestration setup after installation.
 #   -Provider <name>  LLM provider to register (default: openai).
 #   -Model <name>     LLM model to register (default: gpt-5.5).
-#   -SwmmVersion <v>  USEPA SWMM version (default: 5.2.4).
 #
 # N at any prompt exits 0 with "Installation aborted." Failure at any
 # step prints a remediation hint and exits non-zero.
@@ -27,11 +24,8 @@ param(
     [switch]$Yes,
     [switch]$SkipPython,
     [switch]$SkipMcp,
-    [switch]$SkipSwmm,
-    [switch]$SkipSetup,
     [string]$Provider = "openai",
-    [string]$Model = "gpt-5.5",
-    [string]$SwmmVersion = "5.2.4"
+    [string]$Model = "gpt-5.5"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -255,6 +249,23 @@ function Do-ApiKey {
         '# Agentic SWMM local secrets. This file is dot-sourced by the installed aiswmm command.'
         "`$env:OPENAI_API_KEY = '$($apiKey -replace ""'"", ""''"")'"
     ) | Set-Content -Path $AiswmmEnvFile -Encoding ASCII
+    # Restrict ACL on the env file — mirror of `chmod 600` in install.sh.
+    # The previous version inherited the default ACL (world-readable on most
+    # workstations). Strip inheritance, drop all ACEs, then grant the current
+    # user FullControl only. P1-3 in #79.
+    try {
+        $acl = Get-Acl $AiswmmEnvFile
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) { $null = $acl.RemoveAccessRule($rule) }
+        $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+            $user, 'FullControl', 'Allow'
+        )
+        $acl.AddAccessRule($rule)
+        Set-Acl -Path $AiswmmEnvFile -AclObject $acl
+    } catch {
+        Write-Host "Warning: could not restrict ACL on $AiswmmEnvFile ($($_.Exception.Message))" -ForegroundColor Yellow
+    }
     Write-Host "Saved OpenAI API key to $AiswmmEnvFile"
 }
 

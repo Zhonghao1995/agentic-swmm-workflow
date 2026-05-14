@@ -37,11 +37,8 @@ Flags:
   --yes            Legacy alias for --auto (kept for compatibility).
   --skip-python    Skip Python venv + Python deps steps.
   --skip-mcp       Skip MCP server npm install step.
-  --skip-swmm      Skip SWMM engine install step.
-  --skip-setup     Skip aiswmm orchestration setup after installation.
   --provider NAME  LLM provider to register (default: openai).
   --model MODEL    LLM model to register (default: gpt-5.5).
-  --swmm-ref REF   USEPA SWMM Git ref (default: v5.2.4).
   --help, -h       Show this help message.
 USAGE
 }
@@ -53,28 +50,20 @@ USAGE
 INSTALL_AUTO=0
 SKIP_PYTHON=0
 SKIP_MCP=0
-SKIP_SWMM=0
-SKIP_SETUP=0
 AISWMM_PROVIDER="${AISWMM_PROVIDER:-openai}"
 AISWMM_MODEL="${AISWMM_MODEL:-gpt-5.5}"
-SWMM_REF="${SWMM_REF:-v5.2.4}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --auto|--yes) INSTALL_AUTO=1 ;;
     --skip-python) SKIP_PYTHON=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
-    --skip-swmm) SKIP_SWMM=1 ;;
-    --skip-setup) SKIP_SETUP=1 ;;
     --provider)
       [[ $# -ge 2 ]] || { print_failure "--provider requires a value"; exit 2; }
       AISWMM_PROVIDER="$2"; shift ;;
     --model)
       [[ $# -ge 2 ]] || { print_failure "--model requires a value"; exit 2; }
       AISWMM_MODEL="$2"; shift ;;
-    --swmm-ref)
-      [[ $# -ge 2 ]] || { print_failure "--swmm-ref requires a value"; exit 2; }
-      SWMM_REF="$2"; shift ;;
     --help|-h) show_help; exit 0 ;;
     *) print_failure "Unknown option: $1" "Run 'scripts/install.sh --help' for usage."; exit 2 ;;
   esac
