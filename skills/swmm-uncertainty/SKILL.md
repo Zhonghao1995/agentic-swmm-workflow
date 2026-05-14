@@ -1,6 +1,6 @@
 ---
 name: swmm-uncertainty
-description: Parameter uncertainty propagation for EPA SWMM, including fuzzy alpha-cut analysis, Monte Carlo sampling, and output-entropy summaries. Use when Zhonghao asks to propagate parameter uncertainty, quantify hydrograph envelopes, or calculate entropy-based uncertainty without treating the run as calibration unless observed data are present.
+description: Parameter uncertainty propagation and sensitivity analysis for EPA SWMM. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, or (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices.
 ---
 
 # SWMM Uncertainty
@@ -16,13 +16,14 @@ description: Parameter uncertainty propagation for EPA SWMM, including fuzzy alp
 - Batch propagation through SWMM by reusing the existing calibration patch-map convention.
 - Normalized Shannon entropy metrics for output ensembles, such as hydrograph entropy over time.
 - Machine-readable uncertainty summaries for output envelopes, entropy records, and failed/invalid samples.
+- Sensitivity-analysis screening with three sub-methods (OAT / Morris / Sobol') sharing one entry point (`scripts/sensitivity.py`).
 
 This skill is intentionally separate from `swmm-calibration`.
 
 - `swmm-calibration` asks: which parameter set best matches observations?
-- `swmm-uncertainty` asks: how much output uncertainty is induced by user-defined parameter uncertainty?
+- `swmm-uncertainty` asks: how much output uncertainty is induced by user-defined parameter uncertainty, and which parameters drive that uncertainty?
 
-Calibration requires observed data and performance metrics such as NSE, RMSE, or KGE. This skill can run without observed data when the task is prior uncertainty propagation. When calibration outputs exist, they can be used to narrow Monte Carlo ranges or define posterior-like parameter sets.
+Calibration requires observed data and performance metrics such as NSE, RMSE, or KGE. This skill can run without observed data when the task is prior uncertainty propagation. The sensitivity-analysis path *does* read an observed series (it scores trials by RMSE against observed flow), but it answers a different question from calibration: "which parameter spread matters?" rather than "which single set is best?". When calibration outputs exist, they can be used to narrow Monte Carlo ranges or define posterior-like parameter sets.
 
 ## Scripts
 
@@ -51,6 +52,25 @@ Calibration requires observed data and performance metrics such as NSE, RMSE, or
   - main CLI entry point
   - writes resolved fuzzy space, alpha intervals, parameter sets, trial INPs, and summary JSON
   - optionally executes SWMM and aggregates peak/continuity envelopes
+- `scripts/sensitivity.py`
+  - unified sensitivity-analysis entry point with three sub-methods
+    - `--method oat`: one-at-a-time perturbation around a baseline (port of the legacy `parameter_scout`)
+    - `--method morris`: Morris elementary-effects via SALib; sample budget `r * (k + 1)`; reports `mu_star` and `sigma` per parameter
+    - `--method sobol`: Sobol' indices via SALib (Saltelli sampling); sample budget `N * (2k + 2)`; reports first-order `S_i` and total-effect `S_T_i`
+  - writes a `sensitivity_indices.json` summary (typically under `runs/<case>/09_audit/`)
+  - the Morris and Sobol' paths require SALib (declared in `pyproject.toml`)
+
+## Sensitivity-analysis sub-modes
+
+The three modes share the patch-map workflow and the `--observed` series so that trials can be scored by RMSE against the same target flow node.
+
+| Sub-method | Config input              | Sample budget                | Output indices         |
+|------------|---------------------------|------------------------------|------------------------|
+| `oat`      | `base_params.json` + `scan_spec.json` (parameter -> list of trial values) | `sum_i len(scan_spec[i])` | `importance`, `recommended_direction`, `suggested_next_range` |
+| `morris`   | `parameter_space.json` (parameter -> `{min, max}`) | `r * (k + 1)`, `r = --morris-r` | `mu`, `mu_star`, `sigma`, `mu_star_conf` |
+| `sobol`    | `parameter_space.json` (parameter -> `{min, max}`) | `N * (2k + 2)`, `N = --sobol-n`, `calc_second_order=True` | `S_i` (first-order), `S_T_i` (total-effect), 95% conf |
+
+OAT is the cheapest, Morris is the standard screening method, and Sobol' decomposes variance into first-order and total-effect contributions (more expensive but more informative).
 
 ## Expected fuzzy workflow
 
@@ -176,6 +196,55 @@ python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py \
 ```
 
 This is a prior uncertainty smoke test, not calibration. It identifies perturbable parameters in the Tecnopolo HORTON prepared INP, applies small Monte Carlo perturbations, runs SWMM, optionally ranks all junction/outfall nodes by peak-flow spread, and writes `summary.json`, `parameter_recommendations.json`, trial outputs, a rainfall-plus-flow envelope figure, J6/OUT_0 entropy JSON files, and an entropy curve figure under `runs/benchmarks/tecnopolo-mc-uncertainty-smoke/`.
+
+### Sensitivity-analysis examples
+
+OAT (port of the legacy `parameter_scout`):
+
+```bash
+python3 skills/swmm-uncertainty/scripts/sensitivity.py \
+  --method oat \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --base-params examples/calibration/base_params.json \
+  --scan-spec examples/calibration/scan_spec.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/sensitivity-oat \
+  --summary-json runs/sensitivity-oat/09_audit/sensitivity_indices.json \
+  --swmm-node O1
+```
+
+Morris elementary-effects (`r=10` trajectories on a 4-parameter space gives 50 swmm5 calls):
+
+```bash
+python3 skills/swmm-uncertainty/scripts/sensitivity.py \
+  --method morris \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --parameter-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/sensitivity-morris \
+  --summary-json runs/sensitivity-morris/09_audit/sensitivity_indices.json \
+  --morris-r 10 \
+  --seed 42
+```
+
+Sobol' indices (`N=64` on a 4-parameter space gives 640 swmm5 calls; budget is `N*(2k+2)`):
+
+```bash
+python3 skills/swmm-uncertainty/scripts/sensitivity.py \
+  --method sobol \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --patch-map examples/calibration/patch_map.json \
+  --parameter-space examples/calibration/search_space.json \
+  --observed examples/calibration/observed_flow.csv \
+  --run-root runs/sensitivity-sobol \
+  --summary-json runs/sensitivity-sobol/09_audit/sensitivity_indices.json \
+  --sobol-n 64 \
+  --seed 42
+```
+
+All three modes share the same `--summary-json` schema header (`method`, `parameters`, `sample_budget`, `indices`). Per-parameter shapes differ by method (see the "Sensitivity-analysis sub-modes" table above).
 
 ## Outputs
 

@@ -21,6 +21,7 @@ MCP_SERVERS = [
     "swmm-params",
     "swmm-plot",
     "swmm-runner",
+    "swmm-uncertainty",
 ]
 
 LONG_TERM_MEMORY_FILES = [
