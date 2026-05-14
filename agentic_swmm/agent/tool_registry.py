@@ -161,6 +161,41 @@ def _build_tools() -> dict[str, ToolSpec]:
             _recall_memory_search_tool,
             is_read_only=True,
         ),
+        ToolSpec(
+            "recall_session_history",
+            (
+                "Search prior chat sessions in the SQLite session store for relevant past work.\n"
+                "USE WHEN: user mentions '上次/昨天/上周/before/previously/continue', or you need "
+                "to check whether a similar question / failure pattern has been encountered before.\n"
+                "DO NOT USE WHEN: question has no temporal cue and current-session context is sufficient."
+            ),
+            _object(
+                {
+                    "query": {"type": "string"},
+                    "case_name": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                ["query"],
+            ),
+            _recall_session_history_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "record_fact",
+            (
+                "Append a candidate project fact to the staging file for later user review.\n"
+                "USE WHEN: user just expressed a durable preference, project convention, or "
+                "confirmed fix recipe that future sessions should remember.\n"
+                "DO NOT USE WHEN: ephemeral state, file path, secret, or anything you are not "
+                "certain the user wants persisted."
+            ),
+            _object(
+                {"text": {"type": "string"}, "source_session_id": {"type": "string"}},
+                ["text"],
+            ),
+            _record_fact_tool,
+            is_read_only=False,
+        ),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
@@ -351,6 +386,92 @@ def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "excerpt": wrapped,
         "chars": len(wrapped),
         "summary": f"recall_memory_search: {len(results)} hit(s) for query (stale={stale})",
+    }
+
+
+_RECALL_SESSION_HISTORY_TOKEN_BUDGET = 1000
+
+
+def _recall_session_history_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Search prior chat sessions in the cross-session SQLite store.
+
+    The handler returns its payload wrapped in a ``<memory-context>``
+    fence (source ``"sessions"``) so the planner's prompt-injection
+    defences extend automatically to this new layer.
+    """
+    from agentic_swmm.memory import session_db as _session_db
+    from agentic_swmm.memory.context_fence import wrap as _wrap_fence
+    from agentic_swmm.memory.session_sync import default_db_path
+
+    query = str(call.args.get("query") or "").strip()
+    if not query:
+        return _failure(call, "query is required")
+    case_name = call.args.get("case_name")
+    case_name = str(case_name).strip() if isinstance(case_name, str) and case_name.strip() else None
+    limit = int(call.args.get("limit") or 5)
+
+    db_path = default_db_path()
+    if not db_path.exists():
+        wrapped = _wrap_fence("(no prior sessions recorded)", source="sessions", stale=False)
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": True,
+            "results": [],
+            "excerpt": wrapped,
+            "chars": len(wrapped),
+            "summary": "recall_session_history: store not initialised yet",
+        }
+
+    try:
+        with _session_db.connect(db_path) as conn:
+            hits = _session_db.search_messages(
+                conn, query, case_name=case_name, limit=limit
+            )
+    except Exception as exc:
+        return _failure(call, f"recall_session_history failed: {exc}")
+
+    rendered = json.dumps(hits, ensure_ascii=False, indent=2)
+    truncated = _truncate_to_token_budget(rendered, _RECALL_SESSION_HISTORY_TOKEN_BUDGET)
+    wrapped = _wrap_fence(truncated, source="sessions", stale=False)
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": hits,
+        "excerpt": wrapped,
+        "chars": len(wrapped),
+        "summary": f"recall_session_history: {len(hits)} session(s) matched query",
+    }
+
+
+def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Append a candidate fact block to ``facts_staging.md``.
+
+    This is the only write path the LLM has into the facts layer; the
+    user promotes from staging into ``facts.md`` manually via the
+    ``aiswmm memory promote-facts`` CLI. Marking the tool ``is_read_only=False``
+    keeps it out of ``Profile.QUICK`` auto-approve.
+    """
+    from agentic_swmm.memory import facts as _facts_mod
+
+    text = str(call.args.get("text") or "").strip()
+    if not text:
+        return _failure(call, "text is required")
+    source_id = call.args.get("source_session_id")
+    source_id = str(source_id).strip() if isinstance(source_id, str) and source_id.strip() else None
+    try:
+        staging_path = _facts_mod.record_fact_to_staging(
+            text, source_session_id=source_id
+        )
+    except Exception as exc:
+        return _failure(call, f"record_fact failed: {exc}")
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "path": str(staging_path),
+        "summary": "fact appended to staging; run `aiswmm memory promote-facts` to review",
     }
 
 
