@@ -26,11 +26,20 @@ def add_issue(issues: list[dict], severity: str, code: str, message: str, obj_id
 
 
 def summarize(network: dict) -> dict:
+    conduits = network.get("conduits", [])
+    junctions = network.get("junctions", [])
+    outfalls = network.get("outfalls", [])
+    system_layers = sorted({str(c.get("system_layer")) for c in conduits if c.get("system_layer")})
+    asset_types = sorted({str(c.get("asset_type")) for c in conduits if c.get("asset_type")})
     return {
-        "junction_count": len(network.get("junctions", [])),
-        "outfall_count": len(network.get("outfalls", [])),
-        "conduit_count": len(network.get("conduits", [])),
-        "total_conduit_length": float(sum(c.get("length", 0) for c in network.get("conduits", []))),
+        "junction_count": len(junctions),
+        "outfall_count": len(outfalls),
+        "conduit_count": len(conduits),
+        "total_conduit_length": float(sum(c.get("length", 0) for c in conduits)),
+        "inferred_junction_count": sum(1 for j in junctions if j.get("inferred")),
+        "system_layers": system_layers,
+        "asset_types": asset_types,
+        "dual_system_ready": bool((network.get("meta") or {}).get("dual_system_ready") or len(system_layers) > 1),
     }
 
 
@@ -90,6 +99,9 @@ def main() -> None:
             outgoing[fn] += 1
             incoming[tn] += 1
             graph[fn].append(tn)
+        layer = c.get("system_layer")
+        if layer and layer not in {"minor_pipe", "major_surface", "dual_link", "storm", "sanitary", "combined"}:
+            add_issue(issues, "warning", "unknown_system_layer", f"Unrecognized system_layer: {layer}", cid)
 
     for j in network.get("junctions", []):
         jid = j["id"]

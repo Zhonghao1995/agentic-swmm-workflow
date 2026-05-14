@@ -1,0 +1,3 @@
+subcatchment_id,outlet,area_ha,width_m,slope_pct,curb_length_m
+S_PIPE,J_AUTO_0p000_0p000,1.4,110,1.0,0
+S_STREET,J_AUTO_0p000_30p000,1.1,95,1.3,0

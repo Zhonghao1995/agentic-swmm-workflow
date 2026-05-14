@@ -1,0 +1,5 @@
+pipe_id,from_node,to_node,from_x,from_y,to_x,to_y,from_invert_m,to_invert_m,diameter_m,roughness,asset_type,system_layer,material
+P_MINOR_1,,J_PIPE_MID,0,0,100,0,100.0,99.35,0.6,0.013,storm,minor_pipe,concrete
+P_MINOR_2,J_PIPE_MID,OF_MAIN,100,0,210,0,99.35,98.7,0.75,0.013,storm,minor_pipe,concrete
+S_MAJOR_1,,STREET_LOW,0,30,100,30,101.0,100.55,1.2,0.025,storm,major_surface,asphalt_channel
+S_MAJOR_2,STREET_LOW,OF_MAIN,100,30,210,0,100.55,98.7,1.5,0.025,storm,major_surface,asphalt_channel

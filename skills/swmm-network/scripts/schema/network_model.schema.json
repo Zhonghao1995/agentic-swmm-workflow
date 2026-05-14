@@ -42,7 +42,14 @@
         "init_depth": { "type": "number", "default": 0 },
         "sur_depth": { "type": "number", "default": 0 },
         "aponded": { "type": "number", "default": 0 },
-        "coordinates": { "$ref": "#/$defs/coordinate" }
+        "coordinates": { "$ref": "#/$defs/coordinate" },
+        "asset_type": { "type": "string" },
+        "system_layer": {
+          "type": "string",
+          "enum": ["minor_pipe", "major_surface", "dual_link", "storm", "sanitary", "combined"]
+        },
+        "source_asset": { "type": "object", "additionalProperties": true },
+        "inferred": { "type": "boolean", "default": false }
       },
       "additionalProperties": true
     },
@@ -56,7 +63,13 @@
         "stage_data": { "type": ["string", "number", "null"] },
         "gated": { "type": "boolean", "default": false },
         "route_to": { "type": ["string", "null"] },
-        "coordinates": { "$ref": "#/$defs/coordinate" }
+        "coordinates": { "$ref": "#/$defs/coordinate" },
+        "asset_type": { "type": "string" },
+        "system_layer": {
+          "type": "string",
+          "enum": ["minor_pipe", "major_surface", "dual_link", "storm", "sanitary", "combined"]
+        },
+        "source_asset": { "type": "object", "additionalProperties": true }
       },
       "additionalProperties": true
     },
@@ -99,7 +112,15 @@
         "vertices": {
           "type": "array",
           "items": { "$ref": "#/$defs/vertex" }
-        }
+        },
+        "asset_type": { "type": "string" },
+        "system_layer": {
+          "type": "string",
+          "enum": ["minor_pipe", "major_surface", "dual_link", "storm", "sanitary", "combined"]
+        },
+        "material": { "type": "string" },
+        "source_asset": { "type": "object", "additionalProperties": true },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
       },
       "additionalProperties": true
     }

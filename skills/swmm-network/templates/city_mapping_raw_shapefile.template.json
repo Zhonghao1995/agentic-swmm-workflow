@@ -1,0 +1,74 @@
+{
+  "meta": {
+    "name": "<case-name>",
+    "source": "<municipal storm shapefile origin, e.g. Saanich StormWaterSHP>",
+    "evidence_boundary": "Imported from raw municipal LineString pipe layer + Point manhole layer. Junctions are inferred from pipe endpoints when not supplied; outfall must be supplied separately. Diameter / invert fallbacks declared in defaults below.",
+    "diameter_policy": "<describe: e.g. ignore raw DIAMETER when nonnumeric; substitute defaults.geom1>"
+  },
+  "dual_system_ready": false,
+  "coordinate_precision": 3,
+  "inference": {
+    "junction_prefix": "J_AUTO",
+    "max_depth": 2.5
+  },
+  "pipes": {
+    "fields": {
+      "id": "FACILITYID",
+      "shape": "CRSECSHAPE",
+      "material": "MATERIAL",
+      "source_id": "FACILITYID"
+    },
+    "defaults": {
+      "shape": "CIRCULAR",
+      "roughness": 0.013,
+      "geom1": 0.3,
+      "geom2": 0.0,
+      "geom3": 0.0,
+      "geom4": 0.0,
+      "barrels": 1,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "minimum_length": 1.0,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "from_invert_elev": 0.0,
+      "to_invert_elev": 0.0
+    }
+  },
+  "junctions": {
+    "fields": {
+      "id": "node_id",
+      "x": "x",
+      "y": "y",
+      "invert_elev": "invert_elev",
+      "max_depth": "max_depth",
+      "asset_type": "asset_type",
+      "system_layer": "system_layer"
+    },
+    "defaults": {
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  },
+  "outfalls": {
+    "fields": {
+      "id": "node_id",
+      "x": "x",
+      "y": "y",
+      "invert_elev": "invert_elev",
+      "type": "type",
+      "asset_type": "asset_type",
+      "system_layer": "system_layer"
+    },
+    "defaults": {
+      "type": "FREE",
+      "gated": false,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  }
+}

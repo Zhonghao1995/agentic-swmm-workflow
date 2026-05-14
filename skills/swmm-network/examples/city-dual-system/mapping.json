@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "name": "city-dual-system-demo",
+    "source": "structured urban asset export",
+    "evidence_boundary": "Synthetic structured city pipe/surface asset tables for adapter validation; not CAD drawing recognition."
+  },
+  "dual_system_ready": true,
+  "coordinate_precision": 3,
+  "inference": {
+    "junction_prefix": "J_AUTO",
+    "max_depth": 2.5
+  },
+  "pipes": {
+    "fields": {
+      "id": "pipe_id",
+      "from_node": "from_node",
+      "to_node": "to_node",
+      "from_x": "from_x",
+      "from_y": "from_y",
+      "to_x": "to_x",
+      "to_y": "to_y",
+      "from_invert_elev": "from_invert_m",
+      "to_invert_elev": "to_invert_m",
+      "diameter": "diameter_m",
+      "roughness": "roughness",
+      "asset_type": "asset_type",
+      "system_layer": "system_layer",
+      "material": "material"
+    },
+    "defaults": {
+      "shape": "CIRCULAR",
+      "roughness": 0.013,
+      "geom1": 0.6,
+      "geom2": 0.0,
+      "geom3": 0.0,
+      "geom4": 0.0,
+      "barrels": 1,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "minimum_length": 1.0,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  },
+  "junctions": {
+    "fields": {
+      "id": "node_id",
+      "x": "x",
+      "y": "y",
+      "invert_elev": "invert_elev",
+      "max_depth": "max_depth",
+      "asset_type": "asset_type",
+      "system_layer": "system_layer"
+    },
+    "defaults": {
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  },
+  "outfalls": {
+    "fields": {
+      "id": "node_id",
+      "x": "x",
+      "y": "y",
+      "invert_elev": "invert_elev",
+      "type": "type",
+      "asset_type": "asset_type",
+      "system_layer": "system_layer"
+    },
+    "defaults": {
+      "type": "FREE",
+      "gated": false,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  }
+}
