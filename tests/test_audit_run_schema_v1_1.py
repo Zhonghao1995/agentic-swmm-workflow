@@ -82,9 +82,11 @@ class SchemaBumpTests(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, proc.stderr)
             prov = json.loads((run_dir / "09_audit" / "experiment_provenance.json").read_text(encoding="utf-8"))
-            # PRD-Z: schema bumped 1.1 -> 1.2, human_decisions is optional.
-            self.assertEqual(prov["schema_version"], "1.2")
+            # PRD-CASE-ID: schema bumped 1.2 -> 1.3 to add an optional case_id.
+            # human_decisions remains an optional array (carried from PRD-Z).
+            self.assertEqual(prov["schema_version"], "1.3")
             self.assertEqual(prov["human_decisions"], [])
+            self.assertIsNone(prov.get("case_id"))
             self.assertTrue((run_dir / "09_audit" / "experiment_note.md").exists())
             self.assertTrue((run_dir / "09_audit" / "comparison.json").exists())
             # Legacy root-level paths must NOT be written by the bumped script.

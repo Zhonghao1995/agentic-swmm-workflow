@@ -1465,6 +1465,16 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--case-name", help="Optional human-readable case name.")
     ap.add_argument("--workflow-mode", help="Optional workflow mode label.")
     ap.add_argument("--objective", help="Optional run objective.")
+    # CONCURRENCY-OWNER: PRD-CASE-ID
+    ap.add_argument(
+        "--case-id",
+        default=None,
+        help=(
+            "Case identifier slug (PRD-CASE-ID). Pattern "
+            "^[a-z][a-z0-9-]{1,63}$. Recorded in experiment_provenance.json "
+            "alongside the run_id so every run is addressable by case."
+        ),
+    )
     ap.add_argument("--out-provenance", type=Path, help="Output path for experiment_provenance.json.")
     ap.add_argument("--out-comparison", type=Path, help="Output path for comparison.json.")
     ap.add_argument("--out-note", type=Path, help="Output path for experiment_note.md.")
@@ -1537,6 +1547,63 @@ def _load_preserved_human_decisions(audit_dir: Path) -> list[Any]:
             if isinstance(value, list) and value:
                 return value
     return []
+
+
+# CONCURRENCY-OWNER: PRD-CASE-ID
+_CASE_ID_RE = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
+
+
+# CONCURRENCY-OWNER: PRD-CASE-ID
+def _validate_case_id_or_exit(value: str) -> None:
+    """Validate a slug or exit non-zero with a clear message.
+
+    Duplicated from ``agentic_swmm.case.case_id`` so the audit script
+    stays self-contained — it is run as a subprocess and must not
+    depend on the parent package being importable. The pattern is the
+    single source of truth in the PRD; both copies must stay aligned.
+    """
+    if not isinstance(value, str) or not _CASE_ID_RE.match(value):
+        print(
+            f"error: --case-id {value!r} is not a valid slug "
+            "(pattern ^[a-z][a-z0-9-]{1,63}$).",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
+# CONCURRENCY-OWNER: PRD-CASE-ID
+def _load_preserved_case_id(audit_dir: Path) -> str | None:
+    """Return ``case_id`` carried over from a prior audit, or ``None``.
+
+    Mirror of :func:`_load_preserved_human_decisions` for the
+    case_id field. Re-auditing a run without ``--case-id`` keeps the
+    case linkage stable: the modeller declared it once, and a
+    re-audit (e.g. after a script bug-fix) should not lose that
+    assertion. Pre-PRD provenance files (v1.2 with no case_id) are
+    treated as the absence of an assertion -> returns ``None``.
+    """
+    candidates: list[Path] = []
+    canonical = audit_dir / "experiment_provenance.json"
+    if canonical.is_file():
+        candidates.append(canonical)
+    if audit_dir.is_dir():
+        backups = sorted(
+            audit_dir.glob("experiment_provenance.*.json.bak"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        candidates.extend(backups)
+    for path in candidates:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        value = payload.get("case_id")
+        if isinstance(value, str) and _CASE_ID_RE.match(value):
+            return value
+    return None
 
 
 def render_human_decisions_section(decisions: list[Any]) -> str:
@@ -1713,8 +1780,17 @@ def main() -> None:
 
     # PRD-Z: preserve human_decisions across re-audit and bump schema to 1.2.
     preserved_decisions = _load_preserved_human_decisions(audit_dir)
-    provenance["schema_version"] = "1.2"
+    # CONCURRENCY-OWNER: PRD-CASE-ID
+    # Schema 1.2 -> 1.3 adds an optional ``case_id`` field. The bump is
+    # back-compat: missing case_id is null. Re-audit preserves the
+    # previously-recorded case_id when --case-id is omitted, mirroring
+    # the human_decisions preservation pattern above.
+    preserved_case_id = _load_preserved_case_id(audit_dir)
+    if args.case_id is not None:
+        _validate_case_id_or_exit(args.case_id)
+    provenance["schema_version"] = "1.3"
     provenance["human_decisions"] = preserved_decisions
+    provenance["case_id"] = args.case_id or preserved_case_id
     obsidian_note = None
     if args.obsidian_dir and not args.no_obsidian:
         note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"
