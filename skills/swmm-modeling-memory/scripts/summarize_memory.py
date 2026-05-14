@@ -646,13 +646,17 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
     failure_counts = Counter()
     qa_counts = Counter()
     comparison_counts = Counter()
+    pattern_runs: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         failure_counts.update(record["failure_patterns"])
         qa_counts.update([record["qa_status"]])
         comparison_counts.update([record["comparison_status"]])
+        for pattern in record["failure_patterns"]:
+            pattern_runs.setdefault(pattern, []).append(record)
 
     successful = [r for r in records if r["failure_patterns"] == ["no_detected_failure"]]
     lines = [
+        "<!-- schema_version: 1.1 -->",
         "# Lessons Learned",
         "",
         f"Generated at UTC: `{generated_at}`",
@@ -710,6 +714,40 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
     else:
         lines.append("- No run was classified as `no_detected_failure`.")
     lines.append("")
+
+    # PRD M1 contract: emit a per-pattern '## <pattern>' section so
+    # recall_memory(pattern) can locate the relevant lesson fragment
+    # by exact heading match. Sections are intentionally short
+    # (<= ~400 estimated tokens) so the tool_registry truncator keeps
+    # the planner context tight.
+    for pattern, runs in sorted(pattern_runs.items()):
+        if pattern == "no_detected_failure":
+            continue
+        lines.extend([f"## {pattern}", ""])
+        lines.append(
+            f"Observed in {len(runs)} run(s): "
+            + ", ".join(f"`{r['run_id']}`" for r in runs[:8])
+            + ("." if len(runs) <= 8 else f", and {len(runs) - 8} more.")
+        )
+        lines.append("")
+        cautions: list[str] = []
+        for record in runs:
+            for caution in record.get("next_run_cautions", []) or []:
+                if caution and caution not in cautions:
+                    cautions.append(caution)
+            if len(cautions) >= 5:
+                break
+        if cautions:
+            lines.append("Next-run cautions surfaced by past audits:")
+            for caution in cautions[:5]:
+                lines.append(f"- {caution}")
+            lines.append("")
+        lines.append(
+            f"Recall this section via `recall_memory(\"{pattern}\")` "
+            "or by searching with `recall_memory_search`."
+        )
+        lines.append("")
+
     return "\n".join(lines)
 
 

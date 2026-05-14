@@ -129,6 +129,38 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("plot_run", "Create a rainfall-runoff plot from a run directory using selected rainfall series, node, and node output attribute.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool, is_read_only=True),
+        ToolSpec(
+            "recall_memory",
+            (
+                "Look up the lesson section for an exact failure_pattern name "
+                "from memory/modeling-memory/lessons_learned.md.\n"
+                "USE WHEN: you know the exact failure_pattern name (e.g. "
+                "'peak_flow_parse_missing') and want a precise lookup.\n"
+                "DO NOT USE WHEN: user is chatting, or the question is general "
+                "(prefer recall_memory_search)."
+            ),
+            _object({"pattern": {"type": "string"}}, ["pattern"]),
+            _recall_memory_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "recall_memory_search",
+            (
+                "Retrieve the top-k most similar historical entries from the "
+                "RAG corpus (memory/rag-memory/) for a natural-language query.\n"
+                "USE WHEN: you have a natural-language question or do not know "
+                "the failure_pattern name. Returns up to top-k entries with "
+                "run_id, source_path, case_name, score, and matched_terms.\n"
+                "DO NOT USE WHEN: you have an exact pattern name (prefer "
+                "recall_memory) or the question is unrelated to past runs."
+            ),
+            _object(
+                {"query": {"type": "string"}, "top_k": {"type": "integer"}},
+                ["query"],
+            ),
+            _recall_memory_search_tool,
+            is_read_only=True,
+        ),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
@@ -198,6 +230,128 @@ def _summarize_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if call.args.get("out_dir"):
         command.extend(["--out-dir", str(call.args["out_dir"])])
     return _run_cli_tool(call, session_dir, command)
+
+
+# -- Memory recall tools (PRD M1, M6, M7.1) -----------------------------------
+
+
+_RECALL_PATTERN_TOKEN_BUDGET = 500
+_RECALL_SEARCH_TOKEN_BUDGET = 1000
+
+
+def _estimated_tokens(text: str) -> int:
+    """Cheap word/4 token estimator; PRD uses this same heuristic for limits."""
+    return max(1, len(text.split())) if text else 0
+
+
+def _truncate_to_token_budget(text: str, budget: int) -> str:
+    if not text:
+        return text
+    if _estimated_tokens(text) <= budget:
+        return text
+    words = text.split()
+    return " ".join(words[: max(1, budget)]) + "\n...[truncated]"
+
+
+def _lessons_path() -> Path:
+    """Resolve the curated lessons file path.
+
+    Reads from ``AISWMM_LESSONS_PATH`` when set (tests use this); otherwise
+    falls back to the runtime memory registry record so that Memory and
+    Runtime share one source of truth.
+    """
+    import os as _os
+
+    override = _os.environ.get("AISWMM_LESSONS_PATH")
+    if override:
+        return Path(override)
+    return repo_root() / "memory" / "modeling-memory" / "lessons_learned.md"
+
+
+def _rag_index_dir() -> Path:
+    import os as _os
+
+    override = _os.environ.get("AISWMM_RAG_DIR")
+    if override:
+        return Path(override)
+    return repo_root() / "memory" / "rag-memory"
+
+
+def _recall_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    from agentic_swmm.memory.context_fence import wrap as _wrap_fence
+    from agentic_swmm.memory.recall import recall as _recall
+
+    pattern = str(call.args.get("pattern") or "").strip()
+    if not pattern:
+        return _failure(call, "pattern is required")
+
+    section = _recall(pattern, _lessons_path())
+    if not section:
+        wrapped = _wrap_fence("", source="lessons", stale=False)
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": True,
+            "results": {"pattern": pattern, "layer": "curated", "found": False},
+            "excerpt": wrapped,
+            "chars": len(wrapped),
+            "summary": f"recall_memory: no match for pattern '{pattern}'",
+        }
+
+    truncated = _truncate_to_token_budget(section, _RECALL_PATTERN_TOKEN_BUDGET)
+    wrapped = _wrap_fence(truncated, source="lessons", stale=False)
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": {"pattern": pattern, "layer": "curated", "found": True},
+        "excerpt": wrapped,
+        "chars": len(wrapped),
+        "summary": f"recall_memory: matched '{pattern}' ({_estimated_tokens(truncated)} est. tokens)",
+    }
+
+
+def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    from agentic_swmm.memory.context_fence import wrap as _wrap_fence
+
+    query = str(call.args.get("query") or "").strip()
+    if not query:
+        return _failure(call, "query is required")
+    top_k = int(call.args.get("top_k") or 3)
+
+    try:
+        from agentic_swmm.memory.recall_search import recall_search as _recall_search
+    except Exception as exc:
+        return _failure(call, f"recall_memory_search backend unavailable: {exc}")
+
+    index_dir = _rag_index_dir()
+    corpus_path = index_dir / "corpus.jsonl"
+    lessons_path = _lessons_path()
+
+    try:
+        results = _recall_search(
+            query,
+            top_k=top_k,
+            index_dir=index_dir,
+            corpus_path=corpus_path,
+            lessons_path=lessons_path,
+        )
+    except Exception as exc:
+        return _failure(call, f"recall_memory_search failed: {exc}")
+
+    stale = any(bool(result.get("warning")) for result in results)
+    rendered = json.dumps(results, ensure_ascii=False, indent=2)
+    truncated = _truncate_to_token_budget(rendered, _RECALL_SEARCH_TOKEN_BUDGET)
+    wrapped = _wrap_fence(truncated, source="rag", stale=stale)
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": results,
+        "excerpt": wrapped,
+        "chars": len(wrapped),
+        "summary": f"recall_memory_search: {len(results)} hit(s) for query (stale={stale})",
+    }
 
 
 def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

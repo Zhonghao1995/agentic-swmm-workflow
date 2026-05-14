@@ -1,43 +1,68 @@
-# Skill Update Proposals
+# Skill update proposals
 
-Generated at UTC: `2026-05-06T10:16:48+00:00`
+## continuity_parse_missing
 
-Agentic SWMM is not only an automation workflow; it is a memory-informed, verification-first modeling system that can learn from audited modeling history through controlled skill refinement.
+### Relevant skills
+- _(no skill SKILL.md mentions this pattern; manual triage required)_
 
-This document is only a proposal. It is not an automatic skill update and it is not evidence of correctness.
+### Evidence runs
+- [[tecnopolo-lid-placement-smoke]]
+- [[tecnopolo-mc-uncertainty-smoke]]
+- [[runner-fixed]]
+- [[runner-check]]
+- [[real-todcreek-minimal]]
 
-The modeling-memory skill analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.
+### Proposed change
+<!-- LLM-TODO: produce a concrete diff against the relevant SKILL.md based on the evidence runs. Trigger via: aiswmm memory --propose --pattern=continuity_parse_missing -->
 
-Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified.
+### Required control
+All skill updates require human review and benchmark verification before merge. This is a proposal, not an auto-applied edit.
 
-## `continuity_parse_missing`
+## missing_inp
 
-- Potential skill or workflow step: Continuity parsing
-- Relevant workflow skill(s): `swmm-runner`, `swmm-experiment-audit`
-- Why it may need improvement: Check whether continuity tables are absent, malformed, or not referenced in the run manifest.
-- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`
-- Required control: human review plus benchmark verification before accepting any skill refinement.
+### Relevant skills
+- _(no skill SKILL.md mentions this pattern; manual triage required)_
 
-## `missing_inp`
+### Evidence runs
+- [[runner-fixed]]
+- [[runner-check]]
 
-- Potential skill or workflow step: SWMM build/input handoff
-- Relevant workflow skill(s): `swmm-builder`, `swmm-end-to-end`
-- Why it may need improvement: Ensure the workflow records where the runnable INP should be produced before SWMM execution.
-- Evidence runs: `runner-check`, `runner-fixed`
-- Required control: human review plus benchmark verification before accepting any skill refinement.
+### Proposed change
+<!-- LLM-TODO: produce a concrete diff against the relevant SKILL.md based on the evidence runs. Trigger via: aiswmm memory --propose --pattern=missing_inp -->
 
-## `partial_run`
+### Required control
+All skill updates require human review and benchmark verification before merge. This is a proposal, not an auto-applied edit.
 
-- Potential skill or workflow step: Workflow stop handling
-- Relevant workflow skill(s): `swmm-end-to-end`, `swmm-experiment-audit`
-- Why it may need improvement: Make partial-run handoff to audit explicit so incomplete evidence is still reusable.
-- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`
-- Required control: human review plus benchmark verification before accepting any skill refinement.
+## partial_run
 
-## `peak_flow_parse_missing`
+### Relevant skills
+- _(no skill SKILL.md mentions this pattern; manual triage required)_
 
-- Potential skill or workflow step: Peak-flow parsing
-- Relevant workflow skill(s): `swmm-runner`, `swmm-experiment-audit`
-- Why it may need improvement: Check whether the correct SWMM report section is available and whether the parser should report a clearer boundary.
-- Evidence runs: `runner-check`, `runner-fixed`
-- Required control: human review plus benchmark verification before accepting any skill refinement.
+### Evidence runs
+- [[tecnopolo-lid-placement-smoke]]
+- [[tecnopolo-mc-uncertainty-smoke]]
+- [[runner-fixed]]
+- [[runner-check]]
+- [[real-todcreek-minimal]]
+
+### Proposed change
+<!-- LLM-TODO: produce a concrete diff against the relevant SKILL.md based on the evidence runs. Trigger via: aiswmm memory --propose --pattern=partial_run -->
+
+### Required control
+All skill updates require human review and benchmark verification before merge. This is a proposal, not an auto-applied edit.
+
+## peak_flow_parse_missing
+
+### Relevant skills
+- _(no skill SKILL.md mentions this pattern; manual triage required)_
+
+### Evidence runs
+- [[runner-fixed]]
+- [[runner-check]]
+
+### Proposed change
+<!-- LLM-TODO: produce a concrete diff against the relevant SKILL.md based on the evidence runs. Trigger via: aiswmm memory --propose --pattern=peak_flow_parse_missing -->
+
+### Required control
+All skill updates require human review and benchmark verification before merge. This is a proposal, not an auto-applied edit.
+
