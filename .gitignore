@@ -2,16 +2,17 @@
 __pycache__/
 *.pyc
 .venv/
-.local/
-build/
-dist/
-*.egg-info/
-.coverage
-coverage.xml
-integrations/mcp/generated/
 
 # Node
 node_modules/
+mcp/*/node_modules/
+
+# MCP server run artifacts
+mcp/*/runs/
+
+# Local-only
+.claude/
+data/Saanich/
 
 # Outputs
 *.out
@@ -23,11 +24,85 @@ data/
 runs/*
 !runs/README.md
 
+# Small reproducible Tod Creek raw-GIS case used by swmm-gis/QGIS examples.
+!data/
+!data/Todcreek/
+!data/Todcreek/Boundary/
+!data/Todcreek/Boundary/*
+!data/Todcreek/Geolayer/
+!data/Todcreek/Geolayer/*
+!data/Todcreek/Rainfall/
+!data/Todcreek/Rainfall/*
+!data/Todcreek/Flow/
+!data/Todcreek/Flow/*
+data/Todcreek/.DS_Store
+data/Todcreek/*.geojson
+data/Todcreek/**/*.png
+
 # Docs / figures (keep tracked)
 !docs/
 !docs/figs/
 !docs/figs/*.png
 !docs/figs/*.pdf
 
+# Framework validation evidence (committed lock-ins under docs/)
+!docs/framework-validation/
+!docs/framework-validation/**/*.png
+!docs/framework-validation/**/*.rpt
+!docs/framework-validation/**/*.out
+!docs/framework-validation/**/*.pdf
+
 # OS
 .DS_Store
+
+# ---------------------------------------------------------------------------
+# Paper IP — local-only files, do NOT commit (until papers published).
+# Two papers in progress:
+#   - entropy partition paper (QGIS entropy + MC + entropy metrics)
+#   - LID-entropy paper (LID optimization)
+# These paths exist locally for the maintainer's research; cloners will not see them.
+# Mirror of scripts/check_package_boundary.py FORBIDDEN_SUBSTRINGS.
+
+# LID-entropy paper
+skills/swmm-lid-optimization/
+docs/lid-entropy-decision-support-plan.md
+docs/lid-optimization-workflow.md
+scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py
+docs/figs/tecnopolo_lid_placement_smoke.png
+
+# entropy paper — QGIS entropy partition
+skills/swmm-gis/scripts/flowpath_entropy_partition.py
+skills/swmm-gis/scripts/cell_entropy_similarity_aggregation.py
+skills/swmm-gis/scripts/plot_entropy_threshold_sensitivity.py
+skills/swmm-gis/scripts/qgis_raw_to_entropy_partition.py
+skills/swmm-gis/scripts/qgis_todcreek_raw_to_entropy_partition.py
+docs/qgis-entropy-subcatchment-workflow.md
+docs/qgis-entropy-subcatchment-mcp-skill-plan.md
+tests/test_flowpath_entropy_partition.py
+tests/test_cell_entropy_similarity_aggregation.py
+
+# entropy paper — MC + entropy metrics
+skills/swmm-uncertainty/scripts/monte_carlo_propagate.py
+skills/swmm-uncertainty/scripts/entropy_metrics.py
+skills/swmm-uncertainty/scripts/parameter_recommender.py
+skills/swmm-uncertainty/scripts/probabilistic_sampling.py
+skills/swmm-uncertainty/tests/test_monte_carlo_propagate.py
+skills/swmm-uncertainty/tests/test_entropy_metrics.py
+skills/swmm-uncertainty/tests/test_parameter_recommender.py
+skills/swmm-uncertainty/tests/test_probabilistic_sampling.py
+skills/swmm-uncertainty/examples/entropy_ensemble.json
+skills/swmm-uncertainty/examples/monte_carlo_space.json
+scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py
+docs/figs/tecnopolo_mc_entropy_curves.png
+docs/figs/tecnopolo_mc_uncertainty_flow_envelope.png
+docs/calibration-uncertainty-workflow.md
+
+# RAG memory (paper IP / project-specific logic)
+skills/swmm-rag-memory/
+tests/test_swmm_rag_memory.py
+docs/obsidian-compatible-rag-memory.md
+
+# Research data / language indices
+memory/rag-memory/
+memory/modeling-memory/projects/
+memory/modeling-memory/run_memory_summaries.json
