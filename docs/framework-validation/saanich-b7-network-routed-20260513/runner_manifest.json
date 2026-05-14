@@ -1,0 +1,101 @@
+{
+  "manifest_version": "1.0",
+  "created_at": "2026-05-13T15:59:13.635904",
+  "swmm5": {
+    "cmd": "swmm5",
+    "version": "5.2.4"
+  },
+  "inp": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-155728-saanich-b7-network-routed/05_builder/model.inp",
+  "inp_sha256": "a894671d8ac2a31d698d242d596b994618fcc2795c2a0be7b4e7b47b1cbfeda8",
+  "files": {
+    "rpt": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-155728-saanich-b7-network-routed/06_runner/model.rpt",
+    "out": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-155728-saanich-b7-network-routed/06_runner/model.out",
+    "stdout": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-155728-saanich-b7-network-routed/06_runner/stdout.txt",
+    "stderr": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-155728-saanich-b7-network-routed/06_runner/stderr.txt"
+  },
+  "metrics": {
+    "peak": {
+      "node": "OUT1",
+      "peak": 0.0,
+      "time_hhmm": "00:00",
+      "source": "Node Inflow Summary"
+    },
+    "continuity": {
+      "runoff_quantity": {
+        "Total Precipitation": {
+          "col1": 0.092,
+          "col2": 26.208
+        },
+        "Evaporation Loss": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Infiltration Loss": {
+          "col1": 0.055,
+          "col2": 15.628
+        },
+        "Surface Runoff": {
+          "col1": 0.037,
+          "col2": 10.536
+        },
+        "Final Storage": {
+          "col1": 0.0,
+          "col2": 0.09
+        },
+        "Continuity Error (%)": -0.171
+      },
+      "flow_routing": {
+        "Dry Weather Inflow": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Wet Weather Inflow": {
+          "col1": 0.037,
+          "col2": 0.369
+        },
+        "Groundwater Inflow": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "RDII Inflow": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "External Inflow": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "External Outflow": {
+          "col1": 0.037,
+          "col2": 0.369
+        },
+        "Flooding Loss": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Evaporation Loss": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Exfiltration Loss": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Initial Stored Volume": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Final Stored Volume": {
+          "col1": 0.0,
+          "col2": 0.0
+        },
+        "Continuity Error (%)": 0.0
+      },
+      "continuity_error_percent": {
+        "runoff_quantity": -0.171,
+        "flow_routing": 0.0
+      }
+    }
+  },
+  "return_code": 0
+}

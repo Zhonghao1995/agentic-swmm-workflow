@@ -1,0 +1,145 @@
+{
+  "skill": "swmm-end-to-end",
+  "mode": "MCP-first framework smoke test mode",
+  "tool_transport": "mcp",
+  "case": "20260513-030729-saanich-framework-smoke",
+  "evidence_boundary": "Smoke re-run after mcp/ top-level restructure. Reuses baseline 00_raw + preprocessed inputs to isolate MCP transport health from data-prep changes.",
+  "baseline_case": "20260513-014020-saanich-framework-smoke",
+  "mcp_tool_calls": [
+    {
+      "tool": "swmm-gis-mcp.qgis_area_weighted_params",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/01_qgis_area_weighted_params.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/02_params/area_weighted/weighted_params.json",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/02_params/area_weighted/landuse_area_weights.csv",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/02_params/area_weighted/soil_area_weights.csv"
+      ]
+    },
+    {
+      "tool": "swmm-climate-mcp.format_rainfall",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/02_format_rainfall.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/03_climate/rainfall.json",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/03_climate/timeseries.txt"
+      ]
+    },
+    {
+      "tool": "swmm-network-mcp.import_city_network",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/03_import_city_network.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/04_network/network.json"
+      ]
+    },
+    {
+      "tool": "swmm-network-mcp.qa",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/04_network_qa.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/04_network_qa.json"
+      ]
+    },
+    {
+      "tool": "swmm-builder-mcp.build_inp",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/05_build_inp.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/05_builder/model.inp",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/05_builder/manifest.json"
+      ]
+    },
+    {
+      "tool": "swmm-runner-mcp.swmm_run",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/06_swmm_run.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/06_runner/model.rpt",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/06_runner/model.out",
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/06_runner/manifest.json"
+      ]
+    },
+    {
+      "tool": "swmm-runner-mcp.swmm_continuity",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/07_swmm_continuity.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/07_swmm_continuity.json"
+      ]
+    },
+    {
+      "tool": "swmm-runner-mcp.swmm_peak",
+      "transport": "mcp_stdio",
+      "status": "ok",
+      "response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/08_swmm_peak.json",
+      "outputs": [
+        "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/08_swmm_peak.json"
+      ]
+    }
+  ],
+  "missing_or_fallback_inputs": [
+    {
+      "id": "soil_layer_missing",
+      "value_used": "uniform loam polygon covering selected basin",
+      "impact": "Green-Ampt parameters are smoke-test defaults, not local soil evidence."
+    },
+    {
+      "id": "diameter_non_numeric",
+      "value_used": "default circular geom1=0.3 m after Saanich DIAMETER contained Other",
+      "impact": "Network hydraulics are runnable but not asset-faithful for affected pipes."
+    },
+    {
+      "id": "outfall_layer_missing",
+      "value_used": "endpoint nearest watercourse selected as OUT1",
+      "impact": "Network outlet is inferred for framework testing."
+    },
+    {
+      "id": "invert_elevation_missing",
+      "value_used": "0.0 m invert elevations",
+      "impact": "SWMM reported minimum elevation drop warnings."
+    },
+    {
+      "id": "rainfall_shortened",
+      "value_used": "1984-04-09 through 1984-04-13 event window",
+      "impact": "Short framework test, not full 1984 simulation."
+    },
+    {
+      "id": "slope_missing",
+      "value_used": "1 percent subcatchment slope",
+      "impact": "Hydrology is runnable smoke-test approximation."
+    }
+  ],
+  "framework_gaps": [
+    {
+      "id": "saanich_diameter_fallback",
+      "needed": "Network MCP should tolerate nonnumeric diameter fields with configured fallback and audit warning."
+    },
+    {
+      "id": "saanich_landuse_lookup_coverage",
+      "needed": "Params lookup should cover Saanich zoning classes such as Single Family and Industrial."
+    },
+    {
+      "id": "runner_metric_json_tools",
+      "needed": "swmm_runner continuity/peak MCP responses are captured as raw MCP responses; dedicated outputPath support would make stage artifacts cleaner."
+    },
+    {
+      "id": "soil_absence_policy",
+      "needed": "End-to-end skill should require explicit fallback declaration when no soil layer exists."
+    }
+  ],
+  "comparison_to_baseline": {
+    "baseline_case": "20260513-014020-saanich-framework-smoke",
+    "model_inp_diff_lines": 0,
+    "peak_match": true,
+    "continuity_match": true,
+    "all_mcp_calls_ok": true
+  }
+}

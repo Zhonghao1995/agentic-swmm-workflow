@@ -1,0 +1,368 @@
+{
+  "meta": {
+    "name": "saanich-b8-colquitz",
+    "source": "Saanich StormWaterSHP, OBJECTID=100",
+    "evidence_boundary": "Imported from raw municipal LineString pipe layer + Point manhole layer. Junctions are inferred from pipe endpoints when not supplied; outfall must be supplied separately. Diameter / invert fallbacks declared in defaults below.",
+    "diameter_policy": "DIAMETER nonnumeric -> defaults.geom1=0.3m",
+    "adapter": "city_network_adapter",
+    "dual_system_ready": false,
+    "system_layers": [
+      "minor_pipe"
+    ],
+    "sources": {
+      "pipes_csv": null,
+      "pipes_geojson": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+      "junctions_csv": null,
+      "junctions_geojson": null,
+      "outfalls_csv": null,
+      "outfalls_geojson": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/outfalls.geojson"
+    },
+    "source_hashes": {
+      "pipes_csv": null,
+      "pipes_geojson": "3c1f4ea2ed3cb59bd9633a8bbd514361c365ade419e4574941122e8a21e06b44",
+      "junctions_csv": null,
+      "junctions_geojson": null,
+      "outfalls_csv": null,
+      "outfalls_geojson": "cf644b98084a10d0407188e3b3754bfdd2ae4851d87d60e86df61fef588f30df"
+    },
+    "counts": {
+      "pipes": 6,
+      "explicit_junctions": 0,
+      "explicit_outfalls": 1,
+      "inferred_junctions": 7
+    }
+  },
+  "junctions": [
+    {
+      "id": "J_AUTO_473315p611_5369254p705",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473315.6113937497,
+        "y": 5369254.70545
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004945",
+        "coordinate_key": "473315.611,5369254.705"
+      }
+    },
+    {
+      "id": "J_AUTO_473340p667_5369264p343",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473340.66706249956,
+        "y": 5369264.342993749
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004945",
+        "coordinate_key": "473340.667,5369264.343"
+      }
+    },
+    {
+      "id": "J_AUTO_473377p178_5369208p711",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473377.17758749984,
+        "y": 5369208.711368751
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004949",
+        "coordinate_key": "473377.178,5369208.711"
+      }
+    },
+    {
+      "id": "J_AUTO_473406p306_5369277p442",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473406.3058187496,
+        "y": 5369277.4417062495
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004946",
+        "coordinate_key": "473406.306,5369277.442"
+      }
+    },
+    {
+      "id": "J_AUTO_473408p664_5369216p380",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473408.66368749994,
+        "y": 5369216.379614063
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004949",
+        "coordinate_key": "473408.664,5369216.380"
+      }
+    },
+    {
+      "id": "J_AUTO_473439p648_5369218p479",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473439.6480468749,
+        "y": 5369218.479240625
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM004948",
+        "coordinate_key": "473439.648,5369218.479"
+      }
+    },
+    {
+      "id": "J_AUTO_473448p553_5369219p260",
+      "invert_elev": 0.0,
+      "max_depth": 2.5,
+      "init_depth": 0.0,
+      "sur_depth": 0.0,
+      "aponded": 0.0,
+      "coordinates": {
+        "x": 473448.55344999954,
+        "y": 5369219.260443751
+      },
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "inferred": true,
+      "source_asset": {
+        "kind": "inferred_junction",
+        "source_pipe": "DGM021686",
+        "coordinate_key": "473448.553,5369219.260"
+      }
+    }
+  ],
+  "outfalls": [
+    {
+      "id": "OUT1",
+      "invert_elev": 0.0,
+      "coordinates": {
+        "x": 473446.76963749994,
+        "y": 5369275.976500001
+      },
+      "source_asset": {
+        "kind": "outfall",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/outfalls.geojson",
+        "source_id": "OUT1"
+      },
+      "type": "FREE",
+      "stage_data": null,
+      "gated": false,
+      "route_to": null,
+      "asset_type": "storm",
+      "system_layer": "minor_pipe"
+    }
+  ],
+  "conduits": [
+    {
+      "id": "DGM004949",
+      "from_node": "J_AUTO_473377p178_5369208p711",
+      "to_node": "J_AUTO_473408p664_5369216p380",
+      "length": 32.40642651355475,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Ductile Iron",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM004949"
+      }
+    },
+    {
+      "id": "DGM004948",
+      "from_node": "J_AUTO_473408p664_5369216p380",
+      "to_node": "J_AUTO_473439p648_5369218p479",
+      "length": 31.055417523829682,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Ductile Iron",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM004948"
+      }
+    },
+    {
+      "id": "DGM021686",
+      "from_node": "J_AUTO_473439p648_5369218p479",
+      "to_node": "J_AUTO_473448p553_5369219p260",
+      "length": 8.93960195622248,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Non Reinforced Concrete",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM021686"
+      }
+    },
+    {
+      "id": "DGM004945",
+      "from_node": "J_AUTO_473315p611_5369254p705",
+      "to_node": "J_AUTO_473340p667_5369264p343",
+      "length": 26.845274929066417,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Poly Vinyl Chloride",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM004945"
+      }
+    },
+    {
+      "id": "DGM004946",
+      "from_node": "J_AUTO_473340p667_5369264p343",
+      "to_node": "J_AUTO_473406p306_5369277p442",
+      "length": 66.93297088291779,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Poly Vinyl Chloride",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM004946"
+      }
+    },
+    {
+      "id": "DGM004947",
+      "from_node": "J_AUTO_473406p306_5369277p442",
+      "to_node": "OUT1",
+      "length": 40.49033782536145,
+      "roughness": 0.013,
+      "in_offset": 0.0,
+      "out_offset": 0.0,
+      "init_flow": 0.0,
+      "max_flow": null,
+      "xsection": {
+        "shape": "CIRCULAR",
+        "geom1": 0.3,
+        "geom2": 0.0,
+        "geom3": 0.0,
+        "geom4": 0.0,
+        "barrels": 1
+      },
+      "vertices": [],
+      "asset_type": "storm",
+      "system_layer": "minor_pipe",
+      "material": "Poly Vinyl Chloride",
+      "source_asset": {
+        "kind": "pipe",
+        "source": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network/pipes_oriented.geojson",
+        "source_id": "DGM004947"
+      }
+    }
+  ]
+}

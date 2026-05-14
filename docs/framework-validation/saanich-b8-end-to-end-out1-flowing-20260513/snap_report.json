@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "skill": "swmm-network",
+  "tool": "snap_pipe_endpoints",
+  "tolerance_m": 3.0,
+  "counts": {
+    "endpoints_total": 14,
+    "clusters": 8,
+    "clusters_merged": 4,
+    "max_snap_distance_m": 2.0787183615166076,
+    "pipes_in": 7,
+    "pipes_out": 6,
+    "pipes_dropped_as_self_loops": 1
+  },
+  "dropped_self_loops": [
+    {
+      "index": 1,
+      "id": "DGM023798",
+      "snapped_endpoint": [
+        473408.66368749994,
+        5369216.379614063
+      ]
+    }
+  ],
+  "outputs": {
+    "pipes_snapped_geojson": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network_prep/pipes_snapped.geojson"
+  },
+  "inputs": {
+    "pipes_geojson": "/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/20260513-163435-saanich-b8-snapped-network/04_network_prep/pipes.geojson"
+  }
+}

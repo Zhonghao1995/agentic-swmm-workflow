@@ -1,0 +1,22 @@
+{
+  "case": "20260513-030729-saanich-framework-smoke",
+  "status": "framework_chain_ran_swmm5",
+  "return_code": 0,
+  "runner_peak": {
+    "node": "OUT1",
+    "peak": 0.001,
+    "time_hhmm": "21:45",
+    "source": "Node Inflow Summary"
+  },
+  "continuity_error_percent": {
+    "runoff_quantity": -0.109,
+    "flow_routing": 0.0
+  },
+  "artifacts": {
+    "inp": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/05_builder/model.inp",
+    "rpt": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/06_runner/model.rpt",
+    "runner_manifest": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/06_runner/manifest.json",
+    "continuity_response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/07_swmm_continuity.json",
+    "peak_response": "runs/20260513-030729-saanich-framework-smoke/mcp_transport/responses/08_swmm_peak.json"
+  }
+}

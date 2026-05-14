@@ -1,0 +1,106 @@
+[TITLE]
+Saanich framework smoke test from raw GIS assets
+
+[OPTIONS]
+;;Option             Value
+FLOW_UNITS           CMS
+INFILTRATION         GREEN_AMPT
+FLOW_ROUTING         KINWAVE
+LINK_OFFSETS         DEPTH
+MIN_SLOPE            0
+ALLOW_PONDING        NO
+SKIP_STEADY_STATE    NO
+START_DATE           04/09/1984
+START_TIME           00:00:00
+REPORT_START_DATE    04/09/1984
+REPORT_START_TIME    00:00:00
+END_DATE             04/13/1984
+END_TIME             23:00:00
+SWEEP_START          01/01
+SWEEP_END            12/31
+DRY_DAYS             0
+REPORT_STEP          01:00:00
+WET_STEP             01:00:00
+DRY_STEP             24:00:00
+ROUTING_STEP         00:05:00
+
+[RAINGAGES]
+;;Name             Format     Interval   SCF      Source
+RG1                INTENSITY  24:00      1        TIMESERIES TS_SAANICH_EVENT
+
+[SUBCATCHMENTS]
+;;Name             Rain Gage          Outlet             Area     %Imperv  Width    %Slope   CurbLen  SnowPack
+S1                 RG1                OUT1               3.522051 40.371695 187.671283 1        0        
+
+[SUBAREAS]
+;;Subcatchment      N-Imperv  N-Perv    S-Imperv S-Perv    PctZero  RouteTo  PctRouted
+S1                 0.014339  0.279496  0.05      0.111798  16.60552 OUTLET   100
+
+[INFILTRATION]
+;;Subcatchment      Suction   Ksat      IMDmax
+S1                 110       5         0.25
+
+[JUNCTIONS]
+;;Name             Elevation      MaxDepth       InitDepth      SurDepth       Aponded
+J_AUTO_473315p611_5369254p705 0              2.5            0              0              0
+J_AUTO_473340p667_5369264p343 0              2.5            0              0              0
+J_AUTO_473377p178_5369208p711 0              2.5            0              0              0
+J_AUTO_473406p306_5369277p442 0              2.5            0              0              0
+J_AUTO_473407p895_5369218p311 0              2.5            0              0              0
+J_AUTO_473408p920_5369215p736 0              2.5            0              0              0
+J_AUTO_473439p647_5369218p478 0              2.5            0              0              0
+J_AUTO_473439p649_5369218p481 0              2.5            0              0              0
+J_AUTO_473448p553_5369219p260 0              2.5            0              0              0
+
+[OUTFALLS]
+;;Name             Elevation      Type           Stage Data      Gated          Route To
+OUT1               0              FREE                           NO             
+
+[CONDUITS]
+;;Name             From Node         To Node           Length   Roughness InOffset OutOffset InitFlow  MaxFlow
+DGM004949          J_AUTO_473377p178_5369208p711 J_AUTO_473408p920_5369215p736 32.510251 0.013     0        0         0         
+DGM023798          J_AUTO_473407p895_5369218p311 J_AUTO_473408p920_5369215p736 2.771624 0.013     0        0         0         
+DGM004948          J_AUTO_473408p920_5369215p736 J_AUTO_473439p649_5369218p481 30.851666 0.013     0        0         0         
+DGM021686          J_AUTO_473439p647_5369218p478 J_AUTO_473448p553_5369219p260 8.940882 0.013     0        0         0         
+DGM004945          J_AUTO_473315p611_5369254p705 J_AUTO_473340p667_5369264p343 26.845275 0.013     0        0         0         
+DGM004946          J_AUTO_473340p667_5369264p343 J_AUTO_473406p306_5369277p442 66.932971 0.013     0        0         0         
+DGM004947          J_AUTO_473406p306_5369277p442 OUT1              40.490338 0.013     0        0         0         
+
+[XSECTIONS]
+;;Link             Shape          Geom1    Geom2    Geom3    Geom4    Barrels
+DGM004949          CIRCULAR       0.3      0        0        0        1
+DGM023798          CIRCULAR       0.3      0        0        0        1
+DGM004948          CIRCULAR       0.3      0        0        0        1
+DGM021686          CIRCULAR       0.3      0        0        0        1
+DGM004945          CIRCULAR       0.3      0        0        0        1
+DGM004946          CIRCULAR       0.3      0        0        0        1
+DGM004947          CIRCULAR       0.3      0        0        0        1
+
+[COORDINATES]
+;;Node             X-Coord        Y-Coord
+J_AUTO_473315p611_5369254p705 473315.611394  5369254.70545
+J_AUTO_473340p667_5369264p343 473340.667062  5369264.342994
+J_AUTO_473377p178_5369208p711 473377.177587  5369208.711369
+J_AUTO_473406p306_5369277p442 473406.305819  5369277.441706
+J_AUTO_473407p895_5369218p311 473407.895088  5369218.311019
+J_AUTO_473408p920_5369215p736 473408.919887  5369215.735813
+J_AUTO_473439p647_5369218p478 473439.646887  5369218.477813
+J_AUTO_473439p649_5369218p481 473439.649206  5369218.480669
+J_AUTO_473448p553_5369219p260 473448.55345   5369219.260444
+OUT1               473446.769637  5369275.9765
+
+[TIMESERIES]
+;;Name             Date         Time       Value
+TS_SAANICH_EVENT   04/09/1984 00:00 0.241667
+TS_SAANICH_EVENT   04/10/1984 00:00 0.175
+TS_SAANICH_EVENT   04/11/1984 00:00 0.333333
+TS_SAANICH_EVENT   04/12/1984 00:00 0.158333
+TS_SAANICH_EVENT   04/13/1984 00:00 0.191667
+
+[REPORT]
+;;Option             Value
+INPUT                NO
+CONTROLS             NO
+SUBCATCHMENTS        ALL
+NODES                ALL
+LINKS                ALL

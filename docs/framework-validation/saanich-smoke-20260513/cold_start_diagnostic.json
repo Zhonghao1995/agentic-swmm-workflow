@@ -1,0 +1,112 @@
+{
+  "case": "20260513-030729-saanich-framework-smoke",
+  "purpose": "Record every piece of implicit knowledge or undocumented prerequisite the operator (a Claude session) had to supply while running Mode 0 end-to-end. Each entry is a candidate gap a cold-start agent would hit.",
+  "operator": "claude-opus-4-7 (live session, used baseline run 20260513-014020 as reference)",
+  "entries": [
+    {
+      "step": "00_prereq_subcatchments",
+      "implicit_knowledge_used": "Mode 0 step 1 (qgis_area_weighted_params) requires a subcatchments geojson with field subcatchment_id, but SKILL.md does not specify where that file comes from or how to produce it from Saanich's DrainageBasinBoundary. Operator copied baseline 01_gis/subcatchments.geojson as a seed.",
+      "where_to_fix": "skills/swmm-end-to-end/SKILL.md Mode 0 section",
+      "severity": "blocking",
+      "suggested_fix": "Add explicit pre-step in Mode 0 describing the subcatchments.geojson contract (required field name, CRS, single-feature vs multi-feature). Either point to a delineation MCP tool or document the manual basin-selection convention used for Saanich smoke."
+    },
+    {
+      "step": "00_prereq_subcatchments",
+      "implicit_knowledge_used": "subcatchments.csv (companion to .geojson) is required as input to build_inp later but is not produced by any MCP tool. Operator seeded from baseline.",
+      "where_to_fix": "mcp/swmm-gis or new tool; or skills/swmm-builder/SKILL.md documenting the csv schema",
+      "severity": "blocking",
+      "suggested_fix": "Add an MCP tool that emits subcatchments.csv (id, area_ha, width_m, slope_pct, pct_imperv, outlet_node) from a subcatchments.geojson, or wire the build_inp adapter to accept geojson directly."
+    },
+    {
+      "step": "harness",
+      "implicit_knowledge_used": "mcp_stdio_call.py has no --list-tools mode; operator had to pass a dummy tool name and parse the resulting ValueError to enumerate available tools per server.",
+      "where_to_fix": "skills/swmm-end-to-end/scripts/mcp_stdio_call.py",
+      "severity": "minor",
+      "suggested_fix": "Add a --list-tools flag that initializes the server, calls tools/list, prints names + descriptions, and exits without invoking any tool."
+    },
+    {
+      "step": "01_qgis_area_weighted_params",
+      "implicit_knowledge_used": "Field names idField=subcatchment_id, landuseField=CLASS, soilField=TEXTURE are required but not declared in SKILL.md. Operator reverse-engineered them from baseline response and harness test.",
+      "where_to_fix": "mcp/swmm-gis/server.js inputSchema (add description for each field) and SKILL.md Mode 0 step 1",
+      "severity": "friction",
+      "suggested_fix": "Either set sensible defaults in inputSchema or document the convention in SKILL.md (link the harness test as a canonical example)."
+    },
+    {
+      "step": "01_qgis_area_weighted_params",
+      "implicit_knowledge_used": "Saanich Zoning classes Industrial and Single Family are not in skills/swmm-params/references/landuse_class_to_subcatch_params.csv. Tool returns unmatched_landuse_classes but proceeds with a silent default. Cold agent would not know this was a quality issue without inspecting the response payload carefully.",
+      "where_to_fix": "skills/swmm-params/references/landuse_class_to_subcatch_params.csv + SKILL.md",
+      "severity": "friction",
+      "suggested_fix": "Extend the lookup CSV to cover common municipal zoning vocabularies (BC/Saanich, US standard, etc.). Make unmatched classes a structured warning in the manifest so it shows up in framework_gaps automatically."
+    },
+    {
+      "step": "02_format_rainfall",
+      "implicit_knowledge_used": "Saanich raw rainfall is .dat at data/Saanich/Rainfall/1984rain.dat. format_rainfall supports inputDatPaths but baseline preprocessed manually to a 5-day-event CSV (rainfall_event_avg_intensity.csv) which itself was derived from a manually computed daily_avg CSV. The .dat -> CSV step is NOT covered by any MCP tool.",
+      "where_to_fix": "mcp/swmm-climate or skills/swmm-climate scripts",
+      "severity": "friction",
+      "suggested_fix": "Either (a) document use of format_rainfall's inputDatPaths so the .dat can feed directly, or (b) add an event-window selection MCP tool that takes a long .dat and emits the event window CSV. Cold agent currently has no documented path from raw .dat to call 2 input."
+    },
+    {
+      "step": "03_import_city_network",
+      "implicit_knowledge_used": "import_city_network requires mappingPath (a JSON config describing field-to-SWMM defaults). The baseline mapping.json lives in 04_network/ and was hand-authored. No template or example is referenced in SKILL.md.",
+      "where_to_fix": "skills/swmm-network/templates/ + SKILL.md Mode 0 step 4",
+      "severity": "blocking",
+      "suggested_fix": "Add skills/swmm-network/templates/city_mapping.template.json. Document its purpose in SKILL.md. Optionally add an MCP tool generate_city_mapping that introspects a pipes geojson and proposes defaults."
+    },
+    {
+      "step": "03_import_city_network",
+      "implicit_knowledge_used": "outfalls.geojson must be supplied or import infers nothing. The baseline outfalls.geojson contains OUT1 selected by 'endpoint nearest watercourse' heuristic; the heuristic itself is not in any MCP tool. Operator seeded from baseline.",
+      "where_to_fix": "mcp/swmm-network or a new mcp/swmm-gis tool",
+      "severity": "blocking",
+      "suggested_fix": "Add an MCP tool infer_outfall(pipes_geojson, watercourse_geojson, mode='endpoint_nearest_watercourse') -> outfalls_geojson, so cold agents can produce the artifact in-band."
+    },
+    {
+      "step": "03_import_city_network",
+      "implicit_knowledge_used": "Saanich DIAMETER field contains nonnumeric values ('Other'); the mapping.json defaults section silently substitutes geom1=0.3 m. Cold agent would not realize the resulting hydraulics are not asset-faithful unless they read the meta.diameter_policy string in network.json.",
+      "where_to_fix": "mcp/swmm-network/server.js and adapter",
+      "severity": "friction",
+      "suggested_fix": "Promote diameter_policy into a structured warning in tool response (alongside counts), and surface it as an entry in framework_mcp_manifest.missing_or_fallback_inputs automatically."
+    },
+    {
+      "step": "05_build_inp",
+      "implicit_knowledge_used": "configJsonPath (the SWMM [OPTIONS] block: dates, routing step, etc.) is required for a runnable model but no template or schema reference exists. Operator seeded options_config.json from baseline.",
+      "where_to_fix": "skills/swmm-builder/templates/ or builder server inputSchema",
+      "severity": "friction",
+      "suggested_fix": "Add skills/swmm-builder/templates/options_config.template.json with all common keys + comments. Document allowed keys in SKILL.md."
+    },
+    {
+      "step": "06_swmm_run",
+      "implicit_knowledge_used": "swmm_run's 'node' parameter defaults to O1 but Saanich's only outfall is OUT1 (from outfalls.geojson). Passing the default would still run SWMM but break peak extraction. Operator overrode to OUT1.",
+      "where_to_fix": "mcp/swmm-runner/server.js or the runner adapter",
+      "severity": "friction",
+      "suggested_fix": "Either (a) auto-detect the first outfall from the .inp [OUTFALLS] section when node is omitted, or (b) make 'node' required and remove the misleading 'O1' default."
+    },
+    {
+      "step": "env",
+      "implicit_knowledge_used": "mcp/swmm-calibration and mcp/swmm-params have no node_modules installed. They are not on the Mode 0 critical path, but any future workflow that touches them would silently 0-exit or error.",
+      "where_to_fix": "mcp/swmm-calibration/package.json, mcp/swmm-params/package.json, and a setup script",
+      "severity": "blocking-for-other-modes",
+      "suggested_fix": "Add a top-level scripts/install_mcp_deps.sh (or document npm install per server) and reference it from skills/swmm-end-to-end/SKILL.md preflight checks."
+    },
+    {
+      "step": "env",
+      "implicit_knowledge_used": "pyswmm import was killed by OOM during environment probe (SIGKILL 137). Nothing in Mode 0 currently imports pyswmm, but its presence in env is implied by skills/swmm-runner. Cold agent may not notice the silent failure.",
+      "where_to_fix": "skills/swmm-runner or end-to-end preflight",
+      "severity": "minor",
+      "suggested_fix": "Add a preflight that explicitly probes deps the chain needs (geopandas, swmm5 binary) and reports skipped optional deps (pyswmm). Do not silently import pyswmm at module load if it is not used."
+    },
+    {
+      "step": "rainfall_window",
+      "implicit_knowledge_used": "The 5-day event window 1984-04-09..04-13 is hand-picked (a wet stretch in the daily totals); no MCP tool selects it. Mode 0 calls this out as a fallback in missing_or_fallback_inputs but does not provide a way to choose deterministically.",
+      "where_to_fix": "skills/swmm-climate or new mcp tool",
+      "severity": "minor",
+      "suggested_fix": "Add mcp/swmm-climate select_event(dat_path, top_n=1, min_window_days=3) returning event windows ranked by cumulative depth; record the chosen window in the manifest."
+    },
+    {
+      "step": "skill_trigger",
+      "implicit_knowledge_used": "swmm-end-to-end/SKILL.md Mode 0 keywords were sufficient to route a natural-language request ('test framework with Saanich data') to this skill, but the routing decision is brittle without explicit examples. Cold agent might pick a sibling skill (swmm-builder, swmm-rag-memory) on similar prompts.",
+      "where_to_fix": "skills/swmm-end-to-end/SKILL.md description and 'When to use' section",
+      "severity": "friction",
+      "suggested_fix": "Add 2-3 verbatim trigger-prompt examples ('test the end-to-end framework', 'Saanich smoke test', 'from raw data to INP') under the description so the skill description matches them. Add a 'Do not use' rule pointing to swmm-rag-memory and swmm-builder for confusable cases."
+    }
+  ]
+}
