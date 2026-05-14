@@ -19,9 +19,16 @@ auto-upgraded on first write — see PRD-Z for the provenance contract.
 
 from agentic_swmm.commands.expert import (
     calibration,
+    memory_reflect,
     pour_point,
     publish,
     thresholds,
 )
 
-__all__ = ["calibration", "pour_point", "publish", "thresholds"]
+__all__ = [
+    "calibration",
+    "memory_reflect",
+    "pour_point",
+    "publish",
+    "thresholds",
+]

@@ -161,5 +161,37 @@ class MemoryReflectWritesProposalTests(unittest.TestCase):
             )
 
 
+class MemoryReflectAppearsInHelpTests(unittest.TestCase):
+    """ME-3 Done-Criteria: ``reflect`` must surface as Expert-only in help.
+
+    The acceptance check in issue #63 says "memory_reflect appears in
+    ``aiswmm --help`` under 'Expert-only commands' section." There is
+    no explicit ``Expert-only commands`` grouping at the top-level
+    parser — argparse renders subcommands in a flat block. The pattern
+    every other expert-only subcommand uses is to prefix its
+    one-liner ``help=`` with ``Expert-only:``. The check below pins
+    that convention: running ``aiswmm memory --help`` must show a
+    ``reflect`` row whose summary starts with ``Expert-only:``.
+    """
+
+    def test_memory_reflect_help_marked_expert_only(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "memory", "--help"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        # The help block formats every subcommand as
+        # ``    <name>    <summary>``; we look for the literal
+        # ``reflect`` followed by ``Expert-only:``.
+        text = proc.stdout
+        self.assertIn("reflect", text)
+        # argparse may wrap the summary across lines, so we normalise
+        # whitespace before checking for the prefix.
+        normalised = " ".join(text.split())
+        self.assertIn("reflect Expert-only:", normalised)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
