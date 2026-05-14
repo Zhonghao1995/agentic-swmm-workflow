@@ -790,6 +790,109 @@ def cmd_validate(args: argparse.Namespace) -> None:
     emit_payload(args, payload)
 
 
+def _cmd_search_dream_zs(
+    args: argparse.Namespace,
+    patch_map: dict,
+    bounds: dict[str, ParamBound],
+    observed: pd.DataFrame,
+) -> None:
+    """DREAM-ZS branch of search; depends on the optional `spotpy` package."""
+
+    try:
+        from dream_zs import DreamZsConfig, run_dream_zs  # local import: spotpy only needed here
+    except ImportError as exc:  # pragma: no cover - defensive
+        raise SystemExit(
+            "DREAM-ZS strategy requires the optional 'spotpy' dependency. "
+            "Install it with `pip install spotpy`.\n"
+            f"Underlying error: {exc}"
+        ) from exc
+
+    if args.objective != "kge":
+        raise SystemExit(
+            "--strategy dream-zs currently requires --objective kge "
+            f"(got --objective {args.objective}). "
+            "The DREAM-ZS likelihood is defined on (1 - KGE)."
+        )
+    if args.dream_chains < 2:
+        raise SystemExit("--dream-chains must be >= 2 for a Gelman-Rubin Rhat check.")
+
+    run_root = Path(args.run_root)
+    run_root.mkdir(parents=True, exist_ok=True)
+    summary_path = Path(args.summary_json)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+
+    output_dir = (
+        Path(args.dream_output_dir)
+        if args.dream_output_dir is not None
+        else summary_path.parent
+    )
+
+    def _runner(inp: Path, trial_dir: Path):
+        return run_swmm(inp, trial_dir)
+
+    def _extract(out_path: Path) -> pd.DataFrame:
+        return extract_simulated_series(
+            out_path,
+            swmm_node=args.swmm_node,
+            swmm_attr=args.swmm_attr,
+            aggregate=args.aggregate,
+        )
+
+    config = DreamZsConfig(
+        base_inp=Path(args.base_inp),
+        patch_map=patch_map,
+        observed=observed,
+        run_root=run_root,
+        swmm_node=args.swmm_node,
+        swmm_attr=args.swmm_attr,
+        aggregate=args.aggregate,
+        obs_start=args.obs_start,
+        obs_end=args.obs_end,
+        bounds=bounds,
+        iterations=int(args.iterations),
+        seed=int(args.seed),
+        n_chains=int(args.dream_chains),
+        sigma=float(args.dream_sigma),
+        rhat_threshold=float(args.dream_rhat_threshold),
+        output_dir=output_dir,
+        swmm_runner=_runner,
+        extract_series=_extract,
+        runs_after_convergence=int(args.dream_runs_after_convergence),
+    )
+
+    result = run_dream_zs(config)
+    summary = result["summary"]
+    summary["controls"] = {
+        **build_common_controls(args),
+        "search_space": str(args.search_space),
+        "search_strategy": args.strategy,
+        "seed": args.seed,
+        "iterations": args.iterations,
+        "dream_chains": args.dream_chains,
+        "dream_sigma": args.dream_sigma,
+        "dream_rhat_threshold": args.dream_rhat_threshold,
+        "dream_output_dir": str(output_dir),
+        "parsed_search_space": serialize_bounds(bounds),
+    }
+
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if args.best_params_out:
+        Path(args.best_params_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.best_params_out).write_text(
+            json.dumps(result["best_params"], indent=2),
+            encoding="utf-8",
+        )
+    else:
+        # The acceptance criteria call for best_params.json under the audit
+        # directory regardless of --best-params-out; mirror it there when no
+        # explicit path was supplied.
+        (output_dir / "best_params.json").write_text(
+            json.dumps(result["best_params"], indent=2),
+            encoding="utf-8",
+        )
+    print(json.dumps(summary, indent=2))
+
+
 def _cmd_search_sceua(
     args: argparse.Namespace,
     patch_map: dict,
@@ -908,6 +1011,9 @@ def cmd_search(args: argparse.Namespace) -> None:
 
     if args.strategy == "sceua":
         _cmd_search_sceua(args, patch_map, bounds, observed)
+        return
+    if args.strategy == "dream-zs":
+        _cmd_search_dream_zs(args, patch_map, bounds, observed)
         return
 
     rng = random.Random(args.seed)
@@ -1109,7 +1215,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp_search.add_argument("--search-space", required=True, type=Path)
     sp_search.add_argument(
         "--strategy",
-        choices=["random", "lhs", "adaptive", "sceua"],
+        choices=["random", "lhs", "adaptive", "sceua", "dream-zs"],
         default="lhs",
     )
     sp_search.add_argument("--iterations", type=int, default=12, help="Trial count per round")
@@ -1130,6 +1236,40 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=4,
         help="Number of complexes for SCE-UA (default 4). Spotpy recommends 2*p+1 minimum.",
+    )
+    sp_search.add_argument(
+        "--dream-chains",
+        type=int,
+        default=4,
+        help="Number of MCMC chains for DREAM-ZS (default 4). >=2 required for Rhat.",
+    )
+    sp_search.add_argument(
+        "--dream-sigma",
+        type=float,
+        default=0.1,
+        help="Likelihood width sigma on (1-KGE) for DREAM-ZS (default 0.1).",
+    )
+    sp_search.add_argument(
+        "--dream-rhat-threshold",
+        type=float,
+        default=1.2,
+        help="Gelman-Rubin Rhat convergence threshold for DREAM-ZS (default 1.2).",
+    )
+    sp_search.add_argument(
+        "--dream-output-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Audit directory for DREAM-ZS artefacts (posterior_samples.csv, "
+            "chain_convergence.json, posterior_<param>.png, posterior_correlation.png). "
+            "Defaults to the parent of --summary-json."
+        ),
+    )
+    sp_search.add_argument(
+        "--dream-runs-after-convergence",
+        type=int,
+        default=50,
+        help="Extra DREAM-ZS samples after Gelman-Rubin convergence (default 50).",
     )
     sp_search.set_defaults(func=cmd_search)
 
