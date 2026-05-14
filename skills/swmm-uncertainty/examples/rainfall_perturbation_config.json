@@ -1,0 +1,11 @@
+{
+  "method": "perturbation",
+  "perturbation": {
+    "model": "autocorrelated",
+    "sigma": 0.15,
+    "ar1_coefficient": 0.6,
+    "preserve_total_volume": false
+  },
+  "n_realisations": 200,
+  "input_rainfall_path": "00_inputs/rainfall_obs.csv"
+}

@@ -1,6 +1,6 @@
 ---
 name: swmm-uncertainty
-description: Parameter uncertainty propagation and sensitivity analysis for EPA SWMM. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, or (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices.
+description: Parameter and forcing uncertainty propagation and sensitivity analysis for EPA SWMM. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices, or (4) generate a rainfall ensemble (observed-series perturbation or IDF-curve design storms) and aggregate the resulting hydrograph envelope.
 ---
 
 # SWMM Uncertainty
@@ -17,6 +17,7 @@ description: Parameter uncertainty propagation and sensitivity analysis for EPA 
 - Normalized Shannon entropy metrics for output ensembles, such as hydrograph entropy over time.
 - Machine-readable uncertainty summaries for output envelopes, entropy records, and failed/invalid samples.
 - Sensitivity-analysis screening with three sub-methods (OAT / Morris / Sobol') sharing one entry point (`scripts/sensitivity.py`).
+- Rainfall-forcing ensembles: time-series perturbation of an observed rainfall record (gaussian, multiplicative, AR(1), intensity_scaling) or IDF-curve sampling of design storms (Chicago / Huff / SCS Type II), with optional per-realisation SWMM runs and ensemble envelope aggregation.
 
 This skill is intentionally separate from `swmm-calibration`.
 
@@ -59,6 +60,12 @@ Calibration requires observed data and performance metrics such as NSE, RMSE, or
     - `--method sobol`: Sobol' indices via SALib (Saltelli sampling); sample budget `N * (2k + 2)`; reports first-order `S_i` and total-effect `S_T_i`
   - writes a `sensitivity_indices.json` summary (typically under `runs/<case>/09_audit/`)
   - the Morris and Sobol' paths require SALib (declared in `pyproject.toml`)
+- `scripts/rainfall_ensemble.py`
+  - rainfall ensemble generator with two methods
+    - `--method perturbation`: noisy realisations of an observed rainfall timeseries (CSV or SWMM `.dat`). Models: `gaussian_iid`, `multiplicative`, `autocorrelated` (AR(1)), `intensity_scaling`. Flag `preserve_total_volume` rescales each realisation to match the observed total when set
+    - `--method idf`: synthesised hyetographs from IDF parameters `(a, b, c)` with confidence intervals. Storm types: `chicago` (Keifer-Chu), `huff` (4 quartiles), `scs_type_ii` (canonical 24-hr Type II)
+  - if `--base-inp` is supplied, every realisation is patched into the base INP's `[TIMESERIES]` block and run through swmm5; peak flow + total outfall volume at `--swmm-node` are aggregated into `swmm_ensemble_stats`
+  - writes per-realisation CSVs under `<run-root>/09_audit/rainfall_realisations/` and a v1 summary at `<run-root>/09_audit/rainfall_ensemble_summary.json`
 
 ## Sensitivity-analysis sub-modes
 
@@ -245,6 +252,47 @@ python3 skills/swmm-uncertainty/scripts/sensitivity.py \
 ```
 
 All three modes share the same `--summary-json` schema header (`method`, `parameters`, `sample_budget`, `indices`). Per-parameter shapes differ by method (see the "Sensitivity-analysis sub-modes" table above).
+
+### Rainfall ensemble examples
+
+Time-series perturbation (200 noisy realisations of an observed rainfall CSV, all run through swmm5):
+
+```bash
+python3 skills/swmm-uncertainty/scripts/rainfall_ensemble.py \
+  --method perturbation \
+  --config skills/swmm-uncertainty/examples/rainfall_perturbation_config.json \
+  --run-root runs/rainfall-ensemble-perturbation \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --series-name TS_RAIN \
+  --swmm-node O1 \
+  --seed 42
+```
+
+IDF-curve design storm (200 hyetographs from sampled Chicago IDF params):
+
+```bash
+python3 skills/swmm-uncertainty/scripts/rainfall_ensemble.py \
+  --method idf \
+  --config skills/swmm-uncertainty/examples/rainfall_idf_config.json \
+  --run-root runs/rainfall-ensemble-idf \
+  --base-inp examples/todcreek/model_chicago5min.inp \
+  --series-name TS_RAIN \
+  --swmm-node O1 \
+  --seed 42
+```
+
+Use `--dry-run` to skip the SWMM execution layer and write only the realisation CSVs + rainfall-only summary statistics.
+
+### Rainfall ensemble — methods at a glance
+
+| Method | Input | Models | Output |
+|--------|-------|--------|--------|
+| `perturbation` | One observed rainfall CSV / SWMM `.dat` | `gaussian_iid`, `multiplicative`, `autocorrelated`, `intensity_scaling` | `N` realisations of the observed pattern |
+| `idf` | IDF `(a, b, c)` with CIs + storm type | `chicago`, `huff` (4 quartiles), `scs_type_ii` | `N` synthesised hyetographs |
+
+`gaussian_iid` adds zero-mean Gaussian noise (mean residual ≈ 0). `multiplicative` preserves the shape — Pearson correlation between observed and any realisation stays near 1. `autocorrelated` produces noise with lag-1 autocorrelation ≈ `ar1_coefficient`. `intensity_scaling` scales noise variance with intensity, so peaks fluctuate more than troughs.
+
+When `preserve_total_volume=true`, every realisation is rescaled so its integrated rainfall depth matches the observed total. When `false`, totals vary across the ensemble — that variance is itself part of the propagated uncertainty.
 
 ## Outputs
 
