@@ -1,6 +1,6 @@
 ---
 name: swmm-calibration
-description: Calibration, validation, and sensitivity-analysis scaffold for EPA SWMM. Use when an agent needs to (1) compare simulated vs observed flow, (2) evaluate candidate parameter sets, (3) run a small sensitivity scan, (4) run a bounded random / LHS / adaptive search for the best-fitting parameters, (5) run a publication-grade SCE-UA calibration with KGE as the primary objective and (r, alpha, beta) decomposition reported, or (6) suggest which parameters matter most under the current metric.
+description: Calibration and validation scaffold for EPA SWMM. Use when an agent needs to (1) compare simulated vs observed flow, (2) evaluate candidate parameter sets, (3) rank explicit candidates by an objective, (4) run a bounded random / LHS / adaptive search for the best-fitting parameters, or (5) run a publication-grade SCE-UA calibration with KGE as the primary objective and (r, alpha, beta) decomposition reported. Dedicated sensitivity-analysis methods (OAT, Morris, Sobol') now live on the `swmm-uncertainty` skill.
 ---
 
 # SWMM Calibration / Validation (MVP scaffold)
@@ -26,7 +26,7 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
   - `search --strategy lhs` — Latin Hypercube Sampling (fast prototyping).
   - `search --strategy adaptive` — multi-round LHS refinement around elite trials (fast prototyping).
   - `search --strategy sceua` — Shuffled Complex Evolution (SCE-UA); recommended for publication-grade calibration. Minimises `(1 - KGE)` via `spotpy.algorithms.sceua` and emits a `calibration_summary.json` with KGE decomposition + secondary metrics. (DREAM-ZS posterior calibration is tracked as issue #53.)
-- A minimal **parameter scout** that ranks which parameters matter most, suggests direction (`up` / `down` / `stay`), and proposes a narrowed next search range.
+- Dedicated sensitivity-analysis methods (OAT, Morris elementary-effects, Sobol' indices) have moved to the **swmm-uncertainty** skill — see `skills/swmm-uncertainty/scripts/sensitivity.py` and the `swmm_sensitivity_oat` / `swmm_sensitivity_morris` / `swmm_sensitivity_sobol` MCP tools.
 - MCP wrapper so OpenClaw can call the workflow as tools.
 
 ### Strategy guidance
@@ -41,9 +41,9 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
 
 ## MCP tools
 
-`mcp/swmm-calibration/server.js` exposes six tools, all of them thin wrappers around `scripts/swmm_calibrate.py` + `scripts/parameter_scout.py`.
+`mcp/swmm-calibration/server.js` exposes five tools, all thin wrappers around `scripts/swmm_calibrate.py`.
 
-1. **`swmm_sensitivity_scan`** — evaluate a list of candidate parameter sets against an observed series and rank them by an objective (KGE / NSE / RMSE / Bias / peak-flow / peak-timing). Use to map parameter influence before committing to a search.
+1. **`swmm_sensitivity_scan`** — evaluate a list of explicit candidate parameter sets against an observed series and rank them by an objective (KGE / NSE / RMSE / Bias / peak-flow / peak-timing). Use to score a curated candidate list. (This is *not* a screening method; for OAT / Morris / Sobol' screening use the `swmm_sensitivity_*` tools on the `swmm-uncertainty` MCP server.)
 
 2. **`swmm_calibrate`** — same evaluation as above, but report the single best-scoring set and write a `best_params.json`. Use when you already have a curated candidate list.
 
@@ -53,12 +53,11 @@ description: Calibration, validation, and sensitivity-analysis scaffold for EPA 
 
 5. **`swmm_validate`** — apply one chosen parameter set to a second event (validation) and score it.
 
-6. **`swmm_parameter_scout`** — scan one parameter at a time around a baseline; rank which parameters matter most under the current metric and time scale; recommend direction (`up` / `down` / `stay`) and a narrower next search range. Use as a cheap warm-up before running `swmm_calibrate_search` / `swmm_calibrate_sceua`.
+> Sensitivity analysis (OAT / Morris / Sobol') is owned by `swmm-uncertainty`. See `mcp/swmm-uncertainty/server.js` for `swmm_sensitivity_oat`, `swmm_sensitivity_morris`, and `swmm_sensitivity_sobol`.
 
 ## Scripts (Python implementations behind the MCP tools)
 
 - `scripts/swmm_calibrate.py` — backs `swmm_sensitivity_scan`, `swmm_calibrate`, `swmm_calibrate_search`, `swmm_validate`. Subcommands: `sensitivity`, `calibrate`, `search`, `validate`.
-- `scripts/parameter_scout.py` — backs `swmm_parameter_scout`.
 - `scripts/obs_reader.py` — heuristically reads timestamp + flow series from text tables.
 - `scripts/metrics.py` — computes hydrograph comparison metrics after time alignment.
 - `scripts/inp_patch.py` — patches selected numeric tokens in an `.inp` file using a simple JSON mapping.
@@ -86,15 +85,20 @@ Calibration asks:
 Given observed data, which parameter set best reproduces the observed hydrograph?
 ```
 
-Uncertainty analysis asks:
+Uncertainty / sensitivity analysis asks:
 
 ```text
-Given uncertain parameters, how much does the SWMM output ensemble spread?
+Given uncertain parameters, how much does the SWMM output ensemble spread,
+and which parameters drive that spread?
 ```
 
-Use this skill only when observed data are available and the workflow can compute metrics such as NSE, RMSE, bias, peak-flow error, or peak-timing error. If no observed data are available, use `swmm-uncertainty` for prior Monte Carlo, fuzzy, or entropy analysis.
+Use this skill only when observed data are available and the workflow can compute metrics such as NSE, RMSE, bias, peak-flow error, or peak-timing error. If no observed data are available, use `swmm-uncertainty` for prior Monte Carlo, fuzzy, entropy, or sensitivity analysis.
 
-A calibration run can feed uncertainty analysis by exporting:
+Per issue #49 the OAT / Morris / Sobol' sensitivity-analysis path lives on `swmm-uncertainty` (`skills/swmm-uncertainty/scripts/sensitivity.py`). The calibration scaffold consumes its output via:
+
+- `runs/<case>/09_audit/sensitivity_indices.json` — per-parameter ranking with `mu_star`/`sigma` (Morris) or `S_i`/`S_T_i` (Sobol'). Use this to pre-screen which parameters to feed into SCE-UA or LHS search.
+
+A calibration run can feed uncertainty / sensitivity analysis back by exporting:
 
 - `best_params.json` for a baseline parameter set
 - `ranking.json` for candidate performance
@@ -109,7 +113,7 @@ A calibration run can feed uncertainty analysis by exporting:
   - SWMM `.out` (preferred, via `swmmtoolbox`), or
   - a delimited simulation series file.
 - The validation command assumes you already chose a parameter set (via JSON object or file).
-- Sensitivity scans without observed data are not calibration; they are parameter screening or uncertainty setup.
+- The `swmm_sensitivity_scan` tool here scores explicit candidate sets against an observed series; it is not parameter screening. Use `swmm-uncertainty`'s `swmm_sensitivity_oat` / `swmm_sensitivity_morris` / `swmm_sensitivity_sobol` tools for OAT / Morris / Sobol' screening.
 
 ## Patch-map idea
 A patch-map JSON connects friendly parameter names to concrete INP edits.
