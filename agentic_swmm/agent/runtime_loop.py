@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.reporting import write_event as _write_event
@@ -52,9 +53,21 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
 
     date_dir, session_label = _new_interactive_session(base_dir)
 
+    # Late import keeps the agent runtime free of a CLI-layer dependency
+    # in the import graph (commands/agent.py imports runtime_loop).
+    from agentic_swmm.commands.agent import resolve_profile_string
+
+    profile_name = resolve_profile_string(args)
+
     # PRD_runtime user story 6: one-line startup banner.
+    # The ``profile=`` segment was added when QUICK became the default
+    # (see ``format_startup_banner`` for the rendering contract).
     _agent_say(
-        f"aiswmm interactive ({session_label}, {_display_path(date_dir)}) — /exit, /new-session"
+        format_startup_banner(
+            session_label=session_label,
+            date_dir_display=_display_path(date_dir),
+            profile_name=profile_name,
+        )
     )
 
     turn = 0
@@ -107,6 +120,27 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         print()
         if result != 0:
             _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
+
+
+def format_startup_banner(
+    *,
+    session_label: str,
+    date_dir_display: str,
+    profile_name: str,
+) -> str:
+    """Render the one-line startup banner for the interactive shell.
+
+    Extracted from ``run_interactive_shell`` so the profile-segment
+    rendering can be unit-tested without spinning up a session. The
+    ``profile=`` segment is dimmed on a real tty (``ui_colors.DIM``)
+    and falls back to plain text on non-tty / ``NO_COLOR`` per the
+    ``colorize`` contract.
+    """
+    profile_segment = ui_colors.colorize(f"profile={profile_name}", ui_colors.DIM)
+    return (
+        f"aiswmm interactive ({session_label}, {date_dir_display}, "
+        f"{profile_segment}) — /exit, /new-session"
+    )
 
 
 def _new_interactive_session(base_dir: Path) -> tuple[Path, str]:
