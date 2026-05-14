@@ -20,7 +20,6 @@ FORBIDDEN_SUBSTRINGS = (
     "/skills/swmm-gis/scripts/qgis_todcreek_raw_to_entropy_partition.py",
     "/skills/swmm-uncertainty/scripts/monte_carlo_propagate.py",
     "/skills/swmm-uncertainty/scripts/entropy_metrics.py",
-    "/skills/swmm-uncertainty/scripts/parameter_recommender.py",
     "/skills/swmm-uncertainty/scripts/probabilistic_sampling.py",
     "/skills/swmm-uncertainty/tests/test_monte_carlo_propagate.py",
     "/skills/swmm-uncertainty/tests/test_entropy_metrics.py",

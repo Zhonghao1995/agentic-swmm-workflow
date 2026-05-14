@@ -96,7 +96,6 @@ tests/test_cell_entropy_similarity_aggregation.py
 # entropy paper — MC + entropy metrics
 skills/swmm-uncertainty/scripts/monte_carlo_propagate.py
 skills/swmm-uncertainty/scripts/entropy_metrics.py
-skills/swmm-uncertainty/scripts/parameter_recommender.py
 skills/swmm-uncertainty/scripts/probabilistic_sampling.py
 skills/swmm-uncertainty/tests/test_monte_carlo_propagate.py
 skills/swmm-uncertainty/tests/test_entropy_metrics.py
