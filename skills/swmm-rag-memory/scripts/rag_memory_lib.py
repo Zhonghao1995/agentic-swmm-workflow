@@ -1,3 +1,32 @@
+"""rag_memory_lib — corpus + retrieval helpers for swmm-rag-memory.
+
+Two retrieval paths are supported, gated by the ``retriever`` argument on
+``retrieve()``:
+
+* ``retriever="keyword"`` (default) — pure inverted-index / token-overlap
+  matching. This is what every caller in ``main`` currently passes through
+  to (search ``retrieve(`` in repo). Always cheap; no embedding side-files
+  are needed at query time.
+
+* ``retriever="hybrid"`` — adds a 384-dim hashed-embedding cosine score
+  blended in at ``HYBRID_KEYWORD_WEIGHT / HYBRID_SEMANTIC_WEIGHT /
+  HYBRID_METADATA_WEIGHT``. The hashed embedding is intentionally
+  cheap-to-derive but very dense on small corpora (~98% non-zero on the
+  current 26-entry memory). The path is kept for the LID-paper IP work
+  and any caller that opts in explicitly. It is feature-flagged off by
+  default to avoid writing ~3 MB of unused index data on every audit
+  refresh (P1-2 in #79).
+
+To opt in to hybrid retrieval:
+
+  >>> entries = load_corpus(corpus_path)
+  >>> vectors = load_embedding_vectors(embedding_index_path)
+  >>> retrieve(entries, query, 5, retriever="hybrid", embedding_vectors=vectors)
+
+When building the corpus from a writer, pass ``include_embeddings=True`` to
+``write_corpus`` to also emit ``embedding_index.json``. Default is False.
+"""
+
 from __future__ import annotations
 
 import json
@@ -355,7 +384,20 @@ def build_corpus(memory_dir: Path, runs_dir: Path, repo_root: Path) -> list[dict
     return deduped
 
 
-def write_corpus(entries: list[dict[str, Any]], out_dir: Path) -> None:
+def write_corpus(
+    entries: list[dict[str, Any]],
+    out_dir: Path,
+    *,
+    include_embeddings: bool = False,
+) -> None:
+    """Write ``corpus.jsonl`` + ``keyword_index.json`` (+ optional embeddings).
+
+    ``include_embeddings=True`` additionally emits ``embedding_index.json``
+    for the hashed-cosine hybrid retriever path. Default is ``False`` per
+    P1-2 in #79 — no caller on ``main`` currently passes
+    ``retriever="hybrid"`` to ``retrieve()``, and the index file is ~3 MB
+    on every audit refresh.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "corpus.jsonl").open("w", encoding="utf-8") as handle:
         for entry in entries:
@@ -375,18 +417,19 @@ def write_corpus(entries: list[dict[str, Any]], out_dir: Path) -> None:
             "index": index,
         },
     )
-    write_json(
-        out_dir / "embedding_index.json",
-        {
-            "schema_version": "1.0",
-            "generated_by": "swmm-rag-memory",
-            "backend": "local-hashed-token-char-ngram",
-            "dimensions": EMBEDDING_DIMENSIONS,
-            "generated_at_utc": now_utc(),
-            "entry_count": len(entries),
-            "vectors": [hashed_embedding(str(entry.get("text") or "")) for entry in entries],
-        },
-    )
+    if include_embeddings:
+        write_json(
+            out_dir / "embedding_index.json",
+            {
+                "schema_version": "1.0",
+                "generated_by": "swmm-rag-memory",
+                "backend": "local-hashed-token-char-ngram",
+                "dimensions": EMBEDDING_DIMENSIONS,
+                "generated_at_utc": now_utc(),
+                "entry_count": len(entries),
+                "vectors": [hashed_embedding(str(entry.get("text") or "")) for entry in entries],
+            },
+        )
 
 
 def load_corpus(path: Path) -> list[dict[str, Any]]:
