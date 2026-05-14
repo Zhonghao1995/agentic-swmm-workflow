@@ -67,6 +67,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     compact.set_defaults(func=compact_main)
 
+    # Expert-only: LLM-driven reflection (ME-3). Registered as a memory
+    # subcommand so it lives under ``aiswmm memory reflect``; it is
+    # NOT a ToolSpec and NOT an MCP tool — see PRD
+    # memory-evolution-with-forgetting governance.
+    from agentic_swmm.commands.expert import memory_reflect as expert_memory_reflect
+
+    expert_memory_reflect.add_subparser(sub)
+
 
 def _dispatch(args: argparse.Namespace) -> int:
     """Route between the legacy summarise-memory mode and new subcommands."""
