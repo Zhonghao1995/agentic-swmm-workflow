@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
 from agentic_swmm.agent.planner_introspection import should_introspect
@@ -79,6 +80,22 @@ class OpenAIPlanner:
         auto_router_enabled = os.environ.get("AISWMM_DISABLE_AUTO_WORKFLOW_ROUTER") != "1"
         if os.environ.get("AISWMM_OPENAI_MOCK_TOOL_CALLS") and os.environ.get("AISWMM_FORCE_AUTO_WORKFLOW_ROUTER") != "1":
             auto_router_enabled = False
+
+        # PRD_runtime: classifier-driven short-circuit. When the user's
+        # prompt continues a prior SWMM run with a plot-style request
+        # (and we already have an active_run_dir from the previous
+        # turn), skip ``select_workflow_mode`` and the introspection
+        # cluster — go straight to inspect_plot_options + plot_run.
+        early_route = self._classify_plot_continuation(goal, prior_state)
+        if early_route is not None and auto_router_enabled:
+            return self._run_existing_run_plot_workflow(
+                goal=goal,
+                session_dir=session_dir,
+                plan=plan,
+                route=early_route,
+                executor=executor,
+            )
+
         if _looks_like_swmm_request(goal) and auto_router_enabled:
             self._consult_workflow_skills(
                 goal=goal,
@@ -179,6 +196,37 @@ class OpenAIPlanner:
             final_text = f"planner stopped after max_steps={self.max_steps}"
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
+
+    def _classify_plot_continuation(
+        self,
+        goal: str,
+        prior_session_state: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return a synthesized ``route`` dict when the prompt is a
+        plot continuation against a known active_run_dir.
+
+        Returns ``None`` when the classifier yields anything other than
+        ``PLOT_CONTINUATION`` or there is no active_run_dir to plot.
+        """
+        active_run_dir = prior_session_state.get("active_run_dir")
+        if not active_run_dir:
+            # The prior state may nest workflow_state — be tolerant.
+            workflow_state = prior_session_state.get("workflow_state")
+            if isinstance(workflow_state, dict):
+                active_run_dir = workflow_state.get("active_run_dir")
+        if not active_run_dir:
+            return None
+        # Strip the synthetic "Previous run directory: ..." trailer
+        # ``runtime_loop`` adds so that the classifier sees the user's
+        # actual prompt vocabulary.
+        prompt = goal.split("\n\nPrevious run directory:")[0].strip()
+        path = classify(prompt, {"active_run_dir": active_run_dir})
+        if path is not ExecutionPath.PLOT_CONTINUATION:
+            return None
+        return {
+            "mode": "existing_run_plot",
+            "provided_values": {"run_dir": str(active_run_dir)},
+        }
 
     def _consult_workflow_skills(
         self,
