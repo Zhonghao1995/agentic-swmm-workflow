@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
   "matplotlib",
   "numpy",
+  "spotpy",
   "swmmtoolbox",
 ]
 

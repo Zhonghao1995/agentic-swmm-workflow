@@ -3,7 +3,8 @@
  * Tools:
  * - swmm_sensitivity_scan
  * - swmm_calibrate
- * - swmm_calibrate_search
+ * - swmm_calibrate_search       (random / lhs / adaptive)
+ * - swmm_calibrate_sceua        (SCE-UA, KGE primary, publication-grade)
  * - swmm_validate
  * - swmm_parameter_scout
  */
@@ -43,7 +44,7 @@ const Common = z.object({
   runRoot: z.string(),
   swmmNode: z.string().default("O1"),
   swmmAttr: z.string().default("Total_inflow"),
-  objective: z.enum(["nse", "rmse", "bias", "peak_flow_error", "peak_timing_error"]).default("nse"),
+  objective: z.enum(["nse", "kge", "rmse", "bias", "peak_flow_error", "peak_timing_error"]).default("nse"),
   aggregate: z.enum(["none", "daily_mean"]).default("none"),
   obsStart: z.string().optional(),
   obsEnd: z.string().optional(),
@@ -69,6 +70,14 @@ const SearchArgs = Common.extend({
   refineMargin: z.number().min(0).max(1).default(0.1),
   minSpanFraction: z.number().min(0.000001).max(1).default(0.1),
   bestParamsOut: z.string().optional(),
+});
+const SceuaArgs = Common.extend({
+  searchSpace: z.string(),
+  iterations: z.number().int().positive().default(200),
+  seed: z.number().int().default(42),
+  sceuaNgs: z.number().int().positive().default(4),
+  bestParamsOut: z.string().optional(),
+  convergenceCsv: z.string().optional(),
 });
 const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
 const ScoutArgs = z.object({
@@ -111,7 +120,7 @@ function commonArgs(a) {
   return out;
 }
 
-const server = new Server({ name: "swmm-calibration-mcp", version: "0.3.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "swmm-calibration-mcp", version: "0.4.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -175,6 +184,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           eliteFraction: { type: "number", default: 0.3 },
           refineMargin: { type: "number", default: 0.1 },
           minSpanFraction: { type: "number", default: 0.1 }
+        },
+        required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
+      }
+    },
+    {
+      name: "swmm_calibrate_sceua",
+      description: "Global SCE-UA calibration with KGE as the primary objective. Emits calibration_summary.json with primary_value, kge_decomposition (r, alpha, beta), secondary_metrics (NSE, PBIAS%, RMSE, peak-flow, peak-timing) and a convergence.csv trace. Requires the optional 'spotpy' Python dependency.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
+          swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "kge", enum: ["kge"] },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
+          timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" },
+          convergenceCsv: { type: "string", description: "Where to write the per-iteration KGE trace (default: alongside summaryJson)." },
+          iterations: { type: "integer", default: 200, description: "SCE-UA budget (total function evaluations)." },
+          seed: { type: "integer", default: 42 },
+          sceuaNgs: { type: "integer", default: 4, description: "Number of complexes (spotpy default heuristic is 2*p+1)." }
         },
         required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
       }
@@ -250,6 +282,23 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       "--min-span-fraction", String(a.minSpanFraction),
     ];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    const stdout = await runPy(calibratePy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_calibrate_sceua") {
+    const a = SceuaArgs.parse({ ...args, objective: "kge" });
+    fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
+    const pyArgs = [
+      "search",
+      ...commonArgs(a),
+      "--search-space", a.searchSpace,
+      "--strategy", "sceua",
+      "--iterations", String(a.iterations),
+      "--seed", String(a.seed),
+      "--sceua-ngs", String(a.sceuaNgs),
+    ];
+    if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    if (a.convergenceCsv) pyArgs.push("--convergence-csv", a.convergenceCsv);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
