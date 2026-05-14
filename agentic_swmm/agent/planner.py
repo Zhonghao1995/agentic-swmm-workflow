@@ -19,6 +19,15 @@ from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
 
+# Number of consecutive failures of the *same* tool name that the
+# OpenAI agent loop tolerates before giving up. Three strikes guards
+# against the LLM getting stuck in a retry loop on the same broken
+# call while still leaving room for a typo + one retry + a final
+# pivot. The loop logic in OpenAIPlanner.run depends on this constant
+# being at least 1.
+SAME_TOOL_RETRY_LIMIT = 3
+
+
 @dataclass
 class PlannerRun:
     ok: bool
@@ -151,12 +160,11 @@ class OpenAIPlanner:
         final_text = ""
         ok = True
         # Same-tool retry guard: count consecutive failures of the same
-        # tool name within this session. Three strikes in a row and we
-        # give up, on the assumption that the LLM is stuck and further
-        # turns won't help.
+        # tool name within this session so we can stop when the LLM is
+        # clearly stuck. Limit lives at module scope as
+        # ``SAME_TOOL_RETRY_LIMIT``.
         last_failed_tool: str | None = None
         consecutive_failures = 0
-        SAME_TOOL_RETRY_LIMIT = 3
 
         for step in range(1, self.max_steps + 1):
             response = self.provider.respond_with_tools(
