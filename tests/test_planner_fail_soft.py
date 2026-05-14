@@ -154,10 +154,18 @@ class PlannerFailSoftTests(unittest.TestCase):
         # planner is alive after a failure.
         self.assertEqual(len(provider.calls_received), 2)
         second_input = provider.calls_received[1]
-        # And it must carry the failed tool's output, including
-        # stderr_tail so the LLM has actionable evidence.
-        rendered = json.dumps(second_input)
-        self.assertIn('"stderr_tail": "boom"', rendered)
+        # And it must carry the failed tool's output as a
+        # function_call_output whose serialized payload includes the
+        # stderr_tail so the LLM has actionable evidence. The output is
+        # a JSON string nested in another JSON object, so we parse it
+        # back rather than relying on substring shape.
+        self.assertEqual(len(second_input), 1)
+        item = second_input[0]
+        self.assertEqual(item.get("type"), "function_call_output")
+        self.assertEqual(item.get("call_id"), "c1")
+        payload = json.loads(item.get("output", "{}"))
+        self.assertEqual(payload.get("ok"), False)
+        self.assertEqual(payload.get("stderr_tail"), "boom")
         # The session terminates cleanly with the model's final text.
         self.assertEqual(outcome.final_text, "acknowledged the failure")
 

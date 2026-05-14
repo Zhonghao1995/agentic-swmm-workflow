@@ -150,6 +150,13 @@ class OpenAIPlanner:
         previous_response_id: str | None = None
         final_text = ""
         ok = True
+        # Same-tool retry guard: count consecutive failures of the same
+        # tool name within this session. Three strikes in a row and we
+        # give up, on the assumption that the LLM is stuck and further
+        # turns won't help.
+        last_failed_tool: str | None = None
+        consecutive_failures = 0
+        SAME_TOOL_RETRY_LIMIT = 3
 
         for step in range(1, self.max_steps + 1):
             response = self.provider.respond_with_tools(
@@ -174,6 +181,8 @@ class OpenAIPlanner:
                 break
 
             outputs: list[dict[str, Any]] = []
+            step_had_failure = False
+            giveup_tool: str | None = None
             for provider_call in response.tool_calls:
                 call = self.registry.validate(provider_call)
                 plan.append(call)
@@ -186,11 +195,50 @@ class OpenAIPlanner:
                 self.emit(f"{status}: {result.get('summary') or 'completed'}")
                 outputs.append({"type": "function_call_output", "call_id": provider_call.call_id, "output": json.dumps(self.registry.output_for_model(result), sort_keys=True)})
                 if not result.get("ok"):
-                    ok = False
+                    step_had_failure = True
+                    # Track consecutive failures of the same tool name.
+                    if last_failed_tool == call.name:
+                        consecutive_failures += 1
+                    else:
+                        last_failed_tool = call.name
+                        consecutive_failures = 1
+                    if consecutive_failures >= SAME_TOOL_RETRY_LIMIT:
+                        giveup_tool = call.name
+                    # Stop running the rest of this step's tool batch —
+                    # the failed tool's output likely changes context
+                    # for siblings.
                     break
+                # A successful tool resets the same-tool failure streak.
+                last_failed_tool = None
+                consecutive_failures = 0
+
             input_items = outputs
-            if executor.dry_run or not ok:
+
+            if giveup_tool is not None:
+                ok = False
+                final_text = f"giving up: {giveup_tool} failed {SAME_TOOL_RETRY_LIMIT}× in a row"
+                write_event(
+                    trace_path,
+                    {
+                        "event": "planner_giveup",
+                        "step": step,
+                        "tool": giveup_tool,
+                        "consecutive_failures": consecutive_failures,
+                    },
+                )
                 break
+
+            if executor.dry_run:
+                # Existing short-circuit: dry-run produces no further
+                # tool evidence, so a second LLM turn is pointless.
+                if step_had_failure:
+                    ok = False
+                break
+            # NOTE: we deliberately do NOT break on step_had_failure
+            # here. The failed tool's output is already packed into
+            # ``outputs`` (which becomes the next step's
+            # ``input_items``) so the LLM gets a chance to retry,
+            # pivot, or report the failure in natural language.
         else:
             ok = False
             final_text = f"planner stopped after max_steps={self.max_steps}"
