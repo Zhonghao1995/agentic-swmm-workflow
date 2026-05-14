@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import IO, Any, Callable
 
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.executor import AgentExecutor
@@ -15,6 +16,7 @@ from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.ui import Spinner, SpinnerState
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
@@ -70,6 +72,7 @@ class OpenAIPlanner:
         verbose: bool = False,
         emit: Callable[[str], None] | None = None,
         system_prompt_extras: list[str] | None = None,
+        progress_stream: IO[str] | None = None,
     ) -> None:
         self.provider = provider
         self.registry = registry
@@ -80,6 +83,11 @@ class OpenAIPlanner:
         # extras here (``<project-facts>`` + ``<previous-session>``).
         # Empty list means no injection — keeps unit tests untouched.
         self.system_prompt_extras: list[str] = list(system_prompt_extras or [])
+        # Issue #58 (UX-3): stream the "Thinking…" spinner here while
+        # ``provider.respond_with_tools`` blocks on the LLM. Default to
+        # ``sys.stdout`` so the runtime CLI gets a spinner with zero
+        # extra wiring; tests can pass a captured stream.
+        self._progress_stream: IO[str] = progress_stream if progress_stream is not None else sys.stdout
 
     def run(
         self,
@@ -180,12 +188,21 @@ class OpenAIPlanner:
         consecutive_failures = 0
 
         for step in range(1, self.max_steps + 1):
-            response = self.provider.respond_with_tools(
-                system_prompt=openai_planner_prompt(self.system_prompt_extras),
-                input_items=input_items,
-                tools=self.registry.schemas(),
-                previous_response_id=previous_response_id,
-            )
+            # Issue #58 (UX-3): the LLM call is the longest silent
+            # window in the loop (5-30s). Wrap it with a Thinking
+            # spinner so the user sees motion. The spinner clears on
+            # response (whether text or tool_calls) via ``finish()``.
+            with Spinner(
+                "Thinking…",
+                stream=self._progress_stream,
+                state=SpinnerState.THINKING,
+            ):
+                response = self.provider.respond_with_tools(
+                    system_prompt=openai_planner_prompt(self.system_prompt_extras),
+                    input_items=input_items,
+                    tools=self.registry.schemas(),
+                    previous_response_id=previous_response_id,
+                )
             previous_response_id = response.response_id
             write_event(
                 trace_path,

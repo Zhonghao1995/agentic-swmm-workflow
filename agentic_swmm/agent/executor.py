@@ -9,7 +9,7 @@ from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.agent.ui import Spinner
+from agentic_swmm.agent.ui import Spinner, SpinnerState
 
 
 class AgentExecutor:
@@ -62,11 +62,29 @@ class AgentExecutor:
         return result
 
     def _announce(self, label: str) -> None:
+        # Issue #58 (UX-3): show ``Running <toolname> — <first
+        # sentence of description>`` instead of the bare tool name so
+        # the user sees what the tool does, not just its identifier.
+        # Unknown tools fall back to the raw label.
+        rendered = self._tool_label(label)
         if self._spinner is None:
-            self._spinner = Spinner(label, stream=self._progress_stream)
+            self._spinner = Spinner(
+                rendered,
+                stream=self._progress_stream,
+                state=SpinnerState.RUNNING,
+            )
             self._spinner.__enter__()
         else:
-            self._spinner.update(label)
+            self._spinner.update(rendered)
+
+    def _tool_label(self, name: str) -> str:
+        description = self.registry.describe(name)
+        if not description:
+            return name
+        first_sentence = description.split(".")[0].strip()
+        if not first_sentence:
+            return name
+        return f"Running {name} — {first_sentence}"
 
     def close(self) -> None:
         """Close the progress spinner. Called once at the end of a run."""

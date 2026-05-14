@@ -79,6 +79,19 @@ class AgentToolRegistry:
             return False
         return bool(spec.is_read_only)
 
+    def describe(self, name: str) -> str | None:
+        """Return the ``ToolSpec.description`` for ``name``, or ``None``.
+
+        Used by the UX-3 tool spinner (issue #58) to show the first
+        sentence of the description next to the running tool name.
+        Unknown tools return ``None`` so callers can fall back to the
+        bare tool name.
+        """
+        spec = self._tools.get(name)
+        if spec is None:
+            return None
+        return spec.description
+
     def output_for_model(self, result: dict[str, Any]) -> dict[str, Any]:
         allowed_keys = {
             "tool",
