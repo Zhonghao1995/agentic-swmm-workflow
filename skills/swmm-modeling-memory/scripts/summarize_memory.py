@@ -11,6 +11,97 @@ from pathlib import Path
 from typing import Any
 
 
+# ME-1 lifecycle metadata fence (issue #61). Kept as plain string
+# constants so this script remains import-free and runnable as a
+# standalone skill helper.
+_METADATA_OPEN = "<!-- aiswmm-metadata"
+_METADATA_CLOSE = "/aiswmm-metadata -->"
+_METADATA_FENCE_RE = re.compile(
+    re.escape(_METADATA_OPEN) + r"\n.*?\n" + re.escape(_METADATA_CLOSE),
+    re.DOTALL,
+)
+_PATTERN_HEADING_RE = re.compile(
+    r"^##\s+(?P<name>[a-z][a-z0-9_]*)\s*$", re.MULTILINE
+)
+
+
+def _extract_metadata_fences(markdown_text: str) -> dict[str, str]:
+    """Return ``{pattern_name: fence_block_with_delimiters}``.
+
+    Only the fenced metadata payload (delimiters included) is captured.
+    Patterns without a fence are absent from the result. Used by the
+    one-shot migration to preserve metadata across summariser re-runs.
+    """
+    if not markdown_text:
+        return {}
+    out: dict[str, str] = {}
+    matches = list(_PATTERN_HEADING_RE.finditer(markdown_text))
+    for i, match in enumerate(matches):
+        name = match.group("name")
+        start = match.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(markdown_text)
+        block = markdown_text[start:end]
+        fence_match = _METADATA_FENCE_RE.search(block)
+        if fence_match:
+            out[name] = fence_match.group(0)
+    return out
+
+
+def _inject_metadata_fence(pattern_block: str, fence: str) -> str:
+    """Insert ``fence`` after the heading + blank line in ``pattern_block``."""
+    lines = pattern_block.splitlines(keepends=True)
+    if not lines:
+        return pattern_block
+    out: list[str] = [lines[0]]
+    idx = 1
+    if idx < len(lines) and lines[idx].strip() == "":
+        out.append(lines[idx])
+        idx += 1
+    else:
+        out.append("\n")
+    out.append(fence + "\n")
+    if idx < len(lines) and lines[idx].strip() != "":
+        out.append("\n")
+    out.extend(lines[idx:])
+    return "".join(out)
+
+
+def _merge_existing_metadata(old_path: Path, new_lessons: str) -> str:
+    """Re-attach metadata fences from ``old_path`` to ``new_lessons``."""
+    if not old_path.exists():
+        return new_lessons
+    try:
+        old_text = old_path.read_text(encoding="utf-8")
+    except OSError:
+        return new_lessons
+    fences = _extract_metadata_fences(old_text)
+    if not fences:
+        return new_lessons
+
+    updated = new_lessons
+    # Find each ## <pattern> span in the freshly rendered document and
+    # inject the preserved fence (if any) into the matching block.
+    while True:
+        matches = list(_PATTERN_HEADING_RE.finditer(updated))
+        rewrote = False
+        for i, match in enumerate(matches):
+            name = match.group("name")
+            if name not in fences:
+                continue
+            start = match.start()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(updated)
+            block = updated[start:end]
+            if _METADATA_FENCE_RE.search(block):
+                continue
+            new_block = _inject_metadata_fence(block, fences[name])
+            updated = updated[:start] + new_block + updated[end:]
+            rewrote = True
+            break
+        if not rewrote:
+            break
+    return updated
+
+
 AUDIT_FILES = ("experiment_provenance.json", "comparison.json", "experiment_note.md", "model_diagnostics.json")
 # Schema 1.1 stores audit artefacts in <run-dir>/09_audit/. Old runs that
 # still have files at run-dir root are tolerated as a read-only fallback.
@@ -980,7 +1071,13 @@ def main() -> int:
 
     write_text(out_dir / "modeling_memory_index.md", render_index_md(records, generated_at))
     write_text(out_dir / "project_memory_index.md", render_project_index_md(project_summaries, generated_at))
-    write_text(out_dir / "lessons_learned.md", render_lessons(records, generated_at))
+    # ME-1 (issue #61): preserve any existing per-pattern metadata block
+    # when re-rendering lessons_learned.md so the audit-end hook can
+    # bump evidence_count without the summariser overwriting it. The
+    # merge is a no-op when the file does not exist yet.
+    new_lessons = render_lessons(records, generated_at)
+    new_lessons = _merge_existing_metadata(out_dir / "lessons_learned.md", new_lessons)
+    write_text(out_dir / "lessons_learned.md", new_lessons)
     write_text(out_dir / "skill_update_proposals.md", render_proposals(records, generated_at))
     write_text(out_dir / "benchmark_verification_plan.md", render_benchmark_plan(generated_at))
 
