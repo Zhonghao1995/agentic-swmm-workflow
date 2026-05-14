@@ -1,6 +1,6 @@
 ---
 name: swmm-calibration
-description: Calibration and validation scaffold for EPA SWMM. Use when an agent needs to (1) compare simulated vs observed flow, (2) evaluate candidate parameter sets, (3) rank explicit candidates by an objective, (4) run a bounded random / LHS / adaptive search for the best-fitting parameters, or (5) run a publication-grade SCE-UA calibration with KGE as the primary objective and (r, alpha, beta) decomposition reported. Dedicated sensitivity-analysis methods (OAT, Morris, Sobol') now live on the `swmm-uncertainty` skill.
+description: Calibration and validation scaffold for EPA SWMM. Use when an agent needs to (1) compare simulated vs observed flow, (2) evaluate candidate parameter sets, (3) rank explicit candidates by an objective, (4) run a bounded random / LHS / adaptive search for the best-fitting parameters, (5) run a publication-grade SCE-UA calibration with KGE as the primary objective and (r, alpha, beta) decomposition reported, or (6) run a DREAM-ZS Bayesian calibration producing a posterior over parameters with Gelman-Rubin convergence checks. Dedicated sensitivity-analysis methods (OAT, Morris, Sobol') now live on the `swmm-uncertainty` skill.
 ---
 
 # SWMM Calibration / Validation (MVP scaffold)
@@ -25,23 +25,24 @@ description: Calibration and validation scaffold for EPA SWMM. Use when an agent
   - `search --strategy random` — uniform random sampling (fast prototyping).
   - `search --strategy lhs` — Latin Hypercube Sampling (fast prototyping).
   - `search --strategy adaptive` — multi-round LHS refinement around elite trials (fast prototyping).
-  - `search --strategy sceua` — Shuffled Complex Evolution (SCE-UA); recommended for publication-grade calibration. Minimises `(1 - KGE)` via `spotpy.algorithms.sceua` and emits a `calibration_summary.json` with KGE decomposition + secondary metrics. (DREAM-ZS posterior calibration is tracked as issue #53.)
+  - `search --strategy sceua` — Shuffled Complex Evolution (SCE-UA); recommended for publication-grade point-estimate calibration. Minimises `(1 - KGE)` via `spotpy.algorithms.sceua` and emits a `calibration_summary.json` with KGE decomposition + secondary metrics.
+  - `search --strategy dream-zs` — DREAM-ZS Bayesian calibration with a KGE-based likelihood `exp(-0.5 * (1 - KGE) / sigma^2)`. Produces a posterior over parameters via `spotpy.algorithms.dream`, writes 5 audit artefacts (`posterior_samples.csv`, `best_params.json`, `chain_convergence.json`, `posterior_<param>.png`, `posterior_correlation.png`) plus a Slice 1 -compatible `calibration_summary.json` with a `posterior_summary` block (Gelman-Rubin Rhat per parameter + per-parameter quantiles).
 - Dedicated sensitivity-analysis methods (OAT, Morris elementary-effects, Sobol' indices) have moved to the **swmm-uncertainty** skill — see `skills/swmm-uncertainty/scripts/sensitivity.py` and the `swmm_sensitivity_oat` / `swmm_sensitivity_morris` / `swmm_sensitivity_sobol` MCP tools.
 - MCP wrapper so OpenClaw can call the workflow as tools.
 
 ### Strategy guidance
 
-| Strategy   | When to use                                                | Cost       | Reports |
-|------------|------------------------------------------------------------|------------|---------|
-| `random`   | First-pass prototyping, smoke-testing the patch map        | Very low   | Ranking table |
-| `lhs`      | Quick coverage of a small search space                     | Very low   | Ranking table |
-| `adaptive` | LHS with multi-round refinement around elite trials        | Low        | Ranking table per round |
-| **`sceua`**| **Publication-grade calibration on a fixed search space**  | **Medium** | **`calibration_summary.json` with KGE primary + decomposition + secondary metrics + convergence.csv** |
-| (DREAM-ZS) | Bayesian posterior — tracked in #53                        | High       | Posterior chains, credible intervals |
+| Strategy     | When to use                                                                | Cost       | Reports |
+|--------------|----------------------------------------------------------------------------|------------|---------|
+| `random`     | First-pass prototyping, smoke-testing the patch map                        | Very low   | Ranking table |
+| `lhs`        | Quick coverage of a small search space                                     | Very low   | Ranking table |
+| `adaptive`   | LHS with multi-round refinement around elite trials                        | Low        | Ranking table per round |
+| **`sceua`**  | **Publication-grade point-estimate calibration on a fixed search space**   | **Medium** | **`calibration_summary.json` with KGE primary + decomposition + secondary metrics + `convergence.csv`** |
+| **`dream-zs`** | **Bayesian posterior calibration with Gelman-Rubin convergence checks**  | **High**   | **`calibration_summary.json` + `posterior_samples.csv` + `chain_convergence.json` + per-parameter marginal PNGs + correlation PNG** |
 
 ## MCP tools
 
-`mcp/swmm-calibration/server.js` exposes five tools, all thin wrappers around `scripts/swmm_calibrate.py`.
+`mcp/swmm-calibration/server.js` exposes six tools, all thin wrappers around `scripts/swmm_calibrate.py`.
 
 1. **`swmm_sensitivity_scan`** — evaluate a list of explicit candidate parameter sets against an observed series and rank them by an objective (KGE / NSE / RMSE / Bias / peak-flow / peak-timing). Use to score a curated candidate list. (This is *not* a screening method; for OAT / Morris / Sobol' screening use the `swmm_sensitivity_*` tools on the `swmm-uncertainty` MCP server.)
 
@@ -49,9 +50,11 @@ description: Calibration and validation scaffold for EPA SWMM. Use when an agent
 
 3. **`swmm_calibrate_search`** — generate bounded candidate sets internally and score them. Strategies: `random`, `lhs`, `adaptive` (multi-round LHS refinement around elite trials). Use when you have a search-space JSON instead of an explicit candidate list.
 
-4. **`swmm_calibrate_sceua`** — global SCE-UA calibration with KGE as the primary objective. Emits a `calibration_summary.json` containing `primary_objective`, `primary_value`, `kge_decomposition` (r / alpha / beta), `secondary_metrics` (NSE, PBIAS%, RMSE, peak-flow error, peak-timing error), and a `convergence.csv` trace. Use for publication-grade calibration. Requires the optional `spotpy` dependency.
+4. **`swmm_calibrate_sceua`** — global SCE-UA calibration with KGE as the primary objective. Emits a `calibration_summary.json` containing `primary_objective`, `primary_value`, `kge_decomposition` (r / alpha / beta), `secondary_metrics` (NSE, PBIAS%, RMSE, peak-flow error, peak-timing error), and a `convergence.csv` trace. Use for publication-grade point-estimate calibration. Requires the optional `spotpy` dependency.
 
-5. **`swmm_validate`** — apply one chosen parameter set to a second event (validation) and score it.
+5. **`swmm_calibrate_dream_zs`** — DREAM-ZS Bayesian posterior calibration with a KGE-based likelihood `exp(-0.5 * (1 - KGE) / sigma^2)`. Writes 5 posterior artefacts to the chosen audit directory (defaults to the parent of `summaryJson`): `posterior_samples.csv` (post-burn-in MCMC samples), `best_params.json` (MAP estimate), `chain_convergence.json` (Gelman-Rubin Rhat per parameter), `posterior_<param>.png` (marginal histogram per parameter), `posterior_correlation.png` (parameter correlation matrix). The `calibration_summary.json` keeps the Slice 1 shape (primary_objective=`kge`, primary_value, kge_decomposition, secondary_metrics) plus a `posterior_summary` block with chain count, Rhat values, and per-parameter quantiles. Use for Bayesian uncertainty quantification on top of (or instead of) the SCE-UA point estimate. Requires the optional `spotpy` dependency.
+
+6. **`swmm_validate`** — apply one chosen parameter set to a second event (validation) and score it.
 
 > Sensitivity analysis (OAT / Morris / Sobol') is owned by `swmm-uncertainty`. See `mcp/swmm-uncertainty/server.js` for `swmm_sensitivity_oat`, `swmm_sensitivity_morris`, and `swmm_sensitivity_sobol`.
 
@@ -106,7 +109,7 @@ A calibration run can feed uncertainty / sensitivity analysis back by exporting:
 
 ## MVP assumptions / limitations
 - This is intentionally a **transparent scaffold**, not a black-box optimizer.
-- Internal search supports bounded random, LHS-like sampling, simple adaptive LHS refinement, and SCE-UA (Shuffled Complex Evolution) for global optimisation against KGE. Bayesian posterior calibration (DREAM-ZS) is tracked in issue #53.
+- Internal search supports bounded random, LHS-like sampling, simple adaptive LHS refinement, SCE-UA (Shuffled Complex Evolution) for global optimisation against KGE, and DREAM-ZS (DiffeRential Evolution Adaptive Metropolis) for KGE-likelihood posterior sampling. SCE-UA produces a point estimate; DREAM-ZS produces a posterior plus a MAP point estimate.
 - INP patching is line-oriented and works best for one-line table records with stable object names.
 - Observed-flow parsing uses heuristics. If your file is messy, give explicit column names and time format whenever possible.
 - Simulated flow is read either from:
@@ -257,9 +260,64 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
 }
 ```
 
+### DREAM-ZS Bayesian calibration (posterior over parameters)
+Requires `spotpy` (already a runtime dependency). Likelihood is `exp(-0.5 * (1 - KGE) / sigma^2)`.
+
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp <your case>/event.inp \
+  --patch-map <your case>/calibration/patch_map.json \
+  --search-space <your case>/calibration/search_space.json \
+  --observed <your case>/calibration/observed_flow.csv \
+  --run-root runs/calibration-dream-zs/trials \
+  --summary-json runs/calibration-dream-zs/09_audit/calibration_summary.json \
+  --dream-output-dir runs/calibration-dream-zs/09_audit \
+  --best-params-out runs/calibration-dream-zs/09_audit/best_params.json \
+  --strategy dream-zs \
+  --objective kge \
+  --iterations 2000 \
+  --dream-chains 4 \
+  --dream-sigma 0.1 \
+  --dream-rhat-threshold 1.2 \
+  --seed 42
+```
+
+The `09_audit/` folder will contain five DREAM-ZS artefacts plus `calibration_summary.json`:
+
+- `posterior_samples.csv` — post-burn-in MCMC samples (`chain`, `iteration_in_chain`, `likelihood`, one column per parameter).
+- `best_params.json` — MAP estimate (highest-likelihood row from the chains).
+- `chain_convergence.json` — Gelman-Rubin Rhat per parameter, threshold, and a `converged` flag.
+- `posterior_<param>.png` — marginal histogram per parameter.
+- `posterior_correlation.png` — posterior parameter correlation matrix.
+
+`calibration_summary.json` keeps the same shape as SCE-UA (so downstream tooling stays compatible) and adds a `posterior_summary` block:
+
+```json
+{
+  "primary_objective": "kge",
+  "primary_value": 0.83,
+  "kge_decomposition": {"r": 0.94, "alpha": 1.02, "beta": 0.99},
+  "secondary_metrics": {"nse": 0.79, "pbias_pct": -1.4, "rmse": 0.038, "peak_error_rel": 0.05, "peak_timing_min": 8},
+  "strategy": "dream-zs",
+  "iterations": 2000,
+  "convergence_trace_ref": "chain_convergence.json",
+  "posterior_summary": {
+    "n_chains": 4,
+    "n_chains_requested": 4,
+    "n_samples_post_burnin": 1996,
+    "converged": true,
+    "rhat_threshold": 1.2,
+    "rhat": {"pct_imperv_s1": 1.07, "n_imperv_s1": 1.04, "...": "..."},
+    "per_parameter": {
+      "pct_imperv_s1": {"mean": 29.7, "median": 29.8, "std": 1.2, "q05": 27.6, "q95": 31.5}
+    }
+  }
+}
+```
+
 ## Recommended near-term extensions
-- Add DREAM-ZS Bayesian posterior calibration (issue #53) — complementary to SCE-UA's point estimate.
 - Add multi-event calibration/validation.
 - Add observed-vs-simulated overlay plots to the calibration script.
 - Extend patch-map selectors beyond simple one-line object rows.
 - Wire candidate handover artefacts (`candidate_calibration.json`, `candidate_inp_patch.json`, `calibration_report.md`) — issue #54.
+- Wire the DREAM-ZS posterior into source-decomposition uncertainty propagation — issue #55.

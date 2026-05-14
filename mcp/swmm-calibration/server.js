@@ -5,6 +5,7 @@
  * - swmm_calibrate
  * - swmm_calibrate_search       (random / lhs / adaptive)
  * - swmm_calibrate_sceua        (SCE-UA, KGE primary, publication-grade)
+ * - swmm_calibrate_dream_zs     (DREAM-ZS Bayesian posterior, KGE-based likelihood)
  * - swmm_validate
  *
  * NOTE: Sensitivity-analysis tools (OAT / Morris / Sobol') now live on the
@@ -82,6 +83,17 @@ const SceuaArgs = Common.extend({
   bestParamsOut: z.string().optional(),
   convergenceCsv: z.string().optional(),
 });
+const DreamZsArgs = Common.extend({
+  searchSpace: z.string(),
+  iterations: z.number().int().positive().default(1000),
+  seed: z.number().int().default(42),
+  dreamChains: z.number().int().min(2).default(4),
+  dreamSigma: z.number().positive().default(0.1),
+  dreamRhatThreshold: z.number().positive().default(1.2),
+  dreamRunsAfterConvergence: z.number().int().positive().default(50),
+  dreamOutputDir: z.string().optional(),
+  bestParamsOut: z.string().optional(),
+});
 const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
 
 function commonArgs(a) {
@@ -108,7 +120,7 @@ function commonArgs(a) {
   return out;
 }
 
-const server = new Server({ name: "swmm-calibration-mcp", version: "0.4.0" }, { capabilities: { tools: {} } });
+const server = new Server({ name: "swmm-calibration-mcp", version: "0.5.0" }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -200,6 +212,32 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       }
     },
     {
+      name: "swmm_calibrate_dream_zs",
+      description: "Run DREAM-ZS Bayesian calibration with a KGE-based likelihood (`exp(-0.5 * (1 - KGE) / sigma^2)`). Writes five posterior artefacts to the chosen audit directory (defaults to the parent of summaryJson): posterior_samples.csv (post-burn-in MCMC samples), best_params.json (MAP estimate), chain_convergence.json (Gelman-Rubin Rhat per parameter), posterior_<param>.png (marginal histogram per parameter), posterior_correlation.png (parameter correlation matrix). The calibration_summary.json keeps the Slice 1 shape (primary_objective='kge', primary_value, kge_decomposition, secondary_metrics) plus a `posterior_summary` block with chain count, Rhat values, and per-parameter quantiles. Requires the optional 'spotpy' Python dependency.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
+          swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "kge", enum: ["kge"] },
+          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
+          obsStart: { type: "string" }, obsEnd: { type: "string" },
+          timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
+          summaryJson: { type: "string" }, rankingJson: { type: "string" },
+          printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
+          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" },
+          dreamOutputDir: { type: "string", description: "Audit directory for the 5 DREAM-ZS artefacts. Defaults to the parent of summaryJson." },
+          iterations: { type: "integer", default: 1000, description: "Total MCMC iterations (across all chains)." },
+          seed: { type: "integer", default: 42 },
+          dreamChains: { type: "integer", default: 4, minimum: 2, description: "Number of MCMC chains (>=2 for Rhat)." },
+          dreamSigma: { type: "number", default: 0.1, description: "Likelihood width sigma on (1-KGE)." },
+          dreamRhatThreshold: { type: "number", default: 1.2, description: "Gelman-Rubin Rhat convergence threshold." },
+          dreamRunsAfterConvergence: { type: "integer", default: 50, description: "Extra samples to draw after convergence is detected." }
+        },
+        required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
+      }
+    },
+    {
       name: "swmm_validate",
       description: "Apply one chosen parameter set to a second event and score the validation run.",
       inputSchema: {
@@ -272,6 +310,26 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     ];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
     if (a.convergenceCsv) pyArgs.push("--convergence-csv", a.convergenceCsv);
+    const stdout = await runPy(calibratePy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_calibrate_dream_zs") {
+    const a = DreamZsArgs.parse({ ...args, objective: "kge" });
+    fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
+    const pyArgs = [
+      "search",
+      ...commonArgs(a),
+      "--search-space", a.searchSpace,
+      "--strategy", "dream-zs",
+      "--iterations", String(a.iterations),
+      "--seed", String(a.seed),
+      "--dream-chains", String(a.dreamChains),
+      "--dream-sigma", String(a.dreamSigma),
+      "--dream-rhat-threshold", String(a.dreamRhatThreshold),
+      "--dream-runs-after-convergence", String(a.dreamRunsAfterConvergence),
+    ];
+    if (a.dreamOutputDir) pyArgs.push("--dream-output-dir", a.dreamOutputDir);
+    if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
