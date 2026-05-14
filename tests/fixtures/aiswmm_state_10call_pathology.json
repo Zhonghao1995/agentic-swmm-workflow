@@ -1,0 +1,93 @@
+{
+  "active_run_dir": "runs/agent/interactive/session/runs/003-tecnopolo",
+  "artifact_index": [
+    {
+      "kind": "plot",
+      "path": "runs/agent/interactive/session/runs/003-tecnopolo/07_plots/fig_J2_Depth_above_invert.png"
+    },
+    {
+      "kind": "plot",
+      "path": "/tmp/run/07_plots/fig_rain_runoff.png"
+    }
+  ],
+  "available_next_actions": [
+    "answer_clarification",
+    "audit",
+    "plot",
+    "summarize_memory"
+  ],
+  "case_id": "003-tecnopolo",
+  "last_successful_stage": "plot",
+  "pending_clarification": "Choose plot options before plotting.",
+  "selected_node": "J2",
+  "selected_plot_variable": "Depth_above_invert",
+  "selected_rainfall": "MACAO_94_23",
+  "source_inp": null,
+  "tool_history": [
+    {
+      "args": {},
+      "tool": "list_skills"
+    },
+    {
+      "args": {
+        "skill_name": "swmm-end-to-end"
+      },
+      "tool": "read_skill"
+    },
+    {
+      "args": {
+        "skill_name": "swmm-runner"
+      },
+      "tool": "read_skill"
+    },
+    {
+      "args": {
+        "skill_name": "swmm-plot"
+      },
+      "tool": "read_skill"
+    },
+    {
+      "args": {},
+      "tool": "list_mcp_servers"
+    },
+    {
+      "args": {
+        "server": "swmm-runner",
+        "timeout_seconds": 3
+      },
+      "tool": "list_mcp_tools"
+    },
+    {
+      "args": {
+        "server": "swmm-plot",
+        "timeout_seconds": 3
+      },
+      "tool": "list_mcp_tools"
+    },
+    {
+      "args": {
+        "goal": "\u6362\u6210 node J2 \u7684\u6c34\u6df1\u56fe\n\nPrevious run directory: runs/agent/interactive/session/runs/003-tecnopolo",
+        "run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"
+      },
+      "tool": "select_workflow_mode"
+    },
+    {
+      "args": {
+        "run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"
+      },
+      "tool": "inspect_plot_options"
+    },
+    {
+      "args": {
+        "node": "J2",
+        "node_attr": "Depth_above_invert",
+        "out_png": "runs/agent/interactive/session/runs/003-tecnopolo/07_plots/fig_J2_Depth_above_invert.png",
+        "rain_kind": "cumulative_depth_mm",
+        "rain_ts": "MACAO_94_23",
+        "run_dir": "runs/agent/interactive/session/runs/003-tecnopolo"
+      },
+      "tool": "plot_run"
+    }
+  ],
+  "updated_at_utc": "2026-05-14T04:28:17+00:00"
+}

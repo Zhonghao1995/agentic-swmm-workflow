@@ -17,7 +17,10 @@ from unittest import mock
 
 class WriteChatNoteHelperTests(unittest.TestCase):
     def test_chat_session_writes_chat_note_and_skips_final_report(self) -> None:
-        from agentic_swmm.commands import agent as agent_cmd
+        # The audit PRD's chat-note helper moved from
+        # ``agentic_swmm.commands.agent`` to
+        # ``agentic_swmm.agent.runtime_loop`` in the Runtime UX split.
+        from agentic_swmm.agent import runtime_loop as agent_cmd
 
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp) / "chat-session"
@@ -47,7 +50,7 @@ class WriteChatNoteHelperTests(unittest.TestCase):
             self.assertIn("list_skills", text)
 
     def test_swmm_run_dir_does_not_get_chat_note(self) -> None:
-        from agentic_swmm.commands import agent as agent_cmd
+        from agentic_swmm.agent import runtime_loop as agent_cmd
 
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "swmm-run"
@@ -65,7 +68,7 @@ class FinalReportSuppressedForChatTests(unittest.TestCase):
         """When called from the interactive shell with a chat session
         dir, the planner harness must not write final_report.md.
         """
-        from agentic_swmm.commands import agent as agent_cmd
+        from agentic_swmm.agent import runtime_loop as agent_cmd
 
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp) / "chat-session"
@@ -103,7 +106,7 @@ class FinalReportSuppressedForChatTests(unittest.TestCase):
                 with mock.patch.object(agent_cmd, "OpenAIProvider", return_value=mock.MagicMock()):
                     with mock.patch.object(agent_cmd, "run_openai_plan", return_value=fake_outcome):
                         with mock.patch.object(agent_cmd, "AgentExecutor", return_value=mock.MagicMock()):
-                            rc = agent_cmd._run_openai_planner(
+                            rc = agent_cmd.run_openai_planner(
                                 args,
                                 goal="say hi",
                                 session_dir=session_dir,

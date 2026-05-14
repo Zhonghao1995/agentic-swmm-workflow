@@ -20,15 +20,30 @@ def run_rule_plan(*, goal: str, registry: AgentToolRegistry, executor: AgentExec
         plan = plan[:max_steps]
     write_event(trace_path, {"event": "session_start", "goal": goal, "session_dir": str(executor.session_dir), "plan": [call_payload(call) for call in plan]})
     ok = True
-    for index, call in enumerate(plan, start=1):
-        result = executor.execute(call, index=index)
-        if not result.get("ok"):
-            ok = False
-            break
+    try:
+        for index, call in enumerate(plan, start=1):
+            result = executor.execute(call, index=index)
+            if not result.get("ok"):
+                ok = False
+                break
+    finally:
+        executor.close()
     return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text="")
 
 
-def run_openai_plan(*, goal: str, model: str, provider, registry: AgentToolRegistry, executor: AgentExecutor, max_steps: int, trace_path: Path, verbose: bool, emit) -> PlannerRun:
+def run_openai_plan(
+    *,
+    goal: str,
+    model: str,
+    provider,
+    registry: AgentToolRegistry,
+    executor: AgentExecutor,
+    max_steps: int,
+    trace_path: Path,
+    verbose: bool,
+    emit,
+    prior_session_state: dict | None = None,
+) -> PlannerRun:
     write_event(
         trace_path,
         {
@@ -41,7 +56,18 @@ def run_openai_plan(*, goal: str, model: str, provider, registry: AgentToolRegis
         },
     )
     planner = OpenAIPlanner(provider, registry, max_steps=max_steps, verbose=verbose, emit=emit)
-    outcome = planner.run(goal=goal, session_dir=executor.session_dir, trace_path=trace_path, executor=executor)
+    try:
+        outcome = planner.run(
+            goal=goal,
+            session_dir=executor.session_dir,
+            trace_path=trace_path,
+            executor=executor,
+            prior_session_state=prior_session_state,
+        )
+    finally:
+        # Always tear down the per-executor spinner so the next print
+        # starts on a clean line.
+        executor.close()
     state_path, context_path = write_session_state(
         session_dir=executor.session_dir,
         goal=goal,

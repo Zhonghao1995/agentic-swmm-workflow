@@ -196,7 +196,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm interactive agent", proc.stdout)
+            # Runtime UX PRD trimmed the startup banner to a single line —
+            # match the new "aiswmm interactive (...)" header.
+            self.assertIn("aiswmm interactive", proc.stdout)
             self.assertIn("aiswmm executor", proc.stdout)
             self.assertIn("aiswmm> Planner: openai", proc.stdout)
             self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
@@ -732,7 +734,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("doctor", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
             self.assertIn("- planner: openai", report)
-            self.assertIn("allowed_tools", report)
+            # Runtime UX PRD: inline allowed_tools list dropped; report
+            # now references agent_trace.jsonl in a footer line.
+            self.assertIn("agent_trace.jsonl", report)
 
     def test_agent_openai_planner_rejects_unsupported_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -842,9 +846,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("list_mcp_servers", proc.stdout)
             self.assertIn("workspace tools inspected", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
-            self.assertIn("allowed_tools", report)
-            self.assertIn("web_search", report)
-            self.assertIn("call_mcp_tool", report)
+            # Runtime UX PRD: inline allowed_tools list is gone; the
+            # tool names below still appear in stdout (the executor
+            # progress channel) but no longer in the final report.
+            self.assertIn("agent_trace.jsonl", report)
 
     def test_search_files_normalizes_recursive_extension_glob(self) -> None:
         registry = AgentToolRegistry()
