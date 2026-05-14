@@ -244,6 +244,15 @@ def trigger_memory_refresh(
     except Exception as exc:
         result["errors"].append(f"compaction marker failed: {exc}")
 
+    # PRD M4: regenerate the memory MOC alongside lessons.
+    try:
+        from agentic_swmm.memory.moc_generator import write_memory_moc
+
+        moc_path = write_memory_moc(memory_dir, runs_dir)
+        result["memory_moc"] = str(moc_path)
+    except Exception as exc:
+        result["errors"].append(f"memory MOC write failed: {exc}")
+
     if no_rag:
         return result
 
