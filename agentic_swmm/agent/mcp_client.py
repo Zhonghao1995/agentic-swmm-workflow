@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import select
+import shutil
 import subprocess
 import threading
 import time
@@ -17,6 +18,7 @@ class McpClientError(RuntimeError):
 
 
 def call_mcp(command: str, args: list[str], method: str, params: dict[str, Any] | None = None, *, timeout: int = 20) -> dict[str, Any]:
+    _preflight(command, args)
     proc = subprocess.Popen(
         [command, *args],
         cwd=repo_root(),
@@ -66,58 +68,77 @@ def call_tool(command: str, args: list[str], tool_name: str, arguments: dict[str
     return result if isinstance(result, dict) else {"result": result}
 
 
+def _preflight(command: str, args: list[str]) -> None:
+    """Surface a friendly error before ``subprocess.Popen`` when the toolchain
+    or installed dependencies are missing. Without this the caller would see
+    either a 20 s timeout (no response on the pipe) or a cryptic
+    ``FileNotFoundError`` from ``Popen`` itself.
+    """
+    if command == "node" and shutil.which("node") is None:
+        raise McpClientError(
+            "node is not on PATH; MCP servers require Node.js. "
+            "Install Node 18+ (or run: aiswmm setup --install-mcp)."
+        )
+    for arg in args:
+        if not isinstance(arg, str):
+            continue
+        if not arg.endswith("server.js"):
+            continue
+        server_path = Path(arg)
+        if not server_path.is_absolute():
+            server_path = repo_root() / server_path
+        server_dir = server_path.parent
+        node_modules = server_dir / "node_modules"
+        if node_modules.exists():
+            continue
+        server_name = server_dir.name or str(server_dir)
+        raise McpClientError(
+            f"MCP server {server_name} has no node_modules. "
+            "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)"
+        )
+
+
 def _send(proc: subprocess.Popen[bytes], payload: dict[str, Any]) -> None:
     if proc.stdin is None:
         raise McpClientError("MCP process stdin is unavailable.")
     data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    proc.stdin.write(f"Content-Length: {len(data)}\r\n\r\n".encode("ascii") + data)
+    proc.stdin.write(data + b"\n")
     proc.stdin.flush()
 
 
 def _read(proc: subprocess.Popen[bytes], *, timeout: int) -> dict[str, Any]:
     if proc.stdout is None:
         raise McpClientError("MCP process stdout is unavailable.")
-    header = _read_until(proc.stdout, b"\r\n\r\n", timeout=timeout)
-    headers = header.decode("ascii", errors="replace").split("\r\n")
-    length = None
-    for line in headers:
-        if line.lower().startswith("content-length:"):
-            length = int(line.split(":", 1)[1].strip())
-            break
-    if length is None:
-        raise McpClientError("MCP response missing Content-Length header.")
-    body = _read_exact(proc.stdout, length, timeout=timeout)
-    parsed = json.loads(body.decode("utf-8"))
+    line = _readline(proc.stdout, timeout=timeout)
+    parsed = json.loads(line.decode("utf-8"))
     return parsed if isinstance(parsed, dict) else {"result": parsed}
 
 
-def _read_until(stream: Any, marker: bytes, *, timeout: int) -> bytes:
+def _readline(stream: Any, *, timeout: int) -> bytes:
     deadline = time.monotonic() + timeout
     data = b""
-    while marker not in data:
+    while not data.endswith(b"\n"):
         _wait_readable(stream, deadline)
         chunk = stream.read(1)
         if not chunk:
-            raise McpClientError("MCP process ended before sending a complete response.")
+            raise McpClientError("MCP process ended before sending a complete line.")
         data += chunk
-        if len(data) > 100_000:
-            raise McpClientError("MCP response header is too large.")
-    return data[: data.index(marker)]
-
-
-def _read_exact(stream: Any, length: int, *, timeout: int) -> bytes:
-    deadline = time.monotonic() + timeout
-    data = b""
-    while len(data) < length:
-        _wait_readable(stream, deadline)
-        chunk = stream.read(length - len(data))
-        if not chunk:
-            raise McpClientError("MCP response ended before the declared body length.")
-        data += chunk
-    return data
+        if len(data) > 5_000_000:
+            raise McpClientError("MCP response line is too large.")
+    return data.rstrip(b"\r\n")
 
 
 def _wait_readable(stream: Any, deadline: float) -> None:
+    # If the BufferedReader already has bytes buffered in user space the OS
+    # pipe will look idle to select(), so check the in-process buffer first.
+    peek = getattr(stream, "peek", None)
+    if peek is not None:
+        try:
+            if peek(1):
+                return
+        except ValueError:
+            # stream is closed; let the subsequent read() surface the EOF.
+            return
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise McpClientError("MCP response timed out.")
