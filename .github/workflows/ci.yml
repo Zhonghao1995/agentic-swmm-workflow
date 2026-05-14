@@ -46,10 +46,38 @@ jobs:
       - name: Install MCP server dependencies
         run: bash scripts/install_mcp_deps.sh
 
-      - name: Install SWMM engine
+      - name: Cache SWMM 5 binary
+        id: cache-swmm5
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/swmm5
+          key: swmm5-v5.2.4-${{ runner.os }}
+
+      - name: Build SWMM 5 from source
+        if: steps.cache-swmm5.outputs.cache-hit != 'true'
         run: |
-          scripts/install.sh --yes --skip-python --skip-mcp
+          set -e
+          git clone --depth 1 --branch v5.2.4 \
+            https://github.com/USEPA/Stormwater-Management-Model.git /tmp/swmm5-src
+          cmake -S /tmp/swmm5-src -B /tmp/swmm5-build \
+            -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/swmm5-build --config Release -j"$(nproc)"
+          SWMM_BIN=$(find /tmp/swmm5-build \
+            \( -name 'runswmm' -o -name 'swmm5' \) \
+            -type f -executable | head -1)
+          if [ -z "$SWMM_BIN" ]; then
+            echo "::error::Could not locate SWMM 5 binary after build"
+            find /tmp/swmm5-build -type f -executable
+            exit 1
+          fi
+          mkdir -p "$HOME/.local/bin"
+          cp "$SWMM_BIN" "$HOME/.local/bin/swmm5"
+          chmod +x "$HOME/.local/bin/swmm5"
+
+      - name: Verify SWMM 5 on PATH
+        run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/swmm5" --version
 
       - name: Syntax check
         run: |
@@ -88,10 +116,38 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install SWMM engine
+      - name: Cache SWMM 5 binary
+        id: cache-swmm5
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/swmm5
+          key: swmm5-v5.2.4-${{ runner.os }}
+
+      - name: Build SWMM 5 from source
+        if: steps.cache-swmm5.outputs.cache-hit != 'true'
         run: |
-          scripts/install.sh --yes --skip-python --skip-mcp
+          set -e
+          git clone --depth 1 --branch v5.2.4 \
+            https://github.com/USEPA/Stormwater-Management-Model.git /tmp/swmm5-src
+          cmake -S /tmp/swmm5-src -B /tmp/swmm5-build \
+            -DBUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/swmm5-build --config Release -j"$(nproc)"
+          SWMM_BIN=$(find /tmp/swmm5-build \
+            \( -name 'runswmm' -o -name 'swmm5' \) \
+            -type f -executable | head -1)
+          if [ -z "$SWMM_BIN" ]; then
+            echo "::error::Could not locate SWMM 5 binary after build"
+            find /tmp/swmm5-build -type f -executable
+            exit 1
+          fi
+          mkdir -p "$HOME/.local/bin"
+          cp "$SWMM_BIN" "$HOME/.local/bin/swmm5"
+          chmod +x "$HOME/.local/bin/swmm5"
+
+      - name: Verify SWMM 5 on PATH
+        run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/swmm5" --version
 
       - name: Run acceptance workflow
         run: |
