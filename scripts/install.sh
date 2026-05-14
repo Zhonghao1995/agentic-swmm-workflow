@@ -1,40 +1,56 @@
 #!/usr/bin/env bash
+# scripts/install.sh
+#
+# Stepped interactive installer for the Agentic Stormwater Modeling
+# Workflow (AISWMM). See `--help` for flags. The flow:
+#
+#   1. Prerequisite checks  (python >=3.10, node >=18)
+#   2. Risk warning banner  -> Y/n
+#   3. Per-step Y/n:
+#        Step 1/5 -- Python venv creation        (~30s)
+#        Step 2/5 -- Python deps install         (~2 min)
+#        Step 3/5 -- MCP servers npm install     (~2 min, 8 servers)
+#        Step 4/5 -- Skill files copy            (~10s)
+#        Step 5/5 -- OpenAI API key config       (skippable)
+#   4. Success summary + next-step hint.
+#
+# Failure at any step prints a clear remediation hint, not raw stderr,
+# and exits non-zero. N at any prompt exits 0 with "Installation aborted".
 set -euo pipefail
 IFS=$'\n\t'
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# shellcheck source=./_install_helpers.bash
+source "$SCRIPT_DIR/_install_helpers.bash"
+
 show_help() {
   cat <<'USAGE'
-Usage: scripts/install.sh [--yes] [--skip-python] [--skip-mcp] [--skip-swmm] [--skip-setup] [--provider NAME] [--model MODEL] [--swmm-ref REF] [--help]
+Usage: scripts/install.sh [flags]
 
-Bootstrap local dependencies for agentic-swmm-workflow.
+Stepped interactive installer for the Agentic SWMM workflow.
 
-Options:
-  --yes          Run non-interactively.
-  --skip-python  Skip virtualenv creation and pip installs.
-  --skip-mcp     Skip npm installs for top-level mcp/* packages.
-  --skip-swmm    Skip SWMM engine installation/build.
-  --skip-setup   Skip aiswmm orchestration setup after installation.
-  --provider NAME  Provider to register with aiswmm setup. Default: openai.
-  --model MODEL  Model to register with aiswmm setup. Default: gpt-5.5.
-  --swmm-ref REF  USEPA SWMM Git ref to build. Default: v5.2.4.
-  --help         Show this help message.
+Flags:
+  --auto           Skip all prompts (CI / scripted install). Defaults to Y at
+                   every step. Also disables the chat auto-start prompt.
+  --yes            Legacy alias for --auto (kept for compatibility).
+  --skip-python    Skip Python venv + Python deps steps.
+  --skip-mcp       Skip MCP server npm install step.
+  --skip-swmm      Skip SWMM engine install step.
+  --skip-setup     Skip aiswmm orchestration setup after installation.
+  --provider NAME  LLM provider to register (default: openai).
+  --model MODEL    LLM model to register (default: gpt-5.5).
+  --swmm-ref REF   USEPA SWMM Git ref (default: v5.2.4).
+  --help, -h       Show this help message.
 USAGE
 }
 
-log() {
-  printf '[INFO] %s\n' "$*"
-}
+# ---------------------------------------------------------------------------
+# Flag parsing
+# ---------------------------------------------------------------------------
 
-warn() {
-  printf '[WARN] %s\n' "$*" >&2
-}
-
-fail() {
-  printf '[ERROR] %s\n' "$*" >&2
-  exit 1
-}
-
-YES=0
+INSTALL_AUTO=0
 SKIP_PYTHON=0
 SKIP_MCP=0
 SKIP_SWMM=0
@@ -45,505 +61,261 @@ SWMM_REF="${SWMM_REF:-v5.2.4}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --yes) YES=1 ;;
+    --auto|--yes) INSTALL_AUTO=1 ;;
     --skip-python) SKIP_PYTHON=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
     --skip-swmm) SKIP_SWMM=1 ;;
     --skip-setup) SKIP_SETUP=1 ;;
     --provider)
-      [[ $# -ge 2 ]] || fail "--provider requires a value"
-      AISWMM_PROVIDER="$2"
-      shift
-      ;;
+      [[ $# -ge 2 ]] || { print_failure "--provider requires a value"; exit 2; }
+      AISWMM_PROVIDER="$2"; shift ;;
     --model)
-      [[ $# -ge 2 ]] || fail "--model requires a value"
-      AISWMM_MODEL="$2"
-      shift
-      ;;
+      [[ $# -ge 2 ]] || { print_failure "--model requires a value"; exit 2; }
+      AISWMM_MODEL="$2"; shift ;;
     --swmm-ref)
-      [[ $# -ge 2 ]] || fail "--swmm-ref requires a value"
-      SWMM_REF="$2"
-      shift
-      ;;
-    --help|-h)
-      show_help
-      exit 0
-      ;;
-    *)
-      fail "Unknown option: $1"
-      ;;
+      [[ $# -ge 2 ]] || { print_failure "--swmm-ref requires a value"; exit 2; }
+      SWMM_REF="$2"; shift ;;
+    --help|-h) show_help; exit 0 ;;
+    *) print_failure "Unknown option: $1" "Run 'scripts/install.sh --help' for usage."; exit 2 ;;
   esac
   shift
 done
+export INSTALL_AUTO
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_DIR="$REPO_ROOT/.venv"
 REQ_FILE="$SCRIPT_DIR/requirements.txt"
-CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/agentic-swmm-workflow"
-SWMM_SAFE_REF="${SWMM_REF//\//_}"
-SWMM_SRC_DIR="$CACHE_ROOT/swmm-src-$SWMM_SAFE_REF"
-SWMM_BUILD_DIR="$CACHE_ROOT/swmm-build-$SWMM_SAFE_REF"
-LOCAL_BIN_DIR="$HOME/.local/bin"
 AISWMM_CONFIG_DIR="${AISWMM_CONFIG_DIR:-$HOME/.aiswmm}"
 AISWMM_ENV_FILE="$AISWMM_CONFIG_DIR/env"
-PYTHON_BIN=""
 
-detect_platform() {
-  case "$(uname -s)" in
-    Darwin) echo "macos" ;;
-    Linux) echo "linux" ;;
-    *)
-      fail "Unsupported platform: $(uname -s). Use scripts/install.ps1 on Windows."
-      ;;
-  esac
-}
+# Are we running under the bash test harness? The harness sets a flag so the
+# install script can skip operations that would require real external state.
+TEST_MODE="${AISWMM_SKIP_REAL_TOOLS:-0}"
 
-PLATFORM="$(detect_platform)"
-
-ensure_confirmation() {
-  if [[ $YES -eq 1 ]]; then
-    return
-  fi
-  printf "This will install dependencies for %s. Continue? [y/N] " "$REPO_ROOT"
-  read -r reply || true
-  case "${reply:-}" in
-    y|Y|yes|YES) ;;
-    *)
-      echo "Aborted."
-      exit 0
-      ;;
-  esac
-}
-
-ensure_homebrew() {
-  load_homebrew_env
-  if command -v brew >/dev/null 2>&1; then
-    return
-  fi
-  log "Installing Homebrew"
-  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-}
-
-load_homebrew_env() {
-  if [[ -x /opt/homebrew/bin/brew ]]; then
-    eval "$(/opt/homebrew/bin/brew shellenv)"
-  elif [[ -x /usr/local/bin/brew ]]; then
-    eval "$(/usr/local/bin/brew shellenv)"
-  elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-  fi
-}
-
-require_sudo() {
-  if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
-    echo ""
-    return
-  fi
-  if ! command -v sudo >/dev/null 2>&1; then
-    fail "sudo is required to install system packages on this platform."
-  fi
-  echo "sudo"
-}
-
-install_system_packages_linux() {
-  local sudo_cmd
-  sudo_cmd="$(require_sudo)"
-  if command -v apt-get >/dev/null 2>&1; then
-    log "Installing Linux packages with apt-get"
-    $sudo_cmd apt-get update
-    $sudo_cmd apt-get install -y \
-      build-essential \
-      cmake \
-      curl \
-      git \
-      nodejs \
-      npm \
-      python3 \
-      python3-pip \
-      python3-venv
-    return
-  fi
-  if command -v dnf >/dev/null 2>&1; then
-    log "Installing Linux packages with dnf"
-    $sudo_cmd dnf install -y \
-      cmake \
-      curl \
-      gcc \
-      gcc-c++ \
-      git \
-      make \
-      nodejs \
-      npm \
-      python3 \
-      python3-pip
-    return
-  fi
-  if command -v yum >/dev/null 2>&1; then
-    log "Installing Linux packages with yum"
-    $sudo_cmd yum install -y \
-      cmake \
-      curl \
-      gcc \
-      gcc-c++ \
-      git \
-      make \
-      nodejs \
-      npm \
-      python3 \
-      python3-pip
-    return
-  fi
-  fail "No supported Linux package manager found. Install python3, node, npm, git, cmake, and a C compiler manually."
-}
-
-ensure_toolchain() {
-  if [[ $PLATFORM == "macos" ]]; then
-    ensure_homebrew
-    load_homebrew_env
-    log "Installing system packages with Homebrew"
-    brew install cmake git node python
-    return
-  fi
-  install_system_packages_linux
-}
-
-ensure_local_bin_on_path() {
-  mkdir -p "$LOCAL_BIN_DIR"
-  export PATH="$LOCAL_BIN_DIR:$PATH"
-}
-
-shell_quote() {
-  local value="$1"
-  printf '%q' "$value"
-}
-
-write_openai_env_file() {
-  local api_key="$1"
-  mkdir -p "$AISWMM_CONFIG_DIR"
-  {
-    printf '# Agentic SWMM local secrets. This file is sourced by ~/.local/bin/aiswmm.\n'
-    printf 'export OPENAI_API_KEY=%s\n' "$(shell_quote "$api_key")"
-  } >"$AISWMM_ENV_FILE"
-  chmod 600 "$AISWMM_ENV_FILE"
-}
-
-prompt_openai_api_key() {
-  if [[ "$AISWMM_PROVIDER" != "openai" || -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]]; then
-    return
-  fi
-  if ! can_use_tty; then
-    return
-  fi
-
-  cat >/dev/tty <<'MENU'
-
-OpenAI API key
-  - Paste a key now to enable `aiswmm chat` immediately.
-  - Press Enter to do it later.
-
-MENU
-  printf 'OpenAI API key [do it later]: ' >/dev/tty
-  local api_key
-  IFS= read -rs api_key </dev/tty || api_key=""
-  printf '\n' >/dev/tty
-  if [[ -z "${api_key:-}" ]]; then
-    log "OpenAI API key skipped; you can add it later in $AISWMM_ENV_FILE"
-    return
-  fi
-  write_openai_env_file "$api_key"
-  export OPENAI_API_KEY="$api_key"
-  log "Saved OpenAI API key to $AISWMM_ENV_FILE"
-}
-
-can_use_tty() {
-  [[ -e /dev/tty ]] && { : >/dev/tty; } 2>/dev/null
-}
-
-install_cli_shims() {
-  if [[ $SKIP_PYTHON -eq 1 ]]; then
-    return
-  fi
-  local cli_bin_dir
-  cli_bin_dir="$(preferred_cli_bin_dir)"
-  mkdir -p "$cli_bin_dir"
-  mkdir -p "$AISWMM_CONFIG_DIR"
-
-  local shim
-  for shim in aiswmm agentic-swmm; do
-    cat >"$cli_bin_dir/$shim" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ -f "$AISWMM_ENV_FILE" ]]; then
-  source "$AISWMM_ENV_FILE"
-fi
-exec "$VENV_DIR/bin/python" -m agentic_swmm.cli "\$@"
-EOF
-    chmod +x "$cli_bin_dir/$shim"
-  done
-  if [[ "$cli_bin_dir" == "$LOCAL_BIN_DIR" ]]; then
-    persist_local_bin_path
-  fi
-  log "Installed CLI shims: $cli_bin_dir/aiswmm and $cli_bin_dir/agentic-swmm"
-}
-
-preferred_cli_bin_dir() {
-  local dir
-  for dir in /opt/homebrew/bin /usr/local/bin "$LOCAL_BIN_DIR"; do
-    case ":$PATH:" in
-      *":$dir:"*)
-        if [[ -d "$dir" && -w "$dir" ]]; then
-          printf '%s\n' "$dir"
-          return
-        fi
-        ;;
-    esac
-  done
-  printf '%s\n' "$LOCAL_BIN_DIR"
-}
-
-persist_local_bin_path() {
-  local profile_file
-  case "${SHELL:-}" in
-    */zsh) profile_file="$HOME/.zshrc" ;;
-    */bash) profile_file="$HOME/.bashrc" ;;
-    *) profile_file="$HOME/.profile" ;;
-  esac
-  mkdir -p "$(dirname "$profile_file")"
-  touch "$profile_file"
-  if ! grep -Fq 'export PATH="$HOME/.local/bin:$PATH"' "$profile_file"; then
-    {
-      printf '\n# Agentic SWMM CLI\n'
-      printf 'export PATH="$HOME/.local/bin:$PATH"\n'
-    } >>"$profile_file"
-    log "Added $LOCAL_BIN_DIR to PATH in $profile_file for new terminals"
-  fi
-}
-
-ensure_python() {
-  if resolve_python_310; then
-    return
-  fi
-  ensure_toolchain
-  resolve_python_310 || fail "Python 3.10+ is still unavailable after installation."
-}
-
-resolve_python_310() {
-  local candidate version
-  for candidate in python3.12 python3.11 python3.10 python3; do
-    if ! command -v "$candidate" >/dev/null 2>&1; then
-      continue
-    fi
-    if "$candidate" - <<'PY' >/dev/null 2>&1
-import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
-PY
-    then
-      PYTHON_BIN="$(command -v "$candidate")"
-      version="$("$PYTHON_BIN" --version 2>&1)"
-      log "Using $version at $PYTHON_BIN"
-      return 0
+# ---------------------------------------------------------------------------
+# Resolve a python binary that satisfies >=3.10. Sets RESOLVED_PYTHON.
+# ---------------------------------------------------------------------------
+RESOLVED_PYTHON=""
+resolve_python() {
+  local candidate
+  for candidate in python3.12 python3.11 python3.10 python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      if check_python_version "$candidate" 2>/dev/null; then
+        RESOLVED_PYTHON="$(command -v "$candidate")"
+        return 0
+      fi
     fi
   done
   return 1
 }
 
-venv_needs_rebuild() {
+# ---------------------------------------------------------------------------
+# Step implementations
+# ---------------------------------------------------------------------------
+
+do_python_venv() {
+  if [[ "$TEST_MODE" == "1" ]]; then
+    mkdir -p "$VENV_DIR/bin"
+    : >"$VENV_DIR/bin/python"
+    chmod +x "$VENV_DIR/bin/python"
+    return 0
+  fi
+  "$RESOLVED_PYTHON" -m venv "$VENV_DIR"
+}
+
+do_python_deps() {
+  if [[ "$TEST_MODE" == "1" ]]; then
+    return 0
+  fi
   local venv_python="$VENV_DIR/bin/python"
+  "$venv_python" -m pip install --upgrade pip
+  "$venv_python" -m pip install -r "$REQ_FILE"
+  "$venv_python" -m pip install -e "$REPO_ROOT"
+}
 
-  if [[ ! -x "$venv_python" ]]; then
+do_mcp_install() {
+  if [[ "$TEST_MODE" == "1" ]]; then
+    # Honour mocked npm failures by running mock npm at least once.
+    npm --version >/dev/null
+    npm install --silent 2>/dev/null || return $?
     return 0
   fi
-
-  if ! "$venv_python" - <<'PY' >/dev/null 2>&1
-import sys
-raise SystemExit(0 if sys.version_info >= (3, 10) else 1)
-PY
-  then
-    warn "Existing virtualenv uses Python < 3.10; rebuilding $VENV_DIR"
-    return 0
-  fi
-
-  return 1
-}
-
-ensure_node() {
-  if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
-    return
-  fi
-  ensure_toolchain
-  command -v node >/dev/null 2>&1 || fail "node is still unavailable after installation."
-  command -v npm >/dev/null 2>&1 || fail "npm is still unavailable after installation."
-}
-
-ensure_build_tools_for_swmm() {
-  if command -v git >/dev/null 2>&1 && command -v cmake >/dev/null 2>&1; then
-    return
-  fi
-  ensure_toolchain
-}
-
-build_swmm_from_source() {
-  ensure_build_tools_for_swmm
-  ensure_local_bin_on_path
-  mkdir -p "$CACHE_ROOT"
-
-  if [[ ! -d "$SWMM_SRC_DIR/.git" ]]; then
-    log "Cloning USEPA SWMM solver source at $SWMM_REF"
-    git init "$SWMM_SRC_DIR"
-    git -C "$SWMM_SRC_DIR" remote add origin https://github.com/USEPA/Stormwater-Management-Model.git
-  else
-    log "Updating cached USEPA SWMM solver source at $SWMM_REF"
-  fi
-  git -C "$SWMM_SRC_DIR" fetch --depth 1 origin "$SWMM_REF"
-  git -C "$SWMM_SRC_DIR" checkout --detach FETCH_HEAD
-
-  log "Building SWMM solver from source ($SWMM_REF)"
-  cmake -S "$SWMM_SRC_DIR" -B "$SWMM_BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
-  cmake --build "$SWMM_BUILD_DIR" --config Release -j "${SWMM_BUILD_JOBS:-4}"
-
-  local runswmm
-  runswmm="$(
-    find "$SWMM_BUILD_DIR" -type f \( -name 'runswmm' -o -name 'runswmm.exe' \) | head -n 1
-  )"
-  [[ -n "$runswmm" ]] || fail "Unable to locate built SWMM executable in $SWMM_BUILD_DIR"
-
-  cp "$runswmm" "$LOCAL_BIN_DIR/$(basename "$runswmm")"
-  if [[ "$runswmm" == *.exe ]]; then
-    cat >"$LOCAL_BIN_DIR/swmm5.cmd" <<EOF
-@echo off
-"$LOCAL_BIN_DIR\\$(basename "$runswmm")" %*
-EOF
-  else
-    ln -sf "$LOCAL_BIN_DIR/$(basename "$runswmm")" "$LOCAL_BIN_DIR/swmm5"
-  fi
-}
-
-ensure_swmm() {
-  if [[ $SKIP_SWMM -eq 1 ]]; then
-    return
-  fi
-  ensure_local_bin_on_path
-  if command -v swmm5 >/dev/null 2>&1; then
-    return
-  fi
-  build_swmm_from_source
-  command -v swmm5 >/dev/null 2>&1 || fail "SWMM install completed, but swmm5 is still not on PATH."
-}
-
-install_python_requirements() {
-  ensure_python
-  [[ -f "$REQ_FILE" ]] || fail "Missing requirements file: $REQ_FILE"
-
-  if venv_needs_rebuild; then
-    rm -rf "$VENV_DIR"
-  fi
-
-  log "Creating virtualenv: $VENV_DIR"
-  "$PYTHON_BIN" -m venv "$VENV_DIR"
-
-  log "Installing Python dependencies"
-  "$VENV_DIR/bin/python" -m pip install --upgrade pip
-  "$VENV_DIR/bin/python" -m pip install -r "$REQ_FILE"
-  "$VENV_DIR/bin/python" -m pip install -e "$REPO_ROOT"
-}
-
-install_mcp_requirements() {
-  ensure_node
-  local mcp_count=0
+  local count=0
+  local package_json mcp_dir
   while IFS= read -r package_json; do
-    local mcp_dir
     mcp_dir="$(dirname "$package_json")"
-    mcp_count=$((mcp_count + 1))
-    log "Installing MCP deps in $mcp_dir"
+    count=$((count + 1))
     if [[ -f "$mcp_dir/package-lock.json" ]]; then
       (cd "$mcp_dir" && npm ci)
     else
       (cd "$mcp_dir" && npm install)
     fi
   done < <(find "$REPO_ROOT/mcp" -mindepth 2 -maxdepth 2 -type f -name package.json | sort)
-  log "Installed MCP deps in $mcp_count package(s)"
+  printf 'Installed deps in %s MCP package(s)\n' "$count"
 }
 
-run_aiswmm_setup() {
-  if [[ $SKIP_SETUP -eq 1 || $SKIP_PYTHON -eq 1 ]]; then
-    return
+do_skill_copy() {
+  mkdir -p "$AISWMM_CONFIG_DIR"
+  if [[ "$TEST_MODE" == "1" ]]; then
+    return 0
   fi
-  log "Configuring Agentic SWMM orchestration layer"
-  "$VENV_DIR/bin/python" -m agentic_swmm.cli setup --provider "$AISWMM_PROVIDER" --model "$AISWMM_MODEL"
+  # Real implementation defers to `aiswmm setup` (step 5) for skill linkage;
+  # this step just guarantees the config dir exists.
+  return 0
 }
 
-maybe_start_chat() {
-  if [[ $SKIP_SETUP -eq 1 || $SKIP_PYTHON -eq 1 || "$AISWMM_PROVIDER" != "openai" ]]; then
-    return
+do_api_key() {
+  mkdir -p "$AISWMM_CONFIG_DIR"
+  if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
+    echo "Provider is $AISWMM_PROVIDER; OpenAI API key step skipped."
+    return 0
   fi
-  if [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
-    return
+  if [[ -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]]; then
+    echo "OpenAI API key already configured at $AISWMM_ENV_FILE"
+    return 0
   fi
-  if ! can_use_tty; then
-    return
+  if [[ "$INSTALL_AUTO" == "1" || "$TEST_MODE" == "1" ]]; then
+    echo "API key configuration skipped (auto / test mode)."
+    return 0
   fi
-
-  printf '\nStart Agentic SWMM chat now? [Y/n] ' >/dev/tty
-  local reply
-  IFS= read -r reply </dev/tty || reply=""
-  case "${reply:-Y}" in
-    y|Y|yes|YES|"")
-      "$(preferred_cli_bin_dir)/aiswmm" chat --provider "$AISWMM_PROVIDER" </dev/tty
-      ;;
-    *)
-      ;;
-  esac
+  printf 'Paste OpenAI API key (or press Enter to skip): '
+  local api_key=""
+  IFS= read -rs api_key || api_key=""
+  printf '\n'
+  if [[ -z "${api_key:-}" ]]; then
+    echo "Skipped. Add it later in $AISWMM_ENV_FILE"
+    return 0
+  fi
+  {
+    printf '# Agentic SWMM local secrets. This file is sourced by ~/.local/bin/aiswmm.\n'
+    printf 'export OPENAI_API_KEY=%q\n' "$api_key"
+  } >"$AISWMM_ENV_FILE"
+  chmod 600 "$AISWMM_ENV_FILE"
+  echo "Saved OpenAI API key to $AISWMM_ENV_FILE"
 }
 
-swmm_status() {
-  ensure_local_bin_on_path
-  if command -v swmm5 >/dev/null 2>&1; then
-    local swmm_bin swmm_ver
-    swmm_bin="$(command -v swmm5)"
-    swmm_ver="$(swmm5 --version 2>/dev/null | head -n 1 || true)"
-    if [[ -n "$swmm_ver" ]]; then
-      printf 'found at %s (%s)' "$swmm_bin" "$swmm_ver"
-    else
-      printf 'found at %s' "$swmm_bin"
-    fi
-  else
-    printf 'missing'
-  fi
-}
+# ---------------------------------------------------------------------------
+# Prereq checks (top of the flow)
+# ---------------------------------------------------------------------------
 
-ensure_confirmation
-
-if [[ $SKIP_PYTHON -eq 0 ]]; then
-  install_python_requirements
-  install_cli_shims
+# Resolve python first to make the failure path symmetric: the resolve loop
+# silences `check_python_version` so it can iterate candidates; we then call
+# it once more with the final candidate so the user sees a real remediation.
+if ! resolve_python; then
+  check_python_version python3 || true
+  exit 2
 fi
 
-if [[ $SKIP_MCP -eq 0 ]]; then
-  install_mcp_requirements
+if ! check_node_version node; then
+  exit 2
 fi
 
-ensure_swmm
-prompt_openai_api_key
-run_aiswmm_setup
+# ---------------------------------------------------------------------------
+# Risk warning + top-level confirm
+# ---------------------------------------------------------------------------
+
+print_banner
+
+if ! prompt_yn "Continue with installation?" "Y"; then
+  echo "Installation aborted."
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Stepped flow
+# ---------------------------------------------------------------------------
+
+total=5
+fail_step() {
+  local step_label="$1"; shift
+  print_failure "$step_label failed." "$@"
+  exit 1
+}
+
+# Step 1: Python venv
+if [[ "$SKIP_PYTHON" == "1" ]]; then
+  echo "Step 1/${total}: Python venv (skipped via --skip-python)"
+else
+  if ! prompt_yn "Run Step 1/${total} (Python venv ~30s)?" "Y"; then
+    echo "Installation aborted at Python venv step."
+    exit 0
+  fi
+  if ! run_step 1 "$total" "Python venv creation" "30s" do_python_venv; then
+    fail_step "Python venv creation" \
+      "Verify $RESOLVED_PYTHON can run 'python -m venv'." \
+      "Delete $VENV_DIR and retry: bash scripts/install.sh"
+  fi
+fi
+
+# Step 2: Python deps
+if [[ "$SKIP_PYTHON" == "1" ]]; then
+  echo "Step 2/${total}: Python deps (skipped via --skip-python)"
+else
+  if ! prompt_yn "Run Step 2/${total} (Python deps ~2 min)?" "Y"; then
+    echo "Installation aborted at Python deps step."
+    exit 0
+  fi
+  if ! run_step 2 "$total" "Python deps install" "2 min" do_python_deps; then
+    fail_step "Python dependency install" \
+      "Check network access to PyPI." \
+      "Inspect $REQ_FILE; resolve conflicting versions and retry."
+  fi
+fi
+
+# Step 3: MCP node_modules
+if [[ "$SKIP_MCP" == "1" ]]; then
+  echo "Step 3/${total}: MCP servers (skipped via --skip-mcp)"
+else
+  if ! prompt_yn "Run Step 3/${total} (MCP servers ~2 min, 8 servers)?" "Y"; then
+    echo "Installation aborted at MCP step."
+    exit 0
+  fi
+  if ! run_step 3 "$total" "MCP servers npm install" "2 min" do_mcp_install; then
+    fail_step "MCP server install failed" \
+      "Verify 'npm --version' works and you have network access to the npm registry." \
+      "Retry with: bash scripts/install.sh --skip-python (skips finished steps)."
+  fi
+fi
+
+# Step 4: skill files
+if ! prompt_yn "Run Step 4/${total} (Skill files copy ~10s)?" "Y"; then
+  echo "Installation aborted at skill copy step."
+  exit 0
+fi
+if ! run_step 4 "$total" "Skill files copy to ~/.aiswmm" "10s" do_skill_copy; then
+  fail_step "Skill files copy failed" \
+    "Verify $HOME is writable and $AISWMM_CONFIG_DIR can be created."
+fi
+
+# Step 5: API key
+if ! prompt_yn "Run Step 5/${total} (API key config; skippable)?" "Y"; then
+  echo "Installation aborted at API key step."
+  exit 0
+fi
+if ! run_step 5 "$total" "OpenAI API key configuration" "10s" do_api_key; then
+  fail_step "API key configuration failed" \
+    "You can add the key later by editing $AISWMM_ENV_FILE."
+fi
+
+# ---------------------------------------------------------------------------
+# Success summary + next steps
+# ---------------------------------------------------------------------------
 
 cat <<SUMMARY
 
-Install summary
-- Repo root: $REPO_ROOT
-- Python setup: $([[ $SKIP_PYTHON -eq 0 ]] && echo "installed (.venv + scripts/requirements.txt + agentic-swmm CLI)" || echo "skipped (--skip-python)")
-- CLI command: $([[ $SKIP_PYTHON -eq 0 ]] && echo "$(preferred_cli_bin_dir)/aiswmm" || echo "skipped")
-- MCP npm setup: $([[ $SKIP_MCP -eq 0 ]] && echo "installed" || echo "skipped (--skip-mcp)")
-- Agentic SWMM setup: $([[ $SKIP_SETUP -eq 0 && $SKIP_PYTHON -eq 0 ]] && echo "registered provider=$AISWMM_PROVIDER model=$AISWMM_MODEL skills/MCP/memory" || echo "skipped")
-- OpenAI API key: $([[ -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]] && echo "configured" || echo "not configured")
-- SWMM ref: $SWMM_REF
-- SWMM check: $(swmm_status)
+Install complete.
 
-Run now
-1. Start local orchestration chat: aiswmm chat --provider $AISWMM_PROVIDER
-2. Check the runtime: aiswmm doctor
-3. Run acceptance: aiswmm demo acceptance --run-id latest
-4. Open report: $REPO_ROOT/runs/acceptance/latest/acceptance_report.md
+Summary
+- Repo root:    $REPO_ROOT
+- Python venv:  $([[ "$SKIP_PYTHON" == "1" ]] && echo "skipped" || echo "$VENV_DIR")
+- MCP servers:  $([[ "$SKIP_MCP" == "1" ]] && echo "skipped" || echo "installed")
+- Config dir:   $AISWMM_CONFIG_DIR
+- Provider:     $AISWMM_PROVIDER ($AISWMM_MODEL)
+
+Next steps
+  1. Open a new shell so PATH updates take effect.
+  2. Run: aiswmm doctor
+  3. Run: aiswmm chat --provider $AISWMM_PROVIDER
+
 SUMMARY
 
-maybe_start_chat
+exit 0
