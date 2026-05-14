@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 from agentic_swmm.runtime.registry import enabled_startup_memory_files
 
 
-def openai_planner_prompt() -> str:
+def openai_planner_prompt(extras: Iterable[str] | None = None) -> str:
     base = (
         "You are the Agentic SWMM tool-calling planner. "
         "Plan and execute with only the provided function tools. "
@@ -30,9 +32,15 @@ def openai_planner_prompt() -> str:
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context()
+    sections = [base]
     if memory:
-        return base + "\n\n" + memory
-    return base
+        sections.append(memory)
+    if extras:
+        for extra in extras:
+            text = (extra or "").strip()
+            if text:
+                sections.append(text)
+    return "\n\n".join(sections)
 
 
 def _startup_memory_context(max_chars: int = 6000) -> str:

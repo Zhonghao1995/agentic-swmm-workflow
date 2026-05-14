@@ -15,6 +15,7 @@ behaviour change.
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import re
 from datetime import datetime, timezone
@@ -32,6 +33,10 @@ from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.config import load_config
+from agentic_swmm.memory import facts as _facts_mod
+from agentic_swmm.memory import session_db
+from agentic_swmm.memory.case_inference import infer_case_name
+from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
@@ -225,6 +230,10 @@ def run_openai_planner(
         dry_run=args.dry_run,
         profile=profile,
     )
+    extras = _build_system_prompt_extras(
+        session_dir=session_dir,
+        prior_session_state=prior_session_state,
+    )
     outcome = run_openai_plan(
         goal=goal,
         model=model,
@@ -236,6 +245,7 @@ def run_openai_planner(
         verbose=args.verbose,
         emit=_agent_say,
         prior_session_state=prior_session_state,
+        system_prompt_extras=extras,
     )
 
     if chat_session:
@@ -265,6 +275,7 @@ def run_openai_planner(
                 "final_text": outcome.final_text,
             },
         )
+        _sync_session_end(session_dir)
         if chat_note is not None:
             _agent_say(f"Chat note: {_display_path(chat_note)}")
         if outcome.final_text:
@@ -282,6 +293,7 @@ def run_openai_planner(
         final_text=outcome.final_text,
     )
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})
+    _sync_session_end(session_dir)
     _agent_say(f"Final report: {_display_path(report)}")
     if outcome.final_text:
         _agent_say(outcome.final_text)
@@ -341,3 +353,135 @@ def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | N
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) else None
+
+
+# --- PRD session-db-facts: startup injection + end-of-session sync -----------
+
+
+# Module-level set tracking sessions already synced. Both the
+# end-of-session hook and ``atexit`` consult this to avoid double-writes
+# (idempotent inserts make this cheap, but skipping the trip is nicer).
+_SYNCED_SESSION_DIRS: set[str] = set()
+
+
+def _build_system_prompt_extras(
+    *,
+    session_dir: Path,
+    prior_session_state: dict[str, Any] | None,
+) -> list[str]:
+    """Assemble the per-session system-prompt injections.
+
+    Order: project facts first (durable user-curated context), then the
+    previous-session banner (volatile recall). Both are gated on the
+    relevant input being non-empty so the system prompt stays tight
+    when there is nothing to inject.
+    """
+    extras: list[str] = []
+    facts_block = _safe_facts_block()
+    if facts_block:
+        extras.append(facts_block)
+    prev_block = _safe_previous_session_block(
+        session_dir=session_dir,
+        prior_session_state=prior_session_state,
+    )
+    if prev_block:
+        extras.append(prev_block)
+    return extras
+
+
+def _safe_facts_block() -> str:
+    """Read ``facts.md`` and wrap it for system-prompt injection.
+
+    Wrapped in a try/except because a corrupt facts file should never
+    block the user's turn — the worst case is a slightly less
+    informed planner.
+    """
+    try:
+        return _facts_mod.read_facts_for_injection()
+    except Exception:
+        return ""
+
+
+def _safe_previous_session_block(
+    *,
+    session_dir: Path,
+    prior_session_state: dict[str, Any] | None,
+) -> str:
+    """Return a ``<previous-session>`` fence for ``session_dir``, if any.
+
+    The lookup is keyed on ``case_name`` inferred from either the
+    prior session state or the current session directory's name.
+    Returns the empty string when no prior session exists or any IO
+    fails — never raises in front of the user.
+    """
+    try:
+        case_name: str | None = None
+        if prior_session_state:
+            case_name = infer_case_name(prior_session_state)
+        if not case_name:
+            case_name = _infer_case_name_from_dir(session_dir)
+        if not case_name:
+            return ""
+        db_path = default_db_path()
+        if not db_path.exists():
+            return ""
+        with session_db.connect(db_path) as conn:
+            row = session_db.latest_session_for_case(conn, case_name)
+        if not row:
+            return ""
+        current_id = session_db.session_id_from_dir(session_dir)
+        if row.get("session_id") == current_id:
+            return ""
+        return session_db.previous_session_block(row)
+    except Exception:
+        return ""
+
+
+def _infer_case_name_from_dir(session_dir: Path) -> str | None:
+    """Derive the case slug straight from ``session_dir``'s leaf name.
+
+    Mirrors ``case_inference.infer_case_name`` for the case where we
+    only have the session directory in hand (no session_state yet).
+    """
+    leaf = session_dir.name
+    match = re.match(r"^\d+_(?P<case>.+?)_(?:run|chat)(?:_\d+)?$", leaf)
+    if match:
+        return match.group("case")
+    return None
+
+
+def _sync_session_end(session_dir: Path) -> None:
+    """Sync the just-finished session into the SQLite store.
+
+    Idempotent and silent: per-session double-call is a cheap no-op
+    thanks to the unique indices, and any IO failure is swallowed so
+    the user's turn return code is unaffected.
+    """
+    key = str(session_dir.resolve()) if session_dir else ""
+    if not key or key in _SYNCED_SESSION_DIRS:
+        return
+    try:
+        sync_session_to_db(session_dir)
+    except Exception:
+        return
+    finally:
+        _SYNCED_SESSION_DIRS.add(key)
+
+
+def _atexit_sync_recent_sessions() -> None:
+    """Belt-and-suspenders: re-sync any session we already touched.
+
+    The end-of-session hook is the primary write path. This atexit
+    handler exists for the crash case — process exits before the hook
+    fires (Ctrl-C, OOM kill, etc.). It walks every session dir we have
+    seen in this process and runs the projector again; the unique
+    indices guarantee idempotency.
+    """
+    for raw in list(_SYNCED_SESSION_DIRS):
+        try:
+            sync_session_to_db(Path(raw))
+        except Exception:
+            continue
+
+
+atexit.register(_atexit_sync_recent_sessions)
