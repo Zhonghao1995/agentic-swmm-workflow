@@ -92,10 +92,44 @@ There are three memory-like systems, each with a different job:
 The audit layer sits before modeling memory:
 
 ```text
-SWMM run -> swmm-experiment-audit -> experiment_provenance.json / comparison.json / experiment_note.md -> swmm-modeling-memory
+SWMM run -> swmm-experiment-audit -> 09_audit/{experiment_provenance.json,comparison.json,experiment_note.md} -> swmm-modeling-memory
 ```
 
 Audit records are evidence for a run. Modeling memory is a summary of repeated patterns. Neither one proves a scientific claim by itself.
+
+### Audit-artefact location invariant
+
+Every audited run dir writes its audit artefacts into a single canonical subdir, regardless of where the run dir lives in `runs/` and regardless of which stage-numbering scheme that run dir uses:
+
+```text
+<run-dir>/                                # any depth under runs/
+└── 09_audit/
+    ├── experiment_note.md                # required
+    ├── experiment_provenance.json        # required (schema_version: 1.1)
+    ├── comparison.json                   # optional
+    ├── model_diagnostics.json            # optional
+    └── experiment_note.<utc-ts>.md.bak   # prior versions on re-audit
+```
+
+Rules:
+
+- The only invariant enforced by `agentic_swmm.audit.run_folder_layout.validate()` is the presence of `09_audit/experiment_note.md` and `09_audit/experiment_provenance.json` for SWMM run dirs. No other stage subdir is required.
+- Filenames inside `09_audit/` are unprefixed. On re-audit, the prior version is renamed `<name>.<utc-ts>.<ext>.bak` before the new file is written.
+- Chat sessions live at `runs/YYYY-MM-DD/HHMMSS_<slug>_chat/` and carry `chat_note.md` (Obsidian frontmatter `type: chat-session`) instead of a SWMM `09_audit/`. Chat sessions do not produce `final_report.md`.
+- Zombie `runs/agent/agent-<digits>/` dirs are archived to `runs/.archive/` via `scripts/archive_zombies.py`. `runs/agent/interactive/` (the current CLI output target) stays in place.
+
+### Obsidian MOC
+
+After every successful `aiswmm audit`, `agentic_swmm.audit.moc_generator.generate_moc()` regenerates `runs/INDEX.md`. The MOC walks the tree breadth-first via `RunFolderLayout.discover` (unlimited depth, so nested `external-case-candidates/<bucket>/<month>/<runner>/` cases surface alongside top-level ones), and emits two tables — by date and by first-segment bucket — plus an `Unaudited run dirs` section. The filesystem layout under `runs/` is otherwise untouched.
+
+### Migration scripts
+
+| Script | Job |
+|---|---|
+| `scripts/migrate_audit_layout.py` | Converge legacy audit artefacts (P1 root files, P2 bucket root, P3 deeply nested, P4 unnumbered `audit/` from GIS-style cases, P5 empty `06_audit/`) into `09_audit/`. `--dry-run` default; `--apply` to commit. Idempotent. |
+| `scripts/archive_zombies.py` | Move `runs/agent/agent-<digits>/` dirs under `runs/.archive/`. Never touches `runs/agent/interactive/`. `--dry-run` default; `--apply` to commit. Idempotent. |
+
+Both scripts use `git mv` when the tree is tracked so the moves are reversible via `git revert` + `git mv` back (PRD Rollback).
 
 ## Documentation Entry Points
 
