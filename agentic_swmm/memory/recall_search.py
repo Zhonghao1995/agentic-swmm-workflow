@@ -27,9 +27,23 @@ from typing import Any
 
 
 _STALENESS_THRESHOLD_SECONDS = 60.0
-_RAG_SCRIPTS_DIR = (
-    Path(__file__).resolve().parents[2] / "skills" / "swmm-rag-memory" / "scripts"
-)
+
+
+def _rag_scripts_dir() -> Path:
+    """Resolve the directory holding ``rag_memory_lib.py``.
+
+    Checks the source tree first (development checkouts) and falls back
+    to the packaged resource root used by the wheel install layout.
+    """
+    in_tree = Path(__file__).resolve().parents[2] / "skills" / "swmm-rag-memory" / "scripts"
+    if (in_tree / "rag_memory_lib.py").is_file():
+        return in_tree
+    try:
+        from agentic_swmm.utils.paths import resource_path
+
+        return resource_path("skills", "swmm-rag-memory", "scripts")
+    except FileNotFoundError:
+        return in_tree
 
 
 def _load_rag_lib():
@@ -38,8 +52,9 @@ def _load_rag_lib():
     The script directory is added to ``sys.path`` only when this wrapper
     is first called. We do NOT vendor or re-import the 761-LOC file.
     """
-    if str(_RAG_SCRIPTS_DIR) not in sys.path:
-        sys.path.insert(0, str(_RAG_SCRIPTS_DIR))
+    scripts_dir = _rag_scripts_dir()
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
     import rag_memory_lib  # type: ignore[import-not-found]
 
     return rag_memory_lib

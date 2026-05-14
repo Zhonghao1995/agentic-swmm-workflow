@@ -50,6 +50,15 @@ The intended controlled loop is:
 
 The proposal step is intentionally separate from the accepted update step. Modeling memory may suggest where a workflow or skill appears weak, but it does not modify scientific rules or repository skills by itself. Proposed updates are accepted only after human review and benchmark verification.
 
+## Curated vs Raw Memory (PRD M7.3 contract)
+
+Memory is split into two layers, never mixed:
+
+- **Curated**: `memory/modeling-memory/lessons_learned.md` and `memory/modeling-memory/INDEX.md`. LLM-summarised / LLM-curated. Subject to compaction (PRD M3) when the lessons file exceeds the configured size or pattern-count threshold. Recall tool: `recall_memory(pattern)`.
+- **Raw**: every `runs/<case>/09_audit/experiment_note.md` and every `runs/<date>/<chat-session>/chat_note.md`. Never edited after audit; treated as the source of truth for evidence. Recall tool: `recall_memory_search(query, top_k)` returns raw + curated entries side-by-side, each tagged with `layer: "curated"` or `layer: "raw"` so the planner knows which side it is reading.
+
+Recall results returned to the planner are wrapped in `<memory-context source="lessons|rag" stale="...">…</memory-context>` (PRD M7.1). A streaming scrubber on the final-output path strips that fence from any text the agent emits to the user, so historical memory can never be parsed as new user instructions.
+
 ## Safety Boundary
 
 The agent does not autonomously rewrite scientific modeling rules. Skill update proposals are not evidence of correctness. A proposed refinement should only be accepted after human review, existing benchmark verification, and clear evidence that the change improves the workflow without hiding missing data, failed QA, or unsupported assumptions.

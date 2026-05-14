@@ -33,6 +33,7 @@ PUBLIC_SKILLS = {
     "swmm-network",
     "swmm-params",
     "swmm-plot",
+    "swmm-rag-memory",
     "swmm-runner",
     "swmm-uncertainty",
 }
