@@ -26,7 +26,6 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.executor import AgentExecutor
-from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.planner import rule_plan
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
@@ -81,7 +80,11 @@ def run_single_shot(args: argparse.Namespace) -> int:
         _agent_say(f"Dry run only. Trace: {_display_path(trace_path)}")
         return 0
 
-    profile = Profile.QUICK if getattr(args, "quick", False) else Profile.SAFE
+    # Late import keeps the agent runtime free of a CLI-layer dependency
+    # in the import graph (commands/agent.py imports single_shot).
+    from agentic_swmm.commands.agent import resolve_profile_from_args
+
+    profile = resolve_profile_from_args(args)
     executor = AgentExecutor(
         registry,
         session_dir=session_dir,

@@ -1,12 +1,16 @@
 """Permission profile (``SAFE`` / ``QUICK``) for the agent executor.
 
+QUICK is the default; SAFE is opt-in via ``--safe``.
+
 PRD_runtime "Module: Permissions profile":
 
-- ``Profile.SAFE`` (default): never auto-approves. Every tool call goes
-  through ``permissions.prompt_user`` (which, in non-TTY contexts,
-  short-circuits to allow — so tests and CI keep working).
-- ``Profile.QUICK``: auto-approves any tool the registry classifies
-  ``is_read_only``. Write/subprocess tools still prompt.
+- ``Profile.QUICK`` (default): auto-approves any tool the registry
+  classifies ``is_read_only`` (``read_file``, ``list_skills``,
+  ``list_mcp_*``, ``inspect_plot_options``, ...). Write/subprocess
+  tools still prompt.
+- ``Profile.SAFE``: never auto-approves. Every tool call goes through
+  ``permissions.prompt_user`` (which, in non-TTY contexts, short-circuits
+  to allow — so tests and CI keep working). Opt in with ``--safe``.
 
 The profile module is intentionally tiny so it can be unit-tested in
 isolation without touching the registry's tool catalogue.
@@ -34,8 +38,17 @@ class Profile(Enum):
 
 
 def profile_from_string(value: str | None) -> Profile:
-    """Map a CLI/env string to a ``Profile``. Unknown values fall back
-    to ``SAFE`` — the fail-safe default."""
-    if isinstance(value, str) and value.strip().lower() == "quick":
-        return Profile.QUICK
-    return Profile.SAFE
+    """Map a CLI/env string to a ``Profile``.
+
+    Empty / missing / unknown values fall back to ``QUICK`` — the new
+    default (see module docstring). ``"safe"`` (case-insensitive)
+    explicitly selects ``SAFE``; ``"quick"`` is accepted for symmetry
+    and for the hidden ``--quick`` CLI alias.
+    """
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "safe":
+            return Profile.SAFE
+        if normalized == "quick":
+            return Profile.QUICK
+    return Profile.QUICK
