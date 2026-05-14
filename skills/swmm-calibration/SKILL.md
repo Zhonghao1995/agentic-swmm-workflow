@@ -315,9 +315,65 @@ The `09_audit/` folder will contain five DREAM-ZS artefacts plus `calibration_su
 }
 ```
 
+## Candidate handover contract (issue #54)
+
+Calibration runs **never** patch the canonical INP. Every strategy
+(random / lhs / adaptive / SCE-UA / DREAM-ZS) emits three artefacts to
+`<run_dir>/09_audit/` when invoked with `--candidate-run-dir <run_dir>`:
+
+| Artefact | Purpose |
+|---|---|
+| `candidate_calibration.json` | Best params + KGE + decomposition + secondary metrics + `evidence_boundary: "candidate_not_accepted_yet"` + SHA256 of the patch file + (DREAM only) `posterior_samples_ref`. |
+| `candidate_inp_patch.json` | One row per parameter (`section`, `object`, `field_index`, `old_value`, `new_value`) — the diff to apply when the human accepts. |
+| `calibration_report.md` | Human-readable summary: KGE decomposition table, secondary metrics, best parameters, convergence trace reference (SCE-UA) and posterior block (DREAM-ZS). |
+
+The canonical INP file SHA256 is unchanged before and after calibration
+— the scaffold only reads it, to extract the `old_value` for each
+diff row.
+
+Promotion is gated behind the expert-only CLI:
+
+```bash
+aiswmm calibration accept <run_dir>
+```
+
+`aiswmm calibration accept`:
+
+1. Reads `candidate_calibration.json`; refuses if missing.
+2. Reads `candidate_inp_patch.json`; refuses if missing.
+3. Recomputes the SHA256 of the patch payload and compares against the
+   SHA recorded inside the candidate; refuses on mismatch (tamper
+   detection).
+4. Applies the patch to the canonical INP via the same `inp_patch`
+   machinery the agent uses.
+5. Records a `human_decisions` row on the run's
+   `09_audit/experiment_provenance.json` with `action ==
+   "calibration_accept"`, `by == $USER`, `evidence_ref ==
+   "09_audit/candidate_calibration.json"`, and `decision_text`
+   containing the applied patch SHA.
+
+The agent has no path to step 4. Only the human can promote the
+candidate.
+
+### Example: SCE-UA with candidate handover
+
+```bash
+python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
+  --base-inp runs/<case>/model.inp \
+  --patch-map runs/<case>/calibration/patch_map.json \
+  --search-space runs/<case>/calibration/search_space.json \
+  --observed runs/<case>/calibration/observed_flow.csv \
+  --run-root runs/<case>/calibration-sceua/trials \
+  --summary-json runs/<case>/09_audit/calibration_summary.json \
+  --strategy sceua --objective kge --iterations 200 --seed 42 \
+  --candidate-run-dir runs/<case>
+
+# After review:
+aiswmm calibration accept runs/<case>
+```
+
 ## Recommended near-term extensions
 - Add multi-event calibration/validation.
 - Add observed-vs-simulated overlay plots to the calibration script.
 - Extend patch-map selectors beyond simple one-line object rows.
-- Wire candidate handover artefacts (`candidate_calibration.json`, `candidate_inp_patch.json`, `calibration_report.md`) — issue #54.
 - Wire the DREAM-ZS posterior into source-decomposition uncertainty propagation — issue #55.

@@ -16,6 +16,7 @@ from typing import Any
 import pandas as pd
 from swmmtoolbox import swmmtoolbox
 
+from candidate_writer import write_candidate_artefacts
 from inp_patch import patch_inp_text
 from metrics import align_series, compute_metrics, score_from_metrics
 from obs_reader import read_series
@@ -629,6 +630,109 @@ def format_ranking_text(ranking_table: list[dict], objective: str, top_n: int) -
     return "\n".join(lines)
 
 
+def _pbias_pct_from_bundle_dict(metrics_dict: dict[str, Any], observed: pd.DataFrame) -> float | None:
+    """Return PBIAS% in the calibration_summary shape, or ``None``.
+
+    The legacy random/lhs/adaptive trial pipeline emits a
+    :class:`MetricBundle`-as-dict (``metrics_dict``) that has ``bias``
+    (mean diff) and ``count`` (overlap length); the candidate writer
+    expects PBIAS%, defined as ``100 * sum(sim - obs) / sum(obs)``.
+    Reconstructing it from ``bias * count`` keeps the conversion small
+    and consistent with the SCE-UA path in :mod:`sceua`.
+    """
+    bias = metrics_dict.get("bias")
+    count = metrics_dict.get("count")
+    if bias is None or count is None or count == 0:
+        return None
+    try:
+        obs_sum = float(observed["flow"].astype(float).sum())
+    except Exception:
+        return None
+    if obs_sum == 0.0:
+        return None
+    return float(100.0 * float(bias) * int(count) / obs_sum)
+
+
+def build_candidate_summary_from_best(
+    best: dict[str, Any] | None,
+    *,
+    strategy: str,
+    iterations: int,
+    observed: pd.DataFrame,
+    convergence_trace_ref: str | None = None,
+) -> dict[str, Any] | None:
+    """Project a best-result dict into the candidate writer's summary shape.
+
+    The candidate writer is strategy-agnostic and expects the
+    ``calibration_summary.json`` shape (KGE primary + decomposition +
+    secondary metrics + strategy + iterations + convergence_trace_ref).
+    The legacy random/lhs/adaptive payload exposes the same metric
+    fields via the best trial's :class:`MetricBundle`-as-dict, so we
+    can construct an equivalent summary without re-running SWMM.
+
+    Returns ``None`` when there is no usable best (e.g. all trials
+    failed or KGE is undefined) — the candidate writer is then skipped
+    by the caller. We choose to skip rather than emit a partial
+    candidate so the on-disk evidence boundary stays sharp.
+    """
+    if not best:
+        return None
+    metrics = best.get("metrics") or {}
+    kge_value = metrics.get("kge")
+    decomposition = metrics.get("kge_decomposition")
+    if kge_value is None or not isinstance(decomposition, dict):
+        return None
+    secondary = {
+        "nse": metrics.get("nse"),
+        "pbias_pct": _pbias_pct_from_bundle_dict(metrics, observed),
+        "rmse": metrics.get("rmse"),
+        "peak_error_rel": metrics.get("peak_flow_error"),
+        "peak_timing_min": metrics.get("peak_timing_error_minutes"),
+    }
+    return {
+        "primary_objective": "kge",
+        "primary_value": float(kge_value),
+        "kge_decomposition": {
+            "r": float(decomposition.get("r", 0.0)),
+            "alpha": float(decomposition.get("alpha", 0.0)),
+            "beta": float(decomposition.get("beta", 0.0)),
+        },
+        "secondary_metrics": secondary,
+        "strategy": strategy,
+        "iterations": int(iterations),
+        "convergence_trace_ref": convergence_trace_ref,
+    }
+
+
+def emit_candidate_artefacts(
+    args: argparse.Namespace,
+    *,
+    summary: dict[str, Any] | None,
+    best_params: dict[str, Any] | None,
+    extra_refs: dict[str, str] | None = None,
+) -> None:
+    """Write 3-artefact candidate handover when ``--candidate-run-dir`` is set.
+
+    A no-op when the caller did not request a candidate (back-compat
+    with existing flows that do not yet route through ``09_audit/``).
+    Likewise a no-op when there is no usable best result — the
+    canonical INP stays untouched and there is nothing to hand over.
+    """
+    run_dir = getattr(args, "candidate_run_dir", None)
+    if run_dir is None:
+        return
+    if summary is None or not best_params:
+        return
+    write_candidate_artefacts(
+        run_dir=Path(run_dir),
+        canonical_inp=Path(args.base_inp),
+        patch_map=load_json(args.patch_map),
+        best_params=best_params,
+        summary=summary,
+        extra_refs=extra_refs or {},
+    )
+
+
 def build_common_controls(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "base_inp": str(args.base_inp),
@@ -747,6 +851,17 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
         args.best_params_out.parent.mkdir(parents=True, exist_ok=True)
         args.best_params_out.write_text(json.dumps(best["params"], indent=2), encoding="utf-8")
 
+    summary_for_candidate = build_candidate_summary_from_best(
+        best,
+        strategy="calibrate",
+        iterations=len(trials),
+        observed=observed,
+    )
+    emit_candidate_artefacts(
+        args,
+        summary=summary_for_candidate,
+        best_params=(best["params"] if best else None),
+    )
     emit_payload(args, payload)
 
 
@@ -890,6 +1005,17 @@ def _cmd_search_dream_zs(
             json.dumps(result["best_params"], indent=2),
             encoding="utf-8",
         )
+    dream_extra_refs = {
+        "convergence_csv": Path(summary["convergence_trace_ref"]).name,
+        "posterior_samples_csv": Path(result["posterior_samples_csv"]).name,
+        "posterior_correlation_png": Path(result["correlation_png"]).name,
+    }
+    emit_candidate_artefacts(
+        args,
+        summary=summary,
+        best_params=result.get("best_params"),
+        extra_refs=dream_extra_refs,
+    )
     print(json.dumps(summary, indent=2))
 
 
@@ -981,6 +1107,12 @@ def _cmd_search_sceua(
             json.dumps(result["best_params"], indent=2),
             encoding="utf-8",
         )
+    emit_candidate_artefacts(
+        args,
+        summary=summary,
+        best_params=result.get("best_params"),
+        extra_refs={"convergence_csv": Path(summary["convergence_trace_ref"]).name},
+    )
     print(json.dumps(summary, indent=2))
 
 
@@ -1162,6 +1294,17 @@ def cmd_search(args: argparse.Namespace) -> None:
         args.best_params_out.parent.mkdir(parents=True, exist_ok=True)
         args.best_params_out.write_text(json.dumps(best["params"], indent=2), encoding="utf-8")
 
+    summary_for_candidate = build_candidate_summary_from_best(
+        best,
+        strategy=args.strategy,
+        iterations=int(args.iterations) * max(1, int(args.rounds)),
+        observed=observed,
+    )
+    emit_candidate_artefacts(
+        args,
+        summary=summary_for_candidate,
+        best_params=(best["params"] if best else None),
+    )
     emit_payload(args, payload)
 
 
@@ -1202,6 +1345,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp_c = sub.add_parser("calibrate")
     add_common(sp_c, include_param_sets=True)
     sp_c.add_argument("--best-params-out", default=None, type=Path)
+    sp_c.add_argument(
+        "--candidate-run-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Run directory to receive the candidate-handover artefacts "
+            "(candidate_calibration.json, candidate_inp_patch.json, "
+            "calibration_report.md) in <run>/09_audit/. Required by "
+            "`aiswmm calibration accept` (PRD-Z, issue #54)."
+        ),
+    )
     sp_c.set_defaults(func=cmd_calibrate)
 
     sp_v = sub.add_parser("validate")
@@ -1270,6 +1424,17 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=50,
         help="Extra DREAM-ZS samples after Gelman-Rubin convergence (default 50).",
+    )
+    sp_search.add_argument(
+        "--candidate-run-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Run directory to receive the candidate-handover artefacts "
+            "(candidate_calibration.json, candidate_inp_patch.json, "
+            "calibration_report.md) in <run>/09_audit/. Required by "
+            "`aiswmm calibration accept` (PRD-Z, issue #54)."
+        ),
     )
     sp_search.set_defaults(func=cmd_search)
 
