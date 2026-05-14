@@ -43,6 +43,7 @@ def run_openai_plan(
     verbose: bool,
     emit,
     prior_session_state: dict | None = None,
+    system_prompt_extras: list[str] | None = None,
 ) -> PlannerRun:
     write_event(
         trace_path,
@@ -55,7 +56,14 @@ def run_openai_plan(
             "allowed_tools": registry.sorted_names(),
         },
     )
-    planner = OpenAIPlanner(provider, registry, max_steps=max_steps, verbose=verbose, emit=emit)
+    planner = OpenAIPlanner(
+        provider,
+        registry,
+        max_steps=max_steps,
+        verbose=verbose,
+        emit=emit,
+        system_prompt_extras=system_prompt_extras,
+    )
     try:
         outcome = planner.run(
             goal=goal,

@@ -61,12 +61,25 @@ def rule_plan(goal: str) -> list[ToolCall]:
 
 
 class OpenAIPlanner:
-    def __init__(self, provider: OpenAIProvider, registry: AgentToolRegistry, *, max_steps: int, verbose: bool = False, emit: Callable[[str], None] | None = None) -> None:
+    def __init__(
+        self,
+        provider: OpenAIProvider,
+        registry: AgentToolRegistry,
+        *,
+        max_steps: int,
+        verbose: bool = False,
+        emit: Callable[[str], None] | None = None,
+        system_prompt_extras: list[str] | None = None,
+    ) -> None:
         self.provider = provider
         self.registry = registry
         self.max_steps = max_steps
         self.verbose = verbose
         self.emit = emit or (lambda text: None)
+        # PRD session-db-facts: ``runtime_loop`` injects per-session
+        # extras here (``<project-facts>`` + ``<previous-session>``).
+        # Empty list means no injection — keeps unit tests untouched.
+        self.system_prompt_extras: list[str] = list(system_prompt_extras or [])
 
     def run(
         self,
@@ -168,7 +181,7 @@ class OpenAIPlanner:
 
         for step in range(1, self.max_steps + 1):
             response = self.provider.respond_with_tools(
-                system_prompt=openai_planner_prompt(),
+                system_prompt=openai_planner_prompt(self.system_prompt_extras),
                 input_items=input_items,
                 tools=self.registry.schemas(),
                 previous_response_id=previous_response_id,

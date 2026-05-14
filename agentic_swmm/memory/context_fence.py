@@ -11,6 +11,12 @@ Two pure functions:
 
 The fence and the inline comment together provide the prompt-injection
 defence borrowed from Hermes-agent.
+
+PRD session-db-facts extends the scrubber family to also strip
+``<previous-session>`` (startup-injected prior session summary) and
+``<project-facts>`` (curated facts injection) blocks. Both belong to
+the system prompt and should never leak into the final user-visible
+reply.
 """
 
 from __future__ import annotations
@@ -19,10 +25,22 @@ import re
 from typing import Iterable
 
 
+# Tag names recognised as injection-only fences. The order does not
+# matter for correctness; for the streaming case we use the longest
+# common prefix to decide how much of the buffer is safe to forward.
+_FENCE_TAGS: tuple[str, ...] = (
+    "memory-context",
+    "previous-session",
+    "project-facts",
+)
+
 _FENCE_PATTERN = re.compile(
-    r"<memory-context\b[^>]*>.*?</memory-context>",
+    "|".join(rf"<{tag}\b[^>]*>.*?</{tag}>" for tag in _FENCE_TAGS),
     flags=re.DOTALL | re.IGNORECASE,
 )
+
+_OPENERS: tuple[str, ...] = tuple(f"<{tag}" for tag in _FENCE_TAGS)
+_MAX_OPENER_LEN = max(len(opener) for opener in _OPENERS)
 
 
 def wrap(payload: str, *, source: str, stale: bool) -> str:
@@ -82,19 +100,24 @@ class StreamingScrubber:
         # Strip all fully-closed fences.
         self._buffer = _FENCE_PATTERN.sub("", self._buffer)
 
-        # If there's a half-open fence in the buffer, hold from that
-        # opener onwards so we don't leak the inner text before closure.
-        opener = self._buffer.find("<memory-context")
-        if opener == -1:
-            # No partial fence — but we still want to hold a small tail
-            # in case "<memory-context" is being typed across chunks.
-            safe_tail = max(0, len(self._buffer) - len("<memory-context"))
+        # If a known fence opener is fully present, hold from there on
+        # so we never leak the inner text before closure.
+        opener_idx = -1
+        for opener in _OPENERS:
+            idx = self._buffer.find(opener)
+            if idx != -1 and (opener_idx == -1 or idx < opener_idx):
+                opener_idx = idx
+        if opener_idx == -1:
+            # No full opener yet — still hold a tail in case one is being
+            # typed across chunks. The tail length is the longest opener
+            # string so we never miss a split like "<memo" + "ry-context".
+            safe_tail = max(0, len(self._buffer) - _MAX_OPENER_LEN)
             out = self._buffer[:safe_tail]
             self._buffer = self._buffer[safe_tail:]
             return out
 
-        out = self._buffer[:opener]
-        self._buffer = self._buffer[opener:]
+        out = self._buffer[:opener_idx]
+        self._buffer = self._buffer[opener_idx:]
         return out
 
     def flush(self) -> str:
