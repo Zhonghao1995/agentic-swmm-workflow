@@ -6,30 +6,15 @@ import { z } from 'zod';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../..');
 const scriptsDir = path.resolve(__dirname, '../../skills/swmm-climate/scripts');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
 
-function resolvePython() {
-  if (process.env.PYTHON) return process.env.PYTHON;
-  const candidates = process.platform === 'win32'
-    ? [path.join(repoRoot, '.venv', 'Scripts', 'python.exe')]
-    : [path.join(repoRoot, '.venv', 'bin', 'python')];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  return process.platform === 'win32' ? 'python' : 'python3';
-}
-
-const pythonCmd = resolvePython();
-
 function runPython(script, args) {
-  const proc = spawnSync(pythonCmd, [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
   if (proc.error) {
     throw new Error(proc.error.message);
   }
@@ -43,11 +28,13 @@ const server = new McpServer({ name: 'swmm-climate-mcp', version: '0.1.0' });
 
 server.tool(
   'format_rainfall',
-  'Convert rainfall CSV into SWMM timeseries text + JSON metadata.',
+  'Convert rainfall CSV or SWMM .dat into SWMM timeseries text + JSON metadata.',
   {
-    inputCsvPath: z.string(),
+    inputCsvPath: z.string().optional(),
     additionalInputCsvPaths: z.array(z.string()).optional(),
     inputGlobPatterns: z.array(z.string()).optional(),
+    inputDatPaths: z.array(z.string()).optional(),
+    datValueUnits: z.string().optional(),
     outputJsonPath: z.string(),
     outputTimeseriesPath: z.string(),
     seriesName: z.string().optional(),
@@ -67,6 +54,8 @@ server.tool(
     inputCsvPath,
     additionalInputCsvPaths,
     inputGlobPatterns,
+    inputDatPaths,
+    datValueUnits,
     outputJsonPath,
     outputTimeseriesPath,
     seriesName,
@@ -82,16 +71,30 @@ server.tool(
     unitPolicy,
     timestampPolicy,
   }) => {
+    const datInputs = inputDatPaths || [];
+    if (datInputs.length === 0 && !inputCsvPath && (!inputGlobPatterns || inputGlobPatterns.length === 0)) {
+      throw new Error('format_rainfall requires inputCsvPath, inputGlobPatterns, or inputDatPaths');
+    }
+    if (datInputs.length > 0 && (inputCsvPath || (inputGlobPatterns || []).length > 0 || (additionalInputCsvPaths || []).length > 0)) {
+      throw new Error('format_rainfall: inputDatPaths cannot be combined with CSV inputs');
+    }
     const args = [
       '--out-json', outputJsonPath,
       '--out-timeseries', outputTimeseriesPath,
     ];
-    const allInputs = [inputCsvPath, ...(additionalInputCsvPaths || [])];
-    for (const csvPath of allInputs) {
-      args.push('--input', csvPath);
-    }
-    for (const pattern of inputGlobPatterns || []) {
-      args.push('--input-glob', pattern);
+    if (datInputs.length > 0) {
+      for (const datPath of datInputs) {
+        args.push('--input-dat', datPath);
+      }
+      if (datValueUnits) args.push('--dat-value-units', datValueUnits);
+    } else {
+      const allInputs = [inputCsvPath, ...(additionalInputCsvPaths || [])].filter(Boolean);
+      for (const csvPath of allInputs) {
+        args.push('--input', csvPath);
+      }
+      for (const pattern of inputGlobPatterns || []) {
+        args.push('--input-glob', pattern);
+      }
     }
     if (seriesName) args.push('--series-name', seriesName);
     if (seriesNameTemplate) args.push('--series-name-template', seriesNameTemplate);

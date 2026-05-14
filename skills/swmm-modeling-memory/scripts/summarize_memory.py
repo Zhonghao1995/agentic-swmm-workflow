@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -10,9 +11,10 @@ from pathlib import Path
 from typing import Any
 
 
-AUDIT_FILES = ("experiment_provenance.json", "comparison.json", "experiment_note.md")
+AUDIT_FILES = ("experiment_provenance.json", "comparison.json", "experiment_note.md", "model_diagnostics.json")
 MARKDOWN_OUTPUTS = (
     "modeling_memory_index.md",
+    "project_memory_index.md",
     "lessons_learned.md",
     "skill_update_proposals.md",
     "benchmark_verification_plan.md",
@@ -42,6 +44,11 @@ def read_text(path: Path) -> str:
         return ""
 
 
+def safe_slug(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", value.lower()).strip("-._")
+    return text or "unknown-project"
+
+
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -50,13 +57,6 @@ def write_text(path: Path, text: str) -> None:
 def write_json(path: Path, obj: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, indent=2, sort_keys=True), encoding="utf-8")
-
-
-def safe_name(value: Any) -> str:
-    text = str(value or "run").strip()
-    cleaned = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in text)
-    cleaned = "-".join(part for part in cleaned.split("-") if part)
-    return cleaned or "run"
 
 
 def relpath(path: Path, root: Path) -> str:
@@ -226,11 +226,98 @@ def comparison_status(comparison: dict[str, Any]) -> str:
     return "available"
 
 
+def project_key(record: dict[str, Any]) -> str:
+    case = str(record.get("case_name") or record.get("run_id") or "").lower()
+    workflow = str(record.get("workflow_mode") or "").lower()
+    run_dir = str(record.get("run_dir") or "").lower()
+    text = " ".join([case, workflow, run_dir])
+    if "tod" in text or "todcreek" in text:
+        return "tod-creek"
+    if "tecnopolo" in text:
+        return "tecnopolo"
+    if "tuflow" in text:
+        return "tuflow"
+    if "generate_swmm_inp" in text or "generate-swmm-inp" in text:
+        return "generate-swmm-inp"
+    if "acceptance" in text:
+        return "acceptance"
+    return safe_slug(str(record.get("case_name") or record.get("workflow_mode") or "unknown-project"))
+
+
+def diagnostic_ids(model_diagnostics: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in model_diagnostics.get("diagnostics") or []:
+        if isinstance(item, dict) and item.get("id"):
+            item_id = str(item["id"])
+            if item_id not in seen:
+                out.append(item_id)
+                seen.add(item_id)
+    return out
+
+
+def suspect_parameters(model_diagnostics: dict[str, Any]) -> list[str]:
+    suspects: set[str] = set()
+    mapping = {
+        "continuity_error_high": "routing_step / storage / inflow-outflow accounting",
+        "node_flooding_detected": "node surcharge/flooding settings",
+        "conduit_slope_suspicious": "node invert elevation / conduit length / conduit direction",
+        "subcatchment_area_nonpositive": "subcatchment area",
+        "subcatchment_width_nonpositive": "subcatchment width",
+        "imperviousness_out_of_range": "subcatchment imperviousness",
+        "missing_rain_gage": "rain gage assignment",
+        "subcatchment_outlet_missing": "subcatchment outlet",
+        "outfall_disconnected": "outfall connectivity",
+        "routing_step_large": "routing step",
+    }
+    for item in model_diagnostics.get("diagnostics") or []:
+        if not isinstance(item, dict):
+            continue
+        label = mapping.get(str(item.get("id") or ""))
+        if label:
+            suspects.add(label)
+    return sorted(suspects)
+
+
+def next_run_cautions(record: dict[str, Any]) -> list[str]:
+    cautions: list[str] = []
+    for pattern in record.get("failure_patterns", []):
+        if pattern == "comparison_mismatch":
+            cautions.append("Review whether run differences are expected scenario changes or regressions.")
+        elif pattern == "continuity_parse_missing":
+            cautions.append("Ensure continuity tables are available and referenced in run artifacts.")
+        elif pattern == "missing_inp":
+            cautions.append("Record the runnable SWMM INP handoff before execution.")
+        elif pattern == "peak_flow_parse_missing":
+            cautions.append("Confirm peak flow is parsed from Node Inflow Summary or documented fallback.")
+        elif pattern == "partial_run":
+            cautions.append("Keep partial-run evidence explicit so downstream memory can reuse it safely.")
+    for item in record.get("model_diagnostic_ids", []):
+        if item == "continuity_error_high":
+            cautions.append("Inspect continuity error before treating the run as hydrologic evidence.")
+        elif item == "node_flooding_detected":
+            cautions.append("Review node flooding before accepting the model behavior.")
+        elif item == "routing_step_large":
+            cautions.append("Consider reducing routing step for the next diagnostic run.")
+        elif item in {"subcatchment_area_nonpositive", "subcatchment_width_nonpositive", "imperviousness_out_of_range"}:
+            cautions.append("Check subcatchment physical parameters before rerunning.")
+        elif item in {"missing_rain_gage", "subcatchment_outlet_missing", "outfall_disconnected"}:
+            cautions.append("Check model connectivity and rainfall assignments before rerunning.")
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in cautions:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
+
+
 def detect_failure_patterns(
     *,
     run_dir: Path,
     provenance: dict[str, Any],
     comparison: dict[str, Any],
+    model_diagnostics: dict[str, Any],
     artifacts_missing: list[str],
     audit_files_found: list[str],
 ) -> list[str]:
@@ -272,6 +359,9 @@ def detect_failure_patterns(
     if comparison_status(comparison) == "mismatch":
         patterns.add("comparison_mismatch")
 
+    if model_diagnostics.get("status") == "fail":
+        patterns.add("swmm_model_diagnostic_error")
+
     if patterns & {
         "missing_provenance",
         "missing_manifest",
@@ -293,8 +383,10 @@ def build_record(run_dir: Path, runs_dir: Path) -> dict[str, Any]:
     provenance_path = run_dir / "experiment_provenance.json"
     comparison_path = run_dir / "comparison.json"
     note_path = run_dir / "experiment_note.md"
+    diagnostics_path = run_dir / "model_diagnostics.json"
     provenance = read_json(provenance_path)
     comparison = read_json(comparison_path)
+    model_diagnostics = read_json(diagnostics_path)
     note_text = read_text(note_path)
 
     audit_files_found = [name for name in AUDIT_FILES if (run_dir / name).exists()]
@@ -317,6 +409,7 @@ def build_record(run_dir: Path, runs_dir: Path) -> dict[str, Any]:
         "warnings": stringify_items(as_list(provenance.get("warnings")) + as_list(comparison.get("warnings"))),
         "limitations": extract_limitations(provenance, note_text),
         "metrics": metrics,
+        "model_diagnostics": model_diagnostics or provenance.get("model_diagnostics") or {},
         "comparison_status": comparison_status(comparison),
         "failure_patterns": [],
         "assumptions": extract_assumptions(provenance, note_text),
@@ -326,10 +419,43 @@ def build_record(run_dir: Path, runs_dir: Path) -> dict[str, Any]:
         run_dir=run_dir,
         provenance=provenance,
         comparison=comparison,
+        model_diagnostics=record["model_diagnostics"],
         artifacts_missing=record["artifacts_missing"],
         audit_files_found=audit_files_found,
     )
+    record["project_key"] = project_key(record)
+    record["model_diagnostic_ids"] = diagnostic_ids(record["model_diagnostics"])
+    record["suspect_parameters"] = suspect_parameters(record["model_diagnostics"])
+    record["next_run_cautions"] = next_run_cautions(record)
     return record
+
+
+def build_run_memory_summary(record: dict[str, Any], generated_at: str) -> dict[str, Any]:
+    return {
+        "schema_version": "1.0",
+        "generated_by": "swmm-modeling-memory",
+        "generated_at_utc": generated_at,
+        "run_id": record.get("run_id"),
+        "run_dir": record.get("run_dir"),
+        "project_key": record.get("project_key"),
+        "case_name": record.get("case_name"),
+        "workflow_mode": record.get("workflow_mode"),
+        "success": record.get("failure_patterns") == ["no_detected_failure"] and record.get("qa_status") == "pass",
+        "audit_status": record.get("audit_status"),
+        "qa_status": record.get("qa_status"),
+        "swmm_return_code": record.get("swmm_return_code"),
+        "comparison_status": record.get("comparison_status"),
+        "qa_issues": [] if record.get("qa_status") == "pass" else [record.get("qa_status")],
+        "failure_patterns": record.get("failure_patterns", []),
+        "missing_evidence": record.get("artifacts_missing", []),
+        "warnings": record.get("warnings", []),
+        "assumptions": record.get("assumptions", []),
+        "evidence_boundary_notes": record.get("evidence_boundary_notes", []),
+        "model_diagnostics_status": (record.get("model_diagnostics") or {}).get("status"),
+        "model_diagnostic_ids": record.get("model_diagnostic_ids", []),
+        "suspect_parameters": record.get("suspect_parameters", []),
+        "next_run_cautions": record.get("next_run_cautions", []),
+    }
 
 
 def has_detected_failure(record: dict[str, Any]) -> bool:
@@ -347,9 +473,7 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
         "",
         f"Generated at UTC: `{generated_at}`",
         "",
-        "Source contract: this index is derived from audited run artifacts, not raw chat history or unsupported external claims.",
-        "",
-        "| Run | Case | Workflow | QA | SWMM RC | Comparison | Missing evidence | Assumptions | Warnings | Failure patterns | Evidence boundary |",
+        "| Run | Project | Case | Workflow | QA | SWMM RC | Comparison | Warnings | Failure patterns | Model diagnostics | Evidence boundary |",
         "|---|---|---|---|---:|---|---|---|---|---|---|",
     ]
     for r in records:
@@ -358,15 +482,15 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
             + " | ".join(
                 [
                     md_escape(r["run_id"]),
+                    md_escape(r["project_key"]),
                     md_escape(r["case_name"]),
                     md_escape(r["workflow_mode"]),
                     md_escape(r["qa_status"]),
                     md_escape(r["swmm_return_code"]),
                     md_escape(r["comparison_status"]),
-                    md_escape("; ".join(r["artifacts_missing"][:3])),
-                    md_escape("; ".join(r["assumptions"][:3])),
                     md_escape("; ".join(r["warnings"][:3])),
                     md_escape(", ".join(r["failure_patterns"])),
+                    md_escape(", ".join(r.get("model_diagnostic_ids", [])[:5])),
                     md_escape("; ".join(r["evidence_boundary_notes"][:3])),
                 ]
             )
@@ -376,88 +500,111 @@ def render_index_md(records: list[dict[str, Any]], generated_at: str) -> str:
     return "\n".join(lines)
 
 
-def render_run_memory_note(record: dict[str, Any], generated_at: str) -> str:
-    metrics = record.get("metrics") if isinstance(record.get("metrics"), dict) else {}
-    peak = metrics.get("peak_flow") if isinstance(metrics, dict) else None
-    continuity = metrics.get("continuity_error") if isinstance(metrics, dict) else None
-    lines = [
-        f"# Run Memory: {record.get('run_id')}",
-        "",
-        f"Generated at UTC: `{generated_at}`",
-        "",
-        "## Run",
-        "",
-        f"- Run ID: `{record.get('run_id')}`",
-        f"- Case: `{record.get('case_name')}`",
-        f"- Workflow: `{record.get('workflow_mode')}`",
-        f"- Run directory: `{record.get('run_dir')}`",
-        f"- Audit status: `{record.get('audit_status')}`",
-        f"- QA status: `{record.get('qa_status')}`",
-        f"- SWMM return code: `{record.get('swmm_return_code')}`",
-        "",
-        "## Metrics",
-        "",
-    ]
-    if isinstance(peak, dict):
-        lines.extend(
-            [
-                f"- Peak flow node: `{peak.get('node')}`",
-                f"- Peak flow value: `{peak.get('value')}` `{peak.get('unit')}`",
-                f"- Peak flow time: `{peak.get('time_hhmm')}`",
-                f"- Peak source: `{peak.get('source_section')}`",
-            ]
-        )
-    else:
-        lines.append("- Peak flow: missing")
-    if isinstance(continuity, dict):
-        lines.append(f"- Continuity error: `{json.dumps(continuity.get('values'), sort_keys=True)}`")
-    else:
-        lines.append("- Continuity error: missing")
-    lines.extend(["", "## Evidence Boundary", ""])
-    notes = record.get("evidence_boundary_notes") or []
-    if notes:
-        lines.extend(f"- {note}" for note in notes)
-    else:
-        lines.append("- No additional evidence-boundary note was recorded.")
-    lines.extend(["", "## Failure Patterns", ""])
-    for pattern in record.get("failure_patterns") or ["unknown"]:
-        lines.append(f"- `{pattern}`")
-    lines.extend(["", "## Improvement Signal", ""])
-    if has_detected_failure(record):
-        lines.append("- This run should be reviewed for possible skill, MCP, CLI, documentation, or benchmark improvements.")
-    else:
-        lines.append("- No failure-driven improvement signal was detected for this run.")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def write_memory_snapshots(out_dir: Path, records: list[dict[str, Any]], index: dict[str, Any], generated_at: str) -> Path:
-    stamp = snapshot_stamp(generated_at)
-    snapshot_dir = out_dir / "snapshots" / stamp
-    write_json(snapshot_dir / "modeling_memory_index.json", index)
-    write_text(snapshot_dir / "modeling_memory_index.md", render_index_md(records, generated_at))
-    write_text(snapshot_dir / "lessons_learned.md", render_lessons(records, generated_at))
-    write_text(snapshot_dir / "skill_update_proposals.md", render_proposals(records, generated_at))
-    write_text(snapshot_dir / "benchmark_verification_plan.md", render_benchmark_plan(generated_at))
-    return snapshot_dir
-
-
-def write_by_run_memory(out_dir: Path, records: list[dict[str, Any]], generated_at: str) -> None:
-    for record in records:
-        run_dir = out_dir / "by-run" / safe_name(record.get("run_id"))
-        write_json(run_dir / "memory_record.json", record)
-        write_text(run_dir / "memory_note.md", render_run_memory_note(record, generated_at))
-
-
-def snapshot_stamp(generated_at: str) -> str:
-    return generated_at.replace("+00:00", "Z").replace("-", "").replace(":", "")
-
-
 def repeated_items(records: list[dict[str, Any]], key: str) -> list[tuple[str, int]]:
     counter: Counter[str] = Counter()
     for record in records:
         counter.update(str(item) for item in record.get(key, []) if item)
     return [(item, count) for item, count in counter.most_common() if count >= 2]
+
+
+def records_by_project(records: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        grouped[str(record.get("project_key") or "unknown-project")].append(record)
+    return dict(sorted(grouped.items()))
+
+
+def project_summary(project: str, records: list[dict[str, Any]], generated_at: str) -> dict[str, Any]:
+    failure_counts: Counter[str] = Counter()
+    diagnostic_counts: Counter[str] = Counter()
+    missing_counts: Counter[str] = Counter()
+    qa_counts: Counter[str] = Counter()
+    for record in records:
+        failure_counts.update(record.get("failure_patterns", []))
+        diagnostic_counts.update(record.get("model_diagnostic_ids", []))
+        missing_counts.update(record.get("artifacts_missing", []))
+        qa_counts.update([str(record.get("qa_status") or "unknown")])
+    return {
+        "schema_version": "1.0",
+        "generated_by": "swmm-modeling-memory",
+        "generated_at_utc": generated_at,
+        "project_key": project,
+        "record_count": len(records),
+        "run_ids": [record.get("run_id") for record in records],
+        "qa_status_counts": dict(qa_counts),
+        "failure_pattern_counts": dict(failure_counts),
+        "model_diagnostic_counts": dict(diagnostic_counts),
+        "missing_evidence_counts": dict(missing_counts),
+        "next_run_cautions": sorted({item for record in records for item in record.get("next_run_cautions", [])}),
+    }
+
+
+def render_project_memory_md(project: str, summary: dict[str, Any]) -> str:
+    lines = [
+        f"# Project Modeling Memory - {project}",
+        "",
+        f"Generated at UTC: `{summary['generated_at_utc']}`",
+        "",
+        f"- Runs: {summary['record_count']}",
+        f"- Run IDs: {', '.join(f'`{run}`' for run in summary['run_ids'])}",
+        "",
+        "## QA States",
+    ]
+    for key, count in sorted(summary["qa_status_counts"].items()):
+        lines.append(f"- `{key}`: {count} run(s)")
+    lines.extend(["", "## Failure Patterns"])
+    if summary["failure_pattern_counts"]:
+        for key, count in sorted(summary["failure_pattern_counts"].items()):
+            lines.append(f"- `{key}`: {count} run(s)")
+    else:
+        lines.append("- No failure patterns were detected.")
+    lines.extend(["", "## SWMM Model Diagnostics"])
+    if summary["model_diagnostic_counts"]:
+        for key, count in sorted(summary["model_diagnostic_counts"].items()):
+            lines.append(f"- `{key}`: {count} run(s)")
+    else:
+        lines.append("- No deterministic SWMM model diagnostics were recorded.")
+    lines.extend(["", "## Missing Evidence"])
+    if summary["missing_evidence_counts"]:
+        for key, count in sorted(summary["missing_evidence_counts"].items()):
+            lines.append(f"- `{key}` missing in {count} run(s)")
+    else:
+        lines.append("- No missing evidence was detected.")
+    lines.extend(["", "## Next-Run Cautions"])
+    if summary["next_run_cautions"]:
+        for item in summary["next_run_cautions"]:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- No project-level cautions were generated.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_project_index_md(project_summaries: list[dict[str, Any]], generated_at: str) -> str:
+    lines = [
+        "# Project Memory Index",
+        "",
+        f"Generated at UTC: `{generated_at}`",
+        "",
+        "| Project | Runs | Failure patterns | Model diagnostics | Missing evidence |",
+        "|---|---:|---|---|---|",
+    ]
+    for summary in project_summaries:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    md_escape(summary["project_key"]),
+                    md_escape(summary["record_count"]),
+                    md_escape(", ".join(sorted(summary["failure_pattern_counts"].keys())) or "none"),
+                    md_escape(", ".join(sorted(summary["model_diagnostic_counts"].keys())) or "none"),
+                    md_escape(", ".join(sorted(summary["missing_evidence_counts"].keys())) or "none"),
+                ]
+            )
+            + " |"
+        )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
@@ -476,12 +623,6 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
         f"Generated at UTC: `{generated_at}`",
         "",
         "This synthesis is derived from historical experiment audit artifacts. It is project memory, not proof that a model is calibrated or validated.",
-        "",
-        "## Source Contract",
-        "",
-        "- Evidence comes from audited run artifacts such as `experiment_provenance.json`, `comparison.json`, `experiment_note.md`, manifests, QA summaries, SWMM reports, and plots.",
-        "- Assumptions, missing evidence, repeated failure patterns, and proposed improvements are kept separate from completed modeling claims.",
-        "- External case-study evidence is not included unless it is explicitly referenced by audited run artifacts.",
         "",
         "## Repeated Failure Patterns",
     ]
@@ -517,6 +658,14 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
     for status, count in comparison_counts.most_common():
         lines.append(f"- Comparison status `{status}`: {count} run(s)")
 
+    lines.extend(["", "## Repeated SWMM Model Diagnostics"])
+    diagnostics = repeated_items(records, "model_diagnostic_ids")
+    if diagnostics:
+        for item, count in diagnostics:
+            lines.append(f"- `{item}`: {count} run(s)")
+    else:
+        lines.append("- No repeated deterministic SWMM model diagnostics were detected.")
+
     lines.extend(["", "## Successful Practices"])
     if successful:
         for record in successful:
@@ -525,16 +674,6 @@ def render_lessons(records: list[dict[str, Any]], generated_at: str) -> str:
             )
     else:
         lines.append("- No run was classified as `no_detected_failure`.")
-    lines.extend(
-        [
-            "",
-            "## Validation Boundary",
-            "",
-            "- A repeated successful practice is operational evidence, not calibration or validation evidence.",
-            "- Calibration requires observed data and recorded parameter-selection evidence.",
-            "- Validation requires independent evidence beyond a successful SWMM execution and audit.",
-        ]
-    )
     lines.append("")
     return "\n".join(lines)
 
@@ -606,6 +745,11 @@ def proposal_for_pattern(pattern: str) -> tuple[str, str, list[str]]:
             "Make partial-run handoff to audit explicit so incomplete evidence is still reusable.",
             ["swmm-end-to-end", "swmm-experiment-audit"],
         ),
+        "swmm_model_diagnostic_error": (
+            "SWMM model diagnostics",
+            "Review deterministic model diagnostics before treating a run as valid modeling evidence.",
+            ["swmm-experiment-audit", "swmm-runner", "swmm-builder"],
+        ),
         "unknown_failure": (
             "Failure classification",
             "Inspect the run manually and add a deterministic rule only after human review.",
@@ -641,13 +785,6 @@ def render_proposals(records: list[dict[str, Any]], generated_at: str) -> str:
         "The modeling-memory skill analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.",
         "",
         "Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified.",
-        "",
-        "Proposal boundaries:",
-        "",
-        "- A proposal may identify a repeated workflow weakness.",
-        "- A proposal may name candidate skills or scripts to review.",
-        "- A proposal must not claim the fix is correct until benchmark runs and audit outputs verify it.",
-        "- A proposal must not hide missing evidence by weakening QA or validation boundaries.",
         "",
     ]
     if not pattern_to_runs:
@@ -718,6 +855,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runs-dir", required=True, type=Path, help="Directory containing audited run folders.")
     parser.add_argument("--out-dir", required=True, type=Path, help="Directory for generated modeling-memory outputs.")
     parser.add_argument("--obsidian-dir", type=Path, help="Optional Obsidian folder for Markdown exports.")
+    parser.add_argument(
+        "--no-run-summaries",
+        action="store_true",
+        help="Do not write per-run memory_summary.json cards next to audited run artifacts.",
+    )
     return parser.parse_args()
 
 
@@ -730,6 +872,11 @@ def main() -> int:
     run_dirs = discover_run_dirs(runs_dir)
     records = [build_record(run_dir, runs_dir) for run_dir in run_dirs]
     failure_count = sum(1 for record in records if has_detected_failure(record))
+    run_summaries = [build_run_memory_summary(record, generated_at) for record in records]
+    project_summaries = [
+        project_summary(project, project_records, generated_at)
+        for project, project_records in records_by_project(records).items()
+    ]
 
     index = {
         "schema_version": "1.0",
@@ -739,18 +886,30 @@ def main() -> int:
         "run_folder_count": len(run_dirs),
         "failure_record_count": failure_count,
         "failure_pattern_counts": dict(Counter(p for r in records for p in r["failure_patterns"])),
+        "model_diagnostic_counts": dict(Counter(item for r in records for item in r.get("model_diagnostic_ids", []))),
         "qa_status_counts": dict(Counter(r["qa_status"] for r in records)),
         "comparison_status_counts": dict(Counter(r["comparison_status"] for r in records)),
+        "project_counts": dict(Counter(r["project_key"] for r in records)),
         "records": records,
     }
 
     write_json(out_dir / "modeling_memory_index.json", index)
+    write_json(out_dir / "run_memory_summaries.json", {"generated_at_utc": generated_at, "records": run_summaries})
+    if not args.no_run_summaries:
+        for run_dir, summary in zip(run_dirs, run_summaries):
+            write_json(run_dir / "memory_summary.json", summary)
+
+    projects_dir = out_dir / "projects"
+    for summary in project_summaries:
+        project_dir = projects_dir / summary["project_key"]
+        write_json(project_dir / "project_memory.json", summary)
+        write_text(project_dir / "project_memory.md", render_project_memory_md(summary["project_key"], summary))
+
     write_text(out_dir / "modeling_memory_index.md", render_index_md(records, generated_at))
+    write_text(out_dir / "project_memory_index.md", render_project_index_md(project_summaries, generated_at))
     write_text(out_dir / "lessons_learned.md", render_lessons(records, generated_at))
     write_text(out_dir / "skill_update_proposals.md", render_proposals(records, generated_at))
     write_text(out_dir / "benchmark_verification_plan.md", render_benchmark_plan(generated_at))
-    snapshot_dir = write_memory_snapshots(out_dir, records, index, generated_at)
-    write_by_run_memory(out_dir, records, generated_at)
 
     obsidian_used = False
     if args.obsidian_dir:
@@ -760,9 +919,9 @@ def main() -> int:
     print(f"run folders scanned: {len(run_dirs)}")
     print(f"audit records found: {len(records)}")
     print(f"runs with detected failures: {failure_count}")
+    print(f"run memory summaries written: {'no' if args.no_run_summaries else len(run_summaries)}")
+    print(f"project memory groups written: {len(project_summaries)}")
     print(f"output directory: {out_dir}")
-    print(f"snapshot directory: {snapshot_dir}")
-    print(f"by-run memory directory: {out_dir / 'by-run'}")
     print(f"obsidian export used: {'yes' if obsidian_used else 'no'}")
     return 0
 

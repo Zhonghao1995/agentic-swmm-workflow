@@ -30,6 +30,20 @@ Unit policy (`--unit-policy`):
 - `strict`: only `mm_per_hr` accepted.
 - `convert_to_mm_per_hr`: supported units are converted to `mm_per_hr`.
 
+## SWMM `.dat` input contract
+For SWMM-native rainfall `.dat` files (e.g. `<series> YYYY M D HH MM value`),
+use `--input-dat <path>` and declare row units via `--dat-value-units`:
+- `mm_per_hr`, `in_per_hr` (intensities)
+- `mm_per_day`, `in_per_day` (24h volumes; divided by 24 to mm/hr)
+
+In `.dat` mode the `--window-start` / `--window-end` filters expect `%Y-%m-%d`.
+Use `--default-station-id` to override the series token taken from the .dat row.
+`--input-dat` may be repeated to batch multiple .dat files but cannot be mixed
+with `--input` / `--input-glob`.
+
+Via the MCP tool, pass `inputDatPaths: [<path>]` and `datValueUnits:
+"mm_per_day"` (or another supported unit) instead of `inputCsvPath`.
+
 Temporal validation:
 - duplicate timestamps are rejected per station/series.
 - timestamp monotonicity is checked per station (`--timestamp-policy strict` default; optional `sort`).
@@ -54,7 +68,7 @@ Temporal validation:
 
 ## MCP
 MCP wrapper location:
-- `mcp/swmm-climate/server.js`
+- `scripts/mcp/server.js`
 
 Exposed tools:
 - `format_rainfall`

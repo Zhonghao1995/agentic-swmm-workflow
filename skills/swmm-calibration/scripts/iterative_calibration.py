@@ -5,12 +5,8 @@ import argparse
 import itertools
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
-
-
-PYTHON = sys.executable
 
 
 def load_json(path: str | Path) -> Any:
@@ -146,7 +142,7 @@ def main() -> None:
     round_scout = run_root / "round_01_scout"
     scout_summary = round_scout / "summary.json"
     run_cmd([
-        PYTHON, "skills/swmm-calibration/scripts/parameter_scout.py",
+        "python3", "skills/swmm-calibration/scripts/parameter_scout.py",
         "--base-inp", str(args.base_inp),
         "--patch-map", str(args.patch_map),
         "--base-params", str(args.base_params),
@@ -167,7 +163,7 @@ def main() -> None:
     cal_summary = round_cal / "summary.json"
     best_params_out = run_root / "best_params.json"
     run_cmd([
-        PYTHON, "skills/swmm-calibration/scripts/swmm_calibrate.py", "calibrate",
+        "python3", "skills/swmm-calibration/scripts/swmm_calibrate.py", "calibrate",
         "--base-inp", str(args.base_inp),
         "--patch-map", str(args.patch_map),
         "--parameter-sets", str(generated_path),

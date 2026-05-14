@@ -43,6 +43,23 @@ def test_summarize_memory_outputs(tmp_path: Path) -> None:
         "# Experiment Note\n\n## Evidence Boundary\n\n- Fake test evidence only.\n",
         encoding="utf-8",
     )
+    (run_dir / "model_diagnostics.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "generated_by": "swmm-experiment-audit",
+                "status": "warning",
+                "diagnostics": [
+                    {
+                        "id": "continuity_error_high",
+                        "severity": "warning",
+                        "message": "Continuity error exceeds the screening threshold.",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     subprocess.run(
         [
@@ -60,6 +77,8 @@ def test_summarize_memory_outputs(tmp_path: Path) -> None:
     expected = [
         "modeling_memory_index.json",
         "modeling_memory_index.md",
+        "project_memory_index.md",
+        "run_memory_summaries.json",
         "lessons_learned.md",
         "skill_update_proposals.md",
         "benchmark_verification_plan.md",
@@ -71,17 +90,9 @@ def test_summarize_memory_outputs(tmp_path: Path) -> None:
     assert index["record_count"] == 1
     assert index["records"][0]["run_id"] == "case-a"
     assert "missing_rpt" in index["records"][0]["failure_patterns"]
-
-    index_md = (out_dir / "modeling_memory_index.md").read_text(encoding="utf-8")
-    assert "Source contract" in index_md
-    assert "Missing evidence" in index_md
-    assert "Assumptions" in index_md
-
-    lessons = (out_dir / "lessons_learned.md").read_text(encoding="utf-8")
-    assert "## Source Contract" in lessons
-    assert "## Validation Boundary" in lessons
-    assert "Assumptions, missing evidence, repeated failure patterns" in lessons
-
-    proposals = (out_dir / "skill_update_proposals.md").read_text(encoding="utf-8")
-    assert "Proposal boundaries" in proposals
-    assert "must not claim the fix is correct" in proposals
+    assert index["model_diagnostic_counts"]["continuity_error_high"] == 1
+    assert (run_dir / "memory_summary.json").exists()
+    run_summary = json.loads((run_dir / "memory_summary.json").read_text(encoding="utf-8"))
+    assert run_summary["model_diagnostic_ids"] == ["continuity_error_high"]
+    assert "routing_step / storage / inflow-outflow accounting" in run_summary["suspect_parameters"]
+    assert (out_dir / "projects" / "case-a" / "project_memory.json").exists()

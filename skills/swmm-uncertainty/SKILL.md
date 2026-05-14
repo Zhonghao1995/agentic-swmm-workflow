@@ -1,9 +1,9 @@
 ---
 name: swmm-uncertainty
-description: Fuzzy alpha-cut uncertainty propagation for EPA SWMM. Use when Zhonghao asks to define triangular/trapezoidal membership functions for SWMM parameters, propagate epistemic parameter uncertainty through SWMM, or summarize output uncertainty envelopes.
+description: Parameter uncertainty propagation for EPA SWMM, including fuzzy alpha-cut analysis, Monte Carlo sampling, and output-entropy summaries. Use when Zhonghao asks to propagate parameter uncertainty, quantify hydrograph envelopes, or calculate entropy-based uncertainty without treating the run as calibration unless observed data are present.
 ---
 
-# SWMM Fuzzy Uncertainty
+# SWMM Uncertainty
 
 ## What this skill provides
 
@@ -11,13 +11,18 @@ description: Fuzzy alpha-cut uncertainty propagation for EPA SWMM. Use when Zhon
 - Baseline-aware triangular fuzzy numbers, where the current model value is the default triangle peak.
 - Alpha-cut transformation from fuzzy membership functions to parameter intervals.
 - LHS, random, or boundary sampling inside each alpha-cut interval.
+- Monte Carlo parameter sampling for prior or calibration-informed probability distributions.
+- Normal/lognormal/truncated-normal/uniform sampling with simple physical constraints such as bound parameters and greater-than rules.
 - Batch propagation through SWMM by reusing the existing calibration patch-map convention.
-- Machine-readable uncertainty summaries for output envelopes and failed/invalid samples.
+- Normalized Shannon entropy metrics for output ensembles, such as hydrograph entropy over time.
+- Machine-readable uncertainty summaries for output envelopes, entropy records, and failed/invalid samples.
 
 This skill is intentionally separate from `swmm-calibration`.
 
 - `swmm-calibration` asks: which parameter set best matches observations?
 - `swmm-uncertainty` asks: how much output uncertainty is induced by user-defined parameter uncertainty?
+
+Calibration requires observed data and performance metrics such as NSE, RMSE, or KGE. This skill can run without observed data when the task is prior uncertainty propagation. When calibration outputs exist, they can be used to narrow Monte Carlo ranges or define posterior-like parameter sets.
 
 ## Scripts
 
@@ -28,12 +33,26 @@ This skill is intentionally separate from `swmm-calibration`.
 - `scripts/sampling.py`
   - generates parameter sets from alpha-cut intervals
   - supports `lhs`, `random`, and `boundary`
+- `scripts/probabilistic_sampling.py`
+  - generates Monte Carlo parameter sets from probability distributions
+  - supports `uniform`, `normal`, `truncnorm`, and `lognormal`
+  - supports simple constraints such as `bind`, `greater_than`, and `less_than`
+- `scripts/parameter_recommender.py`
+  - inspects an INP and recommends prior Monte Carlo parameters that are actually present in the model
+  - reports the evidence boundary so prior ranges are not mistaken for calibrated posterior ranges
+- `scripts/monte_carlo_propagate.py`
+  - extracts node-flow ensembles from Monte Carlo trial `.out` files
+  - calls `entropy_metrics.py` to produce node entropy JSON records
+  - plots normalized output entropy curves for selected nodes
+- `scripts/entropy_metrics.py`
+  - calculates normalized discrete Shannon entropy for output ensembles
+  - summarizes ensemble p05/p50/p95/min/max time series
 - `scripts/uncertainty_propagate.py`
   - main CLI entry point
   - writes resolved fuzzy space, alpha intervals, parameter sets, trial INPs, and summary JSON
   - optionally executes SWMM and aggregates peak/continuity envelopes
 
-## Expected Workflow
+## Expected fuzzy workflow
 
 1. Prepare a base SWMM INP.
 2. Prepare a calibration-style `patch_map.json`.
@@ -41,6 +60,18 @@ This skill is intentionally separate from `swmm-calibration`.
 4. Define an `uncertainty_config.json`.
 5. Run `uncertainty_propagate.py`.
 6. Inspect `uncertainty_summary.json`, `alpha_intervals.json`, and generated trial directories.
+
+## Expected Monte Carlo / entropy workflow
+
+1. Prepare a base SWMM INP.
+2. Prepare a calibration-style `patch_map.json`.
+3. Define a `monte_carlo_space.json` with parameter distributions.
+4. Generate parameter sets with `probabilistic_sampling.py`.
+5. Propagate the generated parameter sets through SWMM using the uncertainty runner path.
+6. Extract an output ensemble, such as `node,OUT_0,Total_inflow`.
+7. Calculate normalized output entropy with `entropy_metrics.py`.
+
+If observed data are available, first run `swmm-calibration` and use its best, acceptable, or narrowed parameter ranges as a calibration-informed Monte Carlo input. If observed data are not available, report the analysis as prior uncertainty propagation.
 
 ## Fuzzy Space
 
@@ -114,6 +145,38 @@ python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py \
 
 Remove `--dry-run` to execute SWMM for every generated trial.
 
+### Monte Carlo sampling example
+
+```bash
+python3 skills/swmm-uncertainty/scripts/probabilistic_sampling.py \
+  --parameter-space skills/swmm-uncertainty/examples/monte_carlo_space.json \
+  --samples 100 \
+  --seed 42 \
+  --out runs/uncertainty-mc/parameter_sets.json
+```
+
+### Entropy metric example
+
+```bash
+python3 skills/swmm-uncertainty/scripts/entropy_metrics.py \
+  --ensemble-json skills/swmm-uncertainty/examples/entropy_ensemble.json \
+  --bins 10 \
+  --out runs/uncertainty-mc/entropy_summary.json
+```
+
+### Tecnopolo Monte Carlo smoke example
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py \
+  --samples 20 \
+  --seed 42 \
+  --node OUT_0 \
+  --scan-nodes \
+  --entropy-nodes J6 OUT_0
+```
+
+This is a prior uncertainty smoke test, not calibration. It identifies perturbable parameters in the Tecnopolo HORTON prepared INP, applies small Monte Carlo perturbations, runs SWMM, optionally ranks all junction/outfall nodes by peak-flow spread, and writes `summary.json`, `parameter_recommendations.json`, trial outputs, a rainfall-plus-flow envelope figure, J6/OUT_0 entropy JSON files, and an entropy curve figure under `runs/benchmarks/tecnopolo-mc-uncertainty-smoke/`.
+
 ## Outputs
 
 The run directory contains:
@@ -131,10 +194,13 @@ The summary answers:
 - What samples were propagated?
 - How many trials succeeded, failed, or were only dry-run trials?
 - What peak-flow and continuity envelopes were induced by each alpha level?
+- What output entropy curve was induced by the propagated ensemble?
 
 ## MVP Assumptions
 
-- The first implementation focuses on epistemic parameter uncertainty, not probability distributions.
+- Fuzzy analysis focuses on epistemic parameter uncertainty through membership functions.
+- Monte Carlo analysis supports prior or calibration-informed probability distributions.
 - The current model value is treated as the most plausible value for compact triangular specs.
+- Entropy is calculated from SWMM output ensembles; it is parameter-induced output entropy, not parameter entropy and not calibration performance.
 - Real SWMM propagation depends on `swmm5` being installed.
 - Hydrograph goodness-of-fit metrics remain in `swmm-calibration`; this skill can be extended later to call that observed-flow path.

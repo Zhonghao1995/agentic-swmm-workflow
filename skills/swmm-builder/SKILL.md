@@ -82,16 +82,34 @@ Validation behavior:
 - `[TIMESERIES]` rows are validated for series-name consistency and basic token/time/value correctness.
 - Manifest includes `validation` plus `validation_diagnostics` metadata.
 
-## Script
+## Scripts
 - `scripts/build_swmm_inp.py`
   - single entrypoint that reads all inputs and writes INP + manifest.
+- `scripts/subcatchments_shp_to_csv.py`
+  - converts a SWMM-attributed subcatchment shapefile (id / outlet /
+    area_ha / width_m / slope_pct fields) into the builder's CSV
+    contract. Use when a basin shapefile already carries SWMM
+    subcatchment attributes and per-feature width/slope rebuilds are
+    unnecessary. For raw municipal basin shapefiles without SWMM
+    attribute columns, prefer `swmm-gis-mcp.basin_shp_to_subcatchments`,
+    which derives the same CSV from polygon area + a configurable
+    width/slope strategy.
 
 ## MCP
 MCP wrapper location:
-- `mcp/swmm-builder/server.js`
+- `mcp/swmm-builder/server.js` (was previously `skills/swmm-builder/scripts/mcp/`; moved during the mcp/ root restructure)
 
 Exposed tools:
-- `build_inp`
+- `build_inp` — assemble a runnable SWMM INP + manifest from
+  subcatchments CSV, area-weighted params JSON, network JSON, rainfall
+  JSON + timeseries text, and an options-config JSON. Required args:
+  `subcatchmentsCsvPath`, `paramsJsonPath`, `networkJsonPath`,
+  `outInpPath`, `outManifestPath`. Optional: `rainfallJsonPath`,
+  `raingageJsonPath`, `timeseriesTextPath`, `configJsonPath`,
+  `defaultGageId`. The subcatchments CSV must carry `outlet` values
+  that point to real upstream junctions (use
+  `swmm-network-mcp.assign_subcatchment_outlets` first if it currently
+  points to the literal outfall).
 
 ## Smoke example
 ```bash

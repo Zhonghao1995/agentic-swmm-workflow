@@ -77,16 +77,6 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
     return times, vals
 
 
-NODE_ATTR_LABELS = {
-    'Total_inflow': 'Total inflow (m$^3$/s)',
-    'Lateral_inflow': 'Lateral inflow (m$^3$/s)',
-    'Flow_lost_flooding': 'Flooding flow (m$^3$/s)',
-    'Volume_stored_ponded': 'Volume stored/ponded (m$^3$)',
-    'Depth_above_invert': 'Node water depth above invert (m)',
-    'Hydraulic_head': 'Hydraulic head (m)',
-}
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--inp', required=True, type=Path)
@@ -96,8 +86,7 @@ def main():
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
     ap.add_argument('--node', default='O1')
-    ap.add_argument('--node-attr', default='Total_inflow',
-                    help='SWMM node output attribute to plot, e.g. Total_inflow, Volume_stored_ponded, Flow_lost_flooding.')
+    ap.add_argument('--node-attr', default='Total_inflow')
     ap.add_argument('--out-png', required=True, type=Path)
     ap.add_argument('--dpi', type=int, default=300)
     ap.add_argument('--focus-day', type=str, default=None,
@@ -108,10 +97,10 @@ def main():
                     help='Optional HH:MM. If provided with --focus-day, x-axis will be limited to this time window within the day.')
     ap.add_argument('--pad-hours', type=float, default=2.0,
                     help='When focus-day is not set, auto-window uses nonzero rainfall extent ± pad-hours.')
-    ap.add_argument('--auto-window-mode', choices=['flow-peak', 'rain', 'full'], default='flow-peak',
-                    help='Auto-window mode when --focus-day is not set. flow-peak keeps long simulations readable.')
-    ap.add_argument('--window-hours', type=float, default=12.0,
-                    help='Total hours shown around the peak flow when --auto-window-mode=flow-peak.')
+    ap.add_argument('--rain-ymax-factor', type=float, default=3.0,
+                    help='Multiplier applied to the plotted rainfall maximum so inverted bars stay in the upper part of the panel.')
+    ap.add_argument('--flow-ymax-factor', type=float, default=2.5,
+                    help='Multiplier applied to the plotted flow maximum so the hydrograph does not visually collide with rainfall bars.')
     args = ap.parse_args()
 
     # Matplotlib styling: Arial 12, ticks inward
@@ -133,15 +122,15 @@ def main():
     # For hyetograph we usually show intensity (mm/hr) inverted.
     if args.rain_kind == 'intensity_mm_per_hr':
         rain_plot = rain_v
-        rain_ylabel = 'Rainfall intensity\n(mm/h)'
+        rain_ylabel = 'Rainfall intensity (mm/h)'
     elif args.rain_kind == 'cumulative_depth_mm':
         rain_plot = np.diff(rain_v, prepend=rain_v[0])
         rain_plot = np.where(rain_plot < 0, 0.0, rain_plot)
-        rain_ylabel = f'Rainfall depth\n(mm/{int(args.dt_min)} min)'
+        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
     else:
         # values are assumed intensity mm/hr by our generator; convert to mm per dt for bar area readability
         rain_plot = rain_v * (args.dt_min / 60.0)
-        rain_ylabel = f'Rainfall depth\n(mm/{int(args.dt_min)} min)'
+        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
 
     # Flow series (SI): CMS = m^3/s
     key = f'node,{args.node},{args.node_attr}'
@@ -149,16 +138,8 @@ def main():
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
 
-    # Separate rainfall and flow panels so the inverted hyetograph cannot
-    # visually overlap the hydrograph.
-    fig, (ax_rain, ax_flow) = plt.subplots(
-        2,
-        1,
-        figsize=(9, 4.6),
-        dpi=args.dpi,
-        sharex=True,
-        gridspec_kw={'height_ratios': [1.0, 1.8], 'hspace': 0.18},
-    )
+    # Figure
+    fig, ax_rain = plt.subplots(figsize=(9, 3.8), dpi=args.dpi)
 
     # Rain bars
     bar_width_days = (args.dt_min / 60.0) / 24.0
@@ -173,14 +154,22 @@ def main():
         zorder=1,
     )
     ax_rain.set_ylabel(rain_ylabel)
+    ax_rain.set_xlabel('Time')
 
     # invert rain axis (hyetograph convention)
     ax_rain.invert_yaxis()
 
-    # Flow line in a separate panel.
-    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label=args.node_attr.replace('_', ' '), zorder=3)
-    ax_flow.set_ylabel(NODE_ATTR_LABELS.get(args.node_attr, args.node_attr.replace('_', ' ')))
-    ax_flow.set_xlabel('Time')
+    # Flow line (draw above rain)
+    ax_flow = ax_rain.twinx()
+    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label='Flow', zorder=3)
+    ax_flow.set_ylabel('Flow (m³/s)')
+
+    rain_max = float(np.nanmax(rain_plot)) if rain_plot.size else 0.0
+    if rain_max > 0:
+        ax_rain.set_ylim(rain_max * max(args.rain_ymax_factor, 1.0), 0.0)
+    flow_max = float(np.nanmax(flow_v)) if flow_v.size else 0.0
+    if flow_max > 0:
+        ax_flow.set_ylim(0.0, flow_max * max(args.flow_ymax_factor, 1.0))
 
     # Focus x-axis: one day or auto-window
     import matplotlib.dates as mdates
@@ -192,51 +181,34 @@ def main():
             t0 = d0.replace(hour=ws.hour, minute=ws.minute)
             t1 = d0.replace(hour=we.hour, minute=we.minute)
             ax_rain.set_xlim(t0, t1)
-            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
         else:
             ax_rain.set_xlim(d0, d0 + timedelta(hours=24))
-            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=3))
-            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=3))
+            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
     else:
         nz = np.where(np.asarray(rain_plot) > 0)[0]
-        if args.auto_window_mode == 'flow-peak' and len(flow_t):
-            peak_idx = int(np.nanargmax(flow_v))
-            center = flow_t[peak_idx]
-            half = timedelta(hours=float(args.window_hours) / 2.0)
-            ax_rain.set_xlim(center - half, center + half)
-            ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=1))
-            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        elif args.auto_window_mode == 'rain' and nz.size:
+        if nz.size:
             tmin = rain_t[int(nz.min())]
             tmax = rain_t[int(nz.max())]
             pad = timedelta(hours=float(args.pad_hours))
             ax_rain.set_xlim(tmin - pad, tmax + pad)
-            span_hours = max((tmax - tmin).total_seconds() / 3600.0, 1.0)
-            if span_hours <= 48:
-                ax_flow.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
-            elif span_hours <= 24 * 10:
-                ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=1))
-                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-            else:
-                ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=3))
-                ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-        else:
-            ax_flow.xaxis.set_major_locator(mdates.DayLocator(interval=3))
-            ax_flow.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
+            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
 
     # Ticks inward on both axes
     ax_rain.tick_params(direction='in', which='both', top=True, right=False)
-    ax_rain.tick_params(labelbottom=False)
-    ax_flow.tick_params(direction='in', which='both', top=True, right=False)
+    ax_flow.tick_params(direction='in', which='both', top=True, right=True)
 
     # No title (per spec)
 
-    ax_rain.legend(loc='upper left', framealpha=0.9)
-    ax_flow.legend(loc='upper left', framealpha=0.9)
+    # Legend: combine
+    h1, l1 = ax_rain.get_legend_handles_labels()
+    h2, l2 = ax_flow.get_legend_handles_labels()
+    ax_flow.legend(h1 + h2, l1 + l2, loc='upper left', framealpha=0.9)
 
-    fig.tight_layout(pad=0.8, h_pad=1.4)
+    fig.tight_layout()
     args.out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.out_png, dpi=args.dpi)
 

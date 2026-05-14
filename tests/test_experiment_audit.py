@@ -84,16 +84,21 @@ class ExperimentAuditTests(unittest.TestCase):
         provenance_path = self.run_dir / "experiment_provenance.json"
         comparison_path = self.run_dir / "comparison.json"
         note_path = self.run_dir / "experiment_note.md"
+        diagnostics_path = self.run_dir / "model_diagnostics.json"
 
         self.assertTrue(provenance_path.exists())
         self.assertTrue(comparison_path.exists())
         self.assertTrue(note_path.exists())
+        self.assertTrue(diagnostics_path.exists())
 
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
         peak = provenance["metrics"]["peak_flow"]
         self.assertEqual(provenance["status"], "pass")
+        self.assertEqual(diagnostics["generated_by"], "swmm-experiment-audit")
         self.assertEqual(peak["source_section"], "Node Inflow Summary")
         self.assertEqual(peak["source_validation"]["matches_report"], True)
+        self.assertIn("model_diagnostics", provenance["artifacts"])
         self.assertIn("primary machine-readable record", note_path.read_text(encoding="utf-8"))
 
 

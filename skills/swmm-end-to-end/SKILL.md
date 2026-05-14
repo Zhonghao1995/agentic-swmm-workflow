@@ -1,251 +1,385 @@
 ---
 name: swmm-end-to-end
-description: Standard operating procedure for auditable Agentic SWMM workflows. Use when an agent must decide how to run, QA, plot, audit, summarize, or safely stop an EPA SWMM workflow using the unified agentic-swmm CLI and lower-level module tools only when needed.
+description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. Use when a repository user wants one agent-facing skill that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
 ---
 
-# SWMM End-to-End Skill
+# SWMM End-to-End Orchestration
 
-This skill defines the standard operating procedure for using Agentic SWMM in an auditable and reproducible way.
+## What this skill provides
+- A top-level orchestration contract for OpenClaw.
+- A stable handoff point for Agentic AI project memory in `agent/`.
+- A deterministic execution order across the existing module skills:
+  - `swmm-gis`
+  - `swmm-climate`
+  - `swmm-params`
+  - `swmm-network`
+  - `swmm-builder`
+  - `swmm-runner`
+  - `swmm-plot`
+  - `swmm-calibration`
+  - `swmm-uncertainty`
+  - `swmm-lid-optimization`
+  - `swmm-experiment-audit`
+- Clear stop conditions so the agent does not pretend a full model was built when critical inputs are still missing.
+- A minimal real-data fallback path for Tod Creek via `scripts/real_cases/run_todcreek_minimal.py`.
+- A mandatory audit handoff that consolidates artifacts, metrics, QA, comparison records, and default Obsidian audit notes after success or failure.
 
-For normal user-facing workflows, prefer the unified `agentic-swmm` CLI. Lower-level scripts and MCP tools may be used only for debugging, development, full modular build stages not yet exposed through the CLI, or specialized functions such as calibration and uncertainty workflows.
+## When to use this skill
+Use this skill when the user asks for:
+- one OpenClaw-facing entrypoint for SWMM modelling,
+- end-to-end build + run + QA,
+- an agent to decide which SWMM module comes next,
+- a real-data dry run before full automation is ready, or
+- a bounded orchestration layer without rewriting the underlying scripts.
 
-The agent should coordinate the workflow, but SWMM execution, QA checks, plotting, audit records, and memory summaries must remain artifact-based and inspectable.
+Do **not** use this skill when the user clearly wants only one module in isolation, such as only rainfall formatting or only calibration metrics.
 
-The agent must stop on missing critical inputs instead of inventing model files, drainage networks, rainfall data, observed data, calibration evidence, or validation evidence.
+## Recommended public memory preload
+Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/`:
 
-## Primary CLI Workflow
+1. `identification_memory.md`
+2. `soul.md`
+3. `operational_memory.md`
+4. `modeling_workflow_memory.md`
+5. `evidence_memory.md`
+6. `user_bridge_memory.md`
 
-Use this path when the user provides an existing SWMM INP file or chooses a prepared demo.
+Those files define the public project identity, agent posture, evidence boundaries, and first-run user behavior. This skill remains the execution contract; the memory files should shape decisions and communication, not replace tool calls or depend on the maintainer's private local workspace.
 
-Prepared INP run:
+## Supported operating modes
+### Mode 0: MCP-first framework smoke test mode
+Use this when the user is testing the Agentic SWMM framework itself, especially with prompts like "test the end-to-end framework", "test skill and MCP tool calls", "from raw data to INP", or "automatic modeling smoke test".
 
-```bash
-agentic-swmm doctor
-agentic-swmm run --inp <model.inp> --run-dir runs/<case> --node <node-or-outfall>
-agentic-swmm audit --run-dir runs/<case>
-agentic-swmm plot --run-dir runs/<case> --node <node-or-outfall>
-agentic-swmm memory --runs-dir runs --out-dir memory/modeling-memory
-```
+This mode tests orchestration behavior before scientific model quality. It must:
+- trigger this `swmm-end-to-end` skill first;
+- choose the smallest real-data subset that can exercise the chain;
+- call the relevant MCP tool contracts as the primary path;
+- Do not bypass MCP tool contracts by calling the underlying Python scripts as the primary path;
+- use temporary script edits only for missing framework adapters that do not yet have MCP coverage;
+- record every temporary script fallback as missing framework capability, not as a completed MCP feature.
 
-Demo run:
+The run manifest for this mode must include:
+- `tool_transport`: `mcp` when the MCP server was called through the protocol, `script_fallback` when the tool contract exists but the MCP transport was bypassed, or `temporary_script` when no MCP contract exists yet;
+- `mcp_tool_calls`: ordered records of the intended or actual tool calls, including server, tool name, input paths, output paths, and status;
+- `missing_or_fallback_inputs`: explicit data gaps and assumptions such as missing soil, nonnumeric pipe diameter fallback, inferred outfall, inferred invert elevation, or shortened rainfall window;
+- `framework_gaps`: MCP/skill gaps discovered during the run that should be implemented later.
 
-```bash
-agentic-swmm demo acceptance
-agentic-swmm demo tecnopolo
-agentic-swmm demo tuflow-raw
-```
+Use `scripts/mcp_stdio_call.py` when Codex needs to verify the MCP transport directly from this repository. The helper initializes a server over stdio, checks `tools/list`, calls one tool with JSON arguments, and stores the raw MCP response as an artifact. Use repo-root relative paths in the JSON arguments; the helper resolves those to absolute paths before sending the tool call so server-local working directories do not corrupt path resolution.
 
-Use `agentic-swmm audit --compare-to <baseline-run-dir>` when the user asks for a scenario, before/after, or baseline comparison.
+For a raw-data to INP smoke test, prefer this MCP call order when inputs are present:
+1. `swmm-gis-mcp.qgis_area_weighted_params` for land-use/soil area-weighted params, or record a missing-input fallback if soil is absent.
+2. `swmm-climate-mcp.format_rainfall` for event rainfall.
+3. `swmm-climate-mcp.build_raingage_section` when an explicit raingage artifact is needed.
+4a. `swmm-network-mcp.prepare_storm_inputs` for raw municipal shapefiles (clip pipes + manholes to basin, fill mapping from `skills/swmm-network/templates/city_mapping_raw_shapefile.template.json`). Skip when the source is already a structured CAD export with explicit from/to nodes.
+4b. `swmm-network-mcp.snap_pipe_endpoints` — heal sub-millimetre to centimetre vertex drift between adjacent pipe segments. Reasonable starting tolerance is 0.5–3 m. Reports clusters merged + any pipes dropped as self-loops.
+4c. `swmm-network-mcp.infer_outfall` (mode `endpoint_nearest_watercourse` when a watercourse layer is available; else `lowest_endpoint`).
+4d. `swmm-network-mcp.reorient_pipes` to BFS-flip flow direction.
+4e. `swmm-network-mcp.import_city_network` to assemble `network.json`.
+5. `swmm-network-mcp.qa`. With the 4a–4d steps above, `no_outfall_path` warnings should be limited to genuinely disconnected sub-graphs (e.g. trunk pipes that fall outside the basin clip).
+5b. `swmm-network-mcp.assign_subcatchment_outlets` — REQUIRED when the subcatchments came out of `basin_shp_to_subcatchments` (which seeds every subcatchment's `outlet` to the literal outfall). This step rewrites each subcatchment's `outlet` to a real upstream junction (`mode=nearest_junction` reads `network.json`'s junctions list; or `mode=manual_lookup` for an explicit mapping). Without it the pipe network is in the .inp but receives no surface runoff. Pass the rewritten CSV (not the original) to `build_inp` in step 6.
+6. `swmm-builder-mcp.build_inp`.
+7. `swmm-runner-mcp.swmm_run`.
+8. `swmm-runner-mcp.swmm_continuity`.
+9. `swmm-runner-mcp.swmm_peak`.
 
-By default, `agentic-swmm audit` writes audit artifacts into the run directory and does not export to Obsidian. Use `--obsidian` only when the user explicitly wants the local Obsidian vault updated.
+Stop and report if a required MCP contract is absent. Continue with a temporary script only when the user explicitly asked to test the framework and the run manifest records the gap under `framework_gaps`.
 
-## Standard Run Directory
+### Mode A: Full modular build
+Use this when the required explicit inputs already exist or can be produced safely:
+- subcatchment polygons or builder-ready `subcatchments.csv`
+- network input that can become `network.json`
+- land use and soil inputs
+- rainfall input
 
-New CLI prepared-input runs should use:
-
-```text
-runs/<case>/
-  00_inputs/
-  01_runner/
-    model.rpt
-    model.out
-    stdout.txt
-    stderr.txt
-    manifest.json
-  03_plots/
-    fig_rain_runoff.png
-  manifest.json
-  command_trace.json
-  experiment_provenance.json
-  comparison.json
-  experiment_note.md
-```
-
-Existing benchmark layouts remain valid evidence and should not be rewritten just to match the new structure. The audit layer can read older stage folders such as `04_builder/`, `05_runner/`, and `06_qa/`.
-
-## Interactive Session Layout
-
-An interactive `aiswmm` shell should keep outputs shallow, date-organized, and human-readable:
-
-```text
-runs/YYYY-MM-DD/
-  _sessions.jsonl
-  HHMMSS_<case>_run/
-    00_inputs/
-    05_runner/
-    07_plots/
-    experiment_note.md
-  HHMMSS_<topic>_chat/
-    agent_trace.jsonl
-    final_report.md
-```
-
-Follow-up actions such as "plot the previous result", "audit that run again", or "compare this with baseline" should reuse the active run directory instead of starting from a new blank evidence folder. Multi-run workflows such as sensitivity or uncertainty analysis should create clearly named sibling run directories under the same date folder.
-
-The interactive shell should support `/new-session` to start a fresh session context without exiting the process. Starting a new session clears the active run directory and prevents follow-up plot/audit requests from attaching to the previous workflow.
-
-## Operating Modes
-
-Do not ask the user to pick an internal mode as the first step. Start by identifying the goal and concrete files, infer the safest mode, and ask a targeted question only when the data supports multiple paths or a critical input is missing.
-
-Good first questions are about evidence, not labels:
-
-- "Do you already have a SWMM `.inp` file?"
-- "Do you want to run the prepared example or build from raw GIS/rainfall/network files?"
-- "For plotting, which rainfall series, node/outfall, and variable do you want?"
-
-### Mode A: Prepared INP CLI workflow
-
-Use this when a trustworthy `.inp` file already exists.
-
-Required inputs:
-
-- SWMM INP file
-- target node or outfall for peak-flow parsing and plotting
-
-The INP may be a repository file or a user-provided absolute local path. For an external local path, the CLI must import the file into the run directory first:
-
-```text
-runs/<case>/00_inputs/model.inp
-```
-
-The original path and SHA256 hash must be recorded in the run manifest. SWMM execution should use the run-local copy, and the audit note should state that this is an external INP import, not a repository demo or validation claim.
-
-Execution:
-
-1. Run `agentic-swmm doctor`.
-2. Run `agentic-swmm run`.
-3. Run `agentic-swmm audit`.
-4. Run `agentic-swmm plot` when the INP contains rainfall timeseries and the OUT file is available.
-5. Run `agentic-swmm memory` when the user asks for historical audit summarization or skill-evolution evidence.
-
-### Mode B: Prepared demo workflow
-
-Use this for onboarding, review, CI smoke checks, or website-ready evidence.
-
-Commands:
-
-- `agentic-swmm demo acceptance`
-- `agentic-swmm demo tecnopolo`
-- `agentic-swmm demo tuflow-raw`
-
-Evidence boundaries:
-
-- `demo acceptance`: environment and core workflow smoke test.
-- `demo tecnopolo`: prepared-input SWMM benchmark, not automatic greenfield modeling.
-- `demo tuflow-raw`: structured raw GIS-to-INP benchmark, not arbitrary CAD/GIS recognition.
-
-### Mode C: Full modular build
-
-Use this only when explicit GIS, rainfall, parameter, and network inputs exist or can be produced safely by lower-level tools.
-
-Lower-level stage order:
-
+Execution order:
 1. `swmm-gis`
 2. `swmm-params`
 3. `swmm-climate`
 4. `swmm-network`
 5. `swmm-builder`
-6. `agentic-swmm run` or `swmm-runner`
+6. `swmm-runner`
 7. QA checks
-8. optional `agentic-swmm plot` or `swmm-plot`
-9. optional calibration tools
-10. `agentic-swmm audit`
+8. optional `swmm-plot`
+9. optional `swmm-calibration`
+10. optional `swmm-uncertainty`
+11. optional `swmm-lid-optimization`
+12. `swmm-experiment-audit`
 
-Use MCP tools for these lower-level stages when the runtime provides them. Keep every intermediate artifact under `runs/<case>/...`.
+Exact MCP call chain for the full modular path. Two parallel branches
+(GIS / hydrology vs network) merge at `build_inp`. Region-agnostic:
+substitute the user's basin shapefile, pipe shapefile, watercourse
+shapefile, landuse layer, soil layer, and rainfall input wherever the
+inputs are referenced.
 
-### Mode D: Minimal real-data fallback
+**GIS / hydrology branch (subcatchments + params)**
+1. `swmm-gis-mcp.basin_shp_to_subcatchments` — basin shp → subcatchments.geojson + .csv. (Or `gis_preprocess_subcatchments` if a pre-attributed subcatchment shp + DEM exist.)
+2. `swmm-gis-mcp.qgis_area_weighted_params` — intersect subcatchments × landuse × soil → weighted_params.json. Inspect the `warnings` array for any landuse classes that fell through to DEFAULT.
+3. (alternative when a richer params chain is wanted) `swmm-params-mcp.map_landuse` → `map_soil` → `merge_params`.
 
-Use this only when the user wants a real-data smoke test and the full modular path is not ready because trustworthy multi-subcatchment and network inputs are missing.
+**Climate branch (rainfall)**
+4. `swmm-climate-mcp.format_rainfall` — rainfall CSV (or `.dat` via `inputDatPaths`) → rainfall.json + timeseries.txt.
+5. `swmm-climate-mcp.build_raingage_section` (only when an explicit raingage artefact is needed).
+
+**Network branch (pipe topology)**
+6. `swmm-network-mcp.prepare_storm_inputs` — clip pipes (+optional manholes) shp to the basin, fill mapping.json from `templates/city_mapping_raw_shapefile.template.json`. (Skip when the source is already a structured CAD export with explicit from/to nodes.)
+7. `swmm-network-mcp.snap_pipe_endpoints` — heal sub-millimetre vertex drift between pipe segments so `import_city_network` can infer connected junctions. (`BACKLOG.md B8`; skip pre-B8.)
+8. `swmm-network-mcp.infer_outfall` — pick a single outfall point (mode `endpoint_nearest_watercourse` when a watercourse shp is available, else `lowest_endpoint`).
+9. `swmm-network-mcp.reorient_pipes` — BFS-from-outfall flow-direction fix.
+10. `swmm-network-mcp.import_city_network` — assemble network.json from the prepared geojsons + mapping.
+11. `swmm-network-mcp.qa` — topology + required-attribute QA.
+
+**Wiring + assembly**
+12. `swmm-network-mcp.assign_subcatchment_outlets` — REQUIRED if subcatchments came from `basin_shp_to_subcatchments` (which writes `outlet=OUT1` as a placeholder). Rewrites the CSV so each subcatchment drains into a real upstream junction; without this the pipe network sits idle.
+13. `swmm-builder-mcp.build_inp` — assemble model.inp + builder manifest.
+
+**Run + QA + plot**
+14. `swmm-runner-mcp.swmm_run` — omit the `node` arg to auto-detect the first `[OUTFALLS]` entry from the .inp.
+15. `swmm-runner-mcp.swmm_continuity`
+16. `swmm-runner-mcp.swmm_peak` — pass the actual outfall name explicitly (no longer defaults to `O1`).
+17. optional `swmm-plot-mcp.plot_rain_runoff_si` — paired rain + flow figure for any node.
+14. optional calibration tools:
+   - `swmm-calibration-mcp.swmm_sensitivity_scan`
+   - `swmm-calibration-mcp.swmm_calibrate`
+   - `swmm-calibration-mcp.swmm_calibrate_search`
+   - `swmm-calibration-mcp.swmm_validate`
+   - `swmm-calibration-mcp.swmm_parameter_scout`
+15. optional uncertainty scripts:
+   - `python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py ...`
+   - `python3 skills/swmm-uncertainty/scripts/monte_carlo_propagate.py ...`
+16. optional LID scripts:
+   - `python3 skills/swmm-lid-optimization/scripts/entropy_lid_priority.py ...`
+   - `python3 skills/swmm-lid-optimization/scripts/lid_scenario_builder.py ...`
+17. `swmm-experiment-audit` via CLI:
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
+   - By default this also writes the audit note into `~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits` and updates `Experiment Audit Index.md`.
+
+### Mode B: Prepared-input build
+Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
+
+Execution order:
+1. `swmm-builder`
+2. `swmm-runner`
+3. QA checks
+4. optional plotting / calibration
+5. optional uncertainty / LID scenario analysis
+6. `swmm-experiment-audit`
+
+Exact MCP call chain for prepared inputs:
+1. `swmm-builder-mcp.build_inp`
+2. `swmm-runner-mcp.swmm_run`
+3. `swmm-runner-mcp.swmm_continuity`
+4. `swmm-runner-mcp.swmm_peak`
+5. optional `swmm-plot-mcp.plot_rain_runoff_si`
+6. optional calibration tools
+7. optional uncertainty / LID scripts where a runnable base INP exists
+8. `swmm-experiment-audit` via CLI:
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
+   - By default this also writes the audit note into the local Obsidian audit vault and updates the audit index.
+
+### Mode C: Minimal real-data Tod Creek fallback
+Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
 
 Script:
+- `scripts/real_cases/run_todcreek_minimal.py`
+
+Audit command after the script returns:
+- `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"`
+
+Characteristics:
+- one subcatchment
+- simple junction/outfall/conduit layout
+- real DEM / land use / soil / rainfall inputs
+- useful as a real-data smoke test, not as the final watershed architecture
+
+This fallback is a script path, not a module-MCP path.
+OpenClaw should choose it only when:
+- the user explicitly accepts a simplified real-data smoke test, or
+- full modular inputs are incomplete and the goal is to verify the repo can run with real data.
+
+## Required decisions before execution
+The orchestrator should decide these items explicitly:
+- Are we doing a **full modular build** or a **minimal real-data fallback**?
+- Do we already have `network.json` or equivalent network source files?
+- Do we already have subcatchment polygons or builder-ready subcatchment CSV?
+- Is the user asking for:
+  - build only,
+  - build + run + QA, or
+  - build + run + QA + calibration / uncertainty / LID scenarios?
+
+If the answer is unclear, prefer:
+- build + run + QA
+- no calibration
+- full modular build only when required inputs are real and explicit
+
+## Input completeness rules
+### For full modular build
+The run should stop and report missing inputs if any of these are absent:
+- network information that can be converted to `network.json`
+- subcatchment geometry or builder-ready subcatchment table
+- rainfall input
+- land use / soil inputs or an accepted pre-merged params artifact
+
+### For minimal Tod Creek fallback
+The run requires:
+- `data/Todcreek/Geolayer/n48_w124_1arc_v3_Clip_Projec1.tif`
+- `data/Todcreek/Geolayer/landuse.shp`
+- `data/Todcreek/Geolayer/soil.shp`
+- `data/Todcreek/Rainfall/1984rain.dat`
+- `data/Todcreek/outlet_candidate.geojson`
+
+## Execution policy
+- Prefer existing module scripts and MCP tools over ad hoc one-off code.
+- Keep every stage artifact under `runs/<case>/...` or another explicit run directory.
+- Preserve machine-readable JSON outputs where available.
+- Fail fast on missing critical inputs.
+- Do not silently invent a drainage network for a supposed full build.
+- If full modular inputs are incomplete but Tod Creek real-data fallback is available, say so explicitly and switch only if that matches the user’s intent.
+- Always call `swmm-experiment-audit` after the attempt, even when the run fails or stops early. The audit record should reflect partial evidence rather than invent missing outputs.
+
+## Artifact handoff contract
+The top-level skill should pass artifacts between MCP tools using explicit run-local paths.
+
+Recommended stage layout:
+- `runs/<case>/01_gis/subcatchments.csv`
+- `runs/<case>/01_gis/subcatchments.json`
+- `runs/<case>/02_params/landuse.json`
+- `runs/<case>/02_params/soil.json`
+- `runs/<case>/02_params/merged_params.json`
+- `runs/<case>/03_climate/rainfall.json`
+- `runs/<case>/03_climate/timeseries.txt`
+- `runs/<case>/03_climate/raingage.json`
+- `runs/<case>/03_climate/raingage.txt`
+- `runs/<case>/04_network/network.json`
+- `runs/<case>/04_network/network_qa.json`
+- `runs/<case>/05_builder/model.inp`
+- `runs/<case>/05_builder/manifest.json`
+- `runs/<case>/06_runner/model.rpt`
+- `runs/<case>/06_runner/model.out`
+- `runs/<case>/06_runner/manifest.json`
+- `runs/<case>/07_qa/continuity.json`
+- `runs/<case>/07_qa/peak.json`
+- optional `runs/<case>/08_plot/...`
+- optional `runs/<case>/09_calibration/...`
+- optional `runs/<case>/09_uncertainty/...`
+- optional `runs/<case>/09_lid/...`
+- `runs/<case>/experiment_provenance.json`
+- `runs/<case>/comparison.json`
+- `runs/<case>/experiment_note.md`
+
+## Preflight
+Before running any operating mode, every MCP server under `mcp/<server>/`
+must have its `node_modules` installed. `node_modules/` is `.gitignored`,
+so a fresh clone (or any server added later) needs an install step:
 
 ```bash
-python scripts/real_cases/run_todcreek_minimal.py
-agentic-swmm audit --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"
+scripts/install_mcp_deps.sh                  # install for all mcp/*/ servers
+scripts/install_mcp_deps.sh swmm-calibration # install for one server
 ```
 
-This fallback is a smoke test, not a final watershed architecture.
+The script loops over every `mcp/*/package.json` and runs `npm install`.
+Exit code is non-zero if any install fails. Servers that fail to install
+will not respond to `tools/list`, so a cold-start agent that skips this
+step will see ambiguous "MCP server exited before response" errors deep
+into Mode 0 instead of a clean install failure up front.
 
-## Stop Rules
+After install, verify with a `tools/list` probe per server, for example:
 
-The agent must stop and report missing inputs when required evidence is absent.
+```bash
+python3 skills/swmm-end-to-end/scripts/mcp_stdio_call.py \
+  --server-dir mcp/swmm-calibration --tool __probe__ \
+  --arguments-json '{}' --out-response /tmp/_.json
+```
 
-- No INP file: do not claim SWMM execution.
-- No trustworthy network source: do not invent a drainage network for a full modular build.
-- No rainfall input: do not create synthetic rainfall unless the user explicitly requests a synthetic test.
-- No observed flow data: do not claim calibration success.
-- No parsed continuity metrics: do not claim QA passed.
-- No plotted OUT series: do not claim hydrograph plotting succeeded.
-- No benchmark or audit artifact: do not claim reproducible evidence.
+The harness will print the `Available tools: [...]` for that server in its
+error output (a dedicated `--list-tools` flag is on the framework backlog).
 
-## Evidence Boundary Rules
+## MCP execution notes
+### GIS stage
+- Use `gis_preprocess_subcatchments` only when a subcatchment polygon dataset already exists.
+- Do not claim GIS preprocessing can replace watershed delineation or pipe-network generation.
 
-- Prepared-input benchmarks are not automatic greenfield watershed modeling.
-- Raw GIS benchmarks are structured adapters, not arbitrary CAD/GIS recognition.
-- Continuity checks come from SWMM report evidence; parser failure must be reported.
-- Peak flow must come from `Node Inflow Summary` or the documented outfall fallback, not from `Node Depth Summary`.
-- Prior uncertainty smoke tests are not calibrated predictive uncertainty.
-- Audit records preserve evidence; they do not prove the model is scientifically correct.
-- Modeling memory proposes improvements; accepted skill or workflow changes still require human review and benchmark verification.
+### Params stage
+- `map_landuse` and `map_soil` should target the same subcatchment ID universe.
+- `merge_params` should be treated as the single params handoff into `build_inp`.
 
-## QA Gates
+### Climate stage
+- `format_rainfall` should create both JSON metadata and timeseries text.
+- `build_raingage_section` should run after rainfall formatting so `series_name` or `rainfall_json` stays consistent.
 
-Minimum QA checks for a successful prepared-input run:
+### Network stage
+- Use `import_network` only when raw conduits/junctions/outfalls exist.
+- If `network.json` already exists, skip import and run `qa` directly.
+- If no trustworthy network source exists, stop the full modular path.
 
-- `agentic-swmm doctor` detects Python dependencies and SWMM.
-- SWMM return code is zero.
-- `.rpt` exists.
-- `.out` exists.
-- runner `manifest.json` exists.
-- continuity metrics can be parsed from the report.
-- peak metric can be parsed from the correct source section.
-- audit artifacts exist: `experiment_provenance.json`, `comparison.json`, and `experiment_note.md`.
+### Builder stage
+- `build_inp` is the only handoff into `swmm_run`.
+- Treat builder validation failures as hard stops for the full modular path.
+
+### Runner and QA stage
+- `swmm_run` creates the canonical `manifest.json`.
+- `swmm_continuity` and `swmm_peak` are mandatory QA steps, not optional metrics.
+- Prefer the fixed `swmm_peak` parser path that reads the correct summary block.
+
+### Calibration stage
+- Do not enter calibration unless the user requested it or the workflow explicitly includes it.
+- Require an observed flow file before any calibration tool is called.
+
+### Audit stage
+- Run `swmm-experiment-audit` after success, failure, or early stop.
+- Use the run directory as the single audit input.
+- Pass `--compare-to <baseline-run-dir>` when the user requests baseline/scenario or before/after comparison.
+- The audit must write `experiment_provenance.json`, `comparison.json`, and Obsidian-compatible `experiment_note.md`.
+- The audit should also use the default Obsidian export unless the user explicitly asks for `--no-obsidian`.
+- The default Obsidian vault is `~/Documents/Agentic-SWMM-Obsidian-Vault`, with `10_Memory_Layer` for durable lessons and `20_Audit_Layer` for run-level evidence.
+- Do not include chat transcripts or conversational content in audit outputs.
+
+## OpenClaw prompt-level instruction
+When OpenClaw uses this skill, it should:
+- choose one operating mode first,
+- announce the chosen mode,
+- create a case run directory,
+- call only the MCP tools required for that mode,
+- stop immediately on missing critical inputs instead of hallucinating replacements,
+- call `swmm-experiment-audit` on the run directory,
+- summarize which concrete artifacts and audit records were produced.
+
+## QA gates
+Minimum QA checks for a successful run:
+- builder validation has no critical missing sections
+- SWMM return code is zero
+- `.rpt` and `.out` exist
+- continuity metrics can be parsed
+- peak metric can be parsed from the correct summary block
 
 For calibration mode, also require:
+- observed flow file parses successfully
+- time overlap between observed and simulated series is adequate
 
-- observed flow file exists and parses successfully.
-- simulated and observed time periods overlap.
-- calibration metrics are written as artifacts.
+## Output contract
+At minimum, the orchestrator should leave behind:
+- built `.inp`
+- run `.rpt`
+- run `.out`
+- `manifest.json`
+- a short machine-readable QA summary
+- `experiment_provenance.json`
+- `comparison.json`
+- Obsidian-compatible `experiment_note.md`
 
-## Agent Communication Policy
+If plotting is requested, also produce:
+- rainfall-runoff figure artifact
 
-When using this skill, report:
+If calibration is requested, also produce:
+- ranking / summary JSON
+- chosen parameter set or best-params output
 
-- selected operating mode
-- exact commands run
-- run directory
-- key artifacts generated
-- QA status and any missing evidence
-- evidence boundary for the result
+## Recommended OpenClaw behavior
+- Use this skill as the **only top-level SWMM skill**.
+- Treat module skills as subordinate implementation skills.
+- Keep reasoning at the orchestration layer and calculations at the script layer.
+- When a run fails, report the failing stage and the missing or invalid input rather than guessing.
 
-Do not hide failed stages. A failed run with audit evidence is more useful than an unsupported success claim.
-
-## Lower-Level Tool Use
-
-Use lower-level scripts or MCP tools when the CLI does not yet expose a required function:
-
-- GIS preprocessing
-- rainfall formatting
-- parameter mapping
-- network import and QA
-- INP building
-- calibration
-- uncertainty propagation
-
-After lower-level stages produce a valid INP, return to the CLI for execution and audit where possible:
-
-```bash
-agentic-swmm run --inp runs/<case>/<builder-stage>/model.inp --run-dir runs/<case> --node <node>
-agentic-swmm audit --run-dir runs/<case>
-```
-
-## Public Memory Preload
-
-Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/memory/` when available:
-
-1. `identification_memory.md`
-2. `operational_memory.md`
-3. `evidence_memory.md`
-
-Those files shape project identity, routing behavior, and evidence boundaries. Load `soul.md`, `modeling_workflow_memory.md`, or `user_bridge_memory.md` only when the task specifically needs deeper product framing, long workflow detail, or user-facing communication guidance. Memory files do not replace CLI execution or artifact checks.
+## Current limitations
+- This skill does not remove the need for `swmm-network`; it only coordinates it.
+- Full watershed automation still depends on real subcatchment + network preparation.
+- The Tod Creek real-data fallback is intentionally simplified and should not be confused with the final multi-subcatchment production workflow.

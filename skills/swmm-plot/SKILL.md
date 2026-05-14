@@ -1,116 +1,63 @@
 ---
 name: swmm-plot
-description: Plotting skill for SWMM output artifacts. Use for publication-grade rainfall-runoff figures through the unified CLI when available, and for developing or using lower-level plotting scripts/MCP tools for other SWMM output variables such as node depth, link flow, or link depth.
+description: Publication-grade plotting for SWMM rainfall–runoff time-series figures. Use when an agent needs to produce a paired rainfall (top, inverted) + node flow (bottom) figure from a SWMM .inp + .out, with strict style rules (SI units, Arial, ticks inward, no title), optionally cropped to an event window or focus day.
 ---
 
-# SWMM Plot Skill
+# SWMM Plot (publication spec)
 
-This skill defines how agents should create SWMM figures without overstating what was plotted or fabricating unavailable series.
+## What this skill provides
 
-For the standard rainfall-runoff figure, prefer the unified CLI:
+- A plotting script that reads:
+  - rainfall TIMESERIES from a SWMM `.inp` (one named series at a time);
+  - flow series from a SWMM `.out` binary (via `swmmtoolbox`).
+- Renders a paired rainfall + node-flow figure with a fixed publication style:
+  - SI units (rain in mm per timestep or mm/h depending on `rainKind`);
+  - rainfall on the top axis, **inverted** (depth grows downward);
+  - flow on the bottom axis;
+  - inward ticks, Arial, no auto title;
+  - optional `windowStart`/`windowEnd` or `focusDay` to crop the time axis.
 
-```bash
-agentic-swmm plot --run-dir runs/<case> --node <node-or-outfall>
+## When to use this skill
+
+Use after `swmm-runner.swmm_run` has produced both `.inp` and `.out`, and you want a single rainfall-vs-flow figure for one node (typically the model's outfall or the assigned upstream junction of a subcatchment of interest).
+
+Do **not** use this skill for multi-node ensemble plots, exceedance curves, or sensitivity scans — those would belong to `swmm-uncertainty` / `swmm-calibration` (no plot tools there yet).
+
+## MCP tools
+
+`mcp/swmm-plot/server.js` exposes one tool.
+
+1. **`plot_rain_runoff_si`** — render the paired figure to PNG.
+   - Args:
+     - `inp` (required): path to the SWMM .inp (the rainfall TIMESERIES is read from here).
+     - `out` (required): path to the SWMM .out binary.
+     - `outPng` (required): where to write the PNG.
+     - `rainTs` (default `"TS_RAIN"`): name of the rainfall TIMESERIES inside the .inp.
+     - `rainKind` (default `"depth_mm_per_dt"`): one of `intensity_mm_per_hr`, `depth_mm_per_dt`, `cumulative_depth_mm`.
+     - `dtMin` (default `5`): timestep of the rainfall series in minutes.
+     - `node` (default `"O1"`): node ID to plot from the .out.
+     - `nodeAttr` (default `"Total_inflow"`): which `swmmtoolbox` attribute (e.g. `Total_inflow`, `Lateral_inflow`, `Flow_lost_flooding`).
+     - `dpi` (default `300`).
+     - `focusDay` (optional, `YYYY-MM-DD`): crop axis to a single day plus padding.
+     - `windowStart` / `windowEnd` (optional ISO timestamps): explicit time window.
+     - `padHours` (default `2`).
+
+## Recommended orchestration
+
+```
+swmm-runner.swmm_run            → model.inp + model.out
+swmm-plot.plot_rain_runoff_si   → outfall_flow.png  (or junction_flow.png)
 ```
 
-The CLI currently wraps:
+If multiple basins / nodes need to be plotted, call `plot_rain_runoff_si` once per node with a different `outPng` path.
 
-```text
-skills/swmm-plot/scripts/plot_rain_runoff_si.py
-```
+## Conventions
 
-Lower-level scripts and MCP tools remain valid for debugging, development, or plot types not yet exposed through the CLI.
+- Strict publication style: do **not** write a title in the plot; titles belong to the surrounding document.
+- SI units only.
+- Rainfall axis is always inverted; depth grows downward so it doesn't overlap the flow series visually.
 
-## Supported Stable Plot
+## Known limitations
 
-### Rainfall-runoff
-
-Use `agentic-swmm plot` when the run directory contains:
-
-- a SWMM INP file with a rainfall `TIMESERIES` or `RAINGAGES` reference
-- a SWMM OUT file
-- a target node or outfall with extractable `Total_inflow`
-
-Expected output:
-
-```text
-runs/<case>/03_plots/fig_rain_runoff.png
-```
-
-Style contract:
-
-- SI units
-- rain shown as depth per timestep where applicable
-- inverted rainfall axis
-- hydrograph in a separate panel
-- ticks inward
-- Arial-style publication font when available
-- no title by default
-
-## Unsupported Or Developing Plot Types
-
-For requests such as:
-
-- node depth
-- link flow
-- link depth
-- conduit flow-depth relationship
-- storage depth
-- surcharge/flooding time series
-- custom comparison plots
-
-do not force the existing rainfall-runoff CLI command to fit the request.
-
-Use this decision order:
-
-1. Confirm that the required `.out` file exists.
-2. Confirm the object id exists in the SWMM output.
-3. Confirm the requested attribute can be extracted with `swmmtoolbox`.
-4. If an existing lower-level script or MCP tool supports the plot, use it.
-5. If no script exists, create a narrow script under `skills/swmm-plot/scripts/`, run it, and save the figure as an artifact.
-6. Only after the plot type is stable should it be exposed through `agentic-swmm`.
-
-Recommended future CLI shape:
-
-```bash
-agentic-swmm plot rain-runoff --run-dir runs/<case> --node OUT_0
-agentic-swmm plot node-depth --run-dir runs/<case> --node J1
-agentic-swmm plot link-flow --run-dir runs/<case> --link C11
-agentic-swmm plot link-depth --run-dir runs/<case> --link C11
-agentic-swmm plot timeseries --run-dir runs/<case> --object-type node --object-id J1 --attribute Depth
-```
-
-The current CLI exposes only the rainfall-runoff behavior. Treat the future commands above as a design target, not current evidence.
-
-## Evidence Rules
-
-- Do not claim a plot was generated unless the image file exists.
-- Do not claim a variable was plotted unless it was extracted from the SWMM OUT file or another explicit artifact.
-- Do not infer calibration quality from a plot alone.
-- Do not use `Node Depth Summary` as a source for flow.
-- If the requested object id or attribute is missing, stop and report the missing evidence.
-- If rainfall data cannot be found in the INP, report that rainfall-runoff plotting is unavailable instead of inventing rainfall.
-
-## MCP Role
-
-The plot MCP server is a fine-grained agent tool interface. It should expose stable plotting functions to agent runtimes. The current MCP/tooling may call lower-level scripts directly.
-
-The CLI and MCP should share the same underlying plotting scripts where possible:
-
-```text
-agentic-swmm plot -> skills/swmm-plot/scripts/...
-swmm-plot MCP     -> skills/swmm-plot/scripts/...
-```
-
-Avoid duplicating plotting logic separately in CLI and MCP.
-
-## Development Rule
-
-When adding a new plot type:
-
-1. Implement or update a focused script in `skills/swmm-plot/scripts/`.
-2. Verify it against a real `.out` artifact.
-3. Save the output under the run directory, preferably `03_plots/`.
-4. Add or update a focused test when practical.
-5. Expose it through MCP if agent runtimes need fine-grained access.
-6. Expose it through CLI only after the interface is stable enough for users, CI, and README examples.
+- For long simulations (many days), the x-axis tick labels overlap because the plotter writes one tick per timestep. `BACKLOG.md F14` covers a future fix using `matplotlib.dates.AutoDateLocator`.
+- Only one rainfall series is plotted at a time (`rainTs` is a single name); multi-gauge inputs need separate figures.

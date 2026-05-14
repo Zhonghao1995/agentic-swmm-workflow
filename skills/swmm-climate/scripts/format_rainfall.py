@@ -159,6 +159,86 @@ def resolve_input_paths(*, explicit_inputs: list[Path], input_globs: list[str]) 
     return deduped
 
 
+DAT_UNIT_ALIASES = {
+    "mm_per_hr": ("mm_per_hr", None),
+    "mm/hr": ("mm_per_hr", None),
+    "mm/h": ("mm_per_hr", None),
+    "in_per_hr": ("in_per_hr", None),
+    "in/hr": ("in_per_hr", None),
+    "in/h": ("in_per_hr", None),
+    "mm_per_day": ("mm_per_hr", 24.0),
+    "mm/day": ("mm_per_hr", 24.0),
+    "in_per_day": ("in_per_hr", 24.0),
+    "in/day": ("in_per_hr", 24.0),
+}
+
+
+def parse_dat_value_units(raw: str) -> tuple[str, float | None]:
+    token = raw.strip().lower().replace(" ", "")
+    if token not in DAT_UNIT_ALIASES:
+        raise ValueError(
+            f"Unsupported --dat-value-units '{raw}'. Accepted: "
+            f"{sorted(DAT_UNIT_ALIASES.keys())}"
+        )
+    return DAT_UNIT_ALIASES[token]
+
+
+def read_records_from_dat(
+    input_dat: Path,
+    *,
+    dat_value_units_raw: str,
+    unit_policy: str,
+) -> tuple[list[RainRecord], int]:
+    canonical_units, interval_hours = parse_dat_value_units(dat_value_units_raw)
+    records: list[RainRecord] = []
+    interval_minutes_from_dat: int | None = (
+        int(round(interval_hours * 60)) if interval_hours is not None else None
+    )
+    lines = input_dat.read_text(encoding="utf-8", errors="ignore").splitlines()
+    for idx, raw_line in enumerate(lines, start=1):
+        line = raw_line.strip()
+        if not line or line.startswith(";"):
+            continue
+        parts = line.split()
+        if len(parts) < 7:
+            raise ValueError(
+                f"SWMM .dat row at {input_dat}:{idx} expected 7 tokens "
+                f"'<series> YYYY M D HH MM value', got {len(parts)}: {line}"
+            )
+        series_token, year, month, day, hour, minute, value = parts[:7]
+        try:
+            ts = datetime(int(year), int(month), int(day), int(hour), int(minute))
+        except ValueError as exc:
+            raise ValueError(f"Invalid date/time at {input_dat}:{idx}: {line}") from exc
+        try:
+            raw_value = float(value)
+        except ValueError as exc:
+            raise ValueError(f"Invalid value at {input_dat}:{idx}: {line}") from exc
+        if raw_value < 0:
+            raise ValueError(f"Rainfall value must be >= 0 at {input_dat}:{idx}")
+
+        if interval_hours is not None:
+            intensity = raw_value / interval_hours
+        else:
+            intensity = raw_value
+        mm_per_hr = convert_to_mm_per_hr(intensity, units=canonical_units, policy=unit_policy)
+
+        records.append(
+            RainRecord(
+                station_id=str(series_token),
+                timestamp=ts,
+                rainfall_mm_per_hr=mm_per_hr,
+                source_file=input_dat,
+                source_row=idx,
+            )
+        )
+    if not records:
+        raise ValueError(f"No data rows found in SWMM .dat: {input_dat}")
+    if interval_minutes_from_dat is None:
+        interval_minutes_from_dat = estimate_interval_minutes(records)
+    return records, interval_minutes_from_dat or 0
+
+
 def read_records_from_file(
     input_csv: Path,
     *,
@@ -402,6 +482,24 @@ def main() -> None:
         default=[],
         help="Optional glob pattern for additional input files (e.g. 'data/rain_*.csv'). Repeat as needed.",
     )
+    ap.add_argument(
+        "--input-dat",
+        type=Path,
+        action="append",
+        default=[],
+        help=(
+            "SWMM-style rainfall .dat file with rows '<series> YYYY M D HH MM value'. "
+            "Use --dat-value-units to declare the per-row value units."
+        ),
+    )
+    ap.add_argument(
+        "--dat-value-units",
+        default="mm_per_hr",
+        help=(
+            "Units of the value column in --input-dat rows. Accepts mm_per_hr, in_per_hr, "
+            "or interval-volume aliases mm_per_day (24h volume) and in_per_day."
+        ),
+    )
     ap.add_argument("--out-json", type=Path, required=True, help="Output metadata JSON path.")
     ap.add_argument("--out-timeseries", type=Path, required=True, help="Output text path for SWMM [TIMESERIES] body.")
     ap.add_argument("--series-name", default="TS_RAIN")
@@ -452,28 +550,77 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    input_paths = resolve_input_paths(explicit_inputs=args.input, input_globs=args.input_glob)
-    normalized_input_units = normalize_units(args.value_units)
+    use_dat_mode = bool(args.input_dat)
+    if use_dat_mode and (args.input or args.input_glob):
+        raise ValueError("--input-dat cannot be combined with --input or --input-glob")
 
-    window_start = parse_window_timestamp(args.window_start, timestamp_format=args.timestamp_format)
-    window_end = parse_window_timestamp(args.window_end, timestamp_format=args.timestamp_format)
+    if use_dat_mode:
+        input_paths = list(args.input_dat)
+        for path in input_paths:
+            if not path.exists():
+                raise ValueError(f"Input file not found: {path}")
+            if not path.is_file():
+                raise ValueError(f"Input path is not a file: {path}")
+        normalized_input_units = "mm_per_hr"
+        dat_window_format = "%Y-%m-%d"
+    else:
+        input_paths = resolve_input_paths(explicit_inputs=args.input, input_globs=args.input_glob)
+        normalized_input_units = normalize_units(args.value_units)
+        dat_window_format = args.timestamp_format
+
+    window_start = parse_window_timestamp(args.window_start, timestamp_format=dat_window_format)
+    window_end = parse_window_timestamp(args.window_end, timestamp_format=dat_window_format)
     if window_start is not None and window_end is not None and window_start > window_end:
         raise ValueError("--window-start must be <= --window-end")
 
     all_records: list[RainRecord] = []
-    for input_csv in input_paths:
-        file_records = read_records_from_file(
-            input_csv=input_csv,
-            input_count=len(input_paths),
-            timestamp_column=args.timestamp_column,
-            value_column=args.value_column,
-            station_column=args.station_column,
-            default_station_id=args.default_station_id,
-            input_units=normalized_input_units,
-            unit_policy=args.unit_policy,
-            timestamp_format=args.timestamp_format,
-        )
-        all_records.extend(file_records)
+    dat_interval_minutes: int | None = None
+    if use_dat_mode:
+        if args.default_station_id is not None and len(input_paths) > 1:
+            raise ValueError(
+                "--default-station-id can only be used with a single --input-dat when "
+                "--station-column is not used (multi .dat batch mode derives station ids "
+                "from the series column)"
+            )
+        for input_dat in input_paths:
+            file_records, interval_min = read_records_from_dat(
+                input_dat=input_dat,
+                dat_value_units_raw=args.dat_value_units,
+                unit_policy="convert_to_mm_per_hr",
+            )
+            if len(input_paths) == 1 and args.default_station_id is not None:
+                override = args.default_station_id.strip()
+                if not override:
+                    raise ValueError("--default-station-id cannot be blank")
+                file_records = [
+                    RainRecord(
+                        station_id=override,
+                        timestamp=rec.timestamp,
+                        rainfall_mm_per_hr=rec.rainfall_mm_per_hr,
+                        source_file=rec.source_file,
+                        source_row=rec.source_row,
+                    )
+                    for rec in file_records
+                ]
+            all_records.extend(file_records)
+            if interval_min:
+                dat_interval_minutes = (
+                    interval_min if dat_interval_minutes is None else min(dat_interval_minutes, interval_min)
+                )
+    else:
+        for input_csv in input_paths:
+            file_records = read_records_from_file(
+                input_csv=input_csv,
+                input_count=len(input_paths),
+                timestamp_column=args.timestamp_column,
+                value_column=args.value_column,
+                station_column=args.station_column,
+                default_station_id=args.default_station_id,
+                input_units=normalized_input_units,
+                unit_policy=args.unit_policy,
+                timestamp_format=args.timestamp_format,
+            )
+            all_records.extend(file_records)
 
     rows_before_window = len(all_records)
     records = filter_records_by_window(

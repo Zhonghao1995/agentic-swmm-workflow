@@ -1258,7 +1258,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             payload = json.loads(proc.stdout)
 
             self.assertIn(payload["status"], {"ready", "ready_with_warnings"})
-            self.assertEqual(payload["resources"]["skills"], 12)
+            self.assertEqual(payload["resources"]["skills"], 14)
             self.assertEqual(payload["resources"]["mcp_servers"], 8)
             self.assertEqual(payload["resources"]["memory_files"], 7)
             self.assertEqual(payload["resources"]["memory_layers"]["long_term"], 3)
@@ -1434,9 +1434,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             provenance = json.loads((run_dir / "experiment_provenance.json").read_text(encoding="utf-8"))
             note = (run_dir / "experiment_note.md").read_text(encoding="utf-8")
             self.assertEqual(provenance["workflow_mode"], "external_inp_import")
-            self.assertIn("## Input Provenance", note)
-            self.assertIn("External INP import boundary", note)
-            self.assertIn("does not claim the external model is calibrated or validated", note)
+            self.assertIn("Workflow mode | external_inp_import", note)
+            self.assertIn("External INP imports are copied into the run directory before execution", note)
 
 
 if __name__ == "__main__":

@@ -312,9 +312,7 @@ def build_qa_checks(
     checks: list[dict[str, Any]] = []
     validation = builder_manifest.get("validation")
     if isinstance(validation, dict):
-        validation_ok = validation.get("status") == "pass"
-        if "status" not in validation:
-            validation_ok = not any(bool(v) for v in validation.values())
+        validation_ok = not any(bool(v) for v in validation.values())
         checks.append(
             {
                 "id": "builder_input_validation",
@@ -451,6 +449,315 @@ def normalize_continuity(
     }
 
 
+def parse_inp_sections(inp_path: Path | None) -> dict[str, list[list[str]]]:
+    if not inp_path or not inp_path.exists():
+        return {}
+    sections: dict[str, list[list[str]]] = {}
+    current: str | None = None
+    for raw in inp_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith(";"):
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current = line[1:-1].upper()
+            sections.setdefault(current, [])
+            continue
+        if current is None:
+            continue
+        sections.setdefault(current, []).append(line.split())
+    return sections
+
+
+def parse_duration_seconds(value: str | None) -> int | None:
+    if not value:
+        return None
+    try:
+        if ":" not in value:
+            return int(round(float(value)))
+        parts = [int(float(p)) for p in value.split(":")]
+    except ValueError:
+        return None
+    if len(parts) == 2:
+        return parts[0] * 60 + parts[1]
+    if len(parts) == 3:
+        return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    return None
+
+
+def fnum(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def diagnostic(
+    check_id: str,
+    severity: str,
+    message: str,
+    *,
+    evidence: dict[str, Any] | None = None,
+    recommendation: str | None = None,
+) -> dict[str, Any]:
+    out = {"id": check_id, "severity": severity, "message": message}
+    if evidence:
+        out["evidence"] = evidence
+    if recommendation:
+        out["recommendation"] = recommendation
+    return out
+
+
+def parse_flooding_diagnostics(rpt_path: Path | None) -> list[dict[str, Any]]:
+    if not rpt_path or not rpt_path.exists():
+        return []
+    text = rpt_path.read_text(encoding="utf-8", errors="ignore")
+    lines = text.splitlines()
+    start_idx = None
+    for i, line in enumerate(lines):
+        if "Node Flooding Summary" in line:
+            start_idx = i + 1
+            break
+    if start_idx is None:
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for line in lines[start_idx:]:
+        stripped = line.strip()
+        if "No nodes were flooded" in stripped:
+            return []
+        if not stripped:
+            if rows:
+                break
+            continue
+        if stripped.startswith("*****"):
+            break
+        parts = stripped.split()
+        if len(parts) < 2 or parts[0].startswith("-") or parts[0].lower() in {"node", "name"}:
+            continue
+        numeric = [fnum(part) for part in parts[1:]]
+        numeric = [value for value in numeric if value is not None]
+        if numeric and any(value > 0 for value in numeric):
+            rows.append(
+                {
+                    "node": parts[0],
+                    "values": numeric,
+                    "source_section": "Node Flooding Summary",
+                }
+            )
+    return [
+        diagnostic(
+            "node_flooding_detected",
+            "warning",
+            "SWMM report contains node flooding values greater than zero.",
+            evidence={"flooded_nodes": rows},
+            recommendation="Inspect flooded nodes before treating the run as hydrologically acceptable.",
+        )
+    ] if rows else []
+
+
+def build_model_diagnostics(
+    *,
+    inp_path: Path | None,
+    rpt_path: Path | None,
+    continuity_metric: dict[str, Any] | None,
+    repo_root: Path,
+) -> dict[str, Any]:
+    diagnostics: list[dict[str, Any]] = []
+    sections = parse_inp_sections(inp_path)
+
+    nodes: set[str] = set()
+    node_inverts: dict[str, float] = {}
+    for section in ("JUNCTIONS", "OUTFALLS", "STORAGE"):
+        for row in sections.get(section, []):
+            if row:
+                nodes.add(row[0])
+                inv = fnum(row[1]) if len(row) > 1 else None
+                if inv is not None:
+                    node_inverts[row[0]] = inv
+
+    subcatchments = {row[0] for row in sections.get("SUBCATCHMENTS", []) if row}
+    raingages = {row[0] for row in sections.get("RAINGAGES", []) if row}
+
+    for row in sections.get("SUBCATCHMENTS", []):
+        if len(row) < 8:
+            continue
+        name, rain_gage, outlet = row[0], row[1], row[2]
+        area = fnum(row[3])
+        imperv = fnum(row[4])
+        width = fnum(row[5])
+        if not rain_gage or rain_gage == "*" or rain_gage not in raingages:
+            diagnostics.append(
+                diagnostic(
+                    "missing_rain_gage",
+                    "error",
+                    f"Subcatchment {name} references a missing rain gage.",
+                    evidence={"subcatchment": name, "rain_gage": rain_gage},
+                    recommendation="Define the rain gage or correct the subcatchment rain-gage reference.",
+                )
+            )
+        if not outlet or outlet == "*" or (outlet not in nodes and outlet not in subcatchments):
+            diagnostics.append(
+                diagnostic(
+                    "subcatchment_outlet_missing",
+                    "error",
+                    f"Subcatchment {name} references a missing outlet.",
+                    evidence={"subcatchment": name, "outlet": outlet},
+                    recommendation="Route the subcatchment to an existing node or subcatchment.",
+                )
+            )
+        if area is not None and area <= 0:
+            diagnostics.append(
+                diagnostic("subcatchment_area_nonpositive", "error", f"Subcatchment {name} has non-positive area.", evidence={"subcatchment": name, "area": area})
+            )
+        if width is not None and width <= 0:
+            diagnostics.append(
+                diagnostic("subcatchment_width_nonpositive", "error", f"Subcatchment {name} has non-positive width.", evidence={"subcatchment": name, "width": width})
+            )
+        if imperv is not None and not (0 <= imperv <= 100):
+            diagnostics.append(
+                diagnostic(
+                    "imperviousness_out_of_range",
+                    "error",
+                    f"Subcatchment {name} has imperviousness outside 0-100 percent.",
+                    evidence={"subcatchment": name, "imperviousness": imperv},
+                )
+            )
+
+    incoming: set[str] = set()
+    for row in sections.get("CONDUITS", []):
+        if len(row) < 4:
+            continue
+        link, from_node, to_node = row[0], row[1], row[2]
+        incoming.add(to_node)
+        length = fnum(row[3])
+        if from_node not in nodes or to_node not in nodes:
+            diagnostics.append(
+                diagnostic(
+                    "conduit_node_missing",
+                    "error",
+                    f"Conduit {link} references a missing node.",
+                    evidence={"link": link, "from_node": from_node, "to_node": to_node},
+                )
+            )
+        if length is not None and length <= 0:
+            diagnostics.append(diagnostic("conduit_length_nonpositive", "error", f"Conduit {link} has non-positive length.", evidence={"link": link, "length": length}))
+        if length and from_node in node_inverts and to_node in node_inverts:
+            slope = (node_inverts[from_node] - node_inverts[to_node]) / length
+            if slope < -0.001 or slope > 0.2:
+                diagnostics.append(
+                    diagnostic(
+                        "conduit_slope_suspicious",
+                        "warning",
+                        f"Conduit {link} has a suspicious invert-derived slope.",
+                        evidence={"link": link, "from_node": from_node, "to_node": to_node, "slope": slope},
+                        recommendation="Check node invert elevations, conduit direction, and conduit length.",
+                    )
+                )
+
+    for row in sections.get("OUTFALLS", []):
+        if row and row[0] not in incoming:
+            diagnostics.append(
+                diagnostic(
+                    "outfall_disconnected",
+                    "warning",
+                    f"Outfall {row[0]} is not referenced as a conduit downstream node.",
+                    evidence={"outfall": row[0]},
+                    recommendation="Confirm the outfall is intentionally disconnected or add upstream routing.",
+                )
+            )
+
+    for row in sections.get("OPTIONS", []):
+        if len(row) >= 2 and row[0].upper() == "ROUTING_STEP":
+            seconds = parse_duration_seconds(row[1])
+            if seconds is not None and seconds > 300:
+                diagnostics.append(
+                    diagnostic(
+                        "routing_step_large",
+                        "warning",
+                        "Routing step is larger than 5 minutes.",
+                        evidence={"routing_step": row[1], "seconds": seconds},
+                        recommendation="Use a smaller routing step for hydraulically sensitive or unstable models.",
+                    )
+                )
+
+    continuity_values = (continuity_metric or {}).get("values") or {}
+    for name, value in continuity_values.items():
+        value_f = fnum(value)
+        if value_f is not None and abs(value_f) > 5.0:
+            diagnostics.append(
+                diagnostic(
+                    "continuity_error_high",
+                    "warning",
+                    "Continuity error exceeds the 5 percent screening threshold.",
+                    evidence={"continuity_type": name, "value_percent": value_f, "threshold_percent": 5.0},
+                    recommendation="Inspect model stability, routing step, storage, and external inflow/outflow accounting.",
+                )
+            )
+
+    diagnostics.extend(parse_flooding_diagnostics(rpt_path))
+    errors = sum(1 for item in diagnostics if item.get("severity") == "error")
+    warnings = sum(1 for item in diagnostics if item.get("severity") == "warning")
+    return {
+        "schema_version": "1.0",
+        "generated_by": "swmm-experiment-audit",
+        "generated_at_utc": now_utc(),
+        "source_inp": relpath(inp_path, repo_root) if inp_path and inp_path.exists() else None,
+        "source_rpt": relpath(rpt_path, repo_root) if rpt_path and rpt_path.exists() else None,
+        "status": "fail" if errors else ("warning" if warnings else "pass"),
+        "error_count": errors,
+        "warning_count": warnings,
+        "diagnostics": diagnostics,
+    }
+
+
+def normalize_uncertainty_ensemble(top_manifest: dict[str, Any], repo_root: Path) -> dict[str, Any] | None:
+    outputs = top_manifest.get("outputs") or {}
+    summary_record = outputs.get("summary") if isinstance(outputs, dict) else None
+    summary_path = None
+    if isinstance(summary_record, dict):
+        summary_path = resolve_recorded_path(summary_record.get("path"), repo_root)
+    if summary_path is None:
+        summary_path = resolve_recorded_path(top_manifest.get("summary"), repo_root)
+    summary = read_json(summary_path) if summary_path else {}
+    if not summary or "uncertainty" not in str(summary.get("mode", "")).lower():
+        return None
+
+    entropy_summary = summary.get("entropy_summary") or {}
+    nodes = entropy_summary.get("nodes") or []
+    entropy_nodes = []
+    for node in nodes:
+        if isinstance(node, dict):
+            entropy_nodes.append(
+                {
+                    "node": node.get("node"),
+                    "max_entropy": node.get("max_entropy"),
+                    "mean_entropy": node.get("mean_entropy"),
+                    "sample_count": node.get("sample_count"),
+                    "entropy_json": relpath(resolve_recorded_path(node.get("entropy_json"), repo_root), repo_root)
+                    if node.get("entropy_json")
+                    else None,
+                }
+            )
+    return {
+        "mode": summary.get("mode"),
+        "sample_count": summary.get("samples"),
+        "seed": summary.get("seed"),
+        "primary_node": summary.get("node"),
+        "selected_plot_node": summary.get("selected_plot_node"),
+        "peak_cms_envelope": summary.get("peak_cms_envelope"),
+        "peak_percent_change_envelope": summary.get("peak_percent_change_envelope"),
+        "node_ranking": summary.get("node_ranking", [])[:5],
+        "entropy": {
+            "bins": entropy_summary.get("bins"),
+            "figure": relpath(resolve_recorded_path(entropy_summary.get("figure"), repo_root), repo_root)
+            if entropy_summary.get("figure")
+            else None,
+            "nodes": entropy_nodes,
+        },
+        "evidence_boundary": "Uncertainty ensemble summary; no observed-flow calibration metrics are implied.",
+    }
+
+
 def collect_run(
     run_dir: Path,
     *,
@@ -468,14 +775,12 @@ def collect_run(
     network_qa_path = first_existing([run_dir / "06_qa/network_qa.json", run_dir / "07_qa/network_qa.json"])
     continuity_qa_path = first_existing([run_dir / "06_qa/runner_continuity.json", run_dir / "07_qa/runner_continuity.json"])
     peak_qa_path = first_existing([run_dir / "06_qa/runner_peak.json", run_dir / "07_qa/runner_peak.json"])
+    model_diagnostics_path = run_dir / "model_diagnostics.json"
 
     top_manifest = read_json(top_manifest_path)
     acceptance_report = read_json(acceptance_report_path)
     builder_manifest = read_json(builder_manifest_path) if builder_manifest_path else {}
     runner_manifest = read_json(runner_manifest_path) if runner_manifest_path else {}
-    if not runner_manifest and any(key in top_manifest for key in ("files", "metrics", "return_code")):
-        runner_manifest = top_manifest
-        runner_manifest_path = top_manifest_path
     network_qa = read_json(network_qa_path) if network_qa_path else {}
     continuity_qa = read_json(continuity_qa_path) if continuity_qa_path else {}
     peak_qa = read_json(peak_qa_path) if peak_qa_path else {}
@@ -616,6 +921,14 @@ def collect_run(
             produced_by="runner QA stage",
             used_for=["peak flow", "peak time", "metric source"],
         ),
+        artifact_record(
+            artifact_id="model_diagnostics",
+            role="Deterministic SWMM model diagnostics",
+            path=model_diagnostics_path,
+            repo_root=repo_root,
+            produced_by="swmm-experiment-audit",
+            used_for=["SWMM-specific screening diagnostics", "modeling memory"],
+        ),
     ]
     artifacts = normalize_artifacts(artifact_records)
 
@@ -632,6 +945,13 @@ def collect_run(
         runner_manifest=runner_manifest,
         continuity_json=continuity_qa,
     )
+    model_diagnostics = build_model_diagnostics(
+        inp_path=inp_path,
+        rpt_path=rpt_path,
+        continuity_metric=continuity_metric,
+        repo_root=repo_root,
+    )
+    uncertainty_ensemble = normalize_uncertainty_ensemble(top_manifest, repo_root)
 
     qa = build_qa_checks(
         acceptance_report=acceptance_report,
@@ -690,6 +1010,8 @@ def collect_run(
             "swmm_return_code": runner_manifest.get("return_code"),
             "builder_counts": builder_manifest.get("counts"),
         },
+        "model_diagnostics": model_diagnostics,
+        "uncertainty_ensemble": uncertainty_ensemble,
         "qa": qa,
         "warnings": warnings,
         "raw_sources": {
@@ -814,35 +1136,6 @@ def readable_note_name(provenance: dict[str, Any]) -> str:
     return text.title() if text else "Experiment"
 
 
-def input_rows(inputs: dict[str, Any]) -> list[list[Any]]:
-    rows: list[list[Any]] = []
-    for input_id, record in inputs.items():
-        if input_id == "sidecar_files" and isinstance(record, list):
-            for index, sidecar in enumerate(record, start=1):
-                if isinstance(sidecar, dict):
-                    rows.append(
-                        [
-                            f"`sidecar_files[{index}]`",
-                            sidecar.get("source_type") or "",
-                            f"`{sidecar.get('path')}`",
-                            f"`{short(sidecar.get('sha256'))}`",
-                        ]
-                    )
-            continue
-        if isinstance(record, dict):
-            rows.append(
-                [
-                    f"`{input_id}`",
-                    record.get("source_type") or ("run-local copy" if record.get("imported_copy") else ""),
-                    f"`{record.get('path')}`",
-                    f"`{short(record.get('sha256'))}`",
-                ]
-            )
-        else:
-            rows.append([f"`{input_id}`", "", f"`{record}`", ""])
-    return rows
-
-
 def md_table(headers: list[str], rows: list[list[Any]]) -> str:
     out = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for row in rows:
@@ -859,6 +1152,8 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
     qa = provenance.get("qa") or {}
     repo = provenance.get("repo") or {}
     tools = provenance.get("tools") or {}
+    model_diagnostics = provenance.get("model_diagnostics") or {}
+    uncertainty_ensemble = provenance.get("uncertainty_ensemble") or {}
 
     frontmatter = [
         "---",
@@ -913,31 +1208,6 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
         md_table(["Field", "Value"], identity_rows),
         "",
     ]
-
-    inputs = provenance.get("inputs") if isinstance(provenance.get("inputs"), dict) else {}
-    rows = input_rows(inputs)
-    if rows:
-        sections.extend(
-            [
-                "## Input Provenance",
-                "",
-                md_table(["Input", "Source type", "Path", "SHA256"], rows),
-                "",
-            ]
-        )
-        source = inputs.get("source_inp") if isinstance(inputs.get("source_inp"), dict) else {}
-        run_inp = inputs.get("run_inp") if isinstance(inputs.get("run_inp"), dict) else {}
-        if source.get("source_type") == "external_inp_import":
-            sections.extend(
-                [
-                    "External INP import boundary:",
-                    "",
-                    f"- Original user-provided INP: `{source.get('path')}`",
-                    f"- Run-local copy used for SWMM execution: `{run_inp.get('path')}`",
-                    "- This audit records the imported file identity and run-local execution evidence; it does not claim the external model is calibrated or validated.",
-                    "",
-                ]
-            )
 
     command_rows = []
     for command in provenance.get("commands") or []:
@@ -1003,6 +1273,90 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
                 "",
             ]
         )
+
+    diagnostic_rows = []
+    for item in model_diagnostics.get("diagnostics") or []:
+        diagnostic_rows.append(
+            [
+                f"`{item.get('id')}`",
+                str(item.get("severity") or "unknown").upper(),
+                item.get("message") or "",
+                json.dumps(item.get("evidence") or {}, sort_keys=True),
+            ]
+        )
+    if diagnostic_rows:
+        sections.extend(
+            [
+                "## Model Diagnostics",
+                "",
+                md_table(["Check", "Severity", "Message", "Evidence"], diagnostic_rows),
+                "",
+            ]
+        )
+
+    if uncertainty_ensemble:
+        entropy = uncertainty_ensemble.get("entropy") or {}
+        entropy_rows = []
+        for node in entropy.get("nodes") or []:
+            entropy_rows.append(
+                [
+                    f"`{node.get('node')}`",
+                    node.get("sample_count"),
+                    node.get("max_entropy"),
+                    node.get("mean_entropy"),
+                    f"`{node.get('entropy_json')}`",
+                ]
+            )
+        ranked_rows = []
+        for row in uncertainty_ensemble.get("node_ranking") or []:
+            if not row.get("ok", True):
+                continue
+            ranked_rows.append(
+                [
+                    f"`{row.get('node')}`",
+                    row.get("baseline_peak_cms"),
+                    row.get("relative_peak_spread_percent_of_baseline"),
+                    row.get("absolute_peak_spread_cms"),
+                ]
+            )
+        sections.extend(
+            [
+                "## Uncertainty Ensemble",
+                "",
+                md_table(
+                    ["Field", "Value"],
+                    [
+                        ["Mode", uncertainty_ensemble.get("mode")],
+                        ["Samples", uncertainty_ensemble.get("sample_count")],
+                        ["Seed", uncertainty_ensemble.get("seed")],
+                        ["Primary node", uncertainty_ensemble.get("primary_node")],
+                        ["Selected plot node", uncertainty_ensemble.get("selected_plot_node")],
+                        ["Peak envelope", json.dumps(uncertainty_ensemble.get("peak_cms_envelope"), sort_keys=True)],
+                        ["Peak percent-change envelope", json.dumps(uncertainty_ensemble.get("peak_percent_change_envelope"), sort_keys=True)],
+                        ["Entropy curve figure", f"`{entropy.get('figure')}`"],
+                    ],
+                ),
+                "",
+            ]
+        )
+        if entropy_rows:
+            sections.extend(
+                [
+                    "### Output Entropy",
+                    "",
+                    md_table(["Node", "Samples", "Max H*", "Mean H*", "Entropy JSON"], entropy_rows),
+                    "",
+                ]
+            )
+        if ranked_rows:
+            sections.extend(
+                [
+                    "### Node Spread Ranking",
+                    "",
+                    md_table(["Node", "Baseline peak CMS", "Relative spread percent", "Absolute spread CMS"], ranked_rows),
+                    "",
+                ]
+            )
 
     artifact_rows = []
     for artifact_id, artifact in artifacts.items():
@@ -1104,6 +1458,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--out-provenance", type=Path, help="Output path for experiment_provenance.json.")
     ap.add_argument("--out-comparison", type=Path, help="Output path for comparison.json.")
     ap.add_argument("--out-note", type=Path, help="Output path for experiment_note.md.")
+    ap.add_argument("--out-model-diagnostics", type=Path, help="Output path for model_diagnostics.json.")
     ap.add_argument(
         "--obsidian-dir",
         type=Path,
@@ -1156,11 +1511,21 @@ def main() -> None:
     out_provenance = args.out_provenance or (run_dir / "experiment_provenance.json")
     out_comparison = args.out_comparison or (run_dir / "comparison.json")
     out_note = args.out_note or (run_dir / "experiment_note.md")
+    out_model_diagnostics = args.out_model_diagnostics or (run_dir / "model_diagnostics.json")
     obsidian_note = None
     if args.obsidian_dir and not args.no_obsidian:
         note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"
         obsidian_note = args.obsidian_dir / note_name
 
+    write_json(out_model_diagnostics, provenance.get("model_diagnostics") or {})
+    provenance["artifacts"]["model_diagnostics"] = artifact_record(
+        artifact_id="model_diagnostics",
+        role="Deterministic SWMM model diagnostics",
+        path=out_model_diagnostics,
+        repo_root=repo_root,
+        produced_by="swmm-experiment-audit",
+        used_for=["SWMM-specific screening diagnostics", "modeling memory"],
+    )
     write_json(out_provenance, provenance)
     write_json(out_comparison, comparison)
     note_text = render_note(provenance, comparison, repo_root)
@@ -1185,6 +1550,7 @@ def main() -> None:
                 "experiment_provenance": str(out_provenance),
                 "comparison": str(out_comparison),
                 "experiment_note": str(out_note),
+                "model_diagnostics": str(out_model_diagnostics),
                 "obsidian_note": str(obsidian_note) if obsidian_note else None,
             },
             indent=2,
