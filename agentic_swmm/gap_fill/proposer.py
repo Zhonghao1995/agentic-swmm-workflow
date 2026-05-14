@@ -328,11 +328,109 @@ def _resolve_decided_by(default: str) -> str:
     return default
 
 
+# CONCURRENCY-OWNER: PRD-GF-PROMOTE
+def _case_defaults_path(case_id: str) -> Path:
+    """Resolve ``cases/<case_id>/gap_defaults.yaml`` under the active repo root.
+
+    The repo root may be overridden via ``AISWMM_REPO_ROOT`` so the
+    proposer's case-default lookup sees the same path the
+    ``aiswmm gap promote-to-case`` CLI wrote to (tests inject a
+    temporary directory through the env var). Production callers leave
+    the env var unset and the lookup goes to the canonical repo root.
+    """
+    override = os.environ.get("AISWMM_REPO_ROOT")
+    base = Path(override) if override else repo_root()
+    return base / "cases" / case_id / "gap_defaults.yaml"
+
+
+# CONCURRENCY-OWNER: PRD-GF-PROMOTE
+def _case_default_lookup(field: str, case_id: str | None) -> tuple[str, Any] | None:
+    """Return ``(field, value)`` from the case-defaults file, or ``None``.
+
+    ``None`` covers both "no case_id resolved" and "case_id resolved
+    but no entry for this field" — the caller treats both identically
+    by falling through to the next layer in the priority chain.
+
+    The reader is intentionally narrow: it only needs the value, since
+    the case-default's source / promoted_at metadata is consumed by the
+    listing CLI, not the proposer. Malformed YAML is treated as a miss
+    so a half-written file does not poison the priority chain.
+    """
+    if not case_id:
+        return None
+    path = _case_defaults_path(case_id)
+    if not path.is_file():
+        return None
+    try:
+        import yaml  # local import — keeps the import path lazy
+    except ImportError:  # pragma: no cover - defensive
+        return None
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    entries = payload.get("entries")
+    if not isinstance(entries, dict):
+        return None
+    raw = entries.get(field)
+    if not isinstance(raw, dict):
+        return None
+    if "value" not in raw:
+        return None
+    return field, raw["value"]
+
+
+# CONCURRENCY-OWNER: PRD-GF-PROMOTE
+def _case_default_to_decision(
+    signal: GapSignal,
+    case_id: str,
+    entry_name: str,
+    value: Any,
+    *,
+    decided_by: str,
+) -> GapDecision:
+    """Convert a case-defaults hit to a :class:`GapDecision`.
+
+    Records ``registry_ref=cases/<case_id>/gap_defaults.yaml#<entry>``
+    so the audit ledger distinguishes a case-default hit from a
+    global-registry hit. The proposer's ``source`` field stays in the
+    GF-CORE-owned literal set (``registry``); the case provenance is
+    carried by ``registry_ref``'s ``cases/`` prefix. Tests assert that
+    prefix to confirm the case-default layer fired.
+    """
+
+    decision_id = new_decision_id()
+    decided_at = _now_iso()
+    return GapDecision(
+        decision_id=decision_id,
+        gap_id=signal.gap_id,
+        severity=signal.severity,
+        field=signal.field,
+        proposer=ProposerInfo(
+            source="registry",
+            confidence="HIGH",
+            registry_ref=f"cases/{case_id}/gap_defaults.yaml#{entry_name}",
+            literature_ref=None,
+            llm_call_id=None,
+        ),
+        proposed_value=value,
+        final_value=value,
+        proposer_overridden=False,
+        decided_by=decided_by,
+        decided_at=decided_at,
+        resume_mode="tool_retry",
+        human_decisions_ref=None,
+    )
+
+
 def propose(
     *,
     signal: GapSignal,
     run_dir: Path | str,
     llm_proposal_fn: LLMProposalFn | None,
+    case_id: str | None = None,
 ) -> GapDecision:
     """Decide the value for one gap and return the partial decision.
 
@@ -352,12 +450,34 @@ def propose(
       no LLM is wired (registry-only mode, tests). When ``None`` and
       the registry misses, the decision falls through to ``source=
       human``.
+    - ``case_id``: optional case slug used to consult
+      ``cases/<case_id>/gap_defaults.yaml`` before the global
+      registry. A hit short-circuits the rest of the chain (no LLM
+      call, no human prompt). ``None`` skips the case layer cleanly
+      so pre-PRD-GF-PROMOTE callers keep their old behaviour.
     """
 
     # L1 paths bypass the registry entirely. There is no defensible
     # way to propose a file path from a textbook table.
     if signal.severity == "L1":
         decision = _human_required_decision(signal, confidence="HIGH")
+        return decision
+
+    # CONCURRENCY-OWNER: PRD-GF-PROMOTE
+    # Layer 1: case-level defaults (cases/<case_id>/gap_defaults.yaml).
+    # A hit short-circuits the rest of the chain — no LLM call, no UI
+    # prompt. The PRD's promoted-decision contract: once promoted, the
+    # agent uses the value silently until the user un-promotes by
+    # editing the YAML by hand.
+    case_hit = _case_default_lookup(signal.field, case_id)
+    if case_hit is not None:
+        entry_name, value = case_hit
+        decided_by = _resolve_decided_by("auto_registry")
+        decision = _case_default_to_decision(
+            signal, case_id or "", entry_name, value, decided_by=decided_by
+        )
+        if decided_by == "auto_approve":
+            _log_auto_approve(decision)
         return decision
 
     # L3: registry first.
@@ -401,14 +521,22 @@ def propose_batch(
     signals: Iterable[GapSignal],
     run_dir: Path | str,
     llm_proposal_fn: LLMProposalFn | None,
+    case_id: str | None = None,
 ) -> list[GapDecision]:
     """Run :func:`propose` over a batch of gaps.
 
     The runtime owns the batching boundary (one form per tool call);
-    this helper keeps the call site clean.
+    this helper keeps the call site clean. ``case_id`` is forwarded to
+    each :func:`propose` call so the case-default layer (PRD-GF-PROMOTE)
+    fires for every signal in the batch.
     """
     return [
-        propose(signal=s, run_dir=run_dir, llm_proposal_fn=llm_proposal_fn)
+        propose(
+            signal=s,
+            run_dir=run_dir,
+            llm_proposal_fn=llm_proposal_fn,
+            case_id=case_id,
+        )
         for s in signals
     ]
 
