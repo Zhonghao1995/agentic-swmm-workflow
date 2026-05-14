@@ -1,6 +1,6 @@
 ---
 type: memory-index
-generated_at_utc: 2026-05-14T04:48:13+00:00
+generated_at_utc: 2026-05-14T04:50:18+00:00
 ---
 
 # Modeling memory MOC
@@ -21,7 +21,4 @@ Navigation index over the audited history that informed `lessons_learned.md` and
 
 | skill | pattern count | patterns |
 | --- | --- | --- |
-| swmm-builder | 1 | `missing_inp` |
-| swmm-end-to-end | 2 | `missing_inp` `partial_run` |
-| swmm-experiment-audit | 3 | `continuity_parse_missing` `partial_run` `peak_flow_parse_missing` |
-| swmm-runner | 2 | `continuity_parse_missing` `peak_flow_parse_missing` |
+| _(none)_ |
