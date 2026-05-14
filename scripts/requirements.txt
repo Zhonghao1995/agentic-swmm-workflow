@@ -10,4 +10,5 @@ swmmtoolbox
 geopandas
 shapely
 pyogrio
+PyYAML
 pytest
