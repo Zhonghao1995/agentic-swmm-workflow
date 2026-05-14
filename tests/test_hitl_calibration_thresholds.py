@@ -120,18 +120,20 @@ class RationalePlaceholderTests(unittest.TestCase):
                 self.assertIsInstance(msg, str)
                 self.assertTrue(msg.strip())
 
-    def test_each_new_threshold_has_a_hydrology_todo_rationale(self) -> None:
+    def test_each_new_threshold_has_a_nonempty_rationale(self) -> None:
+        # PRD-Z originally shipped each new threshold with a HYDROLOGY-TODO
+        # placeholder so a hydrologist could later fill it in. PR #81 filled
+        # all seven rationales with literature-grounded text, so the invariant
+        # is now simply "non-empty rationale"; a future placeholder is also
+        # acceptable (matched explicitly below) since it signals a pending fill.
         thresholds = _load()
         for name in self.NEW_NAMES:
             with self.subTest(name=name):
                 rationale = thresholds[name].get("rationale", "")
-                self.assertIn(
-                    "HYDROLOGY-TODO",
-                    rationale,
-                    msg=(
-                        f"{name}: rationale must contain a HYDROLOGY-TODO "
-                        "placeholder per PRD-Z convention."
-                    ),
+                self.assertIsInstance(rationale, str)
+                self.assertTrue(
+                    rationale.strip(),
+                    msg=f"{name}: rationale must not be empty.",
                 )
 
 
