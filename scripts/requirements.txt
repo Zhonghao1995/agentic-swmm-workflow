@@ -4,6 +4,7 @@ matplotlib
 rasterio
 pyshp
 pysheds
+spotpy
 swmmtoolbox
 geopandas
 shapely

@@ -790,12 +790,103 @@ def cmd_validate(args: argparse.Namespace) -> None:
     emit_payload(args, payload)
 
 
+def _cmd_search_sceua(
+    args: argparse.Namespace,
+    patch_map: dict,
+    bounds: dict[str, ParamBound],
+    observed: pd.DataFrame,
+) -> None:
+    """SCE-UA branch of search; depends on the optional `spotpy` package."""
+
+    try:
+        from sceua import SceuaConfig, run_sceua  # local import: spotpy only needed here
+    except ImportError as exc:  # pragma: no cover - defensive
+        raise SystemExit(
+            "SCE-UA strategy requires the optional 'spotpy' dependency. "
+            "Install it with `pip install spotpy`.\n"
+            f"Underlying error: {exc}"
+        ) from exc
+
+    if args.objective != "kge":
+        # SCE-UA is wired to minimise (1 - KGE); make this explicit at the CLI to
+        # avoid silent objective drift. Users who want NSE / RMSE optimisation
+        # should keep using the random / lhs / adaptive strategies for now.
+        raise SystemExit(
+            "--strategy sceua currently requires --objective kge "
+            f"(got --objective {args.objective}). "
+            "Other objectives are tracked in issue #53 (DREAM-ZS) and follow-ups."
+        )
+
+    run_root = Path(args.run_root)
+    run_root.mkdir(parents=True, exist_ok=True)
+    summary_path = Path(args.summary_json)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    convergence_csv = (
+        Path(args.convergence_csv)
+        if args.convergence_csv is not None
+        else summary_path.parent / "convergence.csv"
+    )
+
+    def _runner(inp: Path, trial_dir: Path):
+        return run_swmm(inp, trial_dir)
+
+    def _extract(out_path: Path) -> pd.DataFrame:
+        return extract_simulated_series(
+            out_path,
+            swmm_node=args.swmm_node,
+            swmm_attr=args.swmm_attr,
+            aggregate=args.aggregate,
+        )
+
+    config = SceuaConfig(
+        base_inp=Path(args.base_inp),
+        patch_map=patch_map,
+        observed=observed,
+        run_root=run_root,
+        swmm_node=args.swmm_node,
+        swmm_attr=args.swmm_attr,
+        aggregate=args.aggregate,
+        obs_start=args.obs_start,
+        obs_end=args.obs_end,
+        bounds=bounds,
+        iterations=int(args.iterations),
+        seed=int(args.seed),
+        ngs=int(args.sceua_ngs),
+        convergence_csv=convergence_csv,
+        swmm_runner=_runner,
+        extract_series=_extract,
+    )
+
+    result = run_sceua(config)
+    summary = result["summary"]
+    # Add `controls` block so the SCE-UA summary remains comparable to the other
+    # strategies' top-level CLI payloads.
+    summary["controls"] = {
+        **build_common_controls(args),
+        "search_space": str(args.search_space),
+        "search_strategy": args.strategy,
+        "seed": args.seed,
+        "iterations": args.iterations,
+        "sceua_ngs": args.sceua_ngs,
+        "parsed_search_space": serialize_bounds(bounds),
+    }
+
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if args.best_params_out:
+        Path(args.best_params_out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.best_params_out).write_text(
+            json.dumps(result["best_params"], indent=2),
+            encoding="utf-8",
+        )
+    print(json.dumps(summary, indent=2))
+
+
 def cmd_search(args: argparse.Namespace) -> None:
     if args.iterations < 1:
         raise ValueError("--iterations must be >= 1")
     if args.strategy == "adaptive" and args.rounds < 2:
         raise ValueError("--rounds must be >= 2 for adaptive strategy")
-    if args.strategy != "adaptive" and args.rounds != 1:
+    if args.strategy not in {"adaptive"} and args.rounds != 1:
         raise ValueError("--rounds can only be >1 when --strategy adaptive")
     if not (0 < args.elite_fraction <= 1):
         raise ValueError("--elite-fraction must be in (0, 1]")
@@ -814,6 +905,10 @@ def cmd_search(args: argparse.Namespace) -> None:
         args.obs_start,
         args.obs_end,
     )
+
+    if args.strategy == "sceua":
+        _cmd_search_sceua(args, patch_map, bounds, observed)
+        return
 
     rng = random.Random(args.seed)
     trial_counter = 1
@@ -980,7 +1075,7 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument(
             "--objective",
             default="nse",
-            choices=["nse", "rmse", "bias", "peak_flow_error", "peak_timing_error"],
+            choices=["nse", "kge", "rmse", "bias", "peak_flow_error", "peak_timing_error"],
         )
         sp.add_argument("--aggregate", choices=["none", "daily_mean"], default="none")
         sp.add_argument("--timestamp-col", default=None)
@@ -1012,7 +1107,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp_search = sub.add_parser("search")
     add_common(sp_search, include_param_sets=False)
     sp_search.add_argument("--search-space", required=True, type=Path)
-    sp_search.add_argument("--strategy", choices=["random", "lhs", "adaptive"], default="lhs")
+    sp_search.add_argument(
+        "--strategy",
+        choices=["random", "lhs", "adaptive", "sceua"],
+        default="lhs",
+    )
     sp_search.add_argument("--iterations", type=int, default=12, help="Trial count per round")
     sp_search.add_argument("--rounds", type=int, default=1, help="Number of rounds (adaptive requires >=2)")
     sp_search.add_argument("--seed", type=int, default=42)
@@ -1020,6 +1119,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp_search.add_argument("--refine-margin", type=float, default=0.1)
     sp_search.add_argument("--min-span-fraction", type=float, default=0.1)
     sp_search.add_argument("--best-params-out", default=None, type=Path)
+    sp_search.add_argument(
+        "--convergence-csv",
+        default=None,
+        type=Path,
+        help="Where SCE-UA writes the per-iteration KGE trace (default: alongside summary).",
+    )
+    sp_search.add_argument(
+        "--sceua-ngs",
+        type=int,
+        default=4,
+        help="Number of complexes for SCE-UA (default 4). Spotpy recommends 2*p+1 minimum.",
+    )
     sp_search.set_defaults(func=cmd_search)
 
     return ap
