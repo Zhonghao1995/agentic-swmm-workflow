@@ -33,6 +33,30 @@ thresholds:
     evidence_path: "06_qa/qa_summary.json"
     message: "Calibration Nash-Sutcliffe Efficiency below 0.5 — calibration likely unusable."
     rationale: "<!-- HYDROLOGY-TODO: NSE threshold should reflect study domain (urban vs. rural) and observed-flow data quality. Default 0.5 is a screening floor only. -->"
+  calibration_kge_low:
+    severity: block
+    measured_key: "calibration.kge"
+    operator: "<"
+    value: 0.5
+    evidence_path: "06_qa/calibration_summary.json"
+    message: "Calibration Kling-Gupta Efficiency below 0.5 — calibration likely unusable."
+    rationale: "<!-- HYDROLOGY-TODO: KGE < 0.5 is a screening floor only; document the site-appropriate KGE target (the KGE decomposition into r/alpha/beta lives in calibration_summary.json) before promoting any run. -->"
+  calibration_pbias_high:
+    severity: warn
+    measured_key: "calibration.pbias_pct_abs"
+    operator: ">"
+    value: 30.0
+    evidence_path: "06_qa/calibration_summary.json"
+    message: "Absolute percent bias |PBIAS| exceeds 30% — systematic over/under-prediction."
+    rationale: "<!-- HYDROLOGY-TODO: |PBIAS| > 30% is a Moriasi-style 'unsatisfactory' threshold for streamflow. Tighten or relax per study purpose (water-balance studies want |PBIAS| < 10–15%; screening tolerates more). -->"
+  sobol_first_order_dominant:
+    severity: warn
+    measured_key: "sensitivity.sobol.S_i_max"
+    operator: ">"
+    value: 0.8
+    evidence_path: "09_audit/sensitivity_indices.json"
+    message: "Single Sobol' first-order index S_i exceeds 0.8 — one parameter dominates the variance, possible structural issue."
+    rationale: "<!-- HYDROLOGY-TODO: an S_i above 0.8 means one parameter explains most of the output variance, which usually indicates either an under-parameterised model or a degenerate prior space; document the site-specific interpretation and the remediation path (re-parameterise vs. tighten priors). -->"
 ---
 
 # HITL Thresholds
