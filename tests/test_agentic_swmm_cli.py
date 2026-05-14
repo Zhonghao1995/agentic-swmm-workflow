@@ -308,7 +308,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
         prompt = openai_planner_prompt()
 
         self.assertIn("Startup memory: identification_memory.md", prompt)
-        self.assertIn("You are **aiswmm**", prompt)
+        # PR #74 rewrote the agent's startup memory in first-person warm
+        # identity ("I am **aiswmm**, ...") instead of the older
+        # second-person framing ("You are **aiswmm**").
+        self.assertIn("I am **aiswmm**", prompt)
 
     def test_intent_map_is_external_config(self) -> None:
         payload = load_intent_map()
