@@ -312,6 +312,40 @@ def session_pool() -> MCPPool | None:
     return _session_pool
 
 
+def _load_mcp_registry() -> list[dict[str, Any]]:
+    """Indirect access to the runtime MCP registry so tests can stub it.
+
+    Imported lazily so that ``agentic_swmm.runtime`` is not pulled into
+    the import graph at module load time (the pool is supposed to be
+    cheap to import).
+    """
+
+    from agentic_swmm.runtime.registry import load_mcp_registry
+
+    return load_mcp_registry()
+
+
+def ensure_session_pool() -> MCPPool | None:
+    """Lazy-instantiate and bind the per-process MCP pool.
+
+    Idempotent: subsequent calls return the same singleton. Returns
+    ``None`` (and binds nothing) when the registry is empty, so callers
+    can transparently fall back to the spawn-per-call code path on a
+    degraded install.
+    """
+
+    existing = session_pool()
+    if existing is not None:
+        return existing
+    records = _load_mcp_registry()
+    specs = registry_from_records(records)
+    if not specs:
+        return None
+    pool = MCPPool(specs)
+    bind_session_pool(pool)
+    return pool
+
+
 def bind_session_pool(pool: MCPPool) -> None:
     """Install ``pool`` as the per-process MCP session.
 
@@ -390,6 +424,7 @@ __all__ = [
     "ServerSpec",
     "bind_session_pool",
     "clear_session_pool",
+    "ensure_session_pool",
     "registry_from_records",
     "session_pool",
 ]

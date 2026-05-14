@@ -24,6 +24,7 @@ from typing import Any
 
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
@@ -245,6 +246,11 @@ def run_openai_planner(
         raise ValueError(f"unsupported planner provider: {provider_name}")
     if not model:
         raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5`.")
+
+    # PRD-X: bind a per-process MCP pool so list_tools / call_tool against
+    # local servers reuse one long-running node child per server instead of
+    # spawning on every call. Lazy — pool only spawns servers on first use.
+    ensure_session_pool()
 
     provider = OpenAIProvider(model=model)
 

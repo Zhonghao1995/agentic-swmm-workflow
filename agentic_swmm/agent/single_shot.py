@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import rule_plan
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
@@ -54,6 +55,10 @@ def run_single_shot(args: argparse.Namespace) -> int:
     )
     session_dir.mkdir(parents=True, exist_ok=True)
     trace_path = session_dir / "agent_trace.jsonl"
+    # PRD-X: bind a per-process MCP pool so list_mcp_tools / call_mcp_tool
+    # reuse one long-running node child per server instead of paying
+    # cold-start cost every call. Lazy — pool only spawns on first use.
+    ensure_session_pool()
     registry = AgentToolRegistry()
     if args.planner == "openai":
         # Delegate to runtime_loop's openai planner for the single-shot path.
