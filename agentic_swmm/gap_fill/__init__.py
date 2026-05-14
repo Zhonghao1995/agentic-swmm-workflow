@@ -25,6 +25,7 @@ with their own modules.
 
 from agentic_swmm.gap_fill.protocol import (
     GapBatch,
+    GapCandidate,
     GapDecision,
     GapSignal,
     ProposerInfo,
@@ -34,6 +35,7 @@ from agentic_swmm.gap_fill.protocol import (
 
 __all__ = [
     "GapBatch",
+    "GapCandidate",
     "GapDecision",
     "GapSignal",
     "ProposerInfo",

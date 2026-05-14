@@ -36,6 +36,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "plot_run": False,
     "record_fact": False,
     "request_expert_review": False,
+    # request_gap_judgement (PRD-GF-L5) — L5 subjective judgement
+    # cannot be auto-approved by QUICK; the prompt is human-only.
+    "request_gap_judgement": False,
     "run_allowed_command": False,
     "run_swmm_inp": False,
     "run_tests": False,
