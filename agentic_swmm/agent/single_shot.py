@@ -122,6 +122,12 @@ def run_single_shot(args: argparse.Namespace) -> int:
         allowed_tools=registry.names,
     )
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report)})
+    # Issue #60 (UX-5): mirror runtime_loop's session-end MOC refresh so
+    # the non-interactive single-shot path keeps runs/INDEX.md fresh too.
+    # Late import keeps this file free of an audit-layer dep at import time.
+    from agentic_swmm.agent.runtime_loop import _refresh_moc_after_session
+
+    _refresh_moc_after_session(session_dir)
     _agent_say(f"Final report: {_display_path(report)}")
     return 0 if outcome.ok else 1
 
