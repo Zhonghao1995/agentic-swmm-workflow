@@ -88,18 +88,40 @@ def _append_skip_log(memory_dir: Path, run_dir: Path, reason: str) -> None:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def _resolve_memory_dir() -> Path:
+def _resolve_memory_dir(project_root: Path | None = None) -> Path:
     override = os.environ.get("AISWMM_MEMORY_DIR")
     if override:
         return Path(override)
+    if project_root is not None:
+        return project_root / "memory" / "modeling-memory"
     return Path("memory/modeling-memory")
 
 
-def _resolve_rag_dir() -> Path:
+def _resolve_rag_dir(project_root: Path | None = None) -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override)
+    if project_root is not None:
+        return project_root / "memory" / "rag-memory"
     return Path("memory/rag-memory")
+
+
+def _project_root_for(runs_dir: Path) -> Path:
+    """Return the project root that owns ``runs_dir``.
+
+    The convention is that ``runs_dir`` is ``<project_root>/runs`` (or
+    a deeper subdirectory). The project root is the parent of the
+    first ``runs`` ancestor in the path, so audit hooks landing in a
+    tmpdir during tests do not accidentally write to the live
+    repo's memory dir.
+    """
+    resolved = runs_dir.resolve()
+    if resolved.name == "runs":
+        return resolved.parent
+    for parent in resolved.parents:
+        if parent.name == "runs":
+            return parent.parent
+    return resolved.parent
 
 
 def _resolve_runs_dir(run_dir: Path) -> Path:
@@ -216,15 +238,16 @@ def trigger_memory_refresh(
         return result
 
     skip, reason = is_skip_memory_run(run_dir)
-    memory_dir = _resolve_memory_dir()
+    runs_dir = _resolve_runs_dir(run_dir)
+    project_root = _project_root_for(runs_dir)
+    memory_dir = _resolve_memory_dir(project_root)
     if skip:
         _append_skip_log(memory_dir, run_dir, reason)
         result["skipped"] = True
         result["reason"] = reason
         return result
 
-    runs_dir = _resolve_runs_dir(run_dir)
-    rag_dir = _resolve_rag_dir()
+    rag_dir = _resolve_rag_dir(project_root)
 
     rc, stderr = _summarize_memory_cli(runs_dir, memory_dir)
     if rc != 0:

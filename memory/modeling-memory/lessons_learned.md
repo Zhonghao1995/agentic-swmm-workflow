@@ -1,3 +1,4 @@
+<!-- schema_version: 1.1 -->
 # Lessons Learned
 
 Generated at UTC: `2026-05-06T10:16:48+00:00`
@@ -43,3 +44,41 @@ This synthesis is derived from historical experiment audit artifacts. It is proj
 - `tecnopolo-199401-prepared` preserved audit evidence with QA `pass` and comparison `not_requested`.
 - `tuflow-swmm-module03-raw-path` preserved audit evidence with QA `pass` and comparison `not_requested`.
 - `tecnopolo-199401-prepared` preserved audit evidence with QA `pass` and comparison `not_requested`.
+
+## continuity_parse_missing
+
+Observed in 5 run(s): `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`.
+
+The continuity error line is absent from the RPT file. Most commonly this is the side-effect of a `partial_run` — SWMM exited before writing the continuity tables. Check the runner manifest and stderr for early failure, and re-run with verbose logging if needed.
+
+Recall this section via `recall_memory("continuity_parse_missing")` or by searching with `recall_memory_search`.
+
+## missing_inp
+
+Observed in 2 run(s): `runner-check`, `runner-fixed`.
+
+The runnable INP path was not produced before SWMM execution was attempted. Check the builder manifest: the workflow must record where the INP should land before the runner is invoked. Related skills: `swmm-builder`, `swmm-end-to-end`.
+
+Recall this section via `recall_memory("missing_inp")` or by searching with `recall_memory_search`.
+
+## partial_run
+
+Observed in 5 run(s): `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`.
+
+SWMM exited before writing all expected artifacts (RPT, OUT, or both). Verify that the runner captured stderr and stdout, and that the runner manifest records the exit code. A partial run is a runnable failure mode, not a calibration result.
+
+Recall this section via `recall_memory("partial_run")` or by searching with `recall_memory_search`.
+
+## peak_flow_parse_missing
+
+Observed in 2 run(s): `runner-check`, `runner-fixed`.
+
+The peak flow value could not be located in the parsed RPT output. Most common cause: the `--node` argument does not resolve to a known `[OUTFALLS]` or `[JUNCTIONS]` entry, so the parser falls through. Always verify the node argument before running. Related skills: `swmm-runner`, `swmm-experiment-audit`.
+
+Recall this section via `recall_memory("peak_flow_parse_missing")` or by searching with `recall_memory_search`.
+
+## comparison_mismatch
+
+Observed in 0 run(s) so far. Placeholder section seeded by Memory PRD M1 so that `recall_memory("comparison_mismatch")` returns a Markdown lesson even before the first audited comparison miss surfaces. Update this section once a real comparison-mismatch run lands in `runs/`.
+
+Recall this section via `recall_memory("comparison_mismatch")` or by searching with `recall_memory_search`.

@@ -25,9 +25,9 @@ from pathlib import Path
 from typing import Any
 
 
-_PROPOSAL_PATTERN_RE = re.compile(r"^##\s+([A-Za-z0-9_.\-]+)\s*$", flags=re.MULTILINE)
+_PROPOSAL_PATTERN_RE = re.compile(r"^##\s+`?([A-Za-z0-9_.\-]+)`?\s*$", flags=re.MULTILINE)
 _PROPOSAL_SKILL_BLOCK_RE = re.compile(
-    r"^##\s+([A-Za-z0-9_.\-]+)\s*$([\s\S]*?)(?=^##\s+|\Z)",
+    r"^##\s+`?([A-Za-z0-9_.\-]+)`?\s*$([\s\S]*?)(?=^##\s+|\Z)",
     flags=re.MULTILINE,
 )
 _BACKTICK_SKILL_RE = re.compile(r"`([A-Za-z0-9_./\-]+)`")

@@ -228,8 +228,14 @@ def _post_process(
                 continue
         if case_name:
             entry["case_name"] = case_name
-        if not entry.get("schema_version"):
-            entry["schema_version"] = derived_schema or fallback_schema
+        # Override the lib-default "1.0" placeholder with the
+        # derived-per-source or PRD-default schema_version. The PRD
+        # contract is: every entry carries the latest known schema
+        # version, not the lib's hardcoded default.
+        if derived_schema:
+            entry["schema_version"] = derived_schema
+        elif not entry.get("schema_version") or str(entry.get("schema_version")) == "1.0":
+            entry["schema_version"] = fallback_schema
         cleaned.append(entry)
 
     return cleaned, missing, fallback_schema
