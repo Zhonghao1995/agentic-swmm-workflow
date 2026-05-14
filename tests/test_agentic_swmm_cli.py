@@ -1269,7 +1269,12 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 if entry.is_dir() and (entry / "SKILL.md").is_file()
             )
             self.assertEqual(payload["resources"]["skills"], expected_skills)
-            self.assertEqual(payload["resources"]["mcp_servers"], 8)
+            expected_mcp_servers = sum(
+                1
+                for entry in (REPO_ROOT / "mcp").iterdir()
+                if entry.is_dir() and (entry / "server.js").is_file()
+            )
+            self.assertEqual(payload["resources"]["mcp_servers"], expected_mcp_servers)
             self.assertEqual(payload["resources"]["memory_files"], 7)
             self.assertEqual(payload["resources"]["memory_layers"]["long_term"], 3)
             self.assertEqual(payload["resources"]["memory_layers"]["project_modeling"], 4)
