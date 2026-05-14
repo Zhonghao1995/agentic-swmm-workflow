@@ -231,7 +231,18 @@ def trigger_memory_refresh(
         result["errors"].append(f"summarize_memory failed: {stderr[:200]}")
     # Always bump lessons mtime so the audit hook is observable even
     # if the summariser is mocked in tests.
-    result["lessons"] = str(_bump_lessons_mtime(memory_dir))
+    lessons_path = _bump_lessons_mtime(memory_dir)
+    result["lessons"] = str(lessons_path)
+
+    # PRD M3 / M7-derived: tag the file for compaction if it has grown
+    # past the threshold. No automatic compaction in this PRD.
+    try:
+        from agentic_swmm.memory.proposal_skeleton import maybe_prepend_compaction_marker
+
+        if maybe_prepend_compaction_marker(lessons_path):
+            result["compaction_marker_added"] = True
+    except Exception as exc:
+        result["errors"].append(f"compaction marker failed: {exc}")
 
     if no_rag:
         return result
