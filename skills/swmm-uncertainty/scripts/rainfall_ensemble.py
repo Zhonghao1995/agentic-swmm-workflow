@@ -650,45 +650,115 @@ def patch_rainfall_timeseries(
 
 
 def _parse_peak_total_from_rpt(rpt_path: Path, node: str) -> tuple[float | None, float | None]:
-    """Extract (peak_flow_cms, total_volume_m3) for `node` from the SWMM .rpt.
+    """Extract (peak_flow_cms, total_volume_m3) for `node` from a SWMM .rpt.
 
-    SWMM emits a "Node Inflow Summary" table whose row for `node` contains
-    the maximum lateral + total inflow and the volumes. This is the same
-    table the existing `swmm_runner.parse_peak_from_rpt` reads.
+    Reads two complementary tables:
+
+    1. Node Inflow Summary — rows like
+           ``O1   OUTFALL   0.000   3.366   2  10:28   0   46.3   0.000``
+       cols: name type maxLat maxTotal days hr:min latVol totalVol err%
+
+    2. Outfall Loading Summary — rows like
+           ``O1   52.35   0.205   3.366   46.402``
+       cols: name flowFreq avgFlow maxFlow totalVolume(10^6 ltr)
+
+    Preference order: (a) Outfall Loading Summary for outfalls (max flow,
+    total volume), then (b) Node Inflow Summary as a fallback.
     """
     if not rpt_path.exists():
         return (None, None)
     text = rpt_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    in_section = False
     peak: float | None = None
     total: float | None = None
-    for line in text:
-        if "Node Inflow Summary" in line:
-            in_section = True
-            continue
-        if in_section:
-            if line.strip().startswith("***") or line.strip().startswith("[") or not line.strip():
-                if peak is not None:
-                    break
+
+    _terminator_titles = (
+        "Link Flow Summary",
+        "Flow Classification Summary",
+        "Conduit Surcharge Summary",
+        "Pumping Summary",
+        "Storage Volume Summary",
+        "Subcatchment Runoff Summary",
+        "Node Surcharge Summary",
+        "Node Flooding Summary",
+        "Continuity Error",
+        "Analysis begun",
+    )
+
+    def _is_terminator(stripped: str, current_title: str) -> bool:
+        for other in _terminator_titles:
+            if other == current_title:
                 continue
-            parts = line.split()
-            # The leading column is the node name; SWMM formats columns
-            # consistently as: name type maxLat maxTotal maxFlow time vol1 vol2
-            # We extract the maximum total inflow (col 4) and total volume
-            # (col 7 or 8, in 10^6 ltr).
-            if parts and parts[0] == node:
+            if other in stripped:
+                return True
+        return False
+
+    # Pass 1: Outfall Loading Summary -> data row contains name, freq, avg,
+    # max, total. We start scanning AFTER the title's trailing banner of
+    # asterisks, so the "***" terminator only fires when we hit the next
+    # section's banner.
+    in_outfall = False
+    rows_seen = 0
+    for line in text:
+        if "Outfall Loading Summary" in line:
+            in_outfall = True
+            rows_seen = 0
+            continue
+        if in_outfall:
+            stripped = line.strip()
+            if _is_terminator(stripped, "Outfall Loading Summary"):
+                break
+            if not stripped:
+                continue
+            if set(stripped) <= {"-", "*"}:
+                # Decorative separator: dashes or trailing title banner.
+                continue
+            if stripped.startswith("Outfall Node") or stripped.startswith("Flow") or stripped.startswith("Freq") or stripped.startswith("Pcnt"):
+                continue
+            parts = stripped.split()
+            if not parts:
+                continue
+            if parts[0] == "System":
+                break
+            if parts[0] == node and len(parts) >= 5:
                 try:
-                    max_total = float(parts[3])
-                    peak = max_total
+                    peak = float(parts[3])  # Max flow CMS
+                    total = float(parts[4]) * 1000.0  # 10^6 L -> m^3
+                    return (peak, total)
                 except (IndexError, ValueError):
                     pass
-                # SWMM "10^6 ltr" volume column — convert to m3
-                for tok in parts[5:]:
-                    try:
-                        total = float(tok) * 1000.0  # 10^6 L -> m^3
-                        break
-                    except ValueError:
-                        continue
+            rows_seen += 1
+
+    # Pass 2: Node Inflow Summary (catches non-outfall nodes)
+    in_inflow = False
+    for line in text:
+        if "Node Inflow Summary" in line:
+            in_inflow = True
+            continue
+        if in_inflow:
+            stripped = line.strip()
+            if _is_terminator(stripped, "Node Inflow Summary"):
+                break
+            if not stripped:
+                continue
+            if set(stripped) <= {"-", "*"}:
+                continue
+            if any(
+                stripped.startswith(p)
+                for p in ("Maximum", "Lateral", "Inflow", "Node ", "Time of")
+            ):
+                continue
+            parts = stripped.split()
+            if not parts:
+                continue
+            if parts[0] == node and len(parts) >= 8:
+                try:
+                    peak = float(parts[3])
+                except (IndexError, ValueError):
+                    pass
+                try:
+                    total = float(parts[7]) * 1000.0
+                except (IndexError, ValueError):
+                    pass
                 break
     return (peak, total)
 
