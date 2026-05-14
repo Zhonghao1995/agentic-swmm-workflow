@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 /** MCP server for swmm-calibration skill.
  * Tools:
- * - swmm_sensitivity_scan
+ * - swmm_sensitivity_scan       (legacy: evaluate explicit candidate sets)
  * - swmm_calibrate
  * - swmm_calibrate_search       (random / lhs / adaptive)
  * - swmm_calibrate_sceua        (SCE-UA, KGE primary, publication-grade)
  * - swmm_validate
- * - swmm_parameter_scout
+ *
+ * NOTE: Sensitivity-analysis tools (OAT / Morris / Sobol') now live on the
+ * swmm-uncertainty MCP server; see mcp/swmm-uncertainty/server.js and the
+ * `swmm_sensitivity_oat`, `swmm_sensitivity_morris`, `swmm_sensitivity_sobol`
+ * tools introduced in issue #49.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -21,7 +25,6 @@ import fs from "node:fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const calibratePy = path.resolve(__dirname, "../../skills/swmm-calibration/scripts/swmm_calibrate.py");
-const scoutPy = path.resolve(__dirname, "../../skills/swmm-calibration/scripts/parameter_scout.py");
 
 function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
@@ -80,21 +83,6 @@ const SceuaArgs = Common.extend({
   convergenceCsv: z.string().optional(),
 });
 const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
-const ScoutArgs = z.object({
-  baseInp: z.string(),
-  patchMap: z.string(),
-  baseParams: z.string(),
-  scanSpec: z.string(),
-  observed: z.string(),
-  runRoot: z.string(),
-  summaryJson: z.string(),
-  swmmNode: z.string().default("O1"),
-  swmmAttr: z.string().default("Total_inflow"),
-  aggregate: z.enum(["none", "daily_mean"]).default("none"),
-  timestampCol: z.string().optional(),
-  flowCol: z.string().optional(),
-  timeFormat: z.string().optional(),
-});
 
 function commonArgs(a) {
   const out = [
@@ -229,21 +217,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["baseInp", "patchMap", "bestParams", "observed", "runRoot", "summaryJson"]
       }
-    },
-    {
-      name: "swmm_parameter_scout",
-      description: "Rank one-parameter-at-a-time influence around a baseline and suggest direction plus a narrowed next range.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          baseInp: { type: "string" }, patchMap: { type: "string" }, baseParams: { type: "string" }, scanSpec: { type: "string" },
-          observed: { type: "string" }, runRoot: { type: "string" }, summaryJson: { type: "string" },
-          swmmNode: { type: "string", default: "O1" }, swmmAttr: { type: "string", default: "Total_inflow" },
-          aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
-          timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" }
-        },
-        required: ["baseInp", "patchMap", "baseParams", "scanSpec", "observed", "runRoot", "summaryJson"]
-      }
     }
   ]
 }));
@@ -307,27 +280,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
     const pyArgs = ["validate", ...commonArgs(a), "--best-params", a.bestParams, "--trial-name", a.trialName];
     const stdout = await runPy(calibratePy, pyArgs);
-    return { content: [{ type: "text", text: stdout }] };
-  }
-  if (name === "swmm_parameter_scout") {
-    const a = ScoutArgs.parse(args);
-    fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
-    const pyArgs = [
-      "--base-inp", a.baseInp,
-      "--patch-map", a.patchMap,
-      "--base-params", a.baseParams,
-      "--scan-spec", a.scanSpec,
-      "--observed", a.observed,
-      "--run-root", a.runRoot,
-      "--summary-json", a.summaryJson,
-      "--swmm-node", a.swmmNode,
-      "--swmm-attr", a.swmmAttr,
-      "--aggregate", a.aggregate,
-    ];
-    if (a.timestampCol) pyArgs.push("--timestamp-col", a.timestampCol);
-    if (a.flowCol) pyArgs.push("--flow-col", a.flowCol);
-    if (a.timeFormat) pyArgs.push("--time-format", a.timeFormat);
-    const stdout = await runPy(scoutPy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
   throw new Error(`Unknown tool: ${name}`);
