@@ -28,7 +28,19 @@ def run_rule_plan(*, goal: str, registry: AgentToolRegistry, executor: AgentExec
     return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text="")
 
 
-def run_openai_plan(*, goal: str, model: str, provider, registry: AgentToolRegistry, executor: AgentExecutor, max_steps: int, trace_path: Path, verbose: bool, emit) -> PlannerRun:
+def run_openai_plan(
+    *,
+    goal: str,
+    model: str,
+    provider,
+    registry: AgentToolRegistry,
+    executor: AgentExecutor,
+    max_steps: int,
+    trace_path: Path,
+    verbose: bool,
+    emit,
+    prior_session_state: dict | None = None,
+) -> PlannerRun:
     write_event(
         trace_path,
         {
@@ -41,7 +53,13 @@ def run_openai_plan(*, goal: str, model: str, provider, registry: AgentToolRegis
         },
     )
     planner = OpenAIPlanner(provider, registry, max_steps=max_steps, verbose=verbose, emit=emit)
-    outcome = planner.run(goal=goal, session_dir=executor.session_dir, trace_path=trace_path, executor=executor)
+    outcome = planner.run(
+        goal=goal,
+        session_dir=executor.session_dir,
+        trace_path=trace_path,
+        executor=executor,
+        prior_session_state=prior_session_state,
+    )
     state_path, context_path = write_session_state(
         session_dir=executor.session_dir,
         goal=goal,

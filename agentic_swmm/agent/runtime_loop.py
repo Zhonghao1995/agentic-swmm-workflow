@@ -88,6 +88,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
+        prior_state = _load_prior_session_state(active_run_dir)
         print()
         result = run_openai_planner(
             args,
@@ -96,6 +97,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             trace_path,
             AgentToolRegistry(),
             chat_session=is_chat_turn,
+            prior_session_state=prior_state,
         )
         if result == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir = session_dir
@@ -197,6 +199,7 @@ def run_openai_planner(
     registry: AgentToolRegistry,
     *,
     chat_session: bool = False,
+    prior_session_state: dict[str, Any] | None = None,
 ) -> int:
     config = load_config()
     provider_name = args.provider or config.get("provider.default", "openai")
@@ -226,6 +229,7 @@ def run_openai_planner(
         trace_path=trace_path,
         verbose=args.verbose,
         emit=_agent_say,
+        prior_session_state=prior_session_state,
     )
 
     if chat_session:
@@ -310,3 +314,24 @@ def _is_swmm_run_dir(path: Path) -> bool:
     if (path / "manifest.json").exists() and ((path / "05_runner").exists() or (path / "01_runner").exists()):
         return True
     return any(path.glob("**/*.out")) and any(path.glob("**/*.rpt"))
+
+
+def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | None:
+    """Load the previous turn's ``aiswmm_state.json`` if it exists.
+
+    The planner consumes this through ``should_introspect`` to skip
+    re-emitting ``list_skills`` / ``list_mcp_*`` calls that the prior
+    turn already made. Returns ``None`` when nothing is available so
+    the planner falls back to its full introspection on the first turn
+    of a fresh case.
+    """
+    if active_run_dir is None:
+        return None
+    state_file = active_run_dir / "aiswmm_state.json"
+    if not state_file.exists():
+        return None
+    try:
+        payload = json.loads(state_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None

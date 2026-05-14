@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
+from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -57,13 +58,34 @@ class OpenAIPlanner:
         self.verbose = verbose
         self.emit = emit or (lambda text: None)
 
-    def run(self, *, goal: str, session_dir: Path, trace_path: Path, executor: AgentExecutor) -> PlannerRun:
+    def run(
+        self,
+        *,
+        goal: str,
+        session_dir: Path,
+        trace_path: Path,
+        executor: AgentExecutor,
+        prior_session_state: dict[str, Any] | None = None,
+    ) -> PlannerRun:
+        """Run the OpenAI planner for one turn.
+
+        ``prior_session_state`` is the previous turn's ``aiswmm_state.json``
+        (or empty when there is none) and is consulted by
+        ``should_introspect`` to deduplicate ``list_skills`` /
+        ``list_mcp_servers`` / ``list_mcp_tools`` calls across turns.
+        """
         plan: list[ToolCall] = []
+        prior_state = prior_session_state if isinstance(prior_session_state, dict) else {}
         auto_router_enabled = os.environ.get("AISWMM_DISABLE_AUTO_WORKFLOW_ROUTER") != "1"
         if os.environ.get("AISWMM_OPENAI_MOCK_TOOL_CALLS") and os.environ.get("AISWMM_FORCE_AUTO_WORKFLOW_ROUTER") != "1":
             auto_router_enabled = False
         if _looks_like_swmm_request(goal) and auto_router_enabled:
-            self._consult_workflow_skills(goal=goal, plan=plan, executor=executor)
+            self._consult_workflow_skills(
+                goal=goal,
+                plan=plan,
+                executor=executor,
+                prior_session_state=prior_state,
+            )
             route_call = ToolCall("select_workflow_mode", _workflow_route_args(goal))
             plan.append(route_call)
             self.emit(f"[{len(plan)}] select_workflow_mode")
@@ -158,12 +180,30 @@ class OpenAIPlanner:
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
 
-    def _consult_workflow_skills(self, *, goal: str, plan: list[ToolCall], executor: AgentExecutor) -> None:
+    def _consult_workflow_skills(
+        self,
+        *,
+        goal: str,
+        plan: list[ToolCall],
+        executor: AgentExecutor,
+        prior_session_state: dict[str, Any] | None = None,
+    ) -> None:
+        # PRD_runtime: skip introspection calls that the prior session
+        # already made. Skipping ``list_skills`` automatically skips
+        # the per-skill ``read_skill`` follow-ups (they only exist to
+        # populate planner context that the prior turn already gathered).
+        skip_skills, skip_mcp = should_introspect(prior_session_state or {}, goal)
         skill_names = _select_relevant_skills(goal)
-        calls = [ToolCall("list_skills", {})]
-        calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
-        calls.append(ToolCall("list_mcp_servers", {}))
-        calls.extend(ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 3}) for name in _select_relevant_mcp_servers(skill_names))
+        calls: list[ToolCall] = []
+        if not skip_skills:
+            calls.append(ToolCall("list_skills", {}))
+            calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
+        if not skip_mcp:
+            calls.append(ToolCall("list_mcp_servers", {}))
+            calls.extend(
+                ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 3})
+                for name in _select_relevant_mcp_servers(skill_names)
+            )
         for call in calls:
             plan.append(call)
             self.emit(f"[{len(plan)}] {call.name}")
