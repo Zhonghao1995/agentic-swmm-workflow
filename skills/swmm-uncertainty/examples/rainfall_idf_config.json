@@ -1,0 +1,16 @@
+{
+  "method": "idf",
+  "idf": {
+    "type": "chicago",
+    "duration_minutes": 360,
+    "return_period_years": 100,
+    "interval_minutes": 5,
+    "chicago_peak_position": 0.4,
+    "params": {
+      "a": {"value": 30.0, "ci": [27.0, 33.0]},
+      "b": {"value": 0.5, "ci": [0.4, 0.6]},
+      "c": {"value": 0.7, "ci": [0.65, 0.75]}
+    }
+  },
+  "n_realisations": 200
+}

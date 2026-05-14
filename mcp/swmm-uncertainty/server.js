@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /** MCP server for swmm-uncertainty skill.
  *
- * Tools (slice 4, issue #49):
+ * Tools:
  * - swmm_sensitivity_oat     One-at-a-time sensitivity (legacy parameter_scout).
  * - swmm_sensitivity_morris  Morris elementary-effects (SALib).
  * - swmm_sensitivity_sobol   Sobol' first-order + total-effect indices (SALib).
+ * - swmm_rainfall_ensemble   Rainfall ensemble — perturbation of an observed
+ *                            series, or IDF-curve design storms with sampled
+ *                            (a, b, c) parameters.
  *
- * All three are thin wrappers around
- * `skills/swmm-uncertainty/scripts/sensitivity.py --method {oat,morris,sobol}`.
+ * Sensitivity tools wrap `skills/swmm-uncertainty/scripts/sensitivity.py`.
+ * The rainfall ensemble wraps `skills/swmm-uncertainty/scripts/rainfall_ensemble.py`.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -24,6 +27,10 @@ const __dirname = path.dirname(__filename);
 const sensitivityPy = path.resolve(
   __dirname,
   "../../skills/swmm-uncertainty/scripts/sensitivity.py",
+);
+const rainfallEnsemblePy = path.resolve(
+  __dirname,
+  "../../skills/swmm-uncertainty/scripts/rainfall_ensemble.py",
 );
 
 function runPy(scriptPath, args) {
@@ -71,6 +78,17 @@ const MorrisArgs = CommonArgs.extend({
 const SobolArgs = CommonArgs.extend({
   parameterSpace: z.string(),
   sobolN: z.number().int().positive().default(256),
+});
+
+const RainfallEnsembleArgs = z.object({
+  method: z.enum(["perturbation", "idf"]),
+  config: z.string(),
+  runRoot: z.string(),
+  baseInp: z.string().optional(),
+  seriesName: z.string().default("TS_RAIN"),
+  swmmNode: z.string().default("O1"),
+  seed: z.number().int().default(42),
+  dryRun: z.boolean().default(false),
 });
 
 function commonArgs(a) {
@@ -220,6 +238,46 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         ],
       },
     },
+    {
+      name: "swmm_rainfall_ensemble",
+      description:
+        "Generate a rainfall ensemble. Method 'perturbation' samples N noisy copies of an observed rainfall timeseries (gaussian_iid, multiplicative, autocorrelated, or intensity_scaling). Method 'idf' synthesises N design hyetographs (Chicago, Huff, or SCS Type II) by sampling IDF (a, b, c) parameters from their confidence intervals. Each realisation is written as a CSV; if a base INP is supplied, every realisation is patched and run through swmm5 and the summary aggregates peak flow + total volume.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          method: {
+            type: "string",
+            enum: ["perturbation", "idf"],
+            description: "Ensemble generation method.",
+          },
+          config: {
+            type: "string",
+            description: "Path to a JSON config (see skills/swmm-uncertainty/examples/rainfall_*_config.json).",
+          },
+          runRoot: {
+            type: "string",
+            description: "Output root. Summary lands at <runRoot>/09_audit/rainfall_ensemble_summary.json.",
+          },
+          baseInp: {
+            type: "string",
+            description: "If provided, each realisation is patched into a copy of this base INP and run through swmm5.",
+          },
+          seriesName: {
+            type: "string",
+            default: "TS_RAIN",
+            description: "Name of the [TIMESERIES] block to replace.",
+          },
+          swmmNode: { type: "string", default: "O1" },
+          seed: { type: "integer", default: 42 },
+          dryRun: {
+            type: "boolean",
+            default: false,
+            description: "Generate realisations + CSVs but skip swmm5.",
+          },
+        },
+        required: ["method", "config", "runRoot"],
+      },
+    },
   ],
 }));
 
@@ -262,6 +320,22 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       "--sobol-n", String(a.sobolN),
     ];
     const stdout = await runPy(sensitivityPy, pyArgs);
+    return { content: [{ type: "text", text: stdout }] };
+  }
+  if (name === "swmm_rainfall_ensemble") {
+    const a = RainfallEnsembleArgs.parse(args);
+    fs.mkdirSync(a.runRoot, { recursive: true });
+    const pyArgs = [
+      "--method", a.method,
+      "--config", a.config,
+      "--run-root", a.runRoot,
+      "--series-name", a.seriesName,
+      "--swmm-node", a.swmmNode,
+      "--seed", String(a.seed),
+    ];
+    if (a.baseInp) pyArgs.push("--base-inp", a.baseInp);
+    if (a.dryRun) pyArgs.push("--dry-run");
+    const stdout = await runPy(rainfallEnsemblePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
   throw new Error(`Unknown tool: ${name}`);
