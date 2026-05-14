@@ -47,6 +47,22 @@ This synthesis is derived from historical experiment audit artifacts. It is proj
 
 ## continuity_parse_missing
 
+<!-- aiswmm-metadata
+metadata:
+  first_seen_utc: 2026-05-14T00:00:00Z
+  last_seen_utc: 2026-05-14T00:00:00Z
+  evidence_count: 5
+  evidence_runs:
+    - real-todcreek-minimal
+    - runner-check
+    - runner-fixed
+    - tecnopolo-lid-placement-smoke
+    - tecnopolo-mc-uncertainty-smoke
+  status: active
+  confidence_score: 5.0
+  half_life_days: 90
+/aiswmm-metadata -->
+
 Observed in 5 run(s): `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`.
 
 The continuity error line is absent from the RPT file. Most commonly this is the side-effect of a `partial_run` — SWMM exited before writing the continuity tables. Check the runner manifest and stderr for early failure, and re-run with verbose logging if needed.
@@ -54,6 +70,19 @@ The continuity error line is absent from the RPT file. Most commonly this is the
 Recall this section via `recall_memory("continuity_parse_missing")` or by searching with `recall_memory_search`.
 
 ## missing_inp
+
+<!-- aiswmm-metadata
+metadata:
+  first_seen_utc: 2026-05-14T00:00:00Z
+  last_seen_utc: 2026-05-14T00:00:00Z
+  evidence_count: 2
+  evidence_runs:
+    - runner-check
+    - runner-fixed
+  status: active
+  confidence_score: 2.0
+  half_life_days: 90
+/aiswmm-metadata -->
 
 Observed in 2 run(s): `runner-check`, `runner-fixed`.
 
@@ -63,6 +92,22 @@ Recall this section via `recall_memory("missing_inp")` or by searching with `rec
 
 ## partial_run
 
+<!-- aiswmm-metadata
+metadata:
+  first_seen_utc: 2026-05-14T00:00:00Z
+  last_seen_utc: 2026-05-14T00:00:00Z
+  evidence_count: 5
+  evidence_runs:
+    - real-todcreek-minimal
+    - runner-check
+    - runner-fixed
+    - tecnopolo-lid-placement-smoke
+    - tecnopolo-mc-uncertainty-smoke
+  status: active
+  confidence_score: 5.0
+  half_life_days: 90
+/aiswmm-metadata -->
+
 Observed in 5 run(s): `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`.
 
 SWMM exited before writing all expected artifacts (RPT, OUT, or both). Verify that the runner captured stderr and stdout, and that the runner manifest records the exit code. A partial run is a runnable failure mode, not a calibration result.
@@ -71,6 +116,19 @@ Recall this section via `recall_memory("partial_run")` or by searching with `rec
 
 ## peak_flow_parse_missing
 
+<!-- aiswmm-metadata
+metadata:
+  first_seen_utc: 2026-05-14T00:00:00Z
+  last_seen_utc: 2026-05-14T00:00:00Z
+  evidence_count: 2
+  evidence_runs:
+    - runner-check
+    - runner-fixed
+  status: active
+  confidence_score: 2.0
+  half_life_days: 90
+/aiswmm-metadata -->
+
 Observed in 2 run(s): `runner-check`, `runner-fixed`.
 
 The peak flow value could not be located in the parsed RPT output. Most common cause: the `--node` argument does not resolve to a known `[OUTFALLS]` or `[JUNCTIONS]` entry, so the parser falls through. Always verify the node argument before running. Related skills: `swmm-runner`, `swmm-experiment-audit`.
@@ -78,6 +136,17 @@ The peak flow value could not be located in the parsed RPT output. Most common c
 Recall this section via `recall_memory("peak_flow_parse_missing")` or by searching with `recall_memory_search`.
 
 ## comparison_mismatch
+
+<!-- aiswmm-metadata
+metadata:
+  first_seen_utc: 2026-05-14T00:00:00Z
+  last_seen_utc: 2026-05-14T00:00:00Z
+  evidence_count: 1
+  evidence_runs: []
+  status: active
+  confidence_score: 1.0
+  half_life_days: 90
+/aiswmm-metadata -->
 
 Observed in 0 run(s) so far. Placeholder section seeded by Memory PRD M1 so that `recall_memory("comparison_mismatch")` returns a Markdown lesson even before the first audited comparison miss surfaces. Update this section once a real comparison-mismatch run lands in `runs/`.
 
