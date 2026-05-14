@@ -1,6 +1,6 @@
 ---
 name: swmm-uncertainty
-description: Parameter and forcing uncertainty propagation and sensitivity analysis for EPA SWMM. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices, or (4) generate a rainfall ensemble (observed-series perturbation or IDF-curve design storms) and aggregate the resulting hydrograph envelope.
+description: Parameter and forcing uncertainty propagation and sensitivity analysis for EPA SWMM. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices, (4) generate a rainfall ensemble (observed-series perturbation or IDF-curve design storms) and aggregate the resulting hydrograph envelope, or (5) build the integrated paper-reviewer-facing uncertainty source decomposition (`uncertainty_source_summary.md` + `uncertainty_source_decomposition.json`) over the raw outputs of the prior steps.
 ---
 
 # SWMM Uncertainty
@@ -66,6 +66,13 @@ Calibration requires observed data and performance metrics such as NSE, RMSE, or
     - `--method idf`: synthesised hyetographs from IDF parameters `(a, b, c)` with confidence intervals. Storm types: `chicago` (Keifer-Chu), `huff` (4 quartiles), `scs_type_ii` (canonical 24-hr Type II)
   - if `--base-inp` is supplied, every realisation is patched into the base INP's `[TIMESERIES]` block and run through swmm5; peak flow + total outfall volume at `--swmm-node` are aggregated into `swmm_ensemble_stats`
   - writes per-realisation CSVs under `<run-root>/09_audit/rainfall_realisations/` and a v1 summary at `<run-root>/09_audit/rainfall_ensemble_summary.json`
+- `scripts/source_decomposition.py` — **integration deliverable (issue #55)**
+  - pure-function over `<run_dir>/09_audit/`: reads whichever raw uncertainty outputs are present (Sobol' / Morris from `sensitivity_indices.json`, DREAM-ZS from `posterior_samples.csv` + `chain_convergence.json`, SCE-UA from `candidate_calibration.json`, rainfall ensemble from `rainfall_ensemble_summary.json`, MC propagation from `uncertainty_summary.json`)
+  - emits `uncertainty_source_summary.md` (paper-reviewer-facing) and `uncertainty_source_decomposition.json` (schema_version 1.0)
+  - the markdown body contains the five required sections: **Output uncertainty envelope**, **Parameter contribution (Sobol' total-effect, sorted)**, **Input contribution (rainfall ensemble vs parameter)**, **Structural assumptions (not quantified)**, **Cross-references**
+  - top of the markdown carries an **Evidence Boundary** code block that lists every potential method as ✓ ran or ✗ not run — partial runs are still reported, just with the absent methods flagged so no method is silently dropped
+  - regenerate on demand with `python3 -m agentic_swmm.cli uncertainty source <run_dir>`; exits 0 on a complete run, 0 with a stderr warning on a partial run, and 1 when no uncertainty raw outputs exist at all
+  - automatically re-invoked by `skills/swmm-experiment-audit/scripts/audit_run.py` whenever any of the raw artefacts is present in `09_audit/`, so the integrated report always lives next to the audit note
 
 ## Sensitivity-analysis sub-modes
 
@@ -293,6 +300,44 @@ Use `--dry-run` to skip the SWMM execution layer and write only the realisation 
 `gaussian_iid` adds zero-mean Gaussian noise (mean residual ≈ 0). `multiplicative` preserves the shape — Pearson correlation between observed and any realisation stays near 1. `autocorrelated` produces noise with lag-1 autocorrelation ≈ `ar1_coefficient`. `intensity_scaling` scales noise variance with intensity, so peaks fluctuate more than troughs.
 
 When `preserve_total_volume=true`, every realisation is rescaled so its integrated rainfall depth matches the observed total. When `false`, totals vary across the ensemble — that variance is itself part of the propagated uncertainty.
+
+### Uncertainty source decomposition — integration deliverable
+
+After at least one of the prior uncertainty steps has run (sensitivity, DREAM-ZS posterior, SCE-UA calibration, rainfall ensemble, or MC propagation) the integration layer collects the raw outputs and writes a single paper-reviewer-facing report:
+
+```bash
+python3 -m agentic_swmm.cli uncertainty source runs/<case>
+# writes:
+#   runs/<case>/09_audit/uncertainty_source_summary.md
+#   runs/<case>/09_audit/uncertainty_source_decomposition.json   (schema_version 1.0)
+```
+
+The markdown body has five fixed sections per the PRD template:
+
+1. **Output uncertainty envelope** — MC propagation peak-flow envelope + rainfall-driven peak-flow envelope when both exist.
+2. **Parameter contribution (Sobol' total-effect, sorted)** — Sobol' S_T_i ranking; falls back to Morris mu_star with an explicit "screening only" note when Morris ran instead.
+3. **Input contribution (rainfall ensemble vs parameter)** — side-by-side rainfall stats and top-3 parameter contributions plus a textual comparison.
+4. **Structural assumptions (not quantified)** — model-structural, boundary-condition, observation-noise.
+5. **Cross-references** — relative paths to every raw artefact + posterior plots.
+
+The top of the markdown carries an **Evidence Boundary** code block that lists every potential method as `✓` or `✗`:
+
+```
+Evidence boundary:
+  Sobol' SA       : ✓ ran (sensitivity_indices.json)
+  Morris SA       : ✗ not run
+  DREAM-ZS        : ✓ ran (posterior_samples.csv)
+  SCE-UA          : ✓ ran (candidate_calibration.json)
+  Rainfall ensemble: ✓ method A only (method B not run)
+  MC propagation  : ✓ ran (uncertainty_summary.json)
+```
+
+The audit pipeline (`skills/swmm-experiment-audit/scripts/audit_run.py`) auto-runs the decomposition at audit-end whenever any uncertainty raw artefact is present in `09_audit/`, so the integrated report stays in sync with the audit note.
+
+Exit codes for the CLI:
+- complete run (every method ran) → `0`
+- partial run (some methods absent) → `0` with a `warning:` line on stderr naming the absent methods
+- no uncertainty raw outputs anywhere → `1`
 
 ## Outputs
 
