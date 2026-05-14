@@ -11,6 +11,15 @@ from agentic_swmm.utils.paths import require_dir, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
 
+# PRD-Z partial integration: after the audit subprocess succeeds, the
+# command runs the HITL threshold evaluator against the run's QA
+# summary and writes 09_audit/threshold_hits.json if any hits are
+# returned. Full ``request_expert_review`` triggering remains a
+# follow-up; this PRD just makes the data available.
+THRESHOLD_HITS_FILENAME = "threshold_hits.json"
+_QA_SUMMARY_REL = Path("06_qa") / "qa_summary.json"
+
+
 REAUDIT_BACKED_UP_FILES = (
     ("experiment_note.md", "md"),
     ("experiment_provenance.json", "json"),
@@ -78,6 +87,62 @@ def _write_moc(run_dir: Path) -> Path | None:
     return index_path
 
 
+def _write_threshold_hits(run_dir: Path) -> Path | None:
+    """Run the HITL threshold evaluator against the run's QA summary.
+
+    Returns the path to ``09_audit/threshold_hits.json`` when one or
+    more hits were found, ``None`` otherwise. The function is
+    deliberately quiet: missing QA artefacts, malformed JSON, or a
+    missing thresholds doc all short-circuit to ``None`` — the audit
+    pipeline must never crash because the HITL data was incomplete.
+    """
+    from agentic_swmm.hitl.threshold_evaluator import (
+        evaluate,
+        load_thresholds_from_md,
+    )
+    from agentic_swmm.utils.paths import repo_root
+
+    qa_path = run_dir / _QA_SUMMARY_REL
+    if not qa_path.is_file():
+        return None
+    try:
+        qa = json.loads(qa_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(qa, dict):
+        return None
+    thresholds_doc = repo_root() / "docs" / "hitl-thresholds.md"
+    try:
+        thresholds = load_thresholds_from_md(thresholds_doc)
+    except (OSError, ValueError, FileNotFoundError):
+        return None
+    hits = evaluate(qa, thresholds)
+    if not hits:
+        return None
+    audit_dir = run_dir / "09_audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    out_path = audit_dir / THRESHOLD_HITS_FILENAME
+    payload = {
+        "generated_at_utc": _utc_stamp(),
+        "qa_summary": str(_QA_SUMMARY_REL),
+        "thresholds_doc": "docs/hitl-thresholds.md",
+        "hits": [
+            {
+                "pattern": hit.pattern,
+                "severity": hit.severity,
+                "measured_value": hit.measured_value,
+                "threshold_value": hit.threshold_value,
+                "evidence_ref": hit.evidence_ref,
+                "message": hit.message,
+                "rationale_is_placeholder": hit.rationale_is_placeholder,
+            }
+            for hit in hits
+        ],
+    }
+    out_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return out_path
+
+
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("audit", help="Generate audit provenance, comparison, and note artifacts.")
     parser.add_argument("--run-dir", required=True, type=Path, help="Run directory to audit.")
@@ -133,7 +198,12 @@ def main(args: argparse.Namespace) -> int:
 
     moc_path: Path | None = None
     memory_hook: dict | None = None
+    threshold_hits_path: Path | None = None
     if result.return_code == 0:
+        # PRD-Z partial integration: evaluate HITL thresholds and write
+        # 09_audit/threshold_hits.json before the memory hook fires, so
+        # the file is on disk when downstream tools sweep the run.
+        threshold_hits_path = _write_threshold_hits(run_dir)
         moc_path = _write_moc(run_dir)
         # M2 audit -> memory auto-trigger. Runs after the audit subprocess
         # succeeded and after the runs/INDEX.md MOC has been regenerated.
@@ -155,5 +225,8 @@ def main(args: argparse.Namespace) -> int:
         payload["runs_index"] = str(moc_path) if moc_path else None
         if memory_hook is not None:
             payload["memory_hook"] = memory_hook
+        payload["threshold_hits"] = (
+            str(threshold_hits_path) if threshold_hits_path else None
+        )
         print(json.dumps(payload, indent=2))
     return result.return_code
