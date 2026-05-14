@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, Callable
@@ -17,6 +18,7 @@ from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
+from agentic_swmm.audit.llm_calls import extract_usage_tokens, record_llm_call
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
@@ -192,17 +194,37 @@ class OpenAIPlanner:
             # window in the loop (5-30s). Wrap it with a Thinking
             # spinner so the user sees motion. The spinner clears on
             # response (whether text or tool_calls) via ``finish()``.
+            # CONCURRENCY-OWNER: PRD-LLM-TRACE
+            # ``record_llm_call`` is the single observer for LLM API
+            # invocations across the agent runtime. We measure wall
+            # clock around the provider call, then funnel every
+            # response through the observer so ``09_audit/`` gets one
+            # JSONL line + one prompt dump per call.
+            system_prompt_text = openai_planner_prompt(self.system_prompt_extras)
             with Spinner(
                 "Thinking…",
                 stream=self._progress_stream,
                 state=SpinnerState.THINKING,
             ):
+                _llm_call_start = time.monotonic()
                 response = self.provider.respond_with_tools(
-                    system_prompt=openai_planner_prompt(self.system_prompt_extras),
+                    system_prompt=system_prompt_text,
                     input_items=input_items,
                     tools=self.registry.schemas(),
                     previous_response_id=previous_response_id,
                 )
+                _llm_call_duration_ms = int((time.monotonic() - _llm_call_start) * 1000)
+            _llm_tokens_in, _llm_tokens_out = extract_usage_tokens(response)
+            record_llm_call(
+                run_dir=session_dir,
+                caller="planner",
+                model_role="decide_next_tool",
+                prompt=(system_prompt_text, input_items),
+                response=response,
+                tokens_in=_llm_tokens_in,
+                tokens_out=_llm_tokens_out,
+                duration_ms=_llm_call_duration_ms,
+            )
             previous_response_id = response.response_id
             write_event(
                 trace_path,
