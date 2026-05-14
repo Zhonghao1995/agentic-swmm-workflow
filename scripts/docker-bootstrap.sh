@@ -2,7 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-IMAGE="${AGENTIC_SWMM_IMAGE:-ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.1}"
+IMAGE="${AGENTIC_SWMM_IMAGE:-ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.3.0}"
 COMMAND="${1:-acceptance}"
 RUNS_DIR="${AGENTIC_SWMM_RUNS_DIR:-$PWD/agentic-swmm-runs}"
 

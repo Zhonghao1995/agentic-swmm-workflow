@@ -4,44 +4,19 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
-- No unreleased changes yet.
+## v0.5.0 - QGIS-backed entropy subcatchment preprocessing
 
-## v0.6.1 - aiswmm runtime hardening and demo plot workflow
-
-- Unified the interactive runtime identity around `aiswmm`, including the terminal prefix and executor banner shown during local agent runs.
-- Flattened interactive run outputs into clearer date-and-case folders such as `runs/YYYY-MM-DD/HHMMSS_tecnopolo_run`, while preserving audited stage folders inside each run.
-- Improved prepared-demo continuity: users can run the Tecnopolo INP, inspect available rainfall/node/output-variable plot choices, and continue plotting from the same active run directory.
-- Fixed plot-selection follow-ups such as `Total_inflow J2 MACAO_94_23` so they route to the previous run instead of asking again for an INP file.
-- Added MCP schema caching under `~/.aiswmm/mcp_schema_cache` and timeout protection so slow MCP discovery does not block the audited CLI path.
-- Fixed recursive search glob handling so planner-generated patterns such as `**.inp` are normalized to valid recursive searches instead of crashing the runtime.
-- Added regression coverage for MCP schema cache hits/refreshes, recursive glob normalization, plot continuation, and workflow-state routing.
-
-## v0.6.0 - Interactive aiswmm runtime and auditable Tecnopolo baseline
-
-- Made `aiswmm` a natural-language interactive agent runtime by default, with constrained local tools exposed for doctor checks, skill inspection, SWMM execution, plotting, auditing, and evidence reads.
-- Verified the one-line local runtime path with the Tecnopolo prepared INP baseline: the agent can run `tecnopolo_r1_199401.inp`, audit the result, and produce traceable run, QA, plot, provenance, comparison, and final-report artifacts.
-- Documented the post-install user flow, including the first prompts to type after launching `aiswmm`, expected evidence directories, and baseline screenshots from the working runtime.
-- Updated release packaging metadata to `0.6.0`, including Python package metadata, citation metadata, Docker workflow defaults, and release-asset workflow defaults.
-- Kept GitHub Release assets as the download-count tracking source without showing a download badge in the README.
-- Added an explicit API-key safety note: configure keys during setup or through environment variables, do not paste keys into the agent conversation, and revoke exposed keys immediately.
-- Known limitations: the current interactive planner path uses OpenAI API-key CLI calls; prompt routing and the modeling-memory loop still need further hardening.
-
-## v0.5.4 - PyPI CLI packaging and coverage reporting
-
-- Published the `aiswmm` Python package CLI entry point for `pip install aiswmm` workflows.
-- Added GitHub Release distribution assets so release downloads can be counted through GitHub asset metadata without displaying download totals in the README.
-- Added Codecov coverage reporting for lightweight CI while keeping benchmark and smoke-test evidence as the stronger validation layer for data-dependent skills and MCP workflows.
-
-## v0.5.0 - CLI, Docker, Windows runtime, and structured workflow updates
-
-- Added a stable `agentic-swmm` CLI layer for acceptance demos, prepared-input runs, audit, plotting, memory inspection, and environment checks.
-- Added MCP runtime integration helpers, skill install helpers, generated MCP config support, and smoke testing for modular skill servers.
-- Hardened Windows setup by using the active Python executable, improving local SWMM solver installation, and clarifying Windows install guidance.
-- Improved Docker packaging defaults for the `v0.5.0` release, including updated image tags and the renamed `agentic-ai/memory/` trigger path.
-- Added lightweight CI coverage for the CLI, audit workflow, Obsidian vault initialization, and SWMM runner peak parsing.
-- Separated rainfall and flow plot panels for clearer runoff diagnostics and refreshed README figures for partitioning, uncertainty, and validation examples.
+- Added an auditable QGIS/GRASS-backed raw GIS preprocessing front end for entropy-guided SWMM subcatchment discretization.
+- Added the generic `qgis_raw_to_entropy_partition` workflow so Tod Creek is a regression case instead of a hard-coded runner.
+- Added QGIS layer normalization with CRS harmonization and boundary clipping for DEM, boundary, land-use, and soil layers.
+- Added MCP-facing QGIS operations for `grass:r.watershed`, `native:reprojectlayer`, `native:clip`, `gdal:warpreproject`, and `gdal:cliprasterbymasklayer`.
+- Added flow-connected WJE/NWJE/WFJS subcatchment partitioning with threshold-sensitivity figures and audit manifests.
+- Added the cell-level entropy/fuzzy-similarity heterogeneity screening map as a QGIS preprocessing diagnostic.
 - Renamed the preload memory package from `openclaw/memory/` to `agentic-ai/memory/` to reflect Codex, OpenClaw, Hermes, and other Agentic AI runtimes.
-- Updated `CITATION.cff` to match the latest `v0.5.0` repository release.
+- Updated `CITATION.cff` to match the `v0.5.0` repository release.
+
+## v0.4.2 - Adapter benchmark and validation refresh
+
 - Added an optional INP-derived raw adapter benchmark that fetches a fixed public `generate_swmm_inp` fixture, reconstructs raw-like inputs, and documents its evidence boundary.
 - Refreshed validation and modeling-memory documentation after adding the adapter benchmark.
 
@@ -63,11 +38,11 @@ All notable changes to Agentic SWMM Workflow are documented here.
 - Added controlled skill-refinement proposals for recurring assumptions, QA issues, missing evidence, failure patterns, and run-to-run differences.
 - Added public example modeling-memory outputs under `memory/modeling-memory/`.
 - Documented the memory loop as a core part of Agentic SWMM: each audited run can update project memory, while accepted skill changes still require human review and benchmark verification.
-- Updated public Agentic AI memory to include the optional modeling-memory step after experiment audit.
+- Updated public OpenClaw memory to include the optional modeling-memory step after experiment audit.
 
 ## v0.3.0 - Public agent memory and raw GeoPackage workflow
 
-- Added the public OpenClaw/Hermes memory package under `openclaw/memory/`, later renamed to `agentic-ai/memory/`.
+- Added the public Agentic AI memory package under `agentic-ai/memory/`.
 - Added ordered agent workflow memory for guiding users from input inventory through build, run, QA, audit, and readiness reporting.
 - Added the TUFLOW SWMM Module 03 Raw GeoPackage-to-INP benchmark.
 - Added a README figure showing generated subcatchments, conduits, junctions, and outfall from the raw GeoPackage benchmark.

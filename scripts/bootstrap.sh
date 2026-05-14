@@ -56,4 +56,4 @@ else
   git clone "$REPO_URL" "$TARGET_DIR"
 fi
 
-exec bash "$TARGET_DIR/scripts/install.sh" --yes "$@"
+exec bash "$TARGET_DIR/scripts/install.sh" --yes

@@ -1,18 +1,18 @@
 # OpenClaw Execution Path
 
-This document defines the intended top-level execution path for `swmm-end-to-end` when used by OpenClaw, Hermes, or another MCP-centered external agent runtime.
+This document defines the intended top-level execution path for `swmm-end-to-end` when used by Codex, OpenClaw, Hermes, or another MCP-centered external agent runtime.
 
-It is not a new MCP server. It is the concrete tool-call contract that OpenClaw should follow when using the existing module MCP servers.
+It is not a new MCP server. It is the concrete tool-call contract that an agent runtime should follow when using the existing module MCP servers.
 
 For Codex as a local development and audit runtime, see `docs/codex-runtime.md`. Codex can follow the same skill contract locally, but it can also edit code, run scripts, inspect generated files, update Obsidian, and verify diffs inside the checkout.
 
 ## Goal
 
-Use one top-level OpenClaw skill to call the existing SWMM module tools in a stable order with explicit artifact handoff.
+Use one top-level Agentic SWMM skill to call the existing SWMM module tools in a stable order with explicit artifact handoff.
 
 ## Top-level principle
 
-- Keep reasoning in OpenClaw.
+- Keep reasoning in the agent runtime.
 - Keep calculations in Python scripts behind MCP tools.
 - Keep artifacts in a run-local directory.
 - Stop on missing critical inputs instead of fabricating them.
@@ -20,22 +20,22 @@ Use one top-level OpenClaw skill to call the existing SWMM module tools in a sta
 
 ## Memory layer
 
-Before loading the `swmm-end-to-end` skill, Codex, OpenClaw, Hermes, or another compatible Agentic AI runtime should load the project memory files in:
+Before loading the `swmm-end-to-end` skill, Codex, OpenClaw, or Hermes should load the project memory files in:
 
 ```text
-agent/memory/
+agentic-ai/memory/
 ```
 
 Recommended order:
 
-1. `agent/memory/identification_memory.md`
-2. `agent/memory/soul.md`
-3. `agent/memory/operational_memory.md`
-4. `agent/memory/modeling_workflow_memory.md`
-5. `agent/memory/evidence_memory.md`
-6. `agent/memory/user_bridge_memory.md`
+1. `agentic-ai/memory/identification_memory.md`
+2. `agentic-ai/memory/soul.md`
+3. `agentic-ai/memory/operational_memory.md`
+4. `agentic-ai/memory/modeling_workflow_memory.md`
+5. `agentic-ai/memory/evidence_memory.md`
+6. `agentic-ai/memory/user_bridge_memory.md`
 
-This memory layer gives a public Agentic AI user stable project identity, modelling posture, evidence boundaries, and first-run behavior before the agent starts calling SWMM module tools. It is not a new runtime, does not depend on the maintainer's private local workspace, and should not bypass this execution path.
+This memory layer gives a public Agentic AI runtime user stable project identity, modelling posture, evidence boundaries, and first-run behavior before the agent starts calling SWMM module tools. It is not a new runtime, does not depend on the maintainer's private local workspace, and should not bypass this execution path.
 
 ## Full modular path
 
@@ -54,14 +54,35 @@ Recommended run directory:
 
 Tool:
 - `swmm-gis-mcp.gis_preprocess_subcatchments`
+- `swmm-gis-mcp.qgis_normalize_layers` when DEM / land use / soil / boundary layers need CRS harmonization and boundary clipping before hydrology
+- `swmm-gis-mcp.qgis_export_swmm_intermediates` when starting from QGIS-prepared raw GIS layers
+- `swmm-gis-mcp.qgis_raw_to_entropy_partition` when starting from raw DEM / land use / soil / boundary layers and using QGIS/GRASS hydrology plus paper-rule entropy partitioning
+- `swmm-gis-mcp.qgis_todcreek_raw_to_entropy_partition` as a Tod Creek case-study alias for regression and reproducibility checks
 
 Inputs:
 - subcatchment polygon dataset
 - `network.json`
+- optional QGIS/raw GIS sources: DEM, land use layer, soil layer, outlet, rainfall, drainage assets
 
 Outputs:
 - `runs/<case>/01_gis/subcatchments.csv`
 - `runs/<case>/01_gis/subcatchments.json`
+- QGIS bridge outputs, when used:
+  - `runs/<case>/00_raw/qgis_layers_manifest.json`
+  - `runs/<case>/00_raw/qgis_crs_report.json`
+  - `runs/<case>/01_gis/threshold_sweep/{acc,drain,basin,stream}_100.tif`
+  - `runs/<case>/02_params/paper_entropy_partition/`
+  - `runs/<case>/02_params/threshold_sensitivity/`
+  - `runs/<case>/07_figures/paper_rule_decision_spaces_5panel.png`
+  - `runs/<case>/07_figures/paper_rule_watershed_partitions_5panel.png`
+  - `runs/<case>/audit/qgis_entropy_run_manifest.json`
+  - `runs/<case>/02_params/landuse.csv`
+  - `runs/<case>/02_params/soil.csv`
+  - `runs/<case>/04_network/network_qa.json`
+
+Boundary:
+- Prepared-overlay mode expects QGIS to provide delineated/overlayed subcatchment polygons and exports SWMM-ready intermediates.
+- Entropy-partition mode calls QGIS Processing / GRASS hydrology, computes paper-consistent WJE/NWJE/WFJS split-lump diagnostics, and writes audit artifacts for subcatchment spatial-unit selection. This is still GIS preprocessing evidence, not calibrated SWMM hydrologic validation.
 
 ### Stage 2: Params
 
@@ -159,10 +180,14 @@ Calibration preconditions:
 - observed flow parses
 - user explicitly requested calibration or the workflow includes it
 
-### Stage 9b: Optional fuzzy uncertainty propagation
+### Stage 9b: Optional uncertainty propagation
 
 Current implementation:
 - `skills/swmm-uncertainty/scripts/uncertainty_propagate.py`
+- `skills/swmm-uncertainty/scripts/probabilistic_sampling.py`
+- `skills/swmm-uncertainty/scripts/parameter_recommender.py`
+- `skills/swmm-uncertainty/scripts/monte_carlo_propagate.py`
+- `skills/swmm-uncertainty/scripts/entropy_metrics.py`
 
 Future MCP wrapper:
 - `swmm-uncertainty-mcp.swmm_uncertainty_run`
@@ -171,6 +196,7 @@ Inputs:
 - base SWMM INP
 - calibration-style `patch_map.json`
 - user-defined `fuzzy_space.json`
+- optional `monte_carlo_space.json`
 - `uncertainty_config.json`
 
 Outputs:
@@ -178,16 +204,54 @@ Outputs:
 - `runs/<case>/09_uncertainty/alpha_intervals.json`
 - `runs/<case>/09_uncertainty/parameter_sets.json`
 - `runs/<case>/09_uncertainty/uncertainty_summary.json`
+- optional output-ensemble entropy summaries
+- optional node-level entropy curve figures
 
 Use this stage when:
 - the user explicitly requests uncertainty propagation,
 - the workflow needs to quantify epistemic parameter uncertainty,
-- membership functions are defined as triangular or trapezoidal fuzzy numbers.
+- membership functions are defined as triangular or trapezoidal fuzzy numbers,
+- Monte Carlo parameter distributions are defined for prior or calibration-informed uncertainty analysis.
+
+Do not call this stage calibration unless observed data are available and `swmm-calibration` computes simulation-vs-observation metrics.
 
 The default compact triangular interpretation is:
 - `lower` and `upper` come from the user,
 - the current model value is resolved from the base INP and used as the triangle peak,
 - the baseline must lie inside `[lower, upper]`.
+
+### Stage 9c: Optional LID design scenarios
+
+Current implementation:
+- `skills/swmm-lid-optimization/scripts/lid_scenario_builder.py`
+- `skills/swmm-lid-optimization/scripts/entropy_lid_priority.py`
+- `scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py`
+
+Future MCP wrapper:
+- `swmm-lid-optimization-mcp.swmm_lid_scenarios`
+
+Inputs:
+- base SWMM INP
+- LID control definitions
+- placement rules and candidate filters
+- optional priority table from D8 / normalized joint entropy / fuzzy similarity diagnostics
+- objective preferences such as peak-flow reduction, runoff-volume reduction, cost proxy, or Pareto ranking
+
+Outputs:
+- generated scenario INPs
+- `scenario_manifest.json` for each candidate
+- `summary.json` for benchmark scoring
+- area-normalized metrics such as peak reduction per unit LID area when benchmark scoring is used
+- optional baseline-vs-candidate hydrograph figure
+
+Use this stage when:
+- the user explicitly asks for LID, green infrastructure, placement, combination, or design optimization,
+- a runnable base SWMM model exists,
+- design constraints are available or can be stated as assumptions.
+
+Do not call this stage final optimization until the candidate generator, SWMM runs, objective scoring, and audit outputs are all available.
+
+For fair placement-strategy comparison, keep the total LID area or budget fixed across strategies where possible. Report both total reduction and unit-area or cost-normalized reduction so the result is not driven only by adding more LID area.
 
 ### Stage 10: Experiment audit
 

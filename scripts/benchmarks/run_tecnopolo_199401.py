@@ -6,7 +6,6 @@ import hashlib
 import json
 import shutil
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,7 +13,6 @@ from swmmtoolbox import extract
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PYTHON = sys.executable
 EXAMPLE_DIR = REPO_ROOT / "examples" / "tecnopolo"
 DEFAULT_RUN_DIR = REPO_ROOT / "runs" / "benchmarks" / "tecnopolo-199401-prepared"
 NODE_TARGET = "J22"
@@ -150,6 +148,7 @@ def write_top_manifest(run_dir: Path, inp: Path) -> None:
         "internal_node_validation": run_dir / "07_qa" / f"node_{NODE_TARGET}_validation.json",
         "outfall_plot": run_dir / "08_plot" / f"rain_runoff_{OUTFALL_TARGET}.png",
         "internal_node_plot": run_dir / "08_plot" / f"rain_runoff_{NODE_TARGET}.png",
+        "prepared_layout_plot": run_dir / "08_plot" / "tecnopolo_prepared_layout.png",
         "direct_baseline_out": run_dir / "10_direct" / "model.out",
     }
     inputs = {
@@ -197,7 +196,7 @@ def main() -> None:
     run_cmd(["swmm5", str(inp), str(direct_dir / "model.rpt"), str(direct_dir / "model.out")], stdout=direct_dir / "stdout.txt", stderr=direct_dir / "stderr.txt")
 
     run_cmd([
-        PYTHON,
+        "python3",
         "skills/swmm-runner/scripts/swmm_runner.py",
         "run",
         "--inp",
@@ -209,19 +208,19 @@ def main() -> None:
     ])
 
     runner_rpt = run_dir / "06_runner" / "model.rpt"
-    peak = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", OUTFALL_TARGET])
-    continuity = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(runner_rpt)])
+    peak = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", OUTFALL_TARGET])
+    continuity = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "continuity", "--rpt", str(runner_rpt)])
     write_json(run_dir / "07_qa" / "runner_peak.json", peak)
     write_json(run_dir / "07_qa" / "runner_continuity.json", continuity)
 
-    node_peak = run_json([PYTHON, "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", NODE_TARGET])
+    node_peak = run_json(["python3", "skills/swmm-runner/scripts/swmm_runner.py", "peak", "--rpt", str(runner_rpt), "--node", NODE_TARGET])
     write_json(run_dir / "07_qa" / f"node_{NODE_TARGET}_peak.json", node_peak)
     consistency = compare_direct_and_runner(run_dir)
     node_validation = validate_internal_node(run_dir)
 
     for node in [OUTFALL_TARGET, NODE_TARGET]:
         run_cmd([
-            PYTHON,
+            "python3",
             "skills/swmm-plot/scripts/plot_rain_runoff_si.py",
             "--inp",
             str(inp),
@@ -247,9 +246,18 @@ def main() -> None:
             str(run_dir / "08_plot" / f"rain_runoff_{node}.png"),
         ])
 
+    run_cmd([
+        "python3",
+        "scripts/benchmarks/plot_tecnopolo_layout.py",
+        "--inp",
+        str(inp),
+        "--out-png",
+        str(run_dir / "08_plot" / "tecnopolo_prepared_layout.png"),
+    ])
+
     write_top_manifest(run_dir, inp)
     run_cmd([
-        PYTHON,
+        "python3",
         "skills/swmm-experiment-audit/scripts/audit_run.py",
         "--run-dir",
         str(run_dir),
@@ -259,6 +267,14 @@ def main() -> None:
         "external multi-subcatchment prepared-input benchmark",
         "--objective",
         "Verify prepared-input execution, direct SWMM consistency, node-level QA, plotting, and audit.",
+    ])
+    run_cmd([
+        "python3",
+        "skills/swmm-modeling-memory/scripts/summarize_memory.py",
+        "--runs-dir",
+        "runs",
+        "--out-dir",
+        "memory/modeling-memory",
     ])
 
     summary = {

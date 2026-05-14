@@ -22,9 +22,9 @@ MCP_SERVERS = [
 ]
 
 LONG_TERM_MEMORY_FILES = [
-    "agent/memory/identification_memory.md",
-    "agent/memory/operational_memory.md",
-    "agent/memory/evidence_memory.md",
+    ("agent/memory/identification_memory.md", "agent/identification_memory.md"),
+    ("agent/memory/operational_memory.md", "agent/operational_memory.md"),
+    ("agent/memory/evidence_memory.md", "agent/evidence_memory.md"),
 ]
 
 MODELING_MEMORY_FILES = [
@@ -75,8 +75,15 @@ def discover_mcp_servers() -> list[dict[str, Any]]:
 def discover_memory_files() -> list[dict[str, Any]]:
     root = resource_root()
     records = []
-    for relative in LONG_TERM_MEMORY_FILES:
-        records.append(_memory_record(root, relative, layer="long_term", load_at_startup=True))
+    for preferred, fallback in LONG_TERM_MEMORY_FILES:
+        records.append(
+            _memory_record(
+                root,
+                _existing_relative(root, preferred, fallback),
+                layer="long_term",
+                load_at_startup=True,
+            )
+        )
     for relative in MODELING_MEMORY_FILES:
         records.append(_memory_record(root, relative, layer="project_modeling", load_at_startup=False))
     return records
@@ -91,16 +98,22 @@ def memory_layer_counts(records: list[dict[str, Any]] | None = None) -> dict[str
 
 
 def _memory_record(root: Path, relative: str, *, layer: str, load_at_startup: bool) -> dict[str, Any]:
-        path = root / relative
-        return {
-            "name": Path(relative).stem,
-            "path": str(path),
-            "relative_path": relative,
-            "exists": path.exists(),
-            "enabled": True,
-            "layer": layer,
-            "load_at_startup": load_at_startup,
-        }
+    path = root / relative
+    return {
+        "name": Path(relative).stem,
+        "path": str(path),
+        "relative_path": relative,
+        "exists": path.exists(),
+        "enabled": True,
+        "layer": layer,
+        "load_at_startup": load_at_startup,
+    }
+
+
+def _existing_relative(root: Path, preferred: str, fallback: str) -> str:
+    if (root / preferred).exists() or not (root / fallback).exists():
+        return preferred
+    return fallback
 
 
 def write_runtime_registries() -> tuple[Path, Path, Path]:

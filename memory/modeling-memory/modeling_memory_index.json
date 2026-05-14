@@ -1,22 +1,31 @@
 {
   "comparison_status_counts": {
-    "mismatch": 1,
-    "not_requested": 8
+    "not_requested": 12
   },
   "failure_pattern_counts": {
-    "comparison_mismatch": 1,
-    "continuity_parse_missing": 3,
+    "continuity_parse_missing": 5,
     "missing_inp": 2,
-    "no_detected_failure": 5,
-    "partial_run": 3,
+    "no_detected_failure": 8,
+    "partial_run": 5,
     "peak_flow_parse_missing": 2
   },
-  "failure_record_count": 4,
-  "generated_at_utc": "2026-05-05T11:17:07+00:00",
-  "qa_status_counts": {
-    "pass": 9
+  "failure_record_count": 5,
+  "generated_at_utc": "2026-05-07T00:00:00-07:00",
+  "model_diagnostic_counts": {
+    "conduit_slope_suspicious": 1,
+    "continuity_error_high": 1
   },
-  "record_count": 9,
+  "project_counts": {
+    "acceptance": 3,
+    "generate-swmm-inp": 1,
+    "tecnopolo": 6,
+    "tod-creek": 2,
+    "tuflow": 1
+  },
+  "qa_status_counts": {
+    "pass": 13
+  },
+  "record_count": 13,
   "records": [
     {
       "artifacts_found": [
@@ -24,6 +33,7 @@
         "acceptance_report_md",
         "builder_manifest",
         "continuity_qa",
+        "model_diagnostics",
         "model_inp",
         "network_qa",
         "peak_qa",
@@ -37,13 +47,13 @@
       "artifacts_missing": [],
       "assumptions": [],
       "audit_status": "pass",
-      "case_name": "Acceptance pipeline peak parser check",
-      "comparison_status": "mismatch",
+      "case_name": "codex-check-peakfix",
+      "comparison_status": "not_requested",
       "evidence_boundary_notes": [
         "The recorded Git working tree was not clean at run time."
       ],
       "failure_patterns": [
-        "comparison_mismatch"
+        "no_detected_failure"
       ],
       "limitations": [],
       "metrics": {
@@ -90,15 +100,28 @@
         },
         "swmm_return_code": 0
       },
-      "objective": "Audit the acceptance pipeline artifacts and compare corrected peak-flow provenance against the previous run.",
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/acceptance/codex-check-peakfix/04_builder/model.inp",
+        "source_rpt": "runs/acceptance/codex-check-peakfix/05_runner/acceptance.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
+      "objective": "",
+      "project_key": "acceptance",
       "qa_status": "pass",
       "run_dir": "runs/acceptance/codex-check-peakfix",
       "run_id": "codex-check-peakfix",
+      "suspect_parameters": [],
       "swmm_return_code": 0,
       "warnings": [
-        "The recorded Git working tree was not clean at run time.",
-        "baseline peak-flow record does not match the value parsed from its source report section.",
-        "Peak flow changed while the SWMM input hash is unchanged; check parser version, metric source, or report records."
+        "The recorded Git working tree was not clean at run time."
       ],
       "workflow_mode": "acceptance_step1"
     },
@@ -108,6 +131,105 @@
         "acceptance_report_md",
         "builder_manifest",
         "continuity_qa",
+        "model_diagnostics",
+        "model_inp",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest",
+        "runner_out",
+        "runner_rpt",
+        "runner_stderr",
+        "runner_stdout",
+        "top_manifest"
+      ],
+      "artifacts_missing": [],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "codex-ci-audit-local",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": {
+          "network_conduits": 2,
+          "network_junctions": 2,
+          "network_outfalls": 1,
+          "subcatchments": 4,
+          "timeseries_rows": 9
+        },
+        "continuity_error": {
+          "name": "continuity_error",
+          "source_artifact": "runner_rpt",
+          "source_sections": [
+            "Runoff Quantity Continuity",
+            "Flow Routing Continuity"
+          ],
+          "unit": "percent",
+          "values": {
+            "flow_routing": -1.16,
+            "runoff_quantity": 0.0
+          }
+        },
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OF1",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OF1",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "00:25",
+              "unit": "CMS",
+              "value": 0.007
+            }
+          },
+          "time_hhmm": "00:25",
+          "unit": "CMS",
+          "value": 0.007
+        },
+        "swmm_return_code": 0
+      },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/acceptance/codex-ci-audit-local/04_builder/model.inp",
+        "source_rpt": "runs/acceptance/codex-ci-audit-local/05_runner/acceptance.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
+      "objective": "",
+      "project_key": "acceptance",
+      "qa_status": "pass",
+      "run_dir": "runs/acceptance/codex-ci-audit-local",
+      "run_id": "codex-ci-audit-local",
+      "suspect_parameters": [],
+      "swmm_return_code": 0,
+      "warnings": [
+        "The recorded Git working tree was not clean at run time."
+      ],
+      "workflow_mode": "acceptance_step1"
+    },
+    {
+      "artifacts_found": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "model_diagnostics",
         "model_inp",
         "network_qa",
         "peak_qa",
@@ -172,10 +294,25 @@
         },
         "swmm_return_code": 0
       },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/acceptance/codex-status-20260503/04_builder/model.inp",
+        "source_rpt": "runs/acceptance/codex-status-20260503/05_runner/acceptance.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
       "objective": "",
+      "project_key": "acceptance",
       "qa_status": "pass",
       "run_dir": "runs/acceptance/codex-status-20260503",
       "run_id": "codex-status-20260503",
+      "suspect_parameters": [],
       "swmm_return_code": 0,
       "warnings": [],
       "workflow_mode": "acceptance_step1"
@@ -183,6 +320,7 @@
     {
       "artifacts_found": [
         "builder_manifest",
+        "model_diagnostics",
         "model_inp",
         "runner_manifest",
         "runner_out",
@@ -254,10 +392,69 @@
         },
         "swmm_return_code": 0
       },
+      "model_diagnostic_ids": [
+        "conduit_slope_suspicious",
+        "continuity_error_high"
+      ],
+      "model_diagnostics": {
+        "diagnostics": [
+          {
+            "evidence": {
+              "from_node": "J_10",
+              "link": "C_10",
+              "slope": -0.05972902256500753,
+              "to_node": "J_3"
+            },
+            "id": "conduit_slope_suspicious",
+            "message": "Conduit C_10 has a suspicious invert-derived slope.",
+            "recommendation": "Check node invert elevations, conduit direction, and conduit length.",
+            "severity": "warning"
+          },
+          {
+            "evidence": {
+              "from_node": "J_5",
+              "link": "C_11",
+              "slope": -0.010355540214014499,
+              "to_node": "J_3"
+            },
+            "id": "conduit_slope_suspicious",
+            "message": "Conduit C_11 has a suspicious invert-derived slope.",
+            "recommendation": "Check node invert elevations, conduit direction, and conduit length.",
+            "severity": "warning"
+          },
+          {
+            "evidence": {
+              "continuity_type": "flow_routing",
+              "threshold_percent": 5.0,
+              "value_percent": 9.513
+            },
+            "id": "continuity_error_high",
+            "message": "Continuity error exceeds the 5 percent screening threshold.",
+            "recommendation": "Inspect model stability, routing step, storage, and external inflow/outflow accounting.",
+            "severity": "warning"
+          }
+        ],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/benchmarks/generate-swmm-inp-raw-path/05_builder/model.inp",
+        "source_rpt": "runs/benchmarks/generate-swmm-inp-raw-path/06_runner/model.rpt",
+        "status": "warning",
+        "warning_count": 3
+      },
+      "next_run_cautions": [
+        "Inspect continuity error before treating the run as hydrologic evidence."
+      ],
       "objective": "",
+      "project_key": "generate-swmm-inp",
       "qa_status": "pass",
       "run_dir": "runs/benchmarks/generate-swmm-inp-raw-path",
       "run_id": "generate-swmm-inp-raw-path",
+      "suspect_parameters": [
+        "node invert elevation / conduit length / conduit direction",
+        "routing_step / storage / inflow-outflow accounting"
+      ],
       "swmm_return_code": 0,
       "warnings": [
         "flow_routing_continuity_error: Adapter executed successfully, but this result should not be treated as hydrologic validation. value=9.513",
@@ -268,6 +465,7 @@
     {
       "artifacts_found": [
         "continuity_qa",
+        "model_diagnostics",
         "model_inp",
         "peak_qa",
         "runner_manifest",
@@ -332,10 +530,25 @@
         },
         "swmm_return_code": 0
       },
-      "objective": "Verify prepared-input execution, direct SWMM consistency, node-level QA, plotting, and audit.",
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/benchmarks/tecnopolo-199401-prepared/05_builder/model.inp",
+        "source_rpt": "runs/benchmarks/tecnopolo-199401-prepared/06_runner/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
+      "objective": "",
+      "project_key": "tecnopolo",
       "qa_status": "pass",
       "run_dir": "runs/benchmarks/tecnopolo-199401-prepared",
       "run_id": "tecnopolo-199401-prepared",
+      "suspect_parameters": [],
       "swmm_return_code": 0,
       "warnings": [
         "The recorded Git working tree was not clean at run time."
@@ -344,7 +557,170 @@
     },
     {
       "artifacts_found": [
+        "model_diagnostics",
+        "model_inp",
+        "runner_out",
+        "runner_rpt",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
         "builder_manifest",
+        "continuity_qa",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest",
+        "runner_stderr",
+        "runner_stdout"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "tecnopolo-lid-placement-smoke",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "continuity_parse_missing",
+        "partial_run"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": null,
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OUT_0",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OUT_0",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "03:15",
+              "unit": "CMS",
+              "value": 0.022
+            }
+          },
+          "time_hhmm": "03:15",
+          "unit": "CMS",
+          "value": 0.022
+        },
+        "swmm_return_code": null
+      },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/benchmarks/tecnopolo-lid-placement-smoke/scenarios/cumulative_top_05/model.inp",
+        "source_rpt": "runs/benchmarks/tecnopolo-lid-placement-smoke/scenarios/cumulative_top_05/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [
+        "Ensure continuity tables are available and referenced in run artifacts.",
+        "Keep partial-run evidence explicit so downstream memory can reuse it safely."
+      ],
+      "objective": "",
+      "project_key": "tecnopolo",
+      "qa_status": "pass",
+      "run_dir": "runs/benchmarks/tecnopolo-lid-placement-smoke",
+      "run_id": "tecnopolo-lid-placement-smoke",
+      "suspect_parameters": [],
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "unknown"
+    },
+    {
+      "artifacts_found": [
+        "model_diagnostics",
+        "model_inp",
+        "runner_out",
+        "runner_rpt",
+        "top_manifest"
+      ],
+      "artifacts_missing": [
+        "acceptance_report_json",
+        "acceptance_report_md",
+        "builder_manifest",
+        "continuity_qa",
+        "network_qa",
+        "peak_qa",
+        "runner_manifest",
+        "runner_stderr",
+        "runner_stdout"
+      ],
+      "assumptions": [],
+      "audit_status": "pass",
+      "case_name": "Tecnopolo prior Monte Carlo uncertainty smoke",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [],
+      "failure_patterns": [
+        "continuity_parse_missing",
+        "partial_run"
+      ],
+      "limitations": [],
+      "metrics": {
+        "builder_counts": null,
+        "continuity_error": null,
+        "peak_flow": {
+          "name": "peak_flow",
+          "node": "OUT_0",
+          "source_artifact": "runner_rpt",
+          "source_field": "Maximum Total Inflow",
+          "source_section": "Node Inflow Summary",
+          "source_validation": {
+            "matches_report": true,
+            "parsed_from_report": {
+              "node": "OUT_0",
+              "source_field": "Maximum Total Inflow",
+              "source_section": "Node Inflow Summary",
+              "time_hhmm": "03:15",
+              "unit": "CMS",
+              "value": 0.061
+            }
+          },
+          "time_hhmm": "03:15",
+          "unit": "CMS",
+          "value": 0.061
+        },
+        "swmm_return_code": null
+      },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/benchmarks/tecnopolo-mc-uncertainty-smoke/baseline/model.inp",
+        "source_rpt": "runs/benchmarks/tecnopolo-mc-uncertainty-smoke/baseline/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [
+        "Ensure continuity tables are available and referenced in run artifacts.",
+        "Keep partial-run evidence explicit so downstream memory can reuse it safely."
+      ],
+      "objective": "",
+      "project_key": "tecnopolo",
+      "qa_status": "pass",
+      "run_dir": "runs/benchmarks/tecnopolo-mc-uncertainty-smoke",
+      "run_id": "tecnopolo-mc-uncertainty-smoke",
+      "suspect_parameters": [],
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "prior Monte Carlo uncertainty smoke for prepared-input SWMM"
+    },
+    {
+      "artifacts_found": [
+        "builder_manifest",
+        "model_diagnostics",
         "model_inp",
         "runner_manifest",
         "runner_out",
@@ -413,17 +789,33 @@
         },
         "swmm_return_code": 0
       },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/benchmarks/tuflow-swmm-module03-raw-path/05_builder/model.inp",
+        "source_rpt": "runs/benchmarks/tuflow-swmm-module03-raw-path/06_runner/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
       "objective": "",
+      "project_key": "tuflow",
       "qa_status": "pass",
       "run_dir": "runs/benchmarks/tuflow-swmm-module03-raw-path",
       "run_id": "tuflow-swmm-module03-raw-path",
+      "suspect_parameters": [],
       "swmm_return_code": 0,
       "warnings": [],
-      "workflow_mode": "TUFLOW SWMM Module 03 full multi-raingage raw GeoPackage adapter benchmark"
+      "workflow_mode": "unknown"
     },
     {
       "artifacts_found": [
         "continuity_qa",
+        "model_diagnostics",
         "model_inp",
         "peak_qa",
         "runner_manifest",
@@ -488,10 +880,25 @@
         },
         "swmm_return_code": 0
       },
-      "objective": "Verify top-level prepared-input orchestration through swmm-runner MCP, QA, audit, direct SWMM consistency, and plotting.",
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/end-to-end/tecnopolo-199401-prepared/05_builder/model.inp",
+        "source_rpt": "runs/end-to-end/tecnopolo-199401-prepared/06_runner/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [],
+      "objective": "",
+      "project_key": "tecnopolo",
       "qa_status": "pass",
       "run_dir": "runs/end-to-end/tecnopolo-199401-prepared",
       "run_id": "tecnopolo-199401-prepared",
+      "suspect_parameters": [],
       "swmm_return_code": 0,
       "warnings": [
         "The recorded Git working tree was not clean at run time."
@@ -500,6 +907,7 @@
     },
     {
       "artifacts_found": [
+        "model_diagnostics",
         "runner_out",
         "runner_rpt",
         "runner_stderr",
@@ -534,16 +942,37 @@
         "peak_flow": null,
         "swmm_return_code": null
       },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": null,
+        "source_rpt": "runs/external-case-candidates/zenodo-tecnopolo/month-199401/runner-fixed/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [
+        "Ensure continuity tables are available and referenced in run artifacts.",
+        "Record the runnable SWMM INP handoff before execution.",
+        "Keep partial-run evidence explicit so downstream memory can reuse it safely.",
+        "Confirm peak flow is parsed from Node Inflow Summary or documented fallback."
+      ],
       "objective": "",
+      "project_key": "tecnopolo",
       "qa_status": "pass",
       "run_dir": "runs/external-case-candidates/zenodo-tecnopolo/month-199401/runner-fixed",
       "run_id": "runner-fixed",
+      "suspect_parameters": [],
       "swmm_return_code": null,
       "warnings": [],
-      "workflow_mode": "external multi-subcatchment inp month benchmark"
+      "workflow_mode": "unknown"
     },
     {
       "artifacts_found": [
+        "model_diagnostics",
         "runner_out",
         "runner_rpt",
         "runner_stderr",
@@ -578,16 +1007,37 @@
         "peak_flow": null,
         "swmm_return_code": null
       },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": null,
+        "source_rpt": "runs/external-case-candidates/zenodo-tecnopolo/runner-check/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [
+        "Ensure continuity tables are available and referenced in run artifacts.",
+        "Record the runnable SWMM INP handoff before execution.",
+        "Keep partial-run evidence explicit so downstream memory can reuse it safely.",
+        "Confirm peak flow is parsed from Node Inflow Summary or documented fallback."
+      ],
       "objective": "",
+      "project_key": "tecnopolo",
       "qa_status": "pass",
       "run_dir": "runs/external-case-candidates/zenodo-tecnopolo/runner-check",
       "run_id": "runner-check",
+      "suspect_parameters": [],
       "swmm_return_code": null,
       "warnings": [],
-      "workflow_mode": "external benchmark inp run"
+      "workflow_mode": "unknown"
     },
     {
       "artifacts_found": [
+        "model_diagnostics",
         "model_inp",
         "runner_out",
         "runner_rpt",
@@ -640,16 +1090,172 @@
         },
         "swmm_return_code": null
       },
+      "model_diagnostic_ids": [],
+      "model_diagnostics": {
+        "diagnostics": [],
+        "error_count": 0,
+        "generated_at_utc": "2026-05-06T10:16:06+00:00",
+        "generated_by": "swmm-experiment-audit",
+        "schema_version": "1.0",
+        "source_inp": "runs/real-todcreek-minimal/model.inp",
+        "source_rpt": "runs/real-todcreek-minimal/model.rpt",
+        "status": "pass",
+        "warning_count": 0
+      },
+      "next_run_cautions": [
+        "Ensure continuity tables are available and referenced in run artifacts.",
+        "Keep partial-run evidence explicit so downstream memory can reuse it safely."
+      ],
       "objective": "",
+      "project_key": "tod-creek",
       "qa_status": "pass",
       "run_dir": "runs/real-todcreek-minimal",
       "run_id": "real-todcreek-minimal",
+      "suspect_parameters": [],
       "swmm_return_code": null,
       "warnings": [],
-      "workflow_mode": "minimal real-data fallback"
+      "workflow_mode": "unknown"
+    },
+    {
+      "artifacts_found": [
+        "skills/swmm-gis/scripts/flowpath_entropy_partition.py",
+        "docs/qgis-entropy-subcatchment-mcp-skill-plan.md",
+        "runs/todcreek-qgis-delineation/06_threshold_sensitivity/threshold_sensitivity_summary.json",
+        "runs/todcreek-qgis-delineation/06_threshold_sensitivity/paper_rule_decision_spaces_5panel.png",
+        "runs/todcreek-qgis-delineation/06_threshold_sensitivity/paper_rule_watershed_partitions_5panel.png",
+        "runs/todcreek-qgis-delineation/05_paper_entropy_partition/paper_entropy_partition.geojson",
+        "runs/todcreek-qgis-delineation/05_paper_entropy_partition/longest_flowpath_metrics.csv",
+        "runs/todcreek-qgis-delineation/05_paper_entropy_partition/selected_split_points.geojson"
+      ],
+      "artifacts_missing": [
+        "qgis_mcp_tool_contract_tests",
+        "single_command_raw_to_entropy_case_runner",
+        "swmm_ready_export_from_entropy_partition"
+      ],
+      "assumptions": [
+        "QGIS/GRASS hydrology outputs are treated as deterministic GIS preprocessing artifacts.",
+        "Strict paper-rule split points use abs(delta_NWJE_seq) and WFJS_seq along the longest D8 flow path.",
+        "Secondary engineering split points are retained in code as an optional future mode but are not shown in the five-panel paper-rule figures."
+      ],
+      "audit_status": "pass",
+      "case_name": "Tod Creek QGIS entropy-guided subcatchment partition",
+      "comparison_status": "not_requested",
+      "evidence_boundary_notes": [
+        "This is raw GIS to SWMM-ready subcatchment preprocessing evidence, not calibrated SWMM hydrologic validation.",
+        "The result supports spatial-unit selection before SWMM modeling; it does not identify exact intra-subcatchment LID locations."
+      ],
+      "failure_patterns": [
+        "no_detected_failure"
+      ],
+      "generated_at_utc": "2026-05-07T00:00:00-07:00",
+      "generated_by": "swmm-modeling-memory",
+      "metrics": {
+        "recommended_paper_rule_options": {
+          "fine_entropy_similarity": {
+            "delta_threshold": 0.01,
+            "similarity_threshold": 0.97,
+            "subcatchments": 10
+          },
+          "strict_baseline": {
+            "delta_threshold": 0.015,
+            "similarity_threshold": 0.95,
+            "subcatchments": 6
+          },
+          "very_fine_paper_rule": {
+            "delta_threshold": 0.008,
+            "similarity_threshold": 0.98,
+            "subcatchments": 13
+          }
+        },
+        "threshold_sensitivity": [
+          {
+            "delta_threshold": 0.015,
+            "final_subcatchment_count": 14,
+            "paper_only_splits": false,
+            "paper_preserve_selected": 5,
+            "secondary_selected": 8,
+            "selected_split_count": 13,
+            "similarity_threshold": 0.95,
+            "variant": "Current 0.015 / 0.95 paper + secondary"
+          },
+          {
+            "delta_threshold": 0.015,
+            "final_subcatchment_count": 6,
+            "paper_only_splits": true,
+            "paper_preserve_selected": 5,
+            "secondary_selected": 0,
+            "selected_split_count": 5,
+            "similarity_threshold": 0.95,
+            "variant": "Strict paper 0.015 / 0.95"
+          },
+          {
+            "delta_threshold": 0.01,
+            "final_subcatchment_count": 7,
+            "paper_only_splits": true,
+            "paper_preserve_selected": 6,
+            "secondary_selected": 0,
+            "selected_split_count": 6,
+            "similarity_threshold": 0.95,
+            "variant": "Lower delta 0.010 / 0.95"
+          },
+          {
+            "delta_threshold": 0.015,
+            "final_subcatchment_count": 8,
+            "paper_only_splits": true,
+            "paper_preserve_selected": 7,
+            "secondary_selected": 0,
+            "selected_split_count": 7,
+            "similarity_threshold": 0.97,
+            "variant": "Higher similarity 0.015 / 0.97"
+          },
+          {
+            "delta_threshold": 0.01,
+            "final_subcatchment_count": 10,
+            "paper_only_splits": true,
+            "paper_preserve_selected": 9,
+            "secondary_selected": 0,
+            "selected_split_count": 9,
+            "similarity_threshold": 0.97,
+            "variant": "Fine both 0.010 / 0.97"
+          },
+          {
+            "delta_threshold": 0.008,
+            "final_subcatchment_count": 13,
+            "paper_only_splits": true,
+            "paper_preserve_selected": 12,
+            "secondary_selected": 0,
+            "selected_split_count": 12,
+            "similarity_threshold": 0.98,
+            "variant": "Very fine 0.008 / 0.98"
+          }
+        ]
+      },
+      "missing_evidence": [
+        "swmm_builder_manifest",
+        "swmm_runner_manifest",
+        "hydrologic_calibration_metrics"
+      ],
+      "model_diagnostic_ids": [],
+      "model_diagnostics_status": "not_applicable_gis_preprocessing",
+      "next_run_cautions": [
+        "Do not describe the QGIS entropy partition as hydrologic calibration evidence.",
+        "Keep the paper-rule threshold set and sensitivity figures with the run artifacts so subcatchment count is auditable.",
+        "Before using outputs for LID placement, convert selected partition polygons into SWMM-ready subcatchment parameters and run downstream SWMM audit."
+      ],
+      "project_key": "tod-creek",
+      "qa_issues": [],
+      "qa_status": "pass",
+      "run_dir": "runs/todcreek-qgis-delineation",
+      "run_id": "todcreek-qgis-entropy-subcatchment-20260507",
+      "schema_version": "1.0",
+      "success": true,
+      "suspect_parameters": [],
+      "swmm_return_code": null,
+      "warnings": [],
+      "workflow_mode": "qgis_entropy_subcatchment_partition"
     }
   ],
-  "run_folder_count": 9,
+  "run_folder_count": 12,
   "schema_version": "1.0",
   "source_runs_dir": "runs"
 }

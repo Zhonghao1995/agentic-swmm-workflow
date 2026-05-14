@@ -42,6 +42,7 @@ FORBIDDEN_SUBSTRINGS = (
     "/tests/test_swmm_rag_memory.py",
     "/tests/test_flowpath_entropy_partition.py",
     "/tests/test_cell_entropy_similarity_aggregation.py",
+    "/tests/test_qgis_mcp_contracts.py",
     "corpus.jsonl",
     "embedding_index.json",
     "keyword_index.json",

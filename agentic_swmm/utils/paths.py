@@ -14,7 +14,7 @@ def packaged_resource_root() -> Path:
 
 def resource_root() -> Path:
     source_root = repo_root()
-    if (source_root / "skills").exists() and (source_root / "agent" / "memory").exists():
+    if (source_root / "skills").exists() and _has_agent_resources(source_root):
         return source_root
     installed_root = packaged_resource_root()
     if installed_root.exists():
@@ -35,6 +35,17 @@ def resource_path(*parts: str) -> Path:
     raise FileNotFoundError(
         "Required Agentic SWMM resource is missing. Checked source path "
         f"{source_path} and installed package path {installed_path}."
+    )
+
+
+def _has_agent_resources(root: Path) -> bool:
+    return any(
+        path.exists()
+        for path in (
+            root / "agent" / "memory",
+            root / "agent" / "config",
+            root / "agent" / "identification_memory.md",
+        )
     )
 
 

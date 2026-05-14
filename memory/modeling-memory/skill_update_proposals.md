@@ -1,6 +1,6 @@
 # Skill Update Proposals
 
-Generated at UTC: `2026-05-05T11:17:07+00:00`
+Generated at UTC: `2026-05-06T10:16:48+00:00`
 
 Agentic SWMM is not only an automation workflow; it is a memory-informed, verification-first modeling system that can learn from audited modeling history through controlled skill refinement.
 
@@ -10,20 +10,12 @@ The modeling-memory skill analyzes historical audit records and generates propos
 
 Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified.
 
-## `comparison_mismatch`
-
-- Potential skill or workflow step: Run comparison
-- Relevant workflow skill(s): `swmm-experiment-audit`, `swmm-end-to-end`
-- Why it may need improvement: Review whether mismatches are expected scenario differences or regressions that need acceptance criteria.
-- Evidence runs: `codex-check-peakfix`
-- Required control: human review plus benchmark verification before accepting any skill refinement.
-
 ## `continuity_parse_missing`
 
 - Potential skill or workflow step: Continuity parsing
 - Relevant workflow skill(s): `swmm-runner`, `swmm-experiment-audit`
 - Why it may need improvement: Check whether continuity tables are absent, malformed, or not referenced in the run manifest.
-- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`
+- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`
 - Required control: human review plus benchmark verification before accepting any skill refinement.
 
 ## `missing_inp`
@@ -39,7 +31,7 @@ Accepted skill changes require human review and benchmark verification before an
 - Potential skill or workflow step: Workflow stop handling
 - Relevant workflow skill(s): `swmm-end-to-end`, `swmm-experiment-audit`
 - Why it may need improvement: Make partial-run handoff to audit explicit so incomplete evidence is still reusable.
-- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`
+- Evidence runs: `real-todcreek-minimal`, `runner-check`, `runner-fixed`, `tecnopolo-lid-placement-smoke`, `tecnopolo-mc-uncertainty-smoke`
 - Required control: human review plus benchmark verification before accepting any skill refinement.
 
 ## `peak_flow_parse_missing`

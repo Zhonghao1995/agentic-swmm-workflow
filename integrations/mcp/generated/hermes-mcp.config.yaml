@@ -1,0 +1,35 @@
+# Copy the mcp_servers block into ~/.hermes/config.yaml.
+# Generated for this checkout; keep paths quoted because they may contain spaces.
+mcp_servers:
+  swmm-builder:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-builder']
+    enabled: true
+  swmm-calibration:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-calibration']
+    enabled: true
+  swmm-climate:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-climate']
+    enabled: true
+  swmm-gis:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-gis']
+    enabled: true
+  swmm-network:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-network']
+    enabled: true
+  swmm-params:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-params']
+    enabled: true
+  swmm-plot:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-plot']
+    enabled: true
+  swmm-runner:
+    command: '/opt/homebrew/Cellar/node@22/22.22.0/bin/node'
+    args: ['/Users/zhonghao/Desktop/Codex Project/Agentic SWMM open soure/scripts/run_mcp_server.mjs', 'swmm-runner']
+    enabled: true

@@ -92,6 +92,10 @@ experiment_note.md
 
 This benchmark demonstrates that the prepared-input workflow can execute and audit an external multi-subcatchment SWMM model, verify equivalence with direct SWMM execution, evaluate both outfall and internal-node peak metrics, and generate rainfall-runoff figures.
 
+Prepared model layout:
+
+![Tecnopolo prepared-input SWMM layout](../../docs/figs/tecnopolo_prepared_layout.png)
+
 Outfall figure:
 
 ![OUT_0 rainfall-runoff](../../docs/figs/tecnopolo_199401_outfall_rain_runoff.png)

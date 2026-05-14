@@ -4,19 +4,7 @@ This document keeps the detailed benchmark and verification notes out of the REA
 
 ## Benchmark paths
 
-Agentic SWMM includes runnable benchmark paths, research previews, and smoke tests that exercise different parts of the workflow. Each path has its own evidence boundary.
-
-## Information-loss-guided subcatchment partition
-
-This preview shows a QGIS-to-Agentic SWMM preprocessing path that partitions the TodCreek watershed before SWMM open-channel simulation using entropy theory, rather than only fixed area thresholds. The aim is to reduce information loss during simplification, improve the representation of spatial heterogeneity, and preserve SWMM's model structure.
-
-<p align="center">
-  <img src="figs/information_entropy_subcatchment_partition_readme.png" alt="Entropy and fuzzy-similarity guided subcatchment partition showing alternative watershed discretizations before SWMM simulation" width="900" />
-</p>
-
-Scientific basis: Zhang, Z., & Valeo, C. (2026), [*Quantifying uncertainty in flowrate modelling using spatially defined fuzzy entropy based on hydrological processes in a catchment*](https://doi.org/10.1016/j.jhydrol.2025.134447), *Journal of Hydrology*, 664, 134447.
-
-Evidence boundary: this figure demonstrates the GIS preprocessing and information-loss-based subcatchment partition concept. It is not a calibrated SWMM performance claim.
+Agentic SWMM includes benchmark paths that test different parts of the workflow, plus additional acceptance and fallback checks.
 
 ## Raw GeoPackage-to-INP benchmark
 
@@ -43,6 +31,10 @@ The Tecnopolo benchmark validates the prepared-input path using an external 40-s
 It checks that the workflow can execute an external SWMM model, compare workflow outputs against direct `swmm5` execution, inspect both an outfall and an internal junction, generate rainfall-runoff figures, and emit audit-ready artifacts.
 
 <p align="center">
+  <img src="figs/tecnopolo_prepared_layout.png" alt="Tecnopolo prepared-input SWMM layout with 40 subcatchments routed through junctions, conduits, outfalls, and one rain gage" width="760" />
+</p>
+
+<p align="center">
   <img src="figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
 </p>
 
@@ -66,21 +58,45 @@ python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
 
 Evidence boundary: this is not a greenfield watershed case from DEM, land-use, soil, and drainage-asset source files. Its source is an existing public SWMM `.inp`; the benchmark is useful for testing raw-like adapter handoff and modular reconstruction, not for claiming independent watershed delineation or hydrologic validation.
 
-## Prior Monte Carlo uncertainty smoke
+## Structured city pipe-network adapter benchmark
 
-This early model-parameter uncertainty preview perturbs Tecnopolo HORTON parameters before rerunning SWMM. It is useful for checking parameter-sampling mechanics, rerun orchestration, and envelope plotting.
-
-<p align="center">
-  <img src="figs/tecnopolo_mc_uncertainty_flow_envelope_readme.png" alt="Tecnopolo prior Monte Carlo uncertainty rainfall and flow envelope at J6" width="900" />
-</p>
+The city dual-system network benchmark validates a more practical urban asset path for reducing manual pipe-network configuration. It starts from structured pipe/outfall CSV exports, infers missing junctions from pipe endpoint coordinates, preserves `minor_pipe` and `major_surface` layer metadata in `network.json`, runs network QA, builds a SWMM input file, and runs SWMM when `swmm5` is available.
 
 Run:
 
 ```bash
-python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py --samples 20 --seed 42 --node OUT_0 --scan-nodes --entropy-nodes J6 OUT_0
+python3 scripts/benchmarks/run_city_dual_system_network.py
 ```
 
-Evidence boundary: this is a prior uncertainty smoke test, not calibration. It does not use observed-flow data or claim calibrated predictive uncertainty.
+Evidence boundary: this is a structured CAD/GIS asset-export adapter benchmark, not arbitrary CAD drawing recognition. The current dual-system support is representation and QA metadata for minor-pipe and major-surface layers exported as SWMM one-dimensional conduit sections, not fully coupled 1D/2D dual-drainage hydraulics.
+
+## LID placement and entropy-guided LID smoke paths
+
+The LID benchmark path starts from the prepared Tecnopolo SWMM model and generates bioretention scenarios by inserting `[LID_CONTROLS]` and `[LID_USAGE]` sections. It is useful for validating scenario generation, SWMM execution, objective scoring, and audit handoff.
+
+The entropy-guided variant adds a priority table before scenario generation. The current priority-table workflow translates D8 / normalized joint entropy / fuzzy similarity style diagnostics into a subcatchment-level `lid_priority_score`, then uses `rank_by: "entropy_priority"` to choose candidate LID locations.
+
+Run the standard LID smoke:
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py --node OUT_0
+python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/benchmarks/tecnopolo-lid-placement-smoke --no-obsidian
+```
+
+Run the entropy-guided LID smoke:
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py \
+  --config skills/swmm-lid-optimization/examples/tecnopolo_entropy_bioretention_config.json \
+  --run-dir runs/benchmarks/tecnopolo-entropy-lid-placement-smoke \
+  --node OUT_0
+
+python3 skills/swmm-experiment-audit/scripts/audit_run.py \
+  --run-dir runs/benchmarks/tecnopolo-entropy-lid-placement-smoke \
+  --no-obsidian
+```
+
+Evidence boundary: these are design-exploration smoke tests, not final optimized LID plans. SWMM represents LID at the subcatchment scale, so these runs test which subcatchments receive LID controls, not exact intra-subcatchment placement. Fair placement-strategy comparisons should fix total LID area or budget and report unit-area or cost-normalized performance alongside total peak-flow and volume reductions.
 
 ## Additional runnable paths
 

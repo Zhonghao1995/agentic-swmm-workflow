@@ -5,3 +5,7 @@ rasterio
 pyshp
 pysheds
 swmmtoolbox
+geopandas
+shapely
+pyogrio
+pytest
