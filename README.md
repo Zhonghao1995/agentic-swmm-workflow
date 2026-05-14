@@ -11,66 +11,67 @@
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
     <img src="https://img.shields.io/github/v/release/Zhonghao1995/agentic-swmm-workflow?label=release&color=1F6FEB" alt="latest release" />
   </a>
-  <a href="#try-it-in-one-command">
-    <img src="https://img.shields.io/badge/install-one--command-0B74DE" alt="one-command install" />
+  <a href="https://pypi.org/project/aiswmm/">
+    <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
   </a>
-  <a href="#try-it-in-one-command">
+  <a href="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow">
+    <img src="https://codecov.io/gh/Zhonghao1995/agentic-swmm-workflow/graph/badge.svg" alt="Codecov coverage" />
+  </a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/pkgs/container/agentic-swmm-workflow">
     <img src="https://img.shields.io/badge/docker-reproducible-2496ED" alt="Docker reproducible environment" />
-  </a>
-  <a href="https://github.com/USEPA/Stormwater-Management-Model">
-    <img src="https://img.shields.io/badge/SWMM-5.2-blue" alt="EPA SWMM 5.2" />
-  </a>
-  <a href="#codex--openclaw--hermes-ready">
-    <img src="https://img.shields.io/badge/Codex%20%2F%20OpenClaw%20%2F%20Hermes-ready-1F6FEB" alt="Codex, OpenClaw, or Hermes ready" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
+  </a>
+  <a href="https://zhonghaoz.ca">
+    <img src="https://img.shields.io/badge/built%20by-Zhonghao-7C3AED" alt="Built by Zhonghao" />
   </a>
 </p>
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
 *[Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
 
-**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+**A five-minute EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-`agentic-swmm-workflow` helps researchers and developers install SWMM, run benchmark workflows, check outputs, audit evidence, keep Obsidian-ready modelling notes, and reuse lessons from previous runs. With Codex, OpenClaw, Hermes Agent, or another compatible agent runtime, users can describe a modelling goal in natural language while SWMM execution stays deterministic and explainable.
+Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
-This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but the model files, SWMM runs, QA checks, plots, provenance, audit notes, and modelling memory remain visible as artifacts. The modeling-memory layer can notice repeated problems and propose skill refinements, but changes are accepted only after human review and benchmark verification.
+The project is designed to work with agent runtimes such as Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
+
+This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
+
+Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://aiswmm.com/)
 
 Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
 
 ## Try it in one command
 
-Choose the path that matches your environment.
-
-### Method 1. Docker recommended
-
-Use this when you want the most reproducible path and do not want to install Python packages, SWMM5, Node, or GIS dependencies locally.
+macOS and Linux:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/docker-bootstrap.sh)"
+curl -fsSL https://aiswmm.com/install.sh | bash
 ```
 
-Requirements: Docker Desktop or Docker Engine.
-
-### Method 2. macOS / Linux local install
-
-Use this when you want a local development environment.
-
-```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.sh)"
-```
-
-### Method 3. Windows PowerShell local install
-
-Run PowerShell as Administrator.
+Windows PowerShell:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://raw.githubusercontent.com/Zhonghao1995/agentic-swmm-workflow/main/scripts/bootstrap.ps1'))"
+irm https://aiswmm.com/install.ps1 | iex
 ```
+
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.1 release README](docs/releases/v0.6.1.md).
+
+Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+
+## v0.6.1 highlights
+
+- `aiswmm` now keeps a clearer runtime identity in the interactive terminal, including the `aiswmm>` prefix and executor banner.
+- Interactive outputs use cleaner date-and-case run folders while preserving audited stage folders inside each run.
+- The Tecnopolo prepared `.inp` demo can be run, audited, inspected for plot options, and continued into rainfall/node/output-variable plots from the same active run.
+- Plot follow-ups such as `Total_inflow J2 MACAO_94_23` now continue from the previous run instead of asking again for model inputs.
+- MCP schema discovery is cached and timeout-protected so slow MCP servers do not block the main CLI run/audit/plot path.
+- Planner-generated recursive searches such as `**.inp` are normalized safely, fixing a demo-listing crash path.
 
 ## Why this project exists
 
@@ -82,7 +83,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## What makes it different
 
-- **One-command onboarding:** install the workflow and SWMM engine with the bootstrap script.
+- **Quick onboarding:** start from one-line macOS/Linux or Windows installers, with Docker and Python package paths documented separately.
 - **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
 - **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
@@ -103,87 +104,23 @@ The workflow has three connected layers: execution, modeling memory, and control
 - generated or supplied SWMM input files such as `model.inp`
 - SWMM report and binary outputs such as `.rpt` and `.out`
 - manifests, command traces, QA summaries, and parsed peak-flow metrics
-- rainfall-runoff figures, calibration summaries, fuzzy uncertainty summaries, Monte Carlo uncertainty envelopes, and LID placement scenario rankings
+- rainfall-runoff figures, calibration summaries, and fuzzy uncertainty summaries
 - audit records: `experiment_provenance.json`, `comparison.json`, and `experiment_note.md`
 - Obsidian-ready modelling notes and modelling-memory summaries
 
 ## Validation snapshot
 
-The repository includes benchmark paths with different evidence boundaries.
+The repository includes runnable benchmarks and research previews with different evidence boundaries. The README keeps only the index; figures, commands, and boundary notes live in [Validation evidence](docs/validation-evidence.md).
 
-### Raw GeoPackage-to-INP benchmark
+| Path | What it shows | Evidence boundary |
+| --- | --- | --- |
+| [Information-loss-guided subcatchment partition](docs/validation-evidence.md#information-loss-guided-subcatchment-partition) | QGIS-to-Agentic SWMM preprocessing using entropy and fuzzy-similarity concepts from Zhang & Valeo's [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447) | GIS preprocessing concept, not a calibrated SWMM performance claim |
+| [Raw GeoPackage-to-INP benchmark](docs/validation-evidence.md#raw-geopackage-to-inp-benchmark) | Public TUFLOW GeoPackage layers converted into SWMM-ready artifacts, QA, and audit | Structured raw GIS path, not arbitrary CAD/GIS recognition |
+| [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
+| [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
+| [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
 
-This path converts public TUFLOW SWMM Module 03 GeoPackage layers into SWMM-ready artifacts before running QA and audit.
-
-<p align="center">
-  <img src="docs/figs/tuflow_swmm_module03_raw_layers.png" alt="TUFLOW SWMM Module 03 raw GeoPackage layers converted into Agentic SWMM subcatchments, conduits, junctions, and outfall" width="520" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tuflow_swmm_module03_raw_path.py
-```
-
-### Prepared-input SWMM benchmark
-
-This path validates execution, direct SWMM comparison, node-level QA, plotting, and audit artifacts for an external 40-subcatchment SWMM model from the public Tecnopolo dataset. The layout figure is generated from the prepared INP coordinates, conduits, outfalls, rain gage, and subcatchment routing fields; the hydrograph is checked against a direct `swmm5` baseline.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_prepared_layout.png" alt="Tecnopolo prepared-input SWMM layout with 40 subcatchments routed through junctions, conduits, outfalls, and one rain gage" width="760" />
-</p>
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_199401_outfall_rain_runoff.png" alt="Tecnopolo January 1994 rainfall-runoff benchmark at OUT_0" width="900" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tecnopolo_199401.py
-```
-
-### Prior Monte Carlo uncertainty smoke
-
-This private-development path perturbs parameters that are present in the Tecnopolo HORTON prepared INP, then reruns SWMM to inspect how outlet and internal-node hydrographs change. It is **not calibration** because no observed-flow series is used; it is a prior uncertainty smoke test with an audit trail.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_mc_uncertainty_flow_envelope.png" alt="Tecnopolo prior Monte Carlo uncertainty rainfall and flow envelope at J6" width="900" />
-</p>
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_mc_entropy_curves.png" alt="Tecnopolo prior Monte Carlo normalized output entropy curves at J6 and OUT_0" width="900" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py --samples 20 --seed 42 --node OUT_0 --scan-nodes --entropy-nodes J6 OUT_0
-python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/benchmarks/tecnopolo-mc-uncertainty-smoke --no-obsidian
-```
-
-The audited 20-trial smoke run kept the baseline peak at `0.06037 m3/s` at `OUT_0` on `1994-01-11 03:15`. The node scan found the clearest relative response at `J6`: its baseline peak was `0.00522 m3/s`, while the Monte Carlo peak envelope ranged from `0.00374` to `0.00654 m3/s`, a `53.75%` spread relative to baseline. The outlet peak envelope at `OUT_0` remained smaller in relative terms, from `0.05747` to `0.06439 m3/s`, or `-4.79%` to `+6.66%` relative to baseline. The entropy post-processing writes J6 and OUT_0 ensemble JSON files, node entropy JSON files, and an entropy curve figure. In this 20-trial smoke, the maximum normalized output entropy was `0.576` at `J6` and `0.299` at `OUT_0`. The audit outputs are written under `runs/benchmarks/tecnopolo-mc-uncertainty-smoke/` as `manifest.json`, `summary.json`, `experiment_provenance.json`, `comparison.json`, and `experiment_note.md`.
-
-### LID placement smoke
-
-This private-development path generates bioretention `[LID_CONTROLS]` and `[LID_USAGE]` scenarios for the Tecnopolo prepared INP, runs each candidate through SWMM, and ranks the generated candidate set by outlet peak-flow reduction. It is **design exploration**, not a final optimized LID plan.
-
-<p align="center">
-  <img src="docs/figs/tecnopolo_lid_placement_smoke.png" alt="Tecnopolo LID placement smoke rainfall and baseline versus best candidate outlet flow" width="900" />
-</p>
-
-```bash
-python3 scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py --node OUT_0
-python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/benchmarks/tecnopolo-lid-placement-smoke --no-obsidian
-```
-
-The audited smoke run generated 10 candidate scenarios: five single-site placements and five cumulative top-k placements ranked by impervious area. The best candidate in this small set was `cumulative_top_05`, treating `EDF3`, `EDF2`, `EDF1`, `B11.1`, and `EDF4` with a total LID area proxy of `275 m2`. At `OUT_0`, the baseline peak was `0.06037 m3/s`; the best candidate peak was `0.02126 m3/s`, a `64.78%` reduction under this scenario definition. The audit outputs are written under `runs/benchmarks/tecnopolo-lid-placement-smoke/`.
-
-The LID skill also supports entropy-guided priority tables through `rank_by: "entropy_priority"`. This translates spatial diagnostics into subcatchment-scale LID scenarios; it does not claim pixel-level LID placement inside SWMM.
-
-### Optional INP-derived raw adapter benchmark
-
-This path fetches a public `generate_swmm_inp` fixture, extracts raw-like GIS/CSV inputs from its open SWMM input file, and runs the Agentic SWMM modular path from those derived inputs.
-
-```bash
-python3 scripts/benchmarks/run_generate_swmm_inp_raw_path.py
-```
-
-More details: [Validation evidence](docs/validation-evidence.md), [TUFLOW example](examples/tuflow-swmm-module03/README.md), and [Tecnopolo example](examples/tecnopolo/README.md).
+Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
 ## Audit and research memory
 
@@ -193,9 +130,9 @@ The audit layer consolidates artifacts, QA checks, and metric provenance into an
   <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
 </p>
 
-The downstream modelling-memory layer can summarize audited run histories into recurring failure patterns, assumptions, missing evidence, QA issues, lessons learned, and controlled proposals for updating existing skills or creating new skills. The RAG memory layer can then retrieve similar historical failures, generate bounded failure advice, and record verified repair memory only after human review and benchmark verification.
+The downstream modelling-memory layer can summarize audited run histories into recurring failure patterns, assumptions, missing evidence, QA issues, lessons learned, and controlled proposals for updating existing skills or creating new skills. Because skills drive the workflow, these proposals stay coupled to the current Agentic SWMM framework and still require human review and benchmark verification before acceptance.
 
-More details: [Experiment audit framework](docs/experiment-audit-framework.md), [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md), and [Obsidian-compatible RAG memory](docs/obsidian-compatible-rag-memory.md).
+More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
 
 ## Codex / OpenClaw / Hermes ready
 
@@ -206,23 +143,24 @@ OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-
 For agent-orchestrated runs, preload the Agentic AI memory package and then use the top-level end-to-end skill:
 
 ```text
-agentic-ai/memory/
+agent/memory/
 skills/swmm-end-to-end/SKILL.md
 ```
 
 The top-level skill defines when to use the full modular path, when to use the prepared-input path, which QA gates must pass, and when to stop instead of inventing missing inputs.
 
-More details: [Codex runtime path](docs/codex-runtime.md) and [OpenClaw execution path](docs/openclaw-execution-path.md).
+For common prepared-input execution, audit, plotting, and memory summarization, the skill should prefer the unified `agentic-swmm` CLI. MCP tools remain available for the modular stages and for agent runtimes that need fine-grained tool calls.
+
+More details: [Codex runtime path](docs/codex-runtime.md), [OpenClaw execution path](docs/openclaw-execution-path.md), [Skill installation](integrations/skills/README.md), and [MCP runtime integration](integrations/mcp/README.md).
 
 ## Documentation map
 
 - [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
+- [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
 - [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
 - [Codex runtime path](docs/codex-runtime.md) - local development, audit, Obsidian, and evidence-review workflow
 - [OpenClaw execution path](docs/openclaw-execution-path.md) - MCP tool-call sequence for agent runtimes
-- [LID optimization workflow](docs/lid-optimization-workflow.md) - LID placement, combination, objective scoring, and evidence boundaries
-- [Entropy-guided LID decision support plan](docs/lid-entropy-decision-support-plan.md) - second-paper positioning, priority diagnostics, and fair-comparison design
 - [Repository map](docs/repo-map.md) - folder-level walkthrough
 - [Calibration example](examples/calibration/README.md) - compact calibration support example
 
