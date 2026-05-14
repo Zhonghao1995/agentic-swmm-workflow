@@ -87,7 +87,7 @@ class ExperimentAuditTests(unittest.TestCase):
         note_path = audit_dir / "experiment_note.md"
         diagnostics_path = audit_dir / "model_diagnostics.json"
 
-        self.assertTrue(provenance_path.exists(), "audit must write into 09_audit/ (schema 1.2)")
+        self.assertTrue(provenance_path.exists(), "audit must write into 09_audit/ (schema 1.3)")
         self.assertTrue(comparison_path.exists())
         self.assertTrue(note_path.exists())
         self.assertTrue(diagnostics_path.exists())
@@ -98,10 +98,11 @@ class ExperimentAuditTests(unittest.TestCase):
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
         diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
         peak = provenance["metrics"]["peak_flow"]
-        # PRD-Z bumped the schema 1.1 -> 1.2 and added the optional
-        # human_decisions array; this case has no decisions yet.
-        self.assertEqual(provenance["schema_version"], "1.2")
+        # PRD-CASE-ID bumped 1.2 -> 1.3 adding optional case_id; the
+        # human_decisions array remains (carried from PRD-Z).
+        self.assertEqual(provenance["schema_version"], "1.3")
         self.assertEqual(provenance["human_decisions"], [])
+        self.assertIsNone(provenance.get("case_id"))
         self.assertEqual(provenance["status"], "pass")
         self.assertEqual(diagnostics["generated_by"], "swmm-experiment-audit")
         self.assertEqual(peak["source_section"], "Node Inflow Summary")
