@@ -26,6 +26,8 @@ EXPECTED_READ_ONLY: set[str] = {
     "list_skills",
     "read_file",
     "read_skill",
+    "recall_memory",
+    "recall_memory_search",
     "search_files",
     "web_fetch_url",
     "web_search",
