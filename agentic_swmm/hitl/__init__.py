@@ -18,6 +18,14 @@ hard QA thresholds, the modeller can make a decision via CLI, and the
 provenance file separates "agent decided" from "human decided".
 """
 
+from agentic_swmm.hitl.decision_recorder import (
+    HumanDecision,
+    append_decision,
+    make_decision,
+    new_decision_id,
+    now_utc_iso,
+    read_decisions,
+)
 from agentic_swmm.hitl.threshold_evaluator import (
     ThresholdHit,
     evaluate,
@@ -25,7 +33,13 @@ from agentic_swmm.hitl.threshold_evaluator import (
 )
 
 __all__ = [
+    "HumanDecision",
     "ThresholdHit",
+    "append_decision",
     "evaluate",
     "load_thresholds_from_md",
+    "make_decision",
+    "new_decision_id",
+    "now_utc_iso",
+    "read_decisions",
 ]
