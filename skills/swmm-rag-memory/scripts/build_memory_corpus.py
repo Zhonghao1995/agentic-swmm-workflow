@@ -15,6 +15,15 @@ PRD M6 hygiene contract (post-processing layer; the underlying 761-LOC
   available, falling back to the lessons file marker, falling back to
   the package default ``DEFAULT_SCHEMA_VERSION``.
 - A one-line summary is written to stderr after a successful build.
+
+ME-2 (issue #62) bounded-forgetting contract:
+
+- Pattern sections in ``lessons_learned.md`` whose metadata says
+  ``status: retired`` are stripped from the emitted corpus entry text
+  entirely.
+- Surviving (active / dormant) pattern sections expose
+  ``pattern_status`` + ``pattern_confidence`` dicts on the entry so
+  the retrieval layer can downweight dormant patterns.
 """
 
 from __future__ import annotations
@@ -32,6 +41,83 @@ from rag_memory_lib import build_corpus, write_corpus
 DEFAULT_SCHEMA_VERSION = "1.1"
 _SCHEMA_VERSION_RE = re.compile(r"schema_version\s*[:=]\s*([0-9]+\.[0-9]+)")
 _AUDIT_FRONTMATTER_CASE_RE = re.compile(r"^case\s*:\s*(.+?)\s*$", flags=re.MULTILINE)
+
+
+# ME-2 (issue #62) lifecycle filter. We reach into
+# ``agentic_swmm.memory.lessons_metadata`` for the YAML parser so the
+# rules stay in one place; falling back to ``None`` lets the corpus
+# build still succeed in environments that ship the rag scripts
+# standalone (e.g. test fixtures).
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    from agentic_swmm.memory.lessons_metadata import (  # type: ignore[import-not-found]
+        _iter_pattern_spans,
+        read_metadata,
+    )
+except Exception:  # noqa: BLE001 — degrade gracefully
+    _iter_pattern_spans = None  # type: ignore[assignment]
+    read_metadata = None  # type: ignore[assignment]
+
+
+def _filter_lessons_text(text: str) -> tuple[str, dict[str, str], dict[str, float]]:
+    """Strip retired pattern sections + collect lifecycle weights.
+
+    Returns ``(filtered_text, pattern_status, pattern_confidence)``
+    where ``pattern_status`` maps surviving pattern names to their
+    ``status`` and ``pattern_confidence`` maps them to their
+    ``confidence_score`` (capped at 1.0 so the retrieval layer can use
+    it as a 0..1 weight without further normalisation).
+
+    When the metadata helpers are unavailable (e.g. standalone test
+    install) the function returns the input unchanged.
+    """
+    if _iter_pattern_spans is None or read_metadata is None:
+        return text, {}, {}
+
+    spans = list(_iter_pattern_spans(text))
+    if not spans:
+        return text, {}, {}
+
+    pattern_status: dict[str, str] = {}
+    pattern_confidence: dict[str, float] = {}
+    # Walk back-to-front so the running offsets stay valid as we
+    # excise retired sections.
+    out = text
+    for name, start, end in reversed(spans):
+        block = text[start:end]
+        meta = read_metadata(block)
+        if not meta:
+            continue
+        status = str(meta.get("status") or "active").lower()
+        score = float(meta.get("confidence_score") or 0.0)
+        if status == "retired":
+            out = out[:start] + out[end:]
+            continue
+        pattern_status[name] = status
+        pattern_confidence[name] = min(1.0, max(0.0, score))
+    return out, pattern_status, pattern_confidence
+
+
+def _apply_lessons_filter_to_entries(entries: list[dict[str, Any]]) -> None:
+    """In-place: strip retired patterns + annotate lifecycle weights.
+
+    Targets entries whose ``source_path`` ends in ``lessons_learned.md``
+    or ``lessons_archived.md``. The archive file is normally not in
+    the source set, but we treat it defensively the same way.
+    """
+    for entry in entries:
+        source = str(entry.get("source_path") or "")
+        if not source.endswith("lessons_learned.md"):
+            continue
+        text = entry.get("text")
+        if not isinstance(text, str):
+            continue
+        filtered, status_map, confidence_map = _filter_lessons_text(text)
+        entry["text"] = filtered
+        if status_map:
+            entry["pattern_status"] = status_map
+        if confidence_map:
+            entry["pattern_confidence"] = confidence_map
 
 
 def parse_args() -> argparse.Namespace:
@@ -244,6 +330,11 @@ def _post_process(
 def main() -> int:
     args = parse_args()
     entries = build_corpus(args.memory_dir, args.runs_dir, args.repo_root)
+    # ME-2 (issue #62): drop retired pattern sections + tag lifecycle
+    # weights on the lessons entry BEFORE case-name hygiene so the
+    # downstream hygiene checks see the same body the retrieval layer
+    # will see.
+    _apply_lessons_filter_to_entries(entries)
     cleaned, missing, schema = _post_process(
         entries,
         repo_root=args.repo_root,
