@@ -246,7 +246,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}}, ["run_dir"]), _audit_run_tool),
         ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
-        ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool),
+        ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
         ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
         ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
         ToolSpec("format_rainfall", "Format rainfall CSV into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill.", _object({"input_csv": {"type": "string"}, "out_json": {"type": "string"}, "out_timeseries": {"type": "string"}, "series_name": {"type": "string"}, "timestamp_column": {"type": "string"}, "value_column": {"type": "string"}, "value_units": {"type": "string"}, "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]}, "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]}}, ["input_csv", "out_json", "out_timeseries"]), _format_rainfall_tool),
@@ -373,7 +373,7 @@ def _build_tools() -> dict[str, ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool),
+        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
@@ -857,9 +857,14 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     goal = str(call.args.get("goal") or "").lower()
     provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
 
-    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "??", "??"))
-    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "???", "??"))
-    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "??" in goal or "??" in goal
+    # NOTE: Chinese keywords are part of the bilingual goal-routing contract.
+    # The `??` placeholders previously here were a non-UTF-8 sync regression
+    # (P0-2 in #79). Do not replace these with ASCII placeholders again — the
+    # regression test in `tests/test_select_workflow_mode_bilingual.py` will
+    # trip on any reintroduced `??` pair.
+    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定"))
+    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性"))
+    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "审计" in goal or "比较" in goal
     wants_plot = any(
         word in goal
         for word in (
@@ -880,7 +885,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             "hydraulic_head",
         )
     )
-    wants_demo = any(word in goal for word in ("demo", "acceptance", "??", "??"))
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "演示", "验收"))
     has_inp = bool(provided.get("inp_path"))
     has_run_dir = bool(provided.get("run_dir"))
     if (wants_plot or wants_audit) and not has_run_dir:
@@ -919,7 +924,7 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     elif wants_audit and not has_inp:
         mode = "audit_only_or_comparison"
         required = ["run_dir"]
-        if "compare" in goal or "comparison" in goal or "??" in goal:
+        if "compare" in goal or "comparison" in goal or "比较" in goal:
             required.append("baseline_run_dir")
         next_tools = ["audit_run"]
         boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."

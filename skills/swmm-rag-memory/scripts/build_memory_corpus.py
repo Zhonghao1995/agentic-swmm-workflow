@@ -131,6 +131,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Do not exit non-zero when an audit-derived entry has no resolvable case_name.",
     )
+    parser.add_argument(
+        "--include-embeddings",
+        action="store_true",
+        help=(
+            "Also emit embedding_index.json (hashed-cosine vectors). "
+            "Off by default — no caller on main passes retriever='hybrid' "
+            "to rag_memory_lib.retrieve(). See P1-2 in #79."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -357,7 +366,7 @@ def main() -> int:
         )
         return 1
 
-    write_corpus(cleaned, args.out_dir)
+    write_corpus(cleaned, args.out_dir, include_embeddings=args.include_embeddings)
     distinct_cases = {entry.get("case_name") for entry in cleaned if entry.get("case_name")}
     print(
         json.dumps(

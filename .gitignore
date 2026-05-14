@@ -108,13 +108,12 @@ docs/figs/tecnopolo_mc_entropy_curves.png
 docs/figs/tecnopolo_mc_uncertainty_flow_envelope.png
 docs/calibration-uncertainty-workflow.md
 
-# RAG memory (paper IP / project-specific logic)
-skills/swmm-rag-memory/
+# RAG memory — promoted to public in #36 (skill, retrieval scripts, corpus,
+# Obsidian doc). Keep `tests/test_swmm_rag_memory.py` ignored since it
+# pulls in heavy embedding deps not available in the public CI matrix.
 tests/test_swmm_rag_memory.py
-docs/obsidian-compatible-rag-memory.md
 
-# Research data / language indices
-memory/rag-memory/
+# Research data / language indices — local-only project artefacts
 memory/modeling-memory/projects/
 memory/modeling-memory/run_memory_summaries.json
 

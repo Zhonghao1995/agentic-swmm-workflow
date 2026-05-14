@@ -18,7 +18,10 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 # ``git_diff``, ``web_*``, ``inspect_plot_options``, ``read_skill``,
 # ``list_skills``, ``list_mcp_servers``, ``list_mcp_tools``.
 # PRD-Y adds ``select_skill`` — it only returns the skill's tool subset.
+# #79 P1-5 adds ``capabilities`` and ``select_workflow_mode`` — both pure
+# read/inspect tools that were drifting on the False default.
 EXPECTED_READ_ONLY: set[str] = {
+    "capabilities",
     "git_diff",
     "inspect_plot_options",
     "list_dir",
@@ -32,6 +35,7 @@ EXPECTED_READ_ONLY: set[str] = {
     "recall_session_history",
     "search_files",
     "select_skill",
+    "select_workflow_mode",
     "web_fetch_url",
     "web_search",
 }

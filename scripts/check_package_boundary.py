@@ -8,9 +8,7 @@ from pathlib import Path
 
 
 FORBIDDEN_SUBSTRINGS = (
-    "/skills/swmm-rag-memory/",
     "/skills/swmm-lid-optimization/",
-    "/memory/rag-memory/",
     "/memory/modeling-memory/projects/",
     "/memory/modeling-memory/run_memory_summaries.json",
     "/skills/swmm-gis/scripts/flowpath_entropy_partition.py",
@@ -33,7 +31,6 @@ FORBIDDEN_SUBSTRINGS = (
     "/docs/qgis-entropy-subcatchment-mcp-skill-plan.md",
     "/docs/lid-entropy-decision-support-plan.md",
     "/docs/lid-optimization-workflow.md",
-    "/docs/obsidian-compatible-rag-memory.md",
     "/docs/calibration-uncertainty-workflow.md",
     "/docs/figs/tecnopolo_mc_entropy_curves.png",
     "/docs/figs/tecnopolo_lid_placement_smoke.png",
@@ -42,9 +39,6 @@ FORBIDDEN_SUBSTRINGS = (
     "/tests/test_flowpath_entropy_partition.py",
     "/tests/test_cell_entropy_similarity_aggregation.py",
     "/tests/test_qgis_mcp_contracts.py",
-    "corpus.jsonl",
-    "embedding_index.json",
-    "keyword_index.json",
 )
 
 REQUIRED_SUBSTRINGS = (

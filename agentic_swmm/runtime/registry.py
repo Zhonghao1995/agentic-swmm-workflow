@@ -24,10 +24,20 @@ MCP_SERVERS = [
     "swmm-uncertainty",
 ]
 
+# All seven LLM-readable startup memory files under ``agent/memory/``.
+# ``identification`` / ``operational`` / ``evidence`` ship as the eager core
+# (loaded first), and ``soul`` / ``modeling_workflow`` / ``user_bridge`` /
+# ``README`` join them as warm-identity context (PR #74). The README in
+# ``agent/memory/`` advertises this exact list, so the registry must mirror it
+# to avoid silent README-vs-runtime drift (P1-1 in #79).
 LONG_TERM_MEMORY_FILES = [
     ("agent/memory/identification_memory.md", "agent/identification_memory.md"),
     ("agent/memory/operational_memory.md", "agent/operational_memory.md"),
     ("agent/memory/evidence_memory.md", "agent/evidence_memory.md"),
+    ("agent/memory/soul.md", "agent/soul.md"),
+    ("agent/memory/modeling_workflow_memory.md", "agent/modeling_workflow_memory.md"),
+    ("agent/memory/user_bridge_memory.md", "agent/user_bridge_memory.md"),
+    ("agent/memory/README.md", "agent/memory_README.md"),
 ]
 
 MODELING_MEMORY_FILES = [
