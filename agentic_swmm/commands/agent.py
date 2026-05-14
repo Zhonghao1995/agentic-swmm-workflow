@@ -35,6 +35,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--interactive", action="store_true", help="Start an interactive agent shell; each prompt is executed with tool access.")
     parser.add_argument("--max-steps", type=int, default=16, help="Maximum tool calls to execute.")
     parser.add_argument("--verbose", action="store_true", help="Show full planner/tool details in the terminal.")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help=(
+            "Permission profile QUICK: auto-approve read-only tools "
+            "(read_file, list_*, search_files, git_diff, web_*, "
+            "inspect_plot_options). Write/subprocess tools still prompt."
+        ),
+    )
     parser.set_defaults(func=main)
 
 

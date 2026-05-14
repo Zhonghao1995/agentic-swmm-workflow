@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
@@ -218,7 +219,14 @@ def run_openai_planner(
     if args.verbose:
         _agent_say(f"Allowed tools: {', '.join(registry.sorted_names())}")
 
-    executor = AgentExecutor(registry, session_dir=session_dir, trace_path=trace_path, dry_run=args.dry_run)
+    profile = Profile.QUICK if getattr(args, "quick", False) else Profile.SAFE
+    executor = AgentExecutor(
+        registry,
+        session_dir=session_dir,
+        trace_path=trace_path,
+        dry_run=args.dry_run,
+        profile=profile,
+    )
     outcome = run_openai_plan(
         goal=goal,
         model=model,
