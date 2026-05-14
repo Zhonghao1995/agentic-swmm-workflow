@@ -145,7 +145,10 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("audit", help="Generate audit provenance, comparison, and note artifacts.")
-    parser.add_argument("--run-dir", required=True, type=Path, help="Run directory to audit.")
+    # ``--run-dir`` is required for a full audit but optional for
+    # ``--refresh-moc`` (issue #60); we enforce the dependency in main()
+    # so argparse can still parse the bare ``--refresh-moc`` form.
+    parser.add_argument("--run-dir", type=Path, help="Run directory to audit.")
     parser.add_argument("--compare-to", type=Path, help="Optional baseline run directory.")
     parser.add_argument("--case-name", help="Optional human-readable case name.")
     parser.add_argument("--workflow-mode", help="Optional workflow mode label.")
@@ -169,10 +172,84 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Full-rebuild fallback: force re-scan of all runs by the "
         "memory summariser (clears .last_sync.json).",
     )
+    parser.add_argument(
+        "--refresh-moc",
+        action="store_true",
+        help="Force-refresh runs/INDEX.md (the Obsidian MOC) without "
+        "running a full audit. Exits 0 on success. Does not write into "
+        "any 09_audit/ directory. AISWMM_RUNS_ROOT overrides the "
+        "auto-resolved runs root.",
+    )
     parser.set_defaults(func=main)
 
 
+def _refresh_moc_only() -> int:
+    """Regenerate ``runs/INDEX.md`` against the resolved runs root.
+
+    Honours ``AISWMM_RUNS_ROOT`` (same env var used by the audit
+    success path's ``_write_moc``) and falls back to ``repo_root() /
+    "runs"``. Returns 0 on success, 1 if the runs root does not exist
+    or MOC generation fails.
+    """
+    env_override = os.environ.get("AISWMM_RUNS_ROOT")
+    if env_override:
+        runs_root = Path(env_override).expanduser().resolve()
+    else:
+        from agentic_swmm.utils.paths import repo_root
+
+        runs_root = repo_root() / "runs"
+    if not runs_root.exists():
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "reason": "runs_root_missing",
+                    "runs_root": str(runs_root),
+                }
+            )
+        )
+        return 1
+    try:
+        text = generate_moc(runs_root)
+    except Exception as exc:  # noqa: BLE001 — surface the error to the caller
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "reason": "moc_generation_failed",
+                    "error": str(exc),
+                    "runs_root": str(runs_root),
+                }
+            )
+        )
+        return 1
+    index_path = runs_root / "INDEX.md"
+    index_path.write_text(text, encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "ok": True,
+                "runs_index": str(index_path),
+                "runs_root": str(runs_root),
+            }
+        )
+    )
+    return 0
+
+
 def main(args: argparse.Namespace) -> int:
+    # Issue #60 (UX-5): force-refresh path short-circuits the full audit
+    # pipeline. We must not require --run-dir, must not invoke the audit
+    # subprocess, and must not write any 09_audit/ artefacts.
+    if getattr(args, "refresh_moc", False):
+        return _refresh_moc_only()
+
+    if args.run_dir is None:
+        print(
+            "audit: --run-dir is required (or pass --refresh-moc to "
+            "regenerate runs/INDEX.md only)",
+        )
+        return 2
     run_dir = require_dir(args.run_dir, "run directory")
     audit_dir = run_dir / "09_audit"
     # Back up any prior audit run before invoking the script that will

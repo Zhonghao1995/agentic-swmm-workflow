@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -36,6 +37,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
+from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.config import load_config
 from agentic_swmm.memory import facts as _facts_mod
 from agentic_swmm.memory import session_db
@@ -43,6 +45,8 @@ from agentic_swmm.memory.case_inference import infer_case_name
 from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
+
+_log = logging.getLogger(__name__)
 
 # `_safe_name` is shared with the non-interactive path; both files need it.
 from agentic_swmm.agent.single_shot import _safe_name
@@ -350,6 +354,7 @@ def run_openai_planner(
             },
         )
         _sync_session_end(session_dir)
+        _refresh_moc_after_session(session_dir)
         if chat_note is not None:
             _agent_say(f"Chat note: {_display_path(chat_note)}")
         if outcome.final_text:
@@ -368,6 +373,7 @@ def run_openai_planner(
     )
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})
     _sync_session_end(session_dir)
+    _refresh_moc_after_session(session_dir)
     _agent_say(f"Final report: {_display_path(report)}")
     if outcome.final_text:
         _agent_say(outcome.final_text)
@@ -685,6 +691,50 @@ def _sync_session_end(session_dir: Path) -> None:
         return
     finally:
         _SYNCED_SESSION_DIRS.add(key)
+
+
+def _resolve_runs_root_for(session_dir: Path) -> Path:
+    """Return the ``runs/`` root that the MOC should describe.
+
+    Order:
+      1. ``AISWMM_RUNS_ROOT`` env var (lets tests point at a tmp tree).
+      2. The first ancestor of ``session_dir`` named ``runs``.
+      3. ``repo_root() / "runs"`` as a last-resort fallback.
+
+    Mirrors the resolution used by ``commands/audit._runs_root_for`` so
+    the session-end and force-refresh paths agree.
+    """
+    override = os.environ.get("AISWMM_RUNS_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    try:
+        resolved = session_dir.resolve()
+    except OSError:
+        resolved = session_dir
+    for parent in resolved.parents:
+        if parent.name == "runs":
+            return parent
+    return repo_root() / "runs"
+
+
+def _refresh_moc_after_session(session_dir: Path) -> None:
+    """Regenerate ``runs/INDEX.md`` after a session ends.
+
+    Best-effort: the 'living memory' MOC promise (issue #60) requires
+    that every session-end pass leaves a fresh ``runs/INDEX.md`` on
+    disk so Obsidian shows new chat notes immediately. We deliberately
+    swallow any error and log a single warning — MOC regen must NEVER
+    block the user's turn from exiting cleanly.
+    """
+    try:
+        runs_root = _resolve_runs_root_for(session_dir)
+        if not runs_root.exists():
+            return
+        text = generate_moc(runs_root)
+        index_path = runs_root / "INDEX.md"
+        index_path.write_text(text, encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 — best-effort, see docstring
+        _log.warning("MOC refresh failed for runs/INDEX.md: %s", exc)
 
 
 def _atexit_sync_recent_sessions() -> None:
