@@ -1258,7 +1258,12 @@ class AgenticSwmmCliTests(unittest.TestCase):
             payload = json.loads(proc.stdout)
 
             self.assertIn(payload["status"], {"ready", "ready_with_warnings"})
-            self.assertEqual(payload["resources"]["skills"], 14)
+            expected_skills = sum(
+                1
+                for entry in (REPO_ROOT / "skills").iterdir()
+                if entry.is_dir() and (entry / "SKILL.md").is_file()
+            )
+            self.assertEqual(payload["resources"]["skills"], expected_skills)
             self.assertEqual(payload["resources"]["mcp_servers"], 8)
             self.assertEqual(payload["resources"]["memory_files"], 7)
             self.assertEqual(payload["resources"]["memory_layers"]["long_term"], 3)
