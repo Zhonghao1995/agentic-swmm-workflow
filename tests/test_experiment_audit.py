@@ -81,19 +81,24 @@ class ExperimentAuditTests(unittest.TestCase):
             cwd=REPO_ROOT,
         )
 
-        provenance_path = self.run_dir / "experiment_provenance.json"
-        comparison_path = self.run_dir / "comparison.json"
-        note_path = self.run_dir / "experiment_note.md"
-        diagnostics_path = self.run_dir / "model_diagnostics.json"
+        audit_dir = self.run_dir / "09_audit"
+        provenance_path = audit_dir / "experiment_provenance.json"
+        comparison_path = audit_dir / "comparison.json"
+        note_path = audit_dir / "experiment_note.md"
+        diagnostics_path = audit_dir / "model_diagnostics.json"
 
-        self.assertTrue(provenance_path.exists())
+        self.assertTrue(provenance_path.exists(), "audit must write into 09_audit/ (schema 1.1)")
         self.assertTrue(comparison_path.exists())
         self.assertTrue(note_path.exists())
         self.assertTrue(diagnostics_path.exists())
+        # The script must no longer write root-level audit artefacts.
+        self.assertFalse((self.run_dir / "experiment_note.md").exists())
+        self.assertFalse((self.run_dir / "experiment_provenance.json").exists())
 
         provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
         diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
         peak = provenance["metrics"]["peak_flow"]
+        self.assertEqual(provenance["schema_version"], "1.1")
         self.assertEqual(provenance["status"], "pass")
         self.assertEqual(diagnostics["generated_by"], "swmm-experiment-audit")
         self.assertEqual(peak["source_section"], "Node Inflow Summary")

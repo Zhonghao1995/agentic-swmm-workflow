@@ -16,6 +16,7 @@ from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
 from agentic_swmm.agent.planner import _looks_like_swmm_request, rule_plan
+from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.agent.runtime import call_payload as _call_payload
 from agentic_swmm.agent.runtime import run_openai_plan, run_rule_plan
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -136,6 +137,7 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
         turn += 1
         use_active_run = active_run_dir is not None and _looks_like_run_continuation(prompt)
         goal = prompt
+        is_chat_turn = False
         if use_active_run:
             session_dir = active_run_dir
             goal = f"{prompt}\n\nPrevious run directory: {active_run_dir}"
@@ -143,10 +145,18 @@ def _run_interactive_shell(args: argparse.Namespace) -> int:
             session_dir = _new_turn_dir(date_dir, prompt, kind="run")
         else:
             session_dir = _new_turn_dir(date_dir, prompt, kind="chat")
+            is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
         print()
-        result = _run_openai_planner(args, goal, session_dir, trace_path, AgentToolRegistry())
+        result = _run_openai_planner(
+            args,
+            goal,
+            session_dir,
+            trace_path,
+            AgentToolRegistry(),
+            chat_session=is_chat_turn,
+        )
         if result == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir = session_dir
         print()
@@ -197,7 +207,57 @@ def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
         handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, trace_path: Path, registry: AgentToolRegistry) -> int:
+def _write_chat_note_for_session(session_dir: Path) -> Path | None:
+    """Write ``chat_note.md`` for a chat-only session.
+
+    The PRD (M8) requires chat sessions to carry an Obsidian-ready
+    ``chat_note.md`` alongside ``session_state.json`` and
+    ``agent_trace.jsonl``. We skip this for SWMM run dirs so the audit
+    note remains the canonical record there.
+    """
+    if not session_dir.exists() or not session_dir.is_dir():
+        return None
+    if _is_swmm_run_dir(session_dir):
+        return None
+
+    state_path = session_dir / "session_state.json"
+    trace_path = session_dir / "agent_trace.jsonl"
+    state: dict[str, Any] = {}
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                state = {}
+        except json.JSONDecodeError:
+            state = {}
+    trace_events: list[dict[str, Any]] = []
+    if trace_path.exists():
+        for raw in trace_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(event, dict):
+                trace_events.append(event)
+
+    note_text = build_chat_note(state, trace_events)
+    note_path = session_dir / "chat_note.md"
+    note_path.write_text(note_text, encoding="utf-8")
+    return note_path
+
+
+def _run_openai_planner(
+    args: argparse.Namespace,
+    goal: str,
+    session_dir: Path,
+    trace_path: Path,
+    registry: AgentToolRegistry,
+    *,
+    chat_session: bool = False,
+) -> int:
     config = load_config()
     provider_name = args.provider or config.get("provider.default", "openai")
     model = args.model or config.get(f"{provider_name}.model")
@@ -227,6 +287,39 @@ def _run_openai_planner(args: argparse.Namespace, goal: str, session_dir: Path, 
         verbose=args.verbose,
         emit=_agent_say,
     )
+
+    if chat_session:
+        # Persist a minimal session_state.json so the chat-note generator
+        # has structured context to work with.
+        state_path = session_dir / "session_state.json"
+        if not state_path.exists():
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "goal": goal,
+                        "status": "ok" if outcome.ok else "fail",
+                        "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+        chat_note = _write_chat_note_for_session(session_dir)
+        _write_event(
+            trace_path,
+            {
+                "event": "session_end",
+                "ok": outcome.ok,
+                "chat_note": str(chat_note) if chat_note else None,
+                "final_text": outcome.final_text,
+            },
+        )
+        if chat_note is not None:
+            _agent_say(f"Chat note: {_display_path(chat_note)}")
+        if outcome.final_text:
+            _agent_say(outcome.final_text)
+        return 0 if outcome.ok else 1
 
     report = _write_report(
         session_dir,

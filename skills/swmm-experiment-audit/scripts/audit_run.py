@@ -698,7 +698,7 @@ def build_model_diagnostics(
     errors = sum(1 for item in diagnostics if item.get("severity") == "error")
     warnings = sum(1 for item in diagnostics if item.get("severity") == "warning")
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "source_inp": relpath(inp_path, repo_root) if inp_path and inp_path.exists() else None,
@@ -982,7 +982,7 @@ def collect_run(
         warnings.append("Run status is unknown because no complete QA or runner manifest was found.")
 
     provenance = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "run_id": top_manifest.get("run_id") or acceptance_report.get("run_id") or run_dir.name,
@@ -1042,7 +1042,7 @@ def peak_matches_report(provenance: dict[str, Any]) -> Any:
 def build_comparison(current: dict[str, Any], baseline: dict[str, Any] | None) -> dict[str, Any]:
     if baseline is None:
         return {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "generated_by": "swmm-experiment-audit",
             "generated_at_utc": now_utc(),
             "comparison_available": False,
@@ -1104,7 +1104,7 @@ def build_comparison(current: dict[str, Any], baseline: dict[str, Any] | None) -
         warnings.append("Peak flow changed while the SWMM input hash is unchanged; check parser version, metric source, or report records.")
 
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "comparison_available": True,
@@ -1489,10 +1489,38 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
+def validate_run_layout(run_dir: Path) -> str | None:
+    """Pre-flight check for the audit-cleanup invariant (PRD M6).
+
+    Returns ``None`` when the run dir is compatible with the 1.1 layout.
+    Returns an error string when legacy root-level audit artefacts are
+    present (P1/P2/P3); the caller should print the message to stderr and
+    exit non-zero so the user runs ``scripts/migrate_audit_layout.py``.
+    """
+    legacy_files = [
+        name
+        for name in ("experiment_note.md", "experiment_provenance.json", "comparison.json")
+        if (run_dir / name).exists()
+    ]
+    if legacy_files:
+        joined = ", ".join(legacy_files)
+        return (
+            f"refusing to overwrite legacy root-level audit artefacts in {run_dir}: {joined}. "
+            "Run `python3 scripts/migrate_audit_layout.py --apply` first; "
+            "schema 1.1 writes into <run-dir>/09_audit/ only."
+        )
+    return None
+
+
 def main() -> None:
     args = parse_args()
     repo_root = args.repo_root.resolve()
     run_dir = args.run_dir.resolve()
+
+    error = validate_run_layout(run_dir)
+    if error is not None:
+        print(error, file=sys.stderr)
+        raise SystemExit(2)
 
     provenance = collect_run(
         run_dir,
@@ -1508,10 +1536,11 @@ def main() -> None:
     )
     comparison = build_comparison(provenance, baseline)
 
-    out_provenance = args.out_provenance or (run_dir / "experiment_provenance.json")
-    out_comparison = args.out_comparison or (run_dir / "comparison.json")
-    out_note = args.out_note or (run_dir / "experiment_note.md")
-    out_model_diagnostics = args.out_model_diagnostics or (run_dir / "model_diagnostics.json")
+    audit_dir = run_dir / "09_audit"
+    out_provenance = args.out_provenance or (audit_dir / "experiment_provenance.json")
+    out_comparison = args.out_comparison or (audit_dir / "comparison.json")
+    out_note = args.out_note or (audit_dir / "experiment_note.md")
+    out_model_diagnostics = args.out_model_diagnostics or (audit_dir / "model_diagnostics.json")
     obsidian_note = None
     if args.obsidian_dir and not args.no_obsidian:
         note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"

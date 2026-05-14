@@ -19,13 +19,15 @@ Without a consolidation layer, these records are auditable but dispersed. `swmm-
 
 ## Required outputs
 
-Every audited run should produce:
+Every audited run should produce, inside `<run-dir>/09_audit/`:
 
 ```text
-experiment_provenance.json
-comparison.json
-experiment_note.md
+09_audit/experiment_provenance.json
+09_audit/comparison.json
+09_audit/experiment_note.md
 ```
+
+The schema is versioned in `experiment_provenance.schema_version` (currently `1.1`). The single location invariant is enforced by `agentic_swmm.audit.run_folder_layout.validate()`; per-case stage numbering above this layer is intentionally not constrained.
 
 `experiment_provenance.json` is the canonical machine-readable audit record.
 

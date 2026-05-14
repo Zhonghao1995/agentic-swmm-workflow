@@ -1330,9 +1330,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
             payload = json.loads(proc.stdout)
 
-            self.assertTrue((run_dir / "experiment_provenance.json").exists())
-            self.assertTrue((run_dir / "comparison.json").exists())
-            self.assertTrue((run_dir / "experiment_note.md").exists())
+            audit_dir = run_dir / "09_audit"
+            self.assertTrue((audit_dir / "experiment_provenance.json").exists())
+            self.assertTrue((audit_dir / "comparison.json").exists())
+            self.assertTrue((audit_dir / "experiment_note.md").exists())
             self.assertTrue((run_dir / "command_trace.json").exists())
             self.assertIsNone(payload["obsidian_note"])
 
@@ -1436,8 +1437,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 text=True,
                 check=True,
             )
-            provenance = json.loads((run_dir / "experiment_provenance.json").read_text(encoding="utf-8"))
-            note = (run_dir / "experiment_note.md").read_text(encoding="utf-8")
+            audit_dir = run_dir / "09_audit"
+            provenance = json.loads((audit_dir / "experiment_provenance.json").read_text(encoding="utf-8"))
+            note = (audit_dir / "experiment_note.md").read_text(encoding="utf-8")
             self.assertEqual(provenance["workflow_mode"], "external_inp_import")
             self.assertIn("Workflow mode | external_inp_import", note)
             self.assertIn("External INP imports are copied into the run directory before execution", note)

@@ -285,7 +285,7 @@ def main() -> None:
         "continuity_error_percent": continuity.get("continuity_error_percent"),
         "direct_runner_consistency": consistency,
         "internal_node_validation": node_validation,
-        "audit_note": rel(run_dir / "experiment_note.md"),
+        "audit_note": rel(run_dir / "09_audit" / "experiment_note.md"),
     }
     print(json.dumps(summary, indent=2))
 
