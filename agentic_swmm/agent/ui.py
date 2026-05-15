@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import IO, Any
 
+from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.utils.paths import repo_root
 
@@ -40,6 +41,48 @@ def agent_say(text: str) -> None:
 
 def _styled_prompt() -> str:
     return ui_colors.colorize(_PROMPT, ui_colors.FG_BLUE)
+
+
+# ---------------------------------------------------------------------------
+# Retro-chrome err / wrn builders (PRD-TUI-REDESIGN).
+#
+# Public re-exports of ``tui_chrome.err`` / ``tui_chrome.wrn`` plus a
+# pair of stderr-emitting wrappers (``say_err``, ``say_wrn``) so the
+# rest of the agent can replace any ad-hoc ``print("Error: ...")`` /
+# ``print("Warning: ...")`` patterns with the canonical chrome
+# vocabulary in one line. Under plain mode (``AISWMM_TUI=plain``)
+# both the prefix and the colour are stripped automatically.
+# ---------------------------------------------------------------------------
+
+
+def err(msg: str) -> str:
+    """Return ``[ERR] msg`` in error red. See :func:`tui_chrome.err`."""
+    return _chrome.err(msg)
+
+
+def wrn(msg: str) -> str:
+    """Return ``[WRN] msg`` in warn amber. See :func:`tui_chrome.wrn`."""
+    return _chrome.wrn(msg)
+
+
+def say_err(msg: str, *, stream: IO[str] | None = None) -> None:
+    """Print ``[ERR] msg`` to stderr (or ``stream`` if provided).
+
+    Replaces the ad-hoc ``print(f"Error: {msg}", file=sys.stderr)``
+    pattern. Plain-mode opt-out is inherited from ``tui_chrome``.
+    """
+    out = stream if stream is not None else sys.stderr
+    print(err(msg), file=out, flush=True)
+
+
+def say_wrn(msg: str, *, stream: IO[str] | None = None) -> None:
+    """Print ``[WRN] msg`` to stderr (or ``stream`` if provided).
+
+    Replaces the ad-hoc ``print(f"Warning: {msg}", file=sys.stderr)``
+    pattern. Plain-mode opt-out is inherited from ``tui_chrome``.
+    """
+    out = stream if stream is not None else sys.stderr
+    print(wrn(msg), file=out, flush=True)
 
 
 def display_path(path: Path) -> str:
