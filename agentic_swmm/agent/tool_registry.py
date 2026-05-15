@@ -472,7 +472,7 @@ def _build_tools() -> dict[str, ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools.", _object({"goal": {"type": "string"}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
+        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools. OPTIONAL but recommended: pass `mode` with your identified workflow mode (one of calibration / uncertainty / prepared_inp_cli / full_modular_build / existing_run_plot / audit_only_or_comparison / prepared_demo) so the tool uses your classification directly instead of re-deriving intent via legacy keyword matching.", _object({"goal": {"type": "string"}, "mode": {"type": "string", "enum": ["calibration", "uncertainty", "prepared_inp_cli", "full_modular_build", "existing_run_plot", "audit_only_or_comparison", "prepared_demo"], "description": "OPTIONAL but recommended. The workflow mode you have identified from the user's goal. If provided and valid, the tool uses this directly. If absent or invalid, falls back to keyword matching (legacy compatibility)."}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
@@ -1229,88 +1229,71 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    goal = str(call.args.get("goal") or "").lower()
-    provided = {key: str(value).strip() for key, value in call.args.items() if isinstance(value, str) and value.strip()}
+# Valid workflow modes the LLM may pass via the ``mode`` argument.
+# Kept in sync with the ToolSpec input_schema enum above.
+_VALID_MODE_ENUM = frozenset(
+    {
+        "calibration",
+        "uncertainty",
+        "prepared_inp_cli",
+        "full_modular_build",
+        "existing_run_plot",
+        "audit_only_or_comparison",
+        "prepared_demo",
+    }
+)
 
-    # NOTE: Chinese keywords are part of the bilingual goal-routing contract.
-    # The `??` placeholders previously here were a non-UTF-8 sync regression
-    # (P0-2 in #79). Do not replace these with ASCII placeholders again — the
-    # regression test in `tests/test_select_workflow_mode_bilingual.py` will
-    # trip on any reintroduced `??` pair.
-    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定"))
-    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性"))
-    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "审计" in goal or "比较" in goal
-    wants_plot = any(
-        word in goal
-        for word in (
-            "plot",
-            "figure",
-            "graph",
-            "作图",
-            "画图",
-            "图",
-            "rainfall",
-            "node",
-            "outfall",
-            "total_inflow",
-            "lateral_inflow",
-            "flow_lost_flooding",
-            "volume_stored_ponded",
-            "depth_above_invert",
-            "hydraulic_head",
-        )
-    )
-    wants_demo = any(word in goal for word in ("demo", "acceptance", "演示", "验收"))
-    has_inp = bool(provided.get("inp_path"))
-    has_run_dir = bool(provided.get("run_dir"))
-    if (wants_plot or wants_audit) and not has_run_dir:
-        active_run_dir = _active_run_dir_from_global_state()
-        if active_run_dir:
-            provided["run_dir"] = active_run_dir
-            has_run_dir = True
-    full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
-    has_full_build = all(provided.get(key) for key in full_build_inputs)
 
-    if wants_plot and has_run_dir:
-        mode = "existing_run_plot"
+def _build_response_for_mode(
+    call: ToolCall, mode: str, goal: str, provided: dict[str, str]
+) -> dict[str, Any]:
+    """Validate inputs for ``mode`` and build the tool's response payload.
+
+    Shared between the explicit-mode short-circuit (when the LLM passed
+    ``mode``) and the legacy keyword-fallback path. The ``provided`` dict
+    is read-only here; auto-infer of ``run_dir`` from global state is the
+    caller's responsibility and runs only in the keyword-fallback path.
+    """
+
+    full_build_inputs = [
+        "network_json",
+        "subcatchments_csv",
+        "rainfall_input",
+        "landuse_input",
+        "soil_input",
+    ]
+
+    if mode == "existing_run_plot":
         required = ["run_dir"]
         next_tools = ["inspect_plot_options", "plot_run"]
         boundary = "Plots generated from an existing run directory are visualization evidence from recorded SWMM artifacts."
-    elif wants_calibration:
-        mode = "calibration"
+    elif mode == "calibration":
         required = ["inp_path", "observed_flow", "node"]
         next_tools = ["run_swmm_inp", "audit_run"]
         boundary = "Calibration requires observed flow evidence and recorded parameter-selection artifacts; a successful run alone is not calibration."
-    elif wants_uncertainty:
-        mode = "uncertainty"
+    elif mode == "uncertainty":
         required = ["inp_path", "fuzzy_config", "node"]
         next_tools = ["run_swmm_inp", "audit_run"]
         boundary = "Uncertainty runs produce scenario evidence, not calibrated predictive uncertainty unless supported by observed-data validation."
-    elif has_inp:
-        mode = "prepared_inp_cli"
+    elif mode == "prepared_inp_cli":
         required = ["inp_path"]
         next_tools = ["run_swmm_inp", "audit_run", "inspect_plot_options", "plot_run"]
         boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
-    elif wants_demo:
-        mode = "prepared_demo"
+    elif mode == "prepared_demo":
         required = []
         next_tools = ["demo_acceptance", "audit_run"]
         boundary = "Prepared demos are smoke or benchmark evidence, not proof of arbitrary greenfield modeling."
-    elif wants_audit and not has_inp:
-        mode = "audit_only_or_comparison"
+    elif mode == "audit_only_or_comparison":
         required = ["run_dir"]
         if "compare" in goal or "comparison" in goal or "比较" in goal:
             required.append("baseline_run_dir")
         next_tools = ["audit_run"]
         boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
-    elif has_full_build:
-        mode = "full_modular_build"
+    elif mode == "full_modular_build":
         required = full_build_inputs
         next_tools = ["format_rainfall", "network_qa", "build_inp", "run_swmm_inp", "audit_run"]
         boundary = "Full modular build requires explicit GIS/network/rainfall/parameter inputs; the agent must not invent missing model inputs."
-    else:
-        mode = "needs_user_inputs"
+    else:  # mode == "needs_user_inputs" (keyword-fallback only)
         required = ["inp_path or full modular build inputs"]
         next_tools = []
         boundary = "No SWMM execution should start until a prepared INP or complete build inputs are provided."
@@ -1338,6 +1321,85 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "plot_selection_options": plot_selection_options,
     }
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
+
+
+def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    goal = str(call.args.get("goal") or "").lower()
+    # ``mode`` is consumed below as a routing argument, not a workflow
+    # input; exclude it from ``provided`` so it does not pollute the
+    # echoed ``provided_inputs`` / ``provided_values`` fields.
+    provided = {
+        key: str(value).strip()
+        for key, value in call.args.items()
+        if key != "mode" and isinstance(value, str) and value.strip()
+    }
+
+    # PRD-INTENT-OVERMATCH (#95): the LLM may pass an explicit ``mode``
+    # to bypass keyword-based intent re-derivation. If valid, use it
+    # directly; do NOT auto-infer ``run_dir`` from global state when the
+    # mode is explicit (auto-infer was part of the original bug — see
+    # the PRD's Done Criteria #4).
+    explicit_mode = call.args.get("mode")
+    if isinstance(explicit_mode, str) and explicit_mode in _VALID_MODE_ENUM:
+        return _build_response_for_mode(call, explicit_mode, goal, provided)
+
+    # Legacy keyword-fallback path. NOTE: Chinese keywords are part of
+    # the bilingual goal-routing contract. The `??` placeholders
+    # previously here were a non-UTF-8 sync regression (P0-2 in #79).
+    # Do not replace these with ASCII placeholders again — the
+    # regression test in `tests/test_select_workflow_mode_bilingual.py`
+    # will trip on any reintroduced `??` pair.
+    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定"))
+    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性"))
+    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "审计" in goal or "比较" in goal
+    # PRD-INTENT-OVERMATCH (#95): trimmed to plot-intent verbs only.
+    # The previous list included over-broad SWMM-domain vocabulary
+    # (``rainfall`` / ``node`` / ``outfall`` / single-char ``图`` /
+    # node-attribute names) that legitimately appears in non-plot
+    # prompts and was hijacking ``Run the SWMM input ...`` requests
+    # into ``existing_run_plot`` mode.
+    wants_plot = any(
+        word in goal
+        for word in (
+            "plot",
+            "figure",
+            "graph",
+            "chart",
+            "作图",
+            "画图",
+            "出图",
+            "绘图",
+        )
+    )
+    wants_demo = any(word in goal for word in ("demo", "acceptance", "演示", "验收"))
+    has_inp = bool(provided.get("inp_path"))
+    has_run_dir = bool(provided.get("run_dir"))
+    if (wants_plot or wants_audit) and not has_run_dir:
+        active_run_dir = _active_run_dir_from_global_state()
+        if active_run_dir:
+            provided["run_dir"] = active_run_dir
+            has_run_dir = True
+    full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
+    has_full_build = all(provided.get(key) for key in full_build_inputs)
+
+    if wants_plot and has_run_dir:
+        mode = "existing_run_plot"
+    elif wants_calibration:
+        mode = "calibration"
+    elif wants_uncertainty:
+        mode = "uncertainty"
+    elif has_inp:
+        mode = "prepared_inp_cli"
+    elif wants_demo:
+        mode = "prepared_demo"
+    elif wants_audit and not has_inp:
+        mode = "audit_only_or_comparison"
+    elif has_full_build:
+        mode = "full_modular_build"
+    else:
+        mode = "needs_user_inputs"
+
+    return _build_response_for_mode(call, mode, goal, provided)
 
 
 def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
