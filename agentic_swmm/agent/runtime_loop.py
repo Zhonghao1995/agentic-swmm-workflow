@@ -283,7 +283,7 @@ def run_openai_planner(
     if provider_name != "openai":
         raise ValueError(f"unsupported planner provider: {provider_name}")
     if not model:
-        raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5`.")
+        raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5-2026-04-23`.")
 
     # PRD-X: bind a per-process MCP pool so list_tools / call_tool against
     # local servers reuse one long-running node child per server instead of

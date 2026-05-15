@@ -508,7 +508,7 @@ def _build_default_llm_provider() -> Any:
     from agentic_swmm.providers.openai_api import OpenAIProvider
 
     config = load_config()
-    model = config.get("openai.model") or "gpt-5.5"
+    model = config.get("openai.model") or "gpt-5.5-2026-04-23"
     return OpenAIProvider(model=model)
 
 
