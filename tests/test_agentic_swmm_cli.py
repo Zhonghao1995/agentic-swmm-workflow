@@ -402,6 +402,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("fig_J2_Total_inflow.png", outcome.plan[-1].args["out_png"])
 
     def test_plot_selection_variable_with_run_dir_routes_to_existing_run_plot(self) -> None:
+        # PRD-INTENT-OVERMATCH (#95) removed "total_inflow" et al. from the
+        # wants_plot keyword tuple — node-attribute names alone are no longer
+        # a plot trigger. Going forward, the LLM is expected to pass
+        # ``mode="existing_run_plot"`` explicitly when it identifies a plot
+        # intent. This test now exercises that path.
         registry = AgentToolRegistry()
         result = registry.execute(
             ToolCall(
@@ -409,6 +414,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 {
                     "goal": "Total_inflow J2 MACAO_94_23\n\nPrevious run directory: runs/2026-05-11/204519_tecnopolo_run",
                     "run_dir": "runs/2026-05-11/204519_tecnopolo_run",
+                    "mode": "existing_run_plot",
                 },
             ),
             Path(tempfile.gettempdir()),
