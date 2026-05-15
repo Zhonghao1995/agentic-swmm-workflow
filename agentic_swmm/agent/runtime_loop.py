@@ -20,10 +20,13 @@ import json
 import logging
 import os
 import re
+import sys as _sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent import welcome as _welcome
 from agentic_swmm.agent.executor import AgentExecutor
@@ -377,6 +380,20 @@ def run_openai_planner(
     _agent_say(f"Final report: {_display_path(report)}")
     if outcome.final_text:
         _agent_say(outcome.final_text)
+    # CONCURRENCY-OWNER: PRD-TUI-REDESIGN
+    # Final retro-chrome result card. Renders the existing outcome /
+    # run-dir / metrics / artifacts / boundary / next structure inside
+    # a rounded frame; plain-mode users see the same fields without
+    # the frame characters.
+    from agentic_swmm.agent.reporting import render_result_card_from_run as _render_card
+
+    print(
+        _render_card(
+            session_dir=session_dir,
+            results=outcome.results,
+            dry_run=args.dry_run,
+        )
+    )
     return 0 if outcome.ok else 1
 
 
@@ -754,6 +771,75 @@ def _atexit_sync_recent_sessions() -> None:
 
 
 atexit.register(_atexit_sync_recent_sessions)
+
+
+# ---------------------------------------------------------------------------
+# Retro-chrome tool-execution banners (PRD-TUI-REDESIGN).
+# CONCURRENCY-OWNER: PRD-TUI-REDESIGN
+# ---------------------------------------------------------------------------
+#
+# ``execute_with_chrome`` wraps a single ``executor.execute(call)`` invocation
+# in the retro start/end banners required by PRD-TUI-REDESIGN:
+#
+#     [SYS] EXECUTING <tool_name>            ← phosphor green, before
+#     ...the tool runs...
+#     [INF] COMPLETE <tool_name> (1.84s)     ← phosphor green, after
+#     [ERR] FAILED   <tool_name> (0.42s)     ← red, after, if it raised
+#
+# The helper is exposed at module scope (rather than being inlined into
+# ``run_openai_planner``) so the integration test can exercise it
+# directly without spinning up a planner. Plain mode strips the
+# ``[SYS]/[INF]/[ERR]`` prefixes; the banner is still emitted so timing
+# information remains visible in CI logs.
+
+
+def execute_with_chrome(
+    executor: AgentExecutor,
+    call,
+    *,
+    index: int | None = None,
+    stream=None,
+) -> dict[str, Any]:
+    """Run ``executor.execute(call)`` wrapped in retro chrome banners.
+
+    Emits ``[SYS] EXECUTING <tool>`` before, ``[INF] COMPLETE`` /
+    ``[ERR] FAILED`` after. Elapsed-time stamp is always shown so a
+    user reading the scrollback can see which tool spent the budget.
+
+    The helper preserves ``executor.execute``'s "return a dict, never
+    raise" contract: a failed call returns the executor's error dict,
+    and the ``[ERR] FAILED`` banner reflects ``result.get("ok")``. If
+    the executor itself raises (a programmer error, not a tool-level
+    failure), the exception is re-raised after printing ``[ERR]``.
+    """
+    out = stream if stream is not None else _sys.stdout
+    tool_name = call.name
+    print(_chrome.sys(f"EXECUTING {tool_name}"), file=out, flush=True)
+    t0 = time.monotonic()
+    try:
+        result = executor.execute(call, index=index)
+    except Exception:
+        elapsed = time.monotonic() - t0
+        print(
+            _chrome.err(f"FAILED    {tool_name}  ({elapsed:.2f}s)"),
+            file=out,
+            flush=True,
+        )
+        raise
+    elapsed = time.monotonic() - t0
+    if isinstance(result, dict) and not result.get("ok", True):
+        print(
+            _chrome.err(f"FAILED    {tool_name}  ({elapsed:.2f}s)"),
+            file=out,
+            flush=True,
+        )
+    else:
+        print(
+            _chrome.inf(f"COMPLETE  {tool_name}  ({elapsed:.2f}s)"),
+            file=out,
+            flush=True,
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent import tui_chrome as _chrome
+
 
 _ARTIFACT_KIND_LABELS = {
     "input": "Inputs",
@@ -136,3 +138,95 @@ def write_event(path: Path, payload: dict[str, Any]) -> None:
     payload = {"timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"), **payload}
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+# ---------------------------------------------------------------------------
+# Retro-chrome final result card (PRD-TUI-REDESIGN).
+# CONCURRENCY-OWNER: PRD-TUI-REDESIGN
+# ---------------------------------------------------------------------------
+#
+# ``render_result_card`` produces the rounded-frame "RUN COMPLETE" card
+# the user sees at the end of a workflow. The card's six fields
+# (outcome / run dir / metrics / artifacts / boundary / next) reuse the
+# data that ``write_report`` already collects — we wrap the existing
+# structure, not invent new fields.
+
+
+def _summarise_metrics(results: list[dict[str, Any]]) -> str:
+    """Return a one-line summary of the run's metric output.
+
+    Today the executor doesn't surface continuity / peak / etc.
+    directly, so we fall back to "<N> tool calls, <M> succeeded".
+    A future PRD can hand metrics into this card without changing the
+    visual chrome.
+    """
+    if not results:
+        return "(no metrics)"
+    total = len(results)
+    ok_count = sum(1 for r in results if r.get("ok"))
+    return f"{ok_count}/{total} tool calls succeeded"
+
+
+def _summarise_artifacts(results: list[dict[str, Any]]) -> str:
+    """Return a one-line count summary of artifact paths."""
+    paths = [r.get("path") for r in results if r.get("path")]
+    if not paths:
+        return "(none)"
+    return f"{len(paths)} artifact(s)"
+
+
+def render_result_card(
+    *,
+    outcome: str,
+    run_dir: Path | str,
+    metrics: str,
+    artifacts: str,
+    boundary: str,
+    next_action: str,
+) -> str:
+    """Render the rounded-frame ``[SYS] RUN COMPLETE`` card.
+
+    Plain mode collapses to ``== [SYS] RUN COMPLETE ==`` followed by
+    each field on its own line; no box-drawing characters survive.
+
+    All field values are coerced to ``str`` so callers can pass
+    :class:`Path` directly for ``run_dir``.
+    """
+    lines = [
+        f"Outcome:   {outcome}",
+        f"Run dir:   {run_dir}",
+        f"Metrics:   {metrics}",
+        f"Artifacts: {artifacts}",
+        f"Boundary:  {boundary}",
+        f"Next:      {next_action}",
+    ]
+    return _chrome.frame(title="[SYS] RUN COMPLETE", lines=lines)
+
+
+def render_result_card_from_run(
+    *,
+    session_dir: Path,
+    results: list[dict[str, Any]],
+    dry_run: bool,
+) -> str:
+    """Build a result card from the data ``write_report`` already has.
+
+    Convenience wrapper that derives outcome / metrics / artifacts
+    from ``results`` so the runtime loop doesn't have to repeat the
+    same aggregation. ``boundary`` is fixed to the standard executor
+    contract; ``next_action`` is a generic hint that the planner's
+    ``final_text`` already covers in detail.
+    """
+    if dry_run:
+        outcome = "DRY RUN"
+    else:
+        ok = bool(results) and all(r.get("ok") for r in results)
+        outcome = "SUCCESS" if ok else "FAIL"
+    return render_result_card(
+        outcome=outcome,
+        run_dir=session_dir,
+        metrics=_summarise_metrics(results),
+        artifacts=_summarise_artifacts(results),
+        boundary="ran + audited, not calibrated",
+        next_action="see final_report.md and agent_trace.jsonl",
+    )

@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from agentic_swmm import __version__
+from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.config import config_dir
 from agentic_swmm.memory.session_sync import default_db_path
@@ -256,14 +257,38 @@ def render_returning_banner(
     )
 
 
+# CONCURRENCY-OWNER: PRD-TUI-REDESIGN
+def render_tagline_frame() -> str:
+    """Render the retro-chrome ``[SYS] aiswmm vX.Y.Z ONLINE`` tagline.
+
+    Sits below the PR #72 ASCII logo on both first-run and returning
+    launches. ``[SYS]`` lives inside the title literal because the
+    frame title already gets phosphor-green colouring; routing it
+    through ``_chrome.sys()`` would double-wrap the escape codes.
+
+    Plain mode (``AISWMM_TUI=plain``) collapses to ``== aiswmm vX.Y.Z
+    ONLINE ==`` followed by the literal tagline — no frame characters,
+    no prefix, no colour.
+    """
+    return _chrome.frame(
+        title=f"[SYS] aiswmm v{__version__} ONLINE",
+        lines=["I'm aiswmm. Type 'help' or describe what you want."],
+    )
+
+
 def render_extended_welcome() -> str:
     """Render the first-run welcome: logo + capability tour + CTA.
 
     The block is wide enough to feel substantial but every line stays
     under 80 columns so macOS Terminal default never auto-wraps. The
     bullet glyphs are ASCII so we never depend on terminal Unicode.
+
+    PRD-TUI-REDESIGN: appends a retro-chrome ``[SYS] aiswmm ONLINE``
+    tagline frame right below the logo. The first-run capability tour
+    follows so the user reads ``logo → tagline → tour → CTA``.
     """
     logo = render_logo()
+    tagline = render_tagline_frame()
     greeting = ui_colors.colorize("Welcome to AISWMM!", ui_colors.BOLD)
     intro = "I'm an agentic stormwater modeling assistant. I can help you:"
     capabilities = [
@@ -284,6 +309,8 @@ def render_extended_welcome() -> str:
     return "\n".join(
         [
             logo,
+            "",
+            tagline,
             "",
             greeting,
             "",
