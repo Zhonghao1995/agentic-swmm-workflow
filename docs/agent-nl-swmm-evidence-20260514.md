@@ -16,9 +16,20 @@ was non-functional. This document corrects that record.
 - Python: `python3.11` (Homebrew)
 - CLI: `aiswmm` v0.6.1
 - Planner: `openai`
-- Model: `gpt-4o-mini` (the value in `~/.aiswmm/config.toml` was
-  `gpt-5.5`, which is not a public OpenAI model; overridden on
-  the command line)
+- Model: `gpt-4o-mini` (the value in `~/.aiswmm/config.toml`
+  at the time of this test was `gpt-5.5`, overridden on the
+  command line to `gpt-4o-mini` for this run)
+  - **Correction (later on 2026-05-14)**: `gpt-5.5` is in fact a
+    public OpenAI model (snapshot `gpt-5.5-2026-04-23`, released
+    2026-04-23) and is reachable from this API key; the earlier
+    annotation that it was "not a public OpenAI model" was
+    incorrect and is corrected here. The `gpt-4o-mini` override
+    on this run therefore reflects test-time configuration, not
+    a model-availability issue.
+  - A rerun pinned to the snapshot ID `gpt-5.5-2026-04-23` is
+    scheduled to supersede this `gpt-4o-mini` evidence record
+    before the manuscript revision is submitted; `config.toml`
+    has been updated to that pinned ID.
 - Max steps: 12
 - `AISWMM_OPENAI_MOCK_RESPONSE`: explicitly unset before the run
 - `OPENAI_API_KEY`: loaded from the user's `~/.aiswmm/env` for the
