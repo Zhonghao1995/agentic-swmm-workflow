@@ -16,9 +16,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const plotPy = path.resolve(__dirname, "../../skills/swmm-plot/scripts/plot_rain_runoff_si.py");
 
+// Python interpreter — prefer launcher-supplied .venv (set via PYTHON env)
+// so preheat hits the same site-packages the plot script will use.
+const PY = process.env.PYTHON || "python3";
+
 function runPy(args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [plotPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(PY, [plotPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));
@@ -29,6 +33,43 @@ function runPy(args) {
       else resolve(stdout);
     });
   });
+}
+
+// Fire-and-forget preheat: warm matplotlib font cache + swmmtoolbox bytecode
+// at boot so the first plot tool call doesn't pay the ~30-90s cold-start tax
+// inside a user-visible `you>` turn. See issue #109.
+//
+// Hard constraints:
+//   - MUST NOT block the JSON-RPC initialize handshake (no await on this).
+//   - MUST NOT write to stdout (stdio carries JSON-RPC framing). Both
+//     stdout and stderr are piped and discarded; spawn errors are swallowed.
+//   - If Python is missing or deps aren't installed, log a one-line warning
+//     to stderr and let the user pay cold start on the first plot call —
+//     the fallback warning in plot_rain_runoff_si.py covers that path.
+function preheatPlotEnv() {
+  const code = [
+    "import matplotlib",
+    "matplotlib.use('Agg')",
+    "import matplotlib.pyplot as plt",
+    "plt.figure(); plt.close()",
+    "import swmmtoolbox",
+  ].join("; ");
+  try {
+    const child = spawn(PY, ["-c", code], {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: false,
+    });
+    // Drain pipes so the child doesn't block on a full buffer.
+    child.stdout?.on("data", () => {});
+    child.stderr?.on("data", () => {});
+    child.on("error", (err) => {
+      process.stderr.write(`[swmm-plot] preheat skipped: ${err.message}\n`);
+    });
+    // Don't keep the event loop alive for the preheat.
+    child.unref?.();
+  } catch (err) {
+    process.stderr.write(`[swmm-plot] preheat skipped: ${err?.message ?? err}\n`);
+  }
 }
 
 const Args = z.object({
@@ -115,6 +156,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   return { content: [{ type: "text", text: JSON.stringify({ ok: true, outPng: a.outPng }, null, 2) }] };
 });
+
+// Kick off preheat before the transport handshake — it runs in parallel
+// to JSON-RPC, never blocks it, and shaves ~89s -> ~5-15s off the first
+// plot tool call. See issue #109.
+preheatPlotEnv();
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
