@@ -351,15 +351,51 @@ def comparison_status(comparison: dict[str, Any]) -> str:
     return "available"
 
 
+def _registered_case_match(text: str) -> str | None:
+    """Resolve ``text`` to a case_id using the project's case registry.
+
+    PRD #118: watershed identification belongs in the registry, not in
+    hardcoded if/elif chains. We import lazily so this script keeps
+    running as a standalone helper when ``agentic_swmm`` is not on
+    ``sys.path`` (e.g. in distributed skill bundles).
+    """
+    try:
+        from agentic_swmm.case import case_registry  # type: ignore
+    except Exception:
+        return None
+    try:
+        cases = case_registry.list_cases()
+    except Exception:
+        return None
+    for meta in cases:
+        case_id = getattr(meta, "case_id", None)
+        if not isinstance(case_id, str) or not case_id:
+            continue
+        needles: list[str] = [case_id]
+        display_name = getattr(meta, "display_name", None)
+        if isinstance(display_name, str) and display_name:
+            needles.append(display_name)
+        extra = getattr(meta, "extra", None)
+        if isinstance(extra, dict):
+            aliases = extra.get("aliases")
+            if isinstance(aliases, list):
+                needles.extend(str(a) for a in aliases if isinstance(a, str))
+        for needle in needles:
+            if needle and needle.lower() in text:
+                return case_id
+    return None
+
+
 def project_key(record: dict[str, Any]) -> str:
     case = str(record.get("case_name") or record.get("run_id") or "").lower()
     workflow = str(record.get("workflow_mode") or "").lower()
     run_dir = str(record.get("run_dir") or "").lower()
     text = " ".join([case, workflow, run_dir])
-    if "tod" in text or "todcreek" in text:
-        return "tod-creek"
-    if "tecnopolo" in text:
-        return "tecnopolo"
+    registry_hit = _registered_case_match(text)
+    if registry_hit is not None:
+        return registry_hit
+    # Non-watershed buckets remain pinned: these are tool/family labels,
+    # not watersheds, so they do not belong in the case registry.
     if "tuflow" in text:
         return "tuflow"
     if "generate_swmm_inp" in text or "generate-swmm-inp" in text:

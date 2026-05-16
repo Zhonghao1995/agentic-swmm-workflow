@@ -70,14 +70,15 @@ _BUILD_KEYWORDS = (
 )
 
 # A SWMM run prompt without an active run: explicit .inp path or run
-# verb.
+# verb. PRD #118: this list must stay language-driven. Watershed
+# identification belongs in the case registry, not in classifier
+# vocabulary, so portability survives adding a new watershed without
+# code changes.
 _NEW_RUN_KEYWORDS = (
     ".inp",
     "run swmm",
     "run examples",
     "run the model",
-    "tecnopolo",
-    "todcreek",
 )
 
 _NODE_ID_PATTERN = re.compile(r"\b[JO]\d+\b", flags=re.IGNORECASE)
