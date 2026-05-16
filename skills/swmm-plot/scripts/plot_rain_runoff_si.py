@@ -222,8 +222,16 @@ def main():
             tmax = rain_t[int(nz.max())]
             pad = timedelta(hours=float(args.pad_hours))
             ax_rain.set_xlim(tmin - pad, tmax + pad)
-            ax_rain.xaxis.set_major_locator(mdates.HourLocator(interval=2))
-            ax_rain.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d\n%H:%M'))
+        # Auto-pick a readable tick density regardless of duration. The
+        # legacy ``HourLocator(interval=2)`` here exploded into hundreds
+        # of overlapping labels on multi-week / multi-month runs (#112
+        # black-blur). ``ConciseDateFormatter`` picks the smallest
+        # readable format (``HH:MM`` for sub-day, ``MM-DD`` for sub-year,
+        # ``YYYY`` otherwise) and stores the calendar context in the
+        # offset string above the axis.
+        locator = mdates.AutoDateLocator(maxticks=12)
+        ax_rain.xaxis.set_major_locator(locator)
+        ax_rain.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
     # Ticks inward on both axes
     ax_rain.tick_params(direction='in', which='both', top=True, right=False)
