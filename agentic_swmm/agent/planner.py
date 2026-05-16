@@ -12,10 +12,11 @@ from typing import IO, Any, Callable
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
+from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
 from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
-from agentic_swmm.agent.tool_registry import AgentToolRegistry
+from agentic_swmm.agent.tool_registry import AgentToolRegistry, compute_intent_signals
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
 from agentic_swmm.audit.llm_calls import extract_usage_tokens, record_llm_call
@@ -135,7 +136,17 @@ class OpenAIPlanner:
                 executor=executor,
                 prior_session_state=prior_state,
             )
-            route_call = ToolCall("select_workflow_mode", _workflow_route_args(goal))
+            route_args = _workflow_route_args(goal)
+            # PRD #111: LLM disambiguation for compound plot-conflict
+            # goals. Returns ``None`` for unambiguous prompts so the
+            # deterministic SOP fast-path runs unchanged (paper-grade
+            # reproducibility, user story 2). When it returns a mode
+            # we inject it as ``mode=<picked>`` so the tool's
+            # explicit-mode short-circuit fires.
+            mode_hint = self._maybe_disambiguate(goal=goal, trace_path=trace_path, session_dir=session_dir)
+            if mode_hint is not None:
+                route_args = {**route_args, "mode": mode_hint}
+            route_call = ToolCall("select_workflow_mode", route_args)
             plan.append(route_call)
             self.emit(f"[{len(plan)}] select_workflow_mode")
             route_result = executor.execute(route_call, index=len(plan))
@@ -334,6 +345,81 @@ class OpenAIPlanner:
             final_text = f"planner stopped after max_steps={self.max_steps}"
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
+
+    def _maybe_disambiguate(
+        self,
+        *,
+        goal: str,
+        trace_path: Path,
+        session_dir: Path,
+    ) -> str | None:
+        """Return an LLM-picked workflow mode for compound plot-conflict goals.
+
+        PRD #111. The trigger fires only when ``wants_plot`` and another
+        action verb both fire — the small fraction of goals where the
+        keyword fallback's priority is ambiguous. For everything else
+        this short-circuits to ``None`` and the deterministic SOP
+        fast-path runs unchanged.
+
+        Records one ``intent_disambiguation`` trace event per call so
+        the audit trail captures the goal, which signals fired, the
+        picked mode, and whether we fell back. The provider call
+        itself is funnelled through ``record_llm_call`` under
+        ``model_role="disambiguate_intent"`` for symmetry with the
+        rest of the LLM trace.
+        """
+
+        signals = compute_intent_signals(goal)
+        if not signals.get("wants_plot"):
+            return None
+        if not any(signals.get(name) for name in PLOT_CONFLICT_SIGNALS):
+            return None
+
+        conflict_signals = [
+            name for name in ("wants_plot", *PLOT_CONFLICT_SIGNALS) if signals.get(name)
+        ]
+        _start = time.monotonic()
+
+        def _on_response(response: Any, prompt: tuple[Any, Any], call_duration_ms: int) -> None:
+            # PRD-LLM-TRACE: every LLM API invocation funnels through
+            # ``record_llm_call`` so ``09_audit/llm_calls.jsonl``
+            # captures a symmetric trace. ``model_role`` lets a paper
+            # reviewer grep for disambiguation interventions
+            # specifically.
+            _tokens_in, _tokens_out = extract_usage_tokens(response)
+            record_llm_call(
+                run_dir=session_dir,
+                caller="planner",
+                model_role="disambiguate_intent",
+                prompt=prompt,
+                response=response,
+                tokens_in=_tokens_in,
+                tokens_out=_tokens_out,
+                duration_ms=call_duration_ms,
+            )
+
+        # ``disambiguate`` swallows provider exceptions and returns
+        # ``None`` so the planner never crashes on LLM downtime
+        # (user story 7).
+        picked = disambiguate(
+            goal=goal,
+            signals=signals,
+            provider=self.provider,
+            on_response=_on_response,
+        )
+        duration_ms = int((time.monotonic() - _start) * 1000)
+        write_event(
+            trace_path,
+            {
+                "event": "intent_disambiguation",
+                "goal": goal,
+                "conflict_signals": conflict_signals,
+                "picked_mode": picked,
+                "duration_ms": duration_ms,
+                "fallback_used": picked is None,
+            },
+        )
+        return picked
 
     def _classify_plot_continuation(
         self,

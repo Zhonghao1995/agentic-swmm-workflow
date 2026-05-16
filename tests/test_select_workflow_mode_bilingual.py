@@ -73,8 +73,16 @@ def test_bare_question_marks_do_not_force_demo_or_calibration(tmp_path: Path) ->
 
 def test_no_placeholder_question_marks_in_routing_source() -> None:
     """File-grep regression lock: the literal ``"??"`` / ``"???"`` ASCII
-    placeholders must never reappear in the ``_select_workflow_mode_tool``
-    body. If a future sync clobbers UTF-8 again, this test trips first."""
+    placeholders must never reappear in the routing logic. If a future
+    sync clobbers UTF-8 again, this test trips first.
+
+    Note (#111): the CJK keyword tuples used to live inline inside
+    ``_select_workflow_mode_tool``. They were extracted to
+    ``compute_intent_signals`` so the planner's auto-route
+    disambiguator and the keyword fallback share one source of truth.
+    The placeholder / CJK regression checks now run against
+    ``compute_intent_signals`` since that is the function that owns the
+    keyword tuples."""
 
     src = (
         Path(__file__).resolve().parents[1]
@@ -83,15 +91,15 @@ def test_no_placeholder_question_marks_in_routing_source() -> None:
         / "tool_registry.py"
     )
     text = src.read_text(encoding="utf-8")
-    start = text.index("def _select_workflow_mode_tool(")
+    start = text.index("def compute_intent_signals(")
     end = text.index("def ", start + 1)
     body = text[start:end]
     assert '"??"' not in body, (
-        "Found literal '\"??\"' placeholder in _select_workflow_mode_tool body — "
+        "Found literal '\"??\"' placeholder in compute_intent_signals body — "
         "Chinese keywords have been re-clobbered (see #79 P0-2)."
     )
     assert '"???"' not in body, (
-        "Found literal '\"???\"' placeholder in _select_workflow_mode_tool body — "
+        "Found literal '\"???\"' placeholder in compute_intent_signals body — "
         "Chinese keywords have been re-clobbered (see #79 P0-2)."
     )
     # Sanity: every routing branch should mention at least one CJK keyword.
