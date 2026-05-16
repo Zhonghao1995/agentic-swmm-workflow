@@ -125,9 +125,13 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             _agent_say(intro_text)
             print()
             # Hold the planner so the user can answer the "what would
-            # you like to work on?" line; the next loop iteration is
-            # treated as the real first task message.
-            turn = 0
+            # you like to work on?" line. ``turn`` is NOT reset here:
+            # ``maybe_warm_intro`` already enforces "fires only on
+            # turn=1" via its own guard, so leaving the counter to
+            # advance naturally lets the second open-shaped prompt
+            # fall through to the planner instead of re-firing the
+            # canned template every greeting (regression for the
+            # ``turn = 0`` reset that previously lived here).
             continue
 
         use_active_run = active_run_dir is not None and _looks_like_run_continuation(prompt)
