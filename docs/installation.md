@@ -38,6 +38,13 @@ Install the Python package:
 pip install aiswmm
 ```
 
+To install a **pre-release** (e.g. `v0.6.2-alpha`) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
+
+```bash
+pip install aiswmm==0.6.2a1   # pin a specific pre-release
+pip install --pre aiswmm      # allow any pre-release
+```
+
 The package installs both command names and includes the Agentic SWMM runtime resources: skills, MCP launchers, public memory files, examples, and integration templates.
 
 ```bash
@@ -46,6 +53,14 @@ aiswmm doctor
 aiswmm skill list --registry
 aiswmm mcp list --registry
 ```
+
+If you have multiple checkouts of this repo on the same machine (e.g. a release tag plus a development clone), `aiswmm doctor` flags `mcp.json` routing drift — `~/.aiswmm/mcp.json` may still point to a prior install. Re-align it to the currently-active editable install with:
+
+```bash
+aiswmm setup --refresh-mcp
+```
+
+This only regenerates `~/.aiswmm/mcp.json`; your `config.toml`, `skills.json`, and `memory.json` stay untouched.
 
 The model is configurable. For reproducibility (recommended for any experiment whose results you intend to cite), pin a dated snapshot rather than a rolling alias:
 

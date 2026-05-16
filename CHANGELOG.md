@@ -4,6 +4,28 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+## v0.6.2-alpha - Runtime hygiene + paper-grade reproducibility hardening (2026-05-16)
+
+Pre-release. Install with `pip install aiswmm==0.6.2a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
+
+### Bug fixes
+
+- **Warm intro fires once per session, not on every greeting** (#108). The interactive-shell loop reset `turn = 0` after emitting the canned `WARM_INTRO_TEMPLATE`, causing the intro to re-fire on every subsequent open-shaped prompt. Source-level regression guard added in `tests/test_self_intro_on_open_prompt.py`.
+- **First `plot_run` no longer hangs ~90s on matplotlib + swmmtoolbox cold start** (#109/#110). `mcp/swmm-plot/server.js` now fires a fire-and-forget preheat subprocess at server boot to materialize the matplotlib font cache + Python bytecode cache. Subsequent plot calls return in 5-15s on the user's machine instead of 89s.
+- **Plot X-axis no longer renders as a solid black bar** (#112). `skills/swmm-plot/scripts/plot_rain_runoff_si.py` now uses `matplotlib.dates.AutoDateLocator(maxticks=12)` + `ConciseDateFormatter`. Tick count drops from 316 (30-day fixture) to 6 readable labels.
+- **`swmm-end-to-end` and 5 sibling skills now discoverable via `select_skill`** (#113). `SkillRouter._build_buckets()` previously only knew the 8 skills with deterministic tool bindings, so pure-orchestration skills (only a `SKILL.md`) silently disappeared from `list_skills()`. Now seeded from the on-disk `discover_skills()` list.
+- **Workflow router no longer hijacks compound intent like "run X demo and plot"** (#111). The keyword fallback in `_select_workflow_mode_tool` placed `wants_plot AND has_run_dir` before `wants_demo`, so "run Tod Creek demo and plot" was misclassified as `existing_run_plot` and would plot a different (Tecnopolo) run from prior global state. Fixed in two layers: (a) keyword-fallback priority — added `wants_run` signal and reordered branches; (b) new deep module `agentic_swmm/agent/intent_disambiguator.py` invokes a forced-enum LLM call only on detected plot+other-action conflicts (5s timeout, fail-soft to keyword fallback), preserving the deterministic SOP fast-path for unambiguous requests.
+
+### Hardening
+
+- **Doctor now warns on stale editable installs** (#113). `aiswmm doctor` emits a WARN row when the editable install resolves under `.claude/worktrees/`, pointing the user to re-run `pip install -e .` from the main checkout.
+- **Doctor now warns on mcp.json drift** (#114). For each registered MCP server, doctor checks whether the launcher path is under the active `repo_root()`. WARN per drifted server with the remediation command.
+- **New `aiswmm setup --refresh-mcp` flag** (#114). Regenerates only `~/.aiswmm/mcp.json` against the active editable install, leaves `config.toml` / `skills.json` / `memory.json` / `setup_state.json` untouched. Idempotent.
+
+### Portability
+
+- **Runtime contains zero hardcoded watershed names in routing/inference code** (#118). Prior to this release, `agentic_swmm/agent/runtime_loop.py:_case_slug`, `agentic_swmm/agent/continuation_classifier.py:_NEW_RUN_KEYWORDS`, and `skills/swmm-modeling-memory/scripts/summarize_memory.py:project_key` substring-matched `tecnopolo` / `todcreek` to decide case identity. New users applying aiswmm to a different watershed would silently get incorrect labeling. All three sites now consult `agentic_swmm.case.case_registry.list_cases()` (with optional `aliases` via `case_meta.extra`). AST-based regression guard in `tests/test_no_hardcoded_watershed_names.py` prevents future leaks.
+
 ## v0.5.0 - QGIS-backed entropy subcatchment preprocessing
 
 - Added an auditable QGIS/GRASS-backed raw GIS preprocessing front end for entropy-guided SWMM subcatchment discretization.

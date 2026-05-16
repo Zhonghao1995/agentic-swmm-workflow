@@ -60,9 +60,21 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.1 release README](docs/releases/v0.6.1.md).
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.2-alpha (pre-release)](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
+
+Pre-release users: `pip install aiswmm==0.6.2a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
 
 Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+
+## v0.6.2-alpha highlights (pre-release)
+
+- **Warm intro fires once per session**, not on every greeting (#108). Pre-fix: `hi`/`hello`/`你好` repeated 4× would emit the canned warm-intro 4×; post-fix: only the first open-shaped prompt triggers it.
+- **First `plot_run` no longer hangs ~90s on matplotlib/swmmtoolbox cold start** (#109/#110). The `swmm-plot` MCP server preheats those imports at boot.
+- **Plot X-axis is readable across any simulated duration** (#112). `AutoDateLocator` + `ConciseDateFormatter` replace the 316-label black-blur seen on year-long runs.
+- **`swmm-end-to-end` and 5 sibling pure-orchestration skills now appear in `aiswmm skill list`** (#113). Previously dropped silently from the skill registry.
+- **Compound intent like "run X demo and plot the figure" routes correctly** (#111). Two-layer fix: keyword-fallback priority repair AND a new LLM-disambiguation deep module that fires only when `plot` co-occurs with another action verb.
+- **`aiswmm doctor` warns on stale editable installs + `mcp.json` checkout drift; new `aiswmm setup --refresh-mcp` to re-align** (#113/#114). Removes the two-checkout footgun that silently shipped stale code.
+- **Zero hardcoded watershed names in routing/inference code** (#118). Case-ID inference, continuation classification, and memory summarization now derive case identity from `case_registry.list_cases()`. Migration to a new watershed no longer requires code changes — add `cases/<your-watershed>/case_meta.yaml` and the runtime picks it up. An AST-based regression guard prevents future leaks.
 
 ## v0.6.1 highlights
 
