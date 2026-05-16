@@ -20,8 +20,36 @@ Output:
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+
+def _warn_if_cold_start() -> None:
+    """Emit a one-line stderr hint if matplotlib's font cache is missing.
+
+    The MCP server preheats matplotlib + swmmtoolbox at boot (see
+    issue #109) so the user normally never sees this. If the preheat
+    failed (no Python, no deps) or hasn't finished yet, this warning
+    tells the user why the first plot call is taking a while instead
+    of leaving them staring at a silent ``you>`` prompt.
+    """
+    try:
+        import matplotlib  # cheap; just reads metadata
+        cachedir = Path(matplotlib.get_cachedir())
+    except Exception:
+        return
+    # matplotlib names the cache ``fontlist-vNNN.json``; if any file
+    # matching that glob exists we treat the cache as warm.
+    if not any(cachedir.glob('fontlist-v*.json')):
+        sys.stderr.write(
+            '[swmm-plot] First plot warms up matplotlib + swmmtoolbox '
+            '(~60-90s). Subsequent plots are fast.\n'
+        )
+        sys.stderr.flush()
+
+
+_warn_if_cold_start()
 
 import matplotlib
 matplotlib.use('Agg')
