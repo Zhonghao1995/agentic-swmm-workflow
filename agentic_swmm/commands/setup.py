@@ -7,9 +7,15 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agentic_swmm.config import load_config, setup_state_path, write_config
+from agentic_swmm.config import load_config, mcp_registry_path, setup_state_path, write_config
 from agentic_swmm.commands.doctor import _which_swmm5
-from agentic_swmm.runtime.registry import discover_mcp_servers, discover_memory_files, discover_skills, memory_layer_counts, write_runtime_registries
+from agentic_swmm.runtime.registry import (
+    discover_mcp_servers,
+    discover_memory_files,
+    discover_skills,
+    memory_layer_counts,
+    write_runtime_registries,
+)
 from agentic_swmm.utils.paths import resource_root
 
 
@@ -19,10 +25,24 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--model", default=None, help="Default model for the provider.")
     parser.add_argument("--obsidian-dir", type=Path, help="Optional Obsidian vault or folder for audit and memory exports.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable setup state.")
+    # Issue #114: no-prompt path that only regenerates mcp.json against
+    # the current editable install. Lets the user re-align after moving
+    # the install between checkouts without re-running the full
+    # interactive setup.
+    parser.add_argument(
+        "--refresh-mcp",
+        action="store_true",
+        help=(
+            "Regenerate ~/.aiswmm/mcp.json against the active editable "
+            "install and exit. Does not touch any other ~/.aiswmm/ file."
+        ),
+    )
     parser.set_defaults(func=main)
 
 
 def main(args: argparse.Namespace) -> int:
+    if getattr(args, "refresh_mcp", False):
+        return _refresh_mcp_only()
     config = load_config()
     values = config.values
     values.setdefault("provider", {})["default"] = args.provider
@@ -99,6 +119,28 @@ def _build_setup_state(*, config_file: Path, skills_file: Path, mcp_file: Path, 
             "aiswmm memory --runs-dir runs --out-dir memory/modeling-memory",
         ],
     }
+
+
+def _refresh_mcp_only() -> int:
+    """Regenerate ``~/.aiswmm/mcp.json`` against the active repo_root().
+
+    Issue #114: the full setup re-writes config.toml, skills.json,
+    memory.json, setup_state.json, and mcp.json. This is too heavy when
+    the user only needs to re-align the MCP launcher paths after
+    re-installing the editable package from a different checkout.
+
+    The contract is intentionally narrow: rewrite ``mcp.json``, leave
+    everything else untouched, print where the file landed.
+    """
+
+    mcp_path = mcp_registry_path()
+    mcp_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"mcp_servers": discover_mcp_servers()}
+    mcp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print(f"Refreshed mcp.json: {mcp_path}")
+    print(f"Active repo root: {resource_root()}")
+    print(f"Servers registered: {len(payload['mcp_servers'])}")
+    return 0
 
 
 def _check(name: str, ok: bool, detail: str, *, required: bool) -> dict:
