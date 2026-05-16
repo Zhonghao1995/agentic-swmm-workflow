@@ -118,5 +118,70 @@ class MaybeWarmIntroBehaviour(unittest.TestCase):
             self.assertIsNone(maybe_warm_intro("what can you do", turn=1))
 
 
+class WarmIntroFiresOncePerSessionRegression(unittest.TestCase):
+    """Source-level guard for the 2026-05-16 ``turn = 0`` reset bug.
+
+    Reproducer that motivated this guard: piping ``hi\\nhi\\nhello\\nwhat
+    can you do\\n/exit`` to ``aiswmm`` fired the canned ``WARM_INTRO_
+    TEMPLATE`` four times in 0.13 s (one per open-shaped prompt) without
+    ever calling the LLM. Root cause: the warm-intro emit block in
+    ``run_interactive_shell`` reset ``turn = 0`` after emitting, so the
+    next ``turn += 1`` brought the counter back to ``1`` and
+    ``maybe_warm_intro`` happily returned the same template again.
+
+    Catching this at the unit level requires either (a) substantial
+    mocking of ``run_interactive_shell``'s many collaborators or (b) a
+    structural guard on the function source. We take (b) — fewer
+    moving parts, fails loudly if the reset sneaks back in via copy-
+    paste or a misguided "fix".
+    """
+
+    def _extract_warm_intro_block(self) -> str:
+        """Return the warm-intro emit block with ``#``-comments stripped.
+
+        Comments are removed so the assertion below tests *code*, not
+        prose. Otherwise a comment quoting the removed reset (for
+        provenance) would trigger a false positive.
+        """
+        import inspect
+        import re
+
+        from agentic_swmm.agent import runtime_loop
+
+        source = inspect.getsource(runtime_loop.run_interactive_shell)
+        lines = source.splitlines()
+        captured: list[str] = []
+        inside = False
+        for line in lines:
+            if "maybe_warm_intro(" in line:
+                inside = True
+            if inside:
+                # Drop everything from ``#`` to end-of-line. The block
+                # has no string literals containing ``#`` so this is
+                # safe; if that ever changes, switch to ``tokenize``.
+                code_only = re.sub(r"#.*$", "", line)
+                captured.append(code_only)
+                if code_only.strip() == "continue":
+                    break
+        return "\n".join(captured)
+
+    def test_warm_intro_emit_block_does_not_reset_turn_counter(self) -> None:
+        block = self._extract_warm_intro_block()
+        self.assertTrue(
+            block,
+            "could not locate the warm-intro emit block in "
+            "run_interactive_shell — refactor likely renamed the hook; "
+            "update this regression guard.",
+        )
+        self.assertNotIn(
+            "turn = 0",
+            block,
+            "warm-intro emit block resets ``turn = 0``; this re-arms the "
+            "canned template for every subsequent open-shaped prompt. "
+            "``maybe_warm_intro`` already enforces the ``turn == 1`` "
+            "guard — let the counter advance naturally.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
