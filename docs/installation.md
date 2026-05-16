@@ -41,18 +41,20 @@ pip install aiswmm
 The package installs both command names and includes the Agentic SWMM runtime resources: skills, MCP launchers, public memory files, examples, and integration templates.
 
 ```bash
-aiswmm setup --provider openai --model gpt-5.5
+aiswmm setup --provider openai --model gpt-5.5-2026-04-23
 aiswmm doctor
 aiswmm skill list --registry
 aiswmm mcp list --registry
 ```
 
-The model is configurable. For example:
+The model is configurable. For reproducibility (recommended for any experiment whose results you intend to cite), pin a dated snapshot rather than a rolling alias:
 
 ```bash
-aiswmm setup --provider openai --model gpt-5.4
-aiswmm setup --provider openai --model gpt-5.5
+aiswmm setup --provider openai --model gpt-5.5-2026-04-23
+aiswmm setup --provider openai --model gpt-5.4-2026-03-05
 ```
+
+Aliases like `gpt-5.5` or `gpt-5.4` also work, but they silently roll forward when OpenAI ships a new snapshot under the same alias, which breaks bit-for-bit reproducibility of past runs.
 
 For real OpenAI agent planning, set your key in the local shell before running `aiswmm`:
 
