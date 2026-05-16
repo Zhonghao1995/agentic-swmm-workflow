@@ -1323,6 +1323,59 @@ def _build_response_for_mode(
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
 
 
+def compute_intent_signals(goal: str) -> dict[str, bool]:
+    """Compute the keyword-derived ``wants_*`` flags for a goal.
+
+    Single source of truth shared between
+    ``_select_workflow_mode_tool`` (the keyword fallback) and the
+    planner's auto-route disambiguator trigger (PRD #111). Keeping the
+    flag set in one place means the disambiguator fires on exactly the
+    same set of plot-conflict goals that the keyword fallback would
+    have mishandled.
+    """
+
+    text = goal.lower()
+    wants_calibration = any(
+        word in text
+        for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定")
+    )
+    wants_uncertainty = any(
+        word in text for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性")
+    )
+    wants_audit = (
+        "audit" in text
+        or "comparison" in text
+        or "compare" in text
+        or "审计" in text
+        or "比较" in text
+    )
+    wants_plot = any(
+        word in text
+        for word in (
+            "plot",
+            "figure",
+            "graph",
+            "chart",
+            "作图",
+            "画图",
+            "出图",
+            "绘图",
+        )
+    )
+    wants_demo = any(word in text for word in ("demo", "acceptance", "演示", "验收"))
+    wants_run = bool(
+        re.search(r"\b(?:run|runs|running|execute|executes|executing)\b", text)
+    ) or any(token in text for token in ("跑", "运行"))
+    return {
+        "wants_calibration": wants_calibration,
+        "wants_uncertainty": wants_uncertainty,
+        "wants_audit": wants_audit,
+        "wants_plot": wants_plot,
+        "wants_demo": wants_demo,
+        "wants_run": wants_run,
+    }
+
+
 def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     goal = str(call.args.get("goal") or "").lower()
     # ``mode`` is consumed below as a routing argument, not a workflow
@@ -1349,29 +1402,17 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     # Do not replace these with ASCII placeholders again — the
     # regression test in `tests/test_select_workflow_mode_bilingual.py`
     # will trip on any reintroduced `??` pair.
-    wants_calibration = any(word in goal for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定"))
-    wants_uncertainty = any(word in goal for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性"))
-    wants_audit = "audit" in goal or "comparison" in goal or "compare" in goal or "审计" in goal or "比较" in goal
-    # PRD-INTENT-OVERMATCH (#95): trimmed to plot-intent verbs only.
-    # The previous list included over-broad SWMM-domain vocabulary
-    # (``rainfall`` / ``node`` / ``outfall`` / single-char ``图`` /
-    # node-attribute names) that legitimately appears in non-plot
-    # prompts and was hijacking ``Run the SWMM input ...`` requests
-    # into ``existing_run_plot`` mode.
-    wants_plot = any(
-        word in goal
-        for word in (
-            "plot",
-            "figure",
-            "graph",
-            "chart",
-            "作图",
-            "画图",
-            "出图",
-            "绘图",
-        )
-    )
-    wants_demo = any(word in goal for word in ("demo", "acceptance", "演示", "验收"))
+    #
+    # PRD #111: signals are computed by ``compute_intent_signals`` so
+    # the planner's auto-route disambiguator trigger and this keyword
+    # fallback share one source of truth.
+    signals = compute_intent_signals(goal)
+    wants_calibration = signals["wants_calibration"]
+    wants_uncertainty = signals["wants_uncertainty"]
+    wants_audit = signals["wants_audit"]
+    wants_plot = signals["wants_plot"]
+    wants_demo = signals["wants_demo"]
+    wants_run = signals["wants_run"]
     has_inp = bool(provided.get("inp_path"))
     has_run_dir = bool(provided.get("run_dir"))
     if (wants_plot or wants_audit) and not has_run_dir:
@@ -1382,7 +1423,14 @@ def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
     has_full_build = all(provided.get(key) for key in full_build_inputs)
 
-    if wants_plot and has_run_dir:
+    # PRD #111: compound run+demo+plot must pin to ``prepared_demo``
+    # *before* the plot branch fires. Without this guard the plot
+    # branch hijacks any goal that mentions ``plot`` once a run_dir is
+    # auto-inferred from global state — which is exactly the bug from
+    # ``runs/2026-05-16/120740_todcreek_run``.
+    if wants_run and wants_demo and not has_inp:
+        mode = "prepared_demo"
+    elif wants_plot and has_run_dir:
         mode = "existing_run_plot"
     elif wants_calibration:
         mode = "calibration"
