@@ -214,13 +214,42 @@ def _case_slug(prompt: str) -> str:
     inp = re.search(r"([^/\s，。；;,)]+)\.inp", prompt, flags=re.I)
     if inp:
         return _safe_name(inp.group(1))[:32]
-    if "tecnopolo" in lowered:
-        return "tecnopolo"
-    if "todcreek" in lowered or "tod creek" in lowered:
-        return "todcreek"
+    # PRD #118: drive case identification from cases/<id>/case_meta.yaml
+    # so portability does not require code edits when a new watershed
+    # is added.
+    registry_hit = _match_registered_case(lowered)
+    if registry_hit is not None:
+        return registry_hit
     if any(word in lowered for word in ("plot", "作图", "画图", "图")):
         return "plot-selection"
     return _safe_name(prompt)[:32]
+
+
+def _match_registered_case(lowered_prompt: str) -> str | None:
+    """Return the first ``case_id`` whose id / display_name / alias appears in the prompt.
+
+    Lookups are substring-based against the lowered prompt; both the
+    case_id slug and the case_meta ``display_name`` (and any optional
+    ``aliases`` list under ``extra``) are searched. Returns ``None``
+    when no registered case matches — the caller decides the fallback.
+    """
+    from agentic_swmm.case import case_registry  # local import: registry pulls yaml
+
+    try:
+        cases = case_registry.list_cases()
+    except Exception:  # pragma: no cover - defensive: never block a turn on registry
+        return None
+    for meta in cases:
+        needles: list[str] = [meta.case_id]
+        if meta.display_name:
+            needles.append(meta.display_name)
+        aliases = meta.extra.get("aliases") if isinstance(meta.extra, dict) else None
+        if isinstance(aliases, list):
+            needles.extend(str(a) for a in aliases if isinstance(a, str))
+        for needle in needles:
+            if needle and needle.lower() in lowered_prompt:
+                return meta.case_id
+    return None
 
 
 def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
