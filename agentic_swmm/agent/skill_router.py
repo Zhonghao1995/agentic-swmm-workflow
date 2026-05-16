@@ -125,6 +125,33 @@ class SkillRouter:
         # Even when zero tools currently map to ``agent-internal`` we
         # still expose the virtual skill so ``list_skills`` is stable.
         self._by_skill.setdefault(AGENT_INTERNAL_SKILL, [])
+        # Issue #113: also surface every on-disk skill under ``skills/``,
+        # even when it has no deterministic-SWMM tool binding. Pure
+        # orchestration / contract skills like ``swmm-end-to-end`` ship
+        # only a ``SKILL.md`` and rely on the agent reading that file —
+        # but the planner must still be able to ``select_skill`` them.
+        # An empty tool bucket is the correct representation: the
+        # planner falls back to ``agent-internal`` tools (e.g.
+        # ``read_skill``) while honouring the chosen skill's contract.
+        for name in _on_disk_skill_names():
+            self._by_skill.setdefault(name, [])
+
+
+def _on_disk_skill_names() -> list[str]:
+    """Return every skill name from ``skills/<name>/SKILL.md`` on disk.
+
+    Lazy-imports ``runtime.registry`` so this module's import graph
+    stays small. Returns an empty list (rather than raising) when the
+    skills directory is absent, so unit tests with a stripped-down
+    resource root continue to work.
+    """
+
+    try:
+        from agentic_swmm.runtime.registry import discover_skills
+
+        return [record["name"] for record in discover_skills()]
+    except Exception:  # pragma: no cover - defensive
+        return []
 
 
 __all__ = [
