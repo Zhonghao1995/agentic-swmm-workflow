@@ -474,6 +474,35 @@ def _build_tools() -> dict[str, ToolSpec]:
         ),
         ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools. OPTIONAL but recommended: pass `mode` with your identified workflow mode (one of calibration / uncertainty / prepared_inp_cli / full_modular_build / existing_run_plot / audit_only_or_comparison / prepared_demo) so the tool uses your classification directly instead of re-deriving intent via legacy keyword matching.", _object({"goal": {"type": "string"}, "mode": {"type": "string", "enum": ["calibration", "uncertainty", "prepared_inp_cli", "full_modular_build", "existing_run_plot", "audit_only_or_comparison", "prepared_demo"], "description": "OPTIONAL but recommended. The workflow mode you have identified from the user's goal. If provided and valid, the tool uses this directly. If absent or invalid, falls back to keyword matching (legacy compatibility)."}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
+        ToolSpec(
+            "retrieve_memory",
+            "Retrieve relevant audited-run memory cards for a query using the swmm-rag-memory skill's hybrid keyword/embedding retriever. Returns source-cited matches that the planner can synthesize into a grounded answer.",
+            _object(
+                {
+                    "query": {"type": "string"},
+                    "top_k": {"type": "integer"},
+                    "retriever": {"type": "string", "enum": ["keyword", "hybrid"]},
+                    "project": {"type": "string"},
+                },
+                ["query"],
+            ),
+            _retrieve_memory_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "propose_lid_scenarios",
+            "Generate SWMM LID placement scenario INPs from a base INP and a config using the swmm-lid-optimization skill. Writes per-scenario INPs under run_root/ and a summary JSON for downstream comparison.",
+            _object(
+                {
+                    "base_inp": {"type": "string"},
+                    "config": {"type": "string"},
+                    "run_root": {"type": "string"},
+                    "summary_json": {"type": "string"},
+                },
+                ["base_inp", "config"],
+            ),
+            _propose_lid_scenarios_tool,
+        ),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
     ]
@@ -864,6 +893,92 @@ def _summarize_memory_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 _summarize_memory_tool = _make_mcp_routed_handler(
     "swmm-modeling-memory", "summarize_memory", args_mapper=_summarize_memory_args
 )
+
+
+# -- swmm-rag-memory retrieval (Issue #124 Part A) ----------------------------
+#
+# The skill ships ``skills/swmm-rag-memory/scripts/retrieve_memory.py`` which
+# already exposes a stable CLI; the agent invokes it via a subprocess so we
+# don't pull the embedding library into the planner's hot path. Output is the
+# script's JSON document (or markdown via ``--format markdown``); we return
+# its trailing tail in ``stdout_tail`` so the planner sees citations.
+
+_RAG_SKILL_DIR_RELATIVE = ("skills", "swmm-rag-memory", "scripts")
+
+
+def _retrieve_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Shell out to the swmm-rag-memory ``retrieve_memory.py`` script.
+
+    Why a subprocess and not an in-process import? The retriever pulls in
+    ``rag_memory_lib`` which lives under ``skills/swmm-rag-memory/scripts/``
+    (not on the package import path) and optionally loads embedding vectors.
+    Subprocess isolation keeps a corrupt index from poisoning the planner's
+    Python state mid-turn.
+    """
+    query = call.args.get("query")
+    if not isinstance(query, str) or not query.strip():
+        return _failure(call, "missing required argument: query")
+    script_path = repo_root().joinpath(*_RAG_SKILL_DIR_RELATIVE, "retrieve_memory.py")
+    if not script_path.is_file():
+        return _failure(call, f"retrieve_memory script not found at {script_path}")
+    cli_args: list[str] = [str(script_path), "--query", query]
+    top_k = call.args.get("top_k")
+    if isinstance(top_k, int) and top_k > 0:
+        cli_args.extend(["--top-k", str(top_k)])
+    retriever = call.args.get("retriever")
+    if retriever in ("keyword", "hybrid"):
+        cli_args.extend(["--retriever", retriever])
+    project = call.args.get("project")
+    if isinstance(project, str) and project.strip():
+        cli_args.extend(["--project", project])
+    return _run_script_tool(call, session_dir, cli_args)
+
+
+# -- swmm-lid-optimization scenario generator (Issue #124 Part B1) ------------
+#
+# Shells out to ``skills/swmm-lid-optimization/scripts/lid_scenario_builder.py``
+# the same way ``retrieve_memory`` does. We do not yet have an ``mcp/swmm-lid-
+# optimization/`` server (Part B2 in the PRD, deferred); the subprocess path
+# is sufficient for the planner to compose LID placement into a workflow.
+
+_LID_SKILL_DIR_RELATIVE = ("skills", "swmm-lid-optimization", "scripts")
+
+
+def _propose_lid_scenarios_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Shell out to the LID scenario builder.
+
+    The script writes scenario INPs to ``run_root/`` and a summary JSON to
+    ``summary_json``. Defaults route both under the session directory so
+    repeat invocations don't collide; an explicit caller-supplied path
+    wins so the planner can integrate with downstream comparison tools.
+    """
+    base_inp = call.args.get("base_inp")
+    if not isinstance(base_inp, str) or not base_inp.strip():
+        return _failure(call, "missing required argument: base_inp")
+    config = call.args.get("config")
+    if not isinstance(config, str) or not config.strip():
+        return _failure(call, "missing required argument: config")
+    script_path = repo_root().joinpath(*_LID_SKILL_DIR_RELATIVE, "lid_scenario_builder.py")
+    if not script_path.is_file():
+        return _failure(
+            call, f"lid_scenario_builder script not found at {script_path}"
+        )
+    run_root = call.args.get("run_root") or str(session_dir / "lid_scenarios")
+    summary_json = call.args.get("summary_json") or str(
+        session_dir / "lid_scenarios" / "summary.json"
+    )
+    cli_args: list[str] = [
+        str(script_path),
+        "--base-inp",
+        base_inp,
+        "--config",
+        config,
+        "--run-root",
+        str(run_root),
+        "--summary-json",
+        str(summary_json),
+    ]
+    return _run_script_tool(call, session_dir, cli_args)
 
 
 # -- Memory recall tools (PRD M1, M6, M7.1) -----------------------------------

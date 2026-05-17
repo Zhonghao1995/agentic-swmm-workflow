@@ -33,6 +33,8 @@ EXPECTED_READ_ONLY: set[str] = {
     "recall_memory",
     "recall_memory_search",
     "recall_session_history",
+    # Issue #124 Part A: hybrid retrieval over audited-run memory.
+    "retrieve_memory",
     "search_files",
     "select_skill",
     "select_workflow_mode",
