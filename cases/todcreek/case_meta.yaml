@@ -1,0 +1,17 @@
+schema_version: 1
+case_id: todcreek
+display_name: Tod Creek
+study_purpose: Local calibration benchmark for the Tod Creek 5-minute Chicago-storm SWMM model.
+created_utc: 2026-05-17T00:00:00+00:00
+catchment:
+  area_ha: ~
+  land_use: ~
+inputs:
+  inp: examples/todcreek/model_chicago5min.inp
+notes: |
+  Reference fixture for the calibration workflow examples
+  under examples/calibration/.
+aliases:
+  - Tod Creek
+  - tod-creek
+  - Tod-Creek

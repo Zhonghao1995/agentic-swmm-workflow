@@ -1,0 +1,18 @@
+schema_version: 1
+case_id: tecnopolo
+display_name: Tecnopolo (Rome 1994)
+study_purpose: Prepared-input SWMM benchmark for 40-subcatchment Rome watershed.
+created_utc: 2026-05-17T00:00:00+00:00
+catchment:
+  area_ha: ~
+  land_use: urban
+inputs:
+  inp: examples/tecnopolo/tecnopolo_r1_199401.inp
+  rainfall: examples/tecnopolo/EXT_RAIN_199401_MACAO_CUM_NEW_5MIN.DAT
+notes: |
+  External benchmark from the Tecnopolo Zenodo dataset; 40 subcatchments,
+  rainfall series MACAO_94_23.
+aliases:
+  - Tecnopolo
+  - Tecnopolo 1994
+  - Rome Tecnopolo

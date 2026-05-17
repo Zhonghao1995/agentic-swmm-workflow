@@ -1,4 +1,4 @@
-"""Cycle 4 of PRD #118: regression guard against new hardcoded watershed names.
+"""Cycle 4 of PRD #118 + Issue #122: regression guard against new hardcoded watershed names.
 
 The agent's routing / inference / memory layers must stay portable:
 adding a new watershed should never require editing if/elif chains in
@@ -6,6 +6,12 @@ Python. This guard parses each source file's AST and looks for string
 literal nodes (``ast.Constant`` with ``str`` value) that contain a
 known example watershed name. Module / class / function docstrings are
 filtered out — those are documentation, not routing logic.
+
+Issue #122 extension: the guard also walks ``agent/config/intent_map.json``
+because routing config files were not previously covered. Watershed
+slugs in ``swmm_request_keywords`` / ``plot_keywords`` / intent
+``keywords`` are now case-registry-driven (PR #119); the JSON walker
+is the audit boundary.
 
 Allowed sites — files whose code legitimately references the example
 watersheds. Docstring / comment references are filtered automatically
@@ -28,6 +34,7 @@ by the AST walk, so this list is small:
 from __future__ import annotations
 
 import ast
+import json
 import unittest
 from pathlib import Path
 
@@ -133,6 +140,45 @@ class NoHardcodedWatershedNamesTests(unittest.TestCase):
             [],
             "hardcoded watershed names leaked back into protected scope:\n"
             + "\n".join(hits),
+        )
+
+    def test_intent_map_json_has_no_watershed_names(self) -> None:
+        """Issue #122: same audit boundary, applied to the routing JSON config.
+
+        ``agent/config/intent_map.json`` drives ``swmm_request_keywords``,
+        ``plot_keywords``, and per-intent ``keywords`` arrays. The AST
+        guard above walks ``.py`` files only — this method extends the
+        guard to the JSON so the case-registry-driven lookup added in
+        PR #119 is the single boundary for watershed routing.
+        """
+        config_path = REPO_ROOT / "agent" / "config" / "intent_map.json"
+        if not config_path.is_file():
+            self.skipTest(f"intent_map.json missing at {config_path}")
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+
+        def _walk(node):
+            if isinstance(node, str):
+                yield node
+            elif isinstance(node, dict):
+                for v in node.values():
+                    yield from _walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    yield from _walk(v)
+
+        hits: list[str] = []
+        for value in _walk(config):
+            lowered = value.lower()
+            for name in _FORBIDDEN_NAMES:
+                if name in lowered:
+                    hits.append(value)
+        self.assertEqual(
+            hits,
+            [],
+            "agent/config/intent_map.json contains hardcoded watershed token(s):\n"
+            + "\n".join(repr(h) for h in hits)
+            + "\n\nRouting is case-registry-driven (PR #119); remove the slug "
+            "and rely on cases/<id>/case_meta.yaml.",
         )
 
 
