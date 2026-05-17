@@ -124,7 +124,7 @@ could resolve and before any `swmm-plot.render_*` tool was reached.
 For the paper, the manuscript-quality reference figure remains the previously
 generated:
 
-- absolute path: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/end-to-end/tecnopolo-199401-prepared/08_plot/rain_runoff_mcp.png`
+- repo-relative path: `runs/end-to-end/tecnopolo-199401-prepared/08_plot/rain_runoff_mcp.png`
 - file size: 93 082 bytes (90.9 KiB)
 - pixel dimensions: 2700 x 1140 px (PNG, 24-bit)
 - empty/zero-byte? No.
@@ -209,7 +209,7 @@ this more honestly (e.g. "audit_run failed; queued sibling tool
 ## 11. Reproducibility
 
 ```bash
-# from repo root: /Users/zhonghao/Desktop/Codex Project/Agentic SWMM
+# from the repo root of your local clone
 git checkout 2b99264d3fb2257097c8d513e8ec547647625edf
 
 # pre snapshot

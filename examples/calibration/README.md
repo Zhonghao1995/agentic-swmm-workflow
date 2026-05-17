@@ -8,12 +8,18 @@ This folder contains a **minimal example configuration** for the public calibrat
 - `search_space.json` → bounded search-space spec for internal randomized / LHS / adaptive search
 - `observed_flow.csv` → tiny mock observed-flow file for wiring and dry-run tests
 
-## Real local observed-flow source
-A real Tod Creek observed-flow file exists in the larger local working project at:
+## Real observed-flow source
+The supported public path for this example is the synthetic
+`observed_flow.csv` shipped in this folder. It is intentionally tiny and
+exists only so the calibration scaffold wiring can be exercised end to
+end without external dependencies.
 
-`/Users/zhonghao/.openclaw/workspace/projects/swmm-mcp/data/Todcreek/Flow/1984Rflow.dat`
-
-That file is **not automatically copied into this publish repo**, but it is the obvious next candidate for turning this MVP example into a real calibration case.
+To turn this into a real calibration case, **bring your own observed-flow
+file** (any timestamped flow CSV with a column for the SWMM outflow node
+of interest) and substitute it via `--observed <your-file>`. The
+maintainer's private workspace contains a Tod Creek `1984Rflow.dat`
+record; that file is not redistributable through this repository, so
+each user must supply their own observed series.
 
 ## Recommended use
 ### 1) Dry-run the wiring
@@ -32,7 +38,7 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py calibrate \
 ```
 
 ### 2) Swap in real observed flow
-Once the observed-flow parser is tuned for `1984Rflow.dat`, replace `--observed` with the real file path and run without `--dry-run`.
+Once the observed-flow parser is tuned for your data file, replace `--observed` with the real file path and run without `--dry-run`.
 
 ### 3) Run bounded search (LHS)
 ```bash

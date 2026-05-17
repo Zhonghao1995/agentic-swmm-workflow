@@ -6,6 +6,33 @@ This document keeps the detailed benchmark and verification notes out of the REA
 
 Agentic SWMM includes benchmark paths that test different parts of the workflow, plus additional acceptance and fallback checks.
 
+## Information-loss-guided subcatchment partition
+
+The information-loss-guided subcatchment partition validates the GIS preprocessing concept that maps an entropy- and fuzzy-similarity-based decision rule onto SWMM-ready subcatchment polygons. It is the structured-raw upstream of the GeoPackage-to-INP path: starting from DEM, boundary, land-use, and soil rasters, it picks the partition variant that minimises information loss relative to the underlying paper rule from Zhang & Valeo's [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447).
+
+<p align="center">
+  <img src="figs/information_entropy_subcatchment_partition_readme.png" alt="Information-loss-guided subcatchment partition over a watershed, showing the entropy-selected partition variant in colour against the raw GIS layers" width="760" />
+</p>
+
+Run (Tod Creek case wrapper):
+
+```bash
+python3 scripts/qgis_todcreek_raw_to_entropy_partition.py
+```
+
+Or cross-watershed (point at any compliant raw GIS layer set):
+
+```bash
+python3 skills/swmm-gis/scripts/qgis_raw_to_entropy_partition.py \
+  --boundary <boundary.shp> \
+  --dem <dem.tif> \
+  --landuse <landuse.tif> \
+  --soil <soil.tif> \
+  --out-root runs/<case>/02_params/paper_entropy_partition/
+```
+
+This is a **GIS preprocessing concept**, not a calibrated SWMM performance claim. The evidence boundary is partition quality (information-loss minimisation) rather than hydrologic accuracy of any one realised SWMM build. See `skills/swmm-gis/SKILL.md` for the full decision rule and threshold-sensitivity sweeps.
+
 ## Raw GeoPackage-to-INP benchmark
 
 The TUFLOW SWMM Module 03 benchmark validates the structured raw GIS path. This is the stronger agentic workflow demonstration because it starts from public GeoPackage model layers and rebuilds the SWMM-ready structure before running QA and audit.
@@ -45,6 +72,29 @@ python3 scripts/benchmarks/run_tecnopolo_199401.py
 ```
 
 See `../examples/tecnopolo/README.md` for validation details, expected peak-flow checks, reproducibility notes, and the prepared-input evidence boundary.
+
+## Prior Monte Carlo uncertainty smoke
+
+The Tecnopolo HORTON parameter perturbation smoke test exercises the prior uncertainty path on top of a prepared-input SWMM model. It identifies perturbable parameters in the Tecnopolo HORTON INP, applies a small Monte Carlo sample, runs SWMM for each trial, and emits a peak-flow spread per junction/outfall plus a rainfall-plus-flow envelope figure for the requested node.
+
+<p align="center">
+  <img src="figs/tecnopolo_mc_uncertainty_flow_envelope_readme.png" alt="Tecnopolo prior Monte Carlo uncertainty smoke at OUT_0 showing rainfall and the trial flow envelope" width="760" />
+</p>
+
+Run:
+
+```bash
+python3 scripts/benchmarks/run_tecnopolo_mc_uncertainty_smoke.py \
+  --samples 20 \
+  --seed 42 \
+  --node OUT_0 \
+  --scan-nodes \
+  --entropy-nodes J6 OUT_0
+```
+
+Outputs land under `runs/benchmarks/tecnopolo-mc-uncertainty-smoke/`: `summary.json`, `parameter_recommendations.json`, per-trial folders, the envelope figure, and J6/OUT_0 entropy JSON files plus an entropy curve.
+
+This is a **prior uncertainty smoke**, not calibration. The evidence boundary is that the framework can wire perturbed prior parameters end-to-end through SWMM and aggregate the spread; it does not condition on observed flow, so the resulting envelope is informative only as a prior diagnostic. See `skills/swmm-uncertainty/SKILL.md` for the underlying parameter scan and entropy-metric tooling.
 
 ## INP-derived raw adapter benchmark
 
