@@ -489,20 +489,6 @@ def _build_tools() -> dict[str, ToolSpec]:
             _retrieve_memory_tool,
             is_read_only=True,
         ),
-        ToolSpec(
-            "propose_lid_scenarios",
-            "Generate SWMM LID placement scenario INPs from a base INP and a config using the swmm-lid-optimization skill. Writes per-scenario INPs under run_root/ and a summary JSON for downstream comparison.",
-            _object(
-                {
-                    "base_inp": {"type": "string"},
-                    "config": {"type": "string"},
-                    "run_root": {"type": "string"},
-                    "summary_json": {"type": "string"},
-                },
-                ["base_inp", "config"],
-            ),
-            _propose_lid_scenarios_tool,
-        ),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
     ]
@@ -931,53 +917,6 @@ def _retrieve_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     project = call.args.get("project")
     if isinstance(project, str) and project.strip():
         cli_args.extend(["--project", project])
-    return _run_script_tool(call, session_dir, cli_args)
-
-
-# -- swmm-lid-optimization scenario generator (Issue #124 Part B1) ------------
-#
-# Shells out to ``skills/swmm-lid-optimization/scripts/lid_scenario_builder.py``
-# the same way ``retrieve_memory`` does. We do not yet have an ``mcp/swmm-lid-
-# optimization/`` server (Part B2 in the PRD, deferred); the subprocess path
-# is sufficient for the planner to compose LID placement into a workflow.
-
-_LID_SKILL_DIR_RELATIVE = ("skills", "swmm-lid-optimization", "scripts")
-
-
-def _propose_lid_scenarios_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Shell out to the LID scenario builder.
-
-    The script writes scenario INPs to ``run_root/`` and a summary JSON to
-    ``summary_json``. Defaults route both under the session directory so
-    repeat invocations don't collide; an explicit caller-supplied path
-    wins so the planner can integrate with downstream comparison tools.
-    """
-    base_inp = call.args.get("base_inp")
-    if not isinstance(base_inp, str) or not base_inp.strip():
-        return _failure(call, "missing required argument: base_inp")
-    config = call.args.get("config")
-    if not isinstance(config, str) or not config.strip():
-        return _failure(call, "missing required argument: config")
-    script_path = repo_root().joinpath(*_LID_SKILL_DIR_RELATIVE, "lid_scenario_builder.py")
-    if not script_path.is_file():
-        return _failure(
-            call, f"lid_scenario_builder script not found at {script_path}"
-        )
-    run_root = call.args.get("run_root") or str(session_dir / "lid_scenarios")
-    summary_json = call.args.get("summary_json") or str(
-        session_dir / "lid_scenarios" / "summary.json"
-    )
-    cli_args: list[str] = [
-        str(script_path),
-        "--base-inp",
-        base_inp,
-        "--config",
-        config,
-        "--run-root",
-        str(run_root),
-        "--summary-json",
-        str(summary_json),
-    ]
     return _run_script_tool(call, session_dir, cli_args)
 
 
