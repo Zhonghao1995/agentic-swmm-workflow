@@ -4,6 +4,58 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+## v0.6.3-alpha - Architecture deepening: intent_classifier + tool_handlers + RAG memory exposure (2026-05-16)
+
+Pre-release on top of v0.6.2-alpha. Install with `pip install aiswmm==0.6.3a1` or `pip install --pre aiswmm`. Default `pip install aiswmm` continues to deliver v0.6.1.
+
+This release does NOT introduce new user-facing CLI surface; it is an architectural enhancement release that consolidates and deepens what v0.6.2-alpha shipped. Architecture-audit findings #121 / #122 / #124 (memory portion only) / #127 / #128 are all closed by code here.
+
+### Architectural changes
+
+- **New deep module `agentic_swmm/agent/intent_classifier.py`** (#121). Consolidates keyword-driven intent resolution that was previously scattered across 6 files (`planner.py`, `tool_registry.py`, `single_shot.py`, `runtime_loop.py`, `continuation_classifier.py`, `intent_map.py`) into one auditable module. Exports `classify_intent(goal, *, workflow_state) -> IntentSignals` (dataclass) plus `is_negated(lowered, term)`. 31 new tests including bilingual EN/ZH symmetry, warm-intro gate, plot-continuation, and migration parity for the legacy entry points retained as re-export shims. Adding a new intent now touches one file.
+- **New `agentic_swmm/agent/tool_handlers/` package** (#128 partial). Three skill families extracted from the 2163-LOC `tool_registry.py` monolith: `web.py` (`_web_fetch_url_tool`, `_web_search_tool`), `demo.py` (`_demo_acceptance_tool`), `swmm_memory.py` (`_recall_memory_tool`, `_recall_memory_search_tool`, `_recall_session_history_tool`, `_record_fact_tool` + token-budget helpers). The remaining 7 family slices are queued as follow-up PRs against `tool_registry.py`, which is now ~1900 LOC.
+- **Dead-code purge in `agentic_swmm/agent/single_shot.py`** (#127). Module shrunk from 797 LOC to 144 LOC (-82 %).
+
+### New agent capabilities
+
+- **RAG memory retrieval is now agent-callable** (#124 Part A). New `retrieve_memory` ToolSpec wraps `skills/swmm-rag-memory/scripts/retrieve_memory.py` with `--query`, `--top-k`, `--retriever`, `--project` arguments. Read-only. New intent `memory-retrieval` matches `recall`, `前面`, `以前`, `类似` keywords.
+- `agent/config/intent_map.json:mcp_enabled_skills` now lists all 11 registered MCP servers (previously 8). `integrations/mcp/README.md` updated from "eight" to "eleven".
+
+### Portability completeness
+
+- **`cases/` directory now ships with reference fixtures** (#122). `cases/tecnopolo/case_meta.yaml` and `cases/todcreek/case_meta.yaml` are committed templates with top-level `aliases` field so `_match_registered_case` picks up colloquial forms. Prior to this release, `cases/` was empty despite v0.6.2-alpha release notes claiming portability — that gap is now closed.
+- **`agent/config/intent_map.json:swmm_request_keywords` no longer contains `tecnopolo`** (#122). The AST regression guard from #118 only walked Python `.py` files; the JSON config was a blind spot. The guard is now extended to scan `intent_map.json`.
+- **`welcome.py` reads first registered case's `display_name`** instead of literal "tecnopolo" for the "Things to try" demo line; falls back to "Run a SWMM demo" when `cases/` is empty.
+- **Bonus**: chart title in `skills/swmm-uncertainty/scripts/monte_carlo_propagate.py` made generic so the AST guard's pre-existing failure on that file is cleared.
+
+### Documentation
+
+- **README "preload path" no longer mentions stale `agent/memory/`** (#123). The mismatch was in `skills/swmm-end-to-end/SKILL.md` lines 10/38, fixed there.
+- **README validation-snapshot anchors resolve** (#129). Two new sections added to `docs/validation-evidence.md`: `#information-loss-guided-subcatchment-partition` and `#prior-monte-carlo-uncertainty-smoke`. New CI-style test asserts every README `.md#anchor` link resolves.
+- **Private-machine breadcrumbs removed from public docs** (#126). 14 `/Users/zhonghao` references removed across 5 files; regression test prevents future leaks.
+
+### Hygiene
+
+- **Plot script defaults are self-documenting** (#125). `skills/swmm-plot/scripts/plot_rain_runoff_si.py` no longer presents `TS_RAIN` / `O1` as silent defaults; they now read `<rainfall-series-name>` / `<outfall-or-junction>` and fail fast with a helpful error if a manual CLI hits them. The agent-driven flow always supplies explicit values, so the new error path is unreachable from the agent — but the regression test pins this invariant.
+
+### Test count delta from v0.6.2-alpha
+
+| PR | Tests added |
+|---|---|
+| #130 (#127) | 8 |
+| #134 (#121) | 31 |
+| #136 (#128) | 11 |
+| #131 (#125) | 4 |
+| #132 (#123 + #126 + #129) | 14 |
+| #133 (#122) | 6 |
+| #135 (#124 Part A only — Part B reverted in #137) | 6 |
+| **Total** | **~80** |
+
+### Known limitations carried forward
+
+- **`tool_registry.py` split is partial** (3 of 10 family slices extracted in #128). Remaining 7 slices queued as future PRs.
+- **`docs/framework-validation/saanich-b7-*/network.json`** retains `/Users/zhonghao` paths by design (frozen evidence). Same-directory README documents this.
+
 ## v0.6.2-alpha - Runtime hygiene + paper-grade reproducibility hardening (2026-05-16)
 
 Pre-release. Install with `pip install aiswmm==0.6.2a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
