@@ -34,6 +34,8 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "network_qa": False,
     "network_to_inp": False,
     "plot_run": False,
+    # Issue #124 Part B1: generates per-scenario INP files.
+    "propose_lid_scenarios": False,
     "record_fact": False,
     "request_expert_review": False,
     # request_gap_judgement (PRD-GF-L5) — L5 subjective judgement
@@ -56,6 +58,8 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "recall_memory": True,
     "recall_memory_search": True,
     "recall_session_history": True,
+    # Issue #124 Part A: hybrid retrieval over audited-run memory.
+    "retrieve_memory": True,
     "search_files": True,
     "select_skill": True,
     "select_workflow_mode": True,

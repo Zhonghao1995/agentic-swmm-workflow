@@ -355,13 +355,16 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("swmm-modeling-memory", _select_relevant_skills("summarize modeling memory lessons"))
 
     def test_relevant_mcp_selection_follows_mcp_enabled_skills(self) -> None:
+        # Issue #124 Part D: ``mcp_enabled_skills`` now covers all 11 shipped
+        # MCP servers, so ``swmm-experiment-audit`` and ``swmm-uncertainty``
+        # pass through. ``swmm-end-to-end`` is still skill-only (no MCP).
         self.assertEqual(
             _select_relevant_mcp_servers(["swmm-end-to-end", "swmm-runner", "swmm-plot", "swmm-experiment-audit"]),
-            ["swmm-runner", "swmm-plot"],
+            ["swmm-runner", "swmm-plot", "swmm-experiment-audit"],
         )
         self.assertEqual(
             _select_relevant_mcp_servers(["swmm-calibration", "swmm-uncertainty", "swmm-gis"]),
-            ["swmm-calibration", "swmm-gis"],
+            ["swmm-calibration", "swmm-uncertainty", "swmm-gis"],
         )
 
     def test_plot_continuation_uses_previous_run_directory(self) -> None:

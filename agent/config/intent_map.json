@@ -51,11 +51,14 @@
     "swmm-builder",
     "swmm-calibration",
     "swmm-climate",
+    "swmm-experiment-audit",
     "swmm-gis",
+    "swmm-modeling-memory",
     "swmm-network",
     "swmm-params",
     "swmm-plot",
-    "swmm-runner"
+    "swmm-runner",
+    "swmm-uncertainty"
   ],
   "intents": [
     {
@@ -167,6 +170,24 @@
       "preferred_tools": ["summarize_memory"],
       "stop_conditions": ["missing audited runs"],
       "next_user_prompt": "Provide a runs directory containing audit artifacts."
+    },
+    {
+      "id": "memory-retrieval",
+      "skills": ["swmm-rag-memory"],
+      "keywords": ["recall", "what did we learn", "have I seen", "similar past", "lessons", "failure pattern", "前面", "以前", "类似"],
+      "required_inputs": ["query"],
+      "preferred_tools": ["retrieve_memory"],
+      "stop_conditions": ["empty query"],
+      "next_user_prompt": "What question should I ask the modeling memory?"
+    },
+    {
+      "id": "lid-optimization",
+      "skills": ["swmm-lid-optimization"],
+      "keywords": ["lid", "green infrastructure", "bioretention", "low impact development", "gi", "绿色基础设施", "低影响开发"],
+      "required_inputs": ["base_inp", "config"],
+      "preferred_tools": ["propose_lid_scenarios"],
+      "stop_conditions": ["missing base_inp or config"],
+      "next_user_prompt": "Provide a base INP and an LID config JSON (see skills/swmm-lid-optimization/examples/)."
     }
   ]
 }
