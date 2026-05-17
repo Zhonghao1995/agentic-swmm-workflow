@@ -245,7 +245,7 @@ def render_returning_banner(
     Layout:
 
         AISWMM v<X>  (session-XXXXXX, profile=quick)
-        Last session: 2 hours ago -- case "tecnopolo"
+        Last session: 2 hours ago -- case "<your-watershed>"
         (/help  /exit  /new-session  --safe)
     """
     return "\n".join(
@@ -276,6 +276,28 @@ def render_tagline_frame() -> str:
     )
 
 
+def _first_case_display_name() -> str | None:
+    """Issue #122: first registered case's display name, or ``None`` if empty.
+
+    Wrapping the registry lookup gives tests a single attribute to
+    monkey-patch (so they don't need to mutate the real ``cases/``
+    directory). Any IO failure degrades to ``None`` — the banner falls
+    back to the generic "Run a SWMM demo" suggestion rather than
+    crashing the boot.
+    """
+    try:
+        # Local import: the welcome module ships even when ``yaml`` is missing.
+        from agentic_swmm.case import case_registry
+
+        cases = case_registry.list_cases()
+    except Exception:
+        return None
+    for meta in cases:
+        if meta.display_name:
+            return meta.display_name
+    return None
+
+
 def render_extended_welcome() -> str:
     """Render the first-run welcome: logo + capability tour + CTA.
 
@@ -286,6 +308,12 @@ def render_extended_welcome() -> str:
     PRD-TUI-REDESIGN: appends a retro-chrome ``[SYS] aiswmm ONLINE``
     tagline frame right below the logo. The first-run capability tour
     follows so the user reads ``logo → tagline → tour → CTA``.
+
+    Issue #122: the first "Things to try" line is now driven by
+    ``case_registry.list_cases()`` so a fresh clone with an empty
+    ``cases/`` shows the generic ``Run a SWMM demo`` suggestion, and a
+    user with a registered watershed sees that watershed's display
+    name instead of a hardcoded example.
     """
     logo = render_logo()
     tagline = render_tagline_frame()
@@ -299,8 +327,12 @@ def render_extended_welcome() -> str:
         "  - Remember lessons across modeling sessions",
     ]
     things_header = ui_colors.colorize("Things to try:", ui_colors.BOLD)
+    first_case = _first_case_display_name()
+    demo_line = (
+        f'  - "Run the {first_case} demo"' if first_case else '  - "Run a SWMM demo"'
+    )
     things = [
-        '  - "Run the tecnopolo demo"',
+        demo_line,
         '  - "Show me what skills you have"',
         '  - "Help me build an INP for my project"',
     ]
