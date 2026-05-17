@@ -60,11 +60,23 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.2-alpha (pre-release)](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.3-alpha (pre-release)](docs/releases/v0.6.3-alpha.md) · [v0.6.2-alpha](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
 
-Pre-release users: `pip install aiswmm==0.6.2a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
+Pre-release users: `pip install aiswmm==0.6.3a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
 
 Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+
+## v0.6.3-alpha highlights (pre-release)
+
+Architectural deepening on top of v0.6.2-alpha. No new user-facing CLI surface — the agent runtime is the same — but the internal architecture is now substantially more auditable and extensible.
+
+- **New deep module `intent_classifier`** (#121) consolidates keyword-driven intent resolution that was scattered across six files into one auditable location. Adding a new intent touches one file, not six.
+- **`tool_registry.py` is being split** along skill-family boundaries into `agentic_swmm/agent/tool_handlers/*.py` (#128 — 3 of 10 slices extracted; remaining queued as follow-ups).
+- **600 LOC of dead handlers removed** from `agentic_swmm/agent/single_shot.py` (#127). Module shrunk from 797 to 144 LOC.
+- **RAG memory retrieval is now agent-callable** (#124 Part A). New `retrieve_memory` tool plus `memory-retrieval` intent. All 11 MCP servers now enumerated in `mcp_enabled_skills`.
+- **`cases/` ships with reference fixtures** (#122). v0.6.2-alpha claimed portability via `cases/<id>/case_meta.yaml` but shipped the directory empty; that is now closed. The AST regression guard from #118 is extended to scan JSON configs.
+- **README anchors resolve, private-machine paths cleared from public docs** (#123, #126, #129). The validation-snapshot table no longer 404s.
+- **Plot script defaults are self-documenting** (#125). The agent-flow override invariant is pinned by a regression test.
 
 ## v0.6.2-alpha highlights (pre-release)
 

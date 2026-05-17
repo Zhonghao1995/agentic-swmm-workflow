@@ -38,11 +38,11 @@ Install the Python package:
 pip install aiswmm
 ```
 
-To install a **pre-release** (e.g. `v0.6.2-alpha`) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
+To install a **pre-release** (e.g. `v0.6.3-alpha`) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
 
 ```bash
-pip install aiswmm==0.6.2a1   # pin a specific pre-release
-pip install --pre aiswmm      # allow any pre-release
+pip install aiswmm==0.6.3a1   # pin a specific pre-release
+pip install --pre aiswmm      # allow any pre-release (currently 0.6.3a1)
 ```
 
 The package installs both command names and includes the Agentic SWMM runtime resources: skills, MCP launchers, public memory files, examples, and integration templates.
