@@ -72,14 +72,32 @@ function preheatPlotEnv() {
   }
 }
 
+// Issue #125 — agent-flow invariant.
+// The `rainTs` / `node` defaults below are SELF-DOCUMENTING PLACEHOLDERS
+// (`<rainfall-series-name>` / `<outfall-or-junction>`), not portability
+// rot. They are unreachable in the agent-driven path:
+//
+//   agent goal
+//     -> planner._extract_plot_choice (agentic_swmm/agent/planner.py)
+//        which reads inspect_plot_options output and picks real names
+//     -> tool_registry._plot_run_args (agentic_swmm/agent/tool_registry.py)
+//        which forwards the explicit values into this MCP call
+//     -> Args.parse() below sees the explicit values, never the defaults
+//
+// External MCP clients that omit these fields will see the placeholder
+// strings reach the Python script, which fails fast with a clear error
+// naming the missing flag. `nodeAttr` keeps its literal default because
+// `Total_inflow` is a SWMM-universal attribute name, not watershed-specific.
+//
+// Regression guard: tests/test_plot_run_args_overrides_defaults.py.
 const Args = z.object({
   inp: z.string(),
   out: z.string(),
   outPng: z.string(),
-  rainTs: z.string().default("TS_RAIN"),
+  rainTs: z.string().default("<rainfall-series-name>"),
   rainKind: z.enum(["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]).default("depth_mm_per_dt"),
   dtMin: z.number().default(5),
-  node: z.string().default("O1"),
+  node: z.string().default("<outfall-or-junction>"),
   nodeAttr: z.string().default("Total_inflow"),
   dpi: z.number().default(300),
   focusDay: z.string().optional(),
@@ -105,10 +123,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             inp: { type: "string" },
             out: { type: "string" },
             outPng: { type: "string" },
-            rainTs: { type: "string", default: "TS_RAIN" },
+            rainTs: { type: "string", default: "<rainfall-series-name>" },
             rainKind: { type: "string", enum: ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"], default: "depth_mm_per_dt" },
             dtMin: { type: "number", default: 5 },
-            node: { type: "string", default: "O1" },
+            node: { type: "string", default: "<outfall-or-junction>" },
             nodeAttr: { type: "string", default: "Total_inflow" },
             dpi: { type: "number", default: 300 },
             focusDay: { type: "string" },

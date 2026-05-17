@@ -15,6 +15,31 @@ Inputs:
 
 Output:
 - PNG (and optionally PDF later)
+
+Agent-flow invariant (issue #125):
+    The ``--rain-ts`` / ``--node`` / ``--node-attr`` defaults below are
+    self-documenting placeholders (``<rainfall-series-name>`` /
+    ``<outfall-or-junction>``) that are only reachable from a *manual
+    CLI invocation*. The agent-driven path always passes explicit
+    values resolved against the run's actual INP/OUT:
+
+        agent goal
+          -> planner._extract_plot_choice (agentic_swmm/agent/planner.py)
+             which reads inspect_plot_options output and picks real names
+          -> tool_registry._plot_run_args (agentic_swmm/agent/tool_registry.py)
+             which forwards the explicit values to the MCP server
+          -> mcp/swmm-plot/server.js
+             whose Zod defaults are also placeholders and are likewise
+             never reached on an agent call.
+
+    If a manual CLI invocation hits one of these placeholder defaults,
+    the script errors informatively (``rainfall series
+    '<rainfall-series-name>' not found in INP``) instead of failing
+    with a Tecnopolo-shaped error that misleads users on a different
+    watershed. ``Total_inflow`` is a SWMM-universal attribute name (not
+    watershed-specific) so its default remains literal.
+
+    Regression test: ``tests/test_plot_run_args_overrides_defaults.py``.
 """
 
 from __future__ import annotations
@@ -109,11 +134,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--inp', required=True, type=Path)
     ap.add_argument('--out', dest='out_file', required=True, type=Path)
-    ap.add_argument('--rain-ts', default='TS_RAIN')
+    # Issue #125: ``--rain-ts`` / ``--node`` defaults are SELF-DOCUMENTING
+    # PLACEHOLDERS, not portability rot. They are unreachable in the
+    # agent-driven path (planner always overrides via
+    # ``agentic_swmm/agent/tool_registry.py::_plot_run_args``). A manual
+    # CLI invocation that hits them errors with a clear message that
+    # names the placeholder string instead of misleading the user with
+    # ``TS_RAIN``/``O1``. ``--node-attr`` keeps its literal default
+    # because ``Total_inflow`` is a SWMM-universal attribute name.
+    ap.add_argument('--rain-ts', default='<rainfall-series-name>',
+                    help='Name of the SWMM [TIMESERIES] block holding rainfall. The agent flow passes the resolved value; manual CLI users must supply this.')
     ap.add_argument('--rain-kind', choices=['intensity_mm_per_hr', 'depth_mm_per_dt', 'cumulative_depth_mm'], default='depth_mm_per_dt',
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
-    ap.add_argument('--node', default='O1')
+    ap.add_argument('--node', default='<outfall-or-junction>',
+                    help='SWMM node id (outfall or junction) whose attribute is plotted. The agent flow passes the resolved value; manual CLI users must supply this.')
     ap.add_argument('--node-attr', default='Total_inflow')
     ap.add_argument('--out-png', required=True, type=Path)
     ap.add_argument('--dpi', type=int, default=300)
@@ -130,6 +165,27 @@ def main():
     ap.add_argument('--flow-ymax-factor', type=float, default=2.5,
                     help='Multiplier applied to the plotted flow maximum so the hydrograph does not visually collide with rainfall bars.')
     args = ap.parse_args()
+
+    # Issue #125: catch manual CLI users who relied on the old
+    # ``TS_RAIN``/``O1`` defaults. The placeholder strings cannot resolve
+    # against any real INP, so we fail fast with a message that names
+    # the missing flag instead of letting ``parse_timeseries_from_inp``
+    # surface a confusing "No TIMESERIES values found for
+    # '<rainfall-series-name>'" error deeper in the stack.
+    if args.rain_ts == '<rainfall-series-name>':
+        raise SystemExit(
+            "--rain-ts is a placeholder ('<rainfall-series-name>'); pass an "
+            "actual TIMESERIES name from your INP, e.g. --rain-ts MyRainSeries. "
+            "(The agent-driven path resolves this automatically via "
+            "inspect_plot_options; this error only appears in manual CLI use.)"
+        )
+    if args.node == '<outfall-or-junction>':
+        raise SystemExit(
+            "--node is a placeholder ('<outfall-or-junction>'); pass an "
+            "actual SWMM node id, e.g. --node OUT_0. "
+            "(The agent-driven path resolves this automatically via "
+            "inspect_plot_options; this error only appears in manual CLI use.)"
+        )
 
     # Matplotlib styling: Arial 12, ticks inward
     plt.rcParams.update({
