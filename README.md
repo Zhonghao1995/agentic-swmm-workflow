@@ -66,37 +66,6 @@ Pre-release users: `pip install aiswmm==0.6.3a1` or `pip install --pre aiswmm`. 
 
 Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
 
-## v0.6.3-alpha highlights (pre-release)
-
-Architectural deepening on top of v0.6.2-alpha. No new user-facing CLI surface — the agent runtime is the same — but the internal architecture is now substantially more auditable and extensible.
-
-- **New deep module `intent_classifier`** (#121) consolidates keyword-driven intent resolution that was scattered across six files into one auditable location. Adding a new intent touches one file, not six.
-- **`tool_registry.py` is being split** along skill-family boundaries into `agentic_swmm/agent/tool_handlers/*.py` (#128 — 3 of 10 slices extracted; remaining queued as follow-ups).
-- **600 LOC of dead handlers removed** from `agentic_swmm/agent/single_shot.py` (#127). Module shrunk from 797 to 144 LOC.
-- **RAG memory retrieval is now agent-callable** (#124 Part A). New `retrieve_memory` tool plus `memory-retrieval` intent. All 11 MCP servers now enumerated in `mcp_enabled_skills`.
-- **`cases/` ships with reference fixtures** (#122). v0.6.2-alpha claimed portability via `cases/<id>/case_meta.yaml` but shipped the directory empty; that is now closed. The AST regression guard from #118 is extended to scan JSON configs.
-- **README anchors resolve, private-machine paths cleared from public docs** (#123, #126, #129). The validation-snapshot table no longer 404s.
-- **Plot script defaults are self-documenting** (#125). The agent-flow override invariant is pinned by a regression test.
-
-## v0.6.2-alpha highlights (pre-release)
-
-- **Warm intro fires once per session**, not on every greeting (#108). Pre-fix: `hi`/`hello`/`你好` repeated 4× would emit the canned warm-intro 4×; post-fix: only the first open-shaped prompt triggers it.
-- **First `plot_run` no longer hangs ~90s on matplotlib/swmmtoolbox cold start** (#109/#110). The `swmm-plot` MCP server preheats those imports at boot.
-- **Plot X-axis is readable across any simulated duration** (#112). `AutoDateLocator` + `ConciseDateFormatter` replace the 316-label black-blur seen on year-long runs.
-- **`swmm-end-to-end` and 5 sibling pure-orchestration skills now appear in `aiswmm skill list`** (#113). Previously dropped silently from the skill registry.
-- **Compound intent like "run X demo and plot the figure" routes correctly** (#111). Two-layer fix: keyword-fallback priority repair AND a new LLM-disambiguation deep module that fires only when `plot` co-occurs with another action verb.
-- **`aiswmm doctor` warns on stale editable installs + `mcp.json` checkout drift; new `aiswmm setup --refresh-mcp` to re-align** (#113/#114). Removes the two-checkout footgun that silently shipped stale code.
-- **Zero hardcoded watershed names in routing/inference code** (#118). Case-ID inference, continuation classification, and memory summarization now derive case identity from `case_registry.list_cases()`. Migration to a new watershed no longer requires code changes — add `cases/<your-watershed>/case_meta.yaml` and the runtime picks it up. An AST-based regression guard prevents future leaks.
-
-## v0.6.1 highlights
-
-- `aiswmm` now keeps a clearer runtime identity in the interactive terminal, including the `aiswmm>` prefix and executor banner.
-- Interactive outputs use cleaner date-and-case run folders while preserving audited stage folders inside each run.
-- The Tecnopolo prepared `.inp` demo can be run, audited, inspected for plot options, and continued into rainfall/node/output-variable plots from the same active run.
-- Plot follow-ups such as `Total_inflow J2 MACAO_94_23` now continue from the previous run instead of asking again for model inputs.
-- MCP schema discovery is cached and timeout-protected so slow MCP servers do not block the main CLI run/audit/plot path.
-- Planner-generated recursive searches such as `**.inp` are normalized safely, fixing a demo-listing crash path.
-
 ## Why this project exists
 
 Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
