@@ -76,32 +76,29 @@ def test_no_placeholder_question_marks_in_routing_source() -> None:
     placeholders must never reappear in the routing logic. If a future
     sync clobbers UTF-8 again, this test trips first.
 
-    Note (#111): the CJK keyword tuples used to live inline inside
-    ``_select_workflow_mode_tool``. They were extracted to
-    ``compute_intent_signals`` so the planner's auto-route
-    disambiguator and the keyword fallback share one source of truth.
-    The placeholder / CJK regression checks now run against
-    ``compute_intent_signals`` since that is the function that owns the
-    keyword tuples."""
+    Note (#121): the CJK keyword tuples used to live inline inside
+    ``_select_workflow_mode_tool``, were extracted to
+    ``compute_intent_signals`` (#111), and now live in
+    ``agentic_swmm.agent.intent_classifier`` (single source of truth
+    for keyword-driven intent extraction). The placeholder / CJK
+    regression checks run against the canonical home so the bilingual
+    contract follows the keywords wherever they live."""
 
     src = (
         Path(__file__).resolve().parents[1]
         / "agentic_swmm"
         / "agent"
-        / "tool_registry.py"
+        / "intent_classifier.py"
     )
     text = src.read_text(encoding="utf-8")
-    start = text.index("def compute_intent_signals(")
-    end = text.index("def ", start + 1)
-    body = text[start:end]
-    assert '"??"' not in body, (
-        "Found literal '\"??\"' placeholder in compute_intent_signals body — "
+    assert '"??"' not in text, (
+        "Found literal '\"??\"' placeholder in intent_classifier.py — "
         "Chinese keywords have been re-clobbered (see #79 P0-2)."
     )
-    assert '"???"' not in body, (
-        "Found literal '\"???\"' placeholder in compute_intent_signals body — "
+    assert '"???"' not in text, (
+        "Found literal '\"???\"' placeholder in intent_classifier.py — "
         "Chinese keywords have been re-clobbered (see #79 P0-2)."
     )
-    # Sanity: every routing branch should mention at least one CJK keyword.
+    # Sanity: the vocabulary tables should contain at least one CJK keyword.
     cjk = re.compile(r"[一-鿿]")
-    assert cjk.search(body), "No Chinese keyword found in routing body"
+    assert cjk.search(text), "No Chinese keyword found in intent_classifier.py"
