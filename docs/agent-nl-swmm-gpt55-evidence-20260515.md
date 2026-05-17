@@ -294,7 +294,7 @@ test, not for this paper-grade evidence pass.
 ## Reproducibility
 
 Exact commands used in this evidence pass, ready to copy-paste from the
-repo root (`/Users/zhonghao/Desktop/Codex Project/Agentic SWMM`):
+repo root of your local clone:
 
 ```bash
 # Step 1 - pre-test memory snapshot
@@ -329,13 +329,13 @@ python3.13 skills/swmm-modeling-memory/scripts/summarize_memory.py \
   --no-run-summaries
 ```
 
-## File pointers (all absolute)
+## File pointers (repo-relative)
 
-- Session: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/agent/agent-1778817623/`
-- Trace: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/agent/agent-1778817623/agent_trace.jsonl`
-- SWMM report: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/agent/agent-1778817623/model.rpt`
-- Manifest: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/agent/agent-1778817623/manifest.json`
-- Audit folder: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/runs/agent/agent-1778817623/09_audit/`
-- Pre-snapshot: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/memory/_test_pre_20260515T040004Z/`
-- Post-snapshot: `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/memory/_test_post_20260515T040208Z/`
-- Baseline (gpt-4o-mini): `/Users/zhonghao/Desktop/Codex Project/Agentic SWMM/docs/agent-nl-swmm-evidence-20260514.md`
+- Session: `runs/agent/agent-1778817623/`
+- Trace: `runs/agent/agent-1778817623/agent_trace.jsonl`
+- SWMM report: `runs/agent/agent-1778817623/model.rpt`
+- Manifest: `runs/agent/agent-1778817623/manifest.json`
+- Audit folder: `runs/agent/agent-1778817623/09_audit/`
+- Pre-snapshot: `memory/_test_pre_20260515T040004Z/`
+- Post-snapshot: `memory/_test_post_20260515T040208Z/`
+- Baseline (gpt-4o-mini): `docs/agent-nl-swmm-evidence-20260514.md`

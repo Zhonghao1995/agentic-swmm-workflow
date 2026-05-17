@@ -2,10 +2,10 @@
 
 This repository is the Agentic SWMM workflow layer: a compact set of skills, scripts, examples, benchmarks, audit records, and modeling-memory artifacts for reproducible SWMM work.
 
-The current private development checkout is:
+The development checkout is your local clone of this repo, e.g.:
 
 ```text
-/Users/zhonghao/Desktop/Codex Project/Agentic SWMM
+~/agentic-swmm-workflow
 ```
 
 The private GitHub remote is:
@@ -85,7 +85,7 @@ There are three memory-like systems, each with a different job:
 
 | Layer | Path | Job |
 |---|---|---|
-| Codex long-term memory | `/Users/zhonghao/.codex/memories/` | Remembers user/project history across Codex sessions. |
+| Codex long-term memory | `~/.codex/memories/` | Remembers user/project history across Codex sessions (per-user, platform-agnostic). |
 | Agentic SWMM modeling memory | `memory/modeling-memory/` | Summarizes audited SWMM runs, repeated issues, and skill update proposals. |
 | Agentic AI preload memory | `agentic-ai/memory/` | Gives external agent runtimes stable project identity, operating posture, and evidence boundaries. |
 

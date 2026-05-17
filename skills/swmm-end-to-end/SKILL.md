@@ -7,7 +7,7 @@ description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. U
 
 ## What this skill provides
 - A top-level orchestration contract for OpenClaw.
-- A stable handoff point for Agentic AI project memory in `agent/`.
+- A stable handoff point for Agentic AI project memory in `agent/memory/`.
 - A deterministic execution order across the existing module skills:
   - `swmm-gis`
   - `swmm-climate`
@@ -35,7 +35,7 @@ Use this skill when the user asks for:
 Do **not** use this skill when the user clearly wants only one module in isolation, such as only rainfall formatting or only calibration metrics.
 
 ## Recommended public memory preload
-Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/`:
+Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/memory/`:
 
 1. `identification_memory.md`
 2. `soul.md`

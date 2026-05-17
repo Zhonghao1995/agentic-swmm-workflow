@@ -6,6 +6,13 @@ each subcatchment's `outlet` column from the literal outfall to a
 real upstream junction so the pipe network actually carries surface
 water in the SWMM model.
 
+> **Frozen evidence note.** Paths in `network.json` and
+> `runner_manifest.json` are **absolute to the maintainer's checkout at
+> capture time (2026-05-13)**. They are preserved as captured to keep
+> the evidence trail honest. To re-run on a different machine,
+> regenerate the artifact via `scripts/benchmarks/...` and inspect the
+> new repo-relative paths in the freshly produced JSON.
+
 ## What B7 changed
 
 Diff of `subcatchments.csv` before vs after the B7 step:
