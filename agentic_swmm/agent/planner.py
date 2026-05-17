@@ -16,6 +16,7 @@ from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disam
 from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
+from agentic_swmm.agent import intent_classifier
 from agentic_swmm.agent.tool_registry import AgentToolRegistry, compute_intent_signals
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
@@ -750,11 +751,12 @@ def _asks_for_plot_options(lowered: str) -> bool:
 
 
 def _is_negated(lowered: str, term: str) -> bool:
-    start = lowered.find(term)
-    if start < 0:
-        return False
-    prefix = lowered[max(0, start - 12) : start]
-    return any(marker in prefix for marker in ("不想要", "不要", "别画", "不是", "not ", "no "))
+    """Return True iff ``term`` is preceded by a negation marker.
+
+    PRD #121: delegates to ``agentic_swmm.agent.intent_classifier.is_negated``
+    so the negation vocabulary has a single source of truth.
+    """
+    return intent_classifier.is_negated(lowered, term)
 
 
 def _default_rain_kind(options: dict[str, Any], rain_ts: str | None) -> str | None:

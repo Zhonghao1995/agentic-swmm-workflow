@@ -30,6 +30,7 @@ from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent import welcome as _welcome
 from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.prompts import WARM_INTRO_TEMPLATE
@@ -431,85 +432,21 @@ def run_openai_planner(
 
 
 def _looks_like_run_continuation(prompt: str) -> bool:
-    lowered = prompt.lower()
-    return any(
-        token in lowered
-        for token in (
-            "plot",
-            "figure",
-            "graph",
-            "rainfall",
-            "node",
-            "outfall",
-            "total_inflow",
-            "depth_above_invert",
-            "volume_stored_ponded",
-            "flow_lost_flooding",
-            "hydraulic_head",
-            "作图",
-            "画图",
-            "图",
-            "节点",
-            "根据你刚才",
-            "刚才的运行",
-        )
-    )
+    """Return True iff ``prompt`` is plot-vocab-shaped (mid-run continuation).
+
+    PRD #121: keyword vocabulary lives in
+    ``agentic_swmm.agent.intent_classifier``. This wrapper preserves
+    the exact byte-for-byte behaviour of the previous inline tuple.
+    """
+    return classify_intent(prompt).looks_like_run_continuation
 
 
 # Issue #59 (UX-4): first-message warm intro classifier + hook.
 #
-# Task verbs cover EN + ZH. Any one of these in the *first* prompt
-# means the user already told us what they want; the planner should
-# dispatch directly. The Chinese verbs match common phrasings users
-# type unprompted (跑/做/建/检/测/校准 + 审计).
-_TASK_VERB_TOKENS: tuple[str, ...] = (
-    "run",
-    "build",
-    "plot",
-    "calibrate",
-    "audit",
-    "check",
-    "test",
-    "compare",
-    "simulate",
-    "execute",
-    "inspect",
-    "summarize",
-    "show",
-    "list",
-    "read",
-    "create",
-    "generate",
-    "make",
-    "fix",
-    "跑",
-    "做",
-    "建",
-    "审计",
-    "校准",
-    "验证",
-    "对比",
-    "比较",
-    "运行",
-)
-
-# Greeting / identity-probe tokens. Match as substring on the lowered
-# prompt so "Hi!", "Hello there", and "你好啊" all classify open-shaped.
-_OPEN_GREETING_TOKENS: tuple[str, ...] = (
-    "你好",
-    "您好",
-    "hi",
-    "hello",
-    "hey",
-    "yo",
-    "what can you do",
-    "what are you",
-    "who are you",
-    "tell me about yourself",
-    "tell me what you",
-    "what do you do",
-    "introduce yourself",
-)
+# PRD #121: the task-verb and open-greeting vocabularies live in
+# ``agentic_swmm.agent.intent_classifier``. ``is_open_shaped_prompt``
+# is now a thin adapter so the warm-intro gate shares one source of
+# truth with the planner's intent classification.
 
 
 def is_open_shaped_prompt(prompt: str) -> bool:
@@ -522,48 +459,11 @@ def is_open_shaped_prompt(prompt: str) -> bool:
     3. Short or verbless prompts (< 5 words AND no task verb).
 
     A prompt is *task-shaped* (returns False) the moment it contains
-    one of the EN/ZH task verbs in ``_TASK_VERB_TOKENS``. This keeps
-    "run the tecnopolo demo" from triggering the intro even though it
-    is short.
+    one of the EN/ZH task verbs in the intent_classifier vocabulary.
+    This keeps "run the tecnopolo demo" from triggering the intro
+    even though it is short.
     """
-    text = prompt.strip()
-    if not text:
-        return True
-    lowered = text.lower()
-
-    # Task verbs win first — they are an unambiguous signal that the
-    # user wants us to act. ZH tokens stay as-is (no case folding).
-    if _contains_task_verb(lowered, text):
-        return False
-
-    # Explicit greetings / identity probes.
-    if any(token in lowered for token in _OPEN_GREETING_TOKENS):
-        return True
-
-    # Fallback: a very short prompt without any task verb is treated
-    # as open-shaped. Splitting on whitespace handles both EN ("hi
-    # there") and the common ZH case where users type a single hanzi
-    # phrase like "在吗" or "ready".
-    if len(lowered.split()) < 5:
-        return True
-
-    return False
-
-
-def _contains_task_verb(lowered: str, raw: str) -> bool:
-    """Substring-match task verbs against the prompt.
-
-    EN tokens are checked against the lowercased text; ZH tokens are
-    checked against the raw text so we don't normalise away hanzi.
-    """
-    for token in _TASK_VERB_TOKENS:
-        if token.isascii():
-            if re.search(rf"\b{re.escape(token)}\b", lowered):
-                return True
-        else:
-            if token in raw:
-                return True
-    return False
+    return classify_intent(prompt).is_open_shaped
 
 
 def maybe_warm_intro(prompt: str, *, turn: int) -> str | None:

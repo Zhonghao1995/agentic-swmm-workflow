@@ -1326,54 +1326,20 @@ def _build_response_for_mode(
 def compute_intent_signals(goal: str) -> dict[str, bool]:
     """Compute the keyword-derived ``wants_*`` flags for a goal.
 
-    Single source of truth shared between
-    ``_select_workflow_mode_tool`` (the keyword fallback) and the
-    planner's auto-route disambiguator trigger (PRD #111). Keeping the
-    flag set in one place means the disambiguator fires on exactly the
-    same set of plot-conflict goals that the keyword fallback would
-    have mishandled.
+    PRD #121 made ``agentic_swmm.agent.intent_classifier`` the single
+    source of truth for keyword-driven intent extraction. This function
+    is now a thin adapter that returns the legacy ``compute_intent_signals``
+    dict shape so existing callers (``_select_workflow_mode_tool`` and
+    the planner's auto-route disambiguator trigger from PRD #111) keep
+    working byte-for-byte. New callers should use
+    ``intent_classifier.classify_intent`` directly.
     """
 
-    text = goal.lower()
-    wants_calibration = any(
-        word in text
-        for word in ("calibration", "calibrate", "observed", "nse", "kge", "校准", "率定")
-    )
-    wants_uncertainty = any(
-        word in text for word in ("uncertainty", "fuzzy", "sensitivity", "不确定性", "敏感性")
-    )
-    wants_audit = (
-        "audit" in text
-        or "comparison" in text
-        or "compare" in text
-        or "审计" in text
-        or "比较" in text
-    )
-    wants_plot = any(
-        word in text
-        for word in (
-            "plot",
-            "figure",
-            "graph",
-            "chart",
-            "作图",
-            "画图",
-            "出图",
-            "绘图",
-        )
-    )
-    wants_demo = any(word in text for word in ("demo", "acceptance", "演示", "验收"))
-    wants_run = bool(
-        re.search(r"\b(?:run|runs|running|execute|executes|executing)\b", text)
-    ) or any(token in text for token in ("跑", "运行"))
-    return {
-        "wants_calibration": wants_calibration,
-        "wants_uncertainty": wants_uncertainty,
-        "wants_audit": wants_audit,
-        "wants_plot": wants_plot,
-        "wants_demo": wants_demo,
-        "wants_run": wants_run,
-    }
+    # Late import keeps the tool_registry → intent_classifier edge one
+    # way; intent_classifier must stay dependency-free of tool_registry.
+    from agentic_swmm.agent.intent_classifier import classify_intent
+
+    return classify_intent(goal).as_dict()
 
 
 def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
