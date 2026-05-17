@@ -4,7 +4,13 @@ on:
   push:
     paths:
       - ".github/workflows/ci.yml"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "Dockerfile"
+      - "pyproject.toml"
       - "requirements.txt"
+      - "agentic_swmm/**"
+      - "docs/releases/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
@@ -13,7 +19,13 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "Dockerfile"
+      - "pyproject.toml"
       - "requirements.txt"
+      - "agentic_swmm/**"
+      - "docs/releases/**"
       - "scripts/**"
       - "skills/**"
       - "examples/**"
