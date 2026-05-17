@@ -1,9 +1,9 @@
-"""Issue #124 Parts A + B1: intent_map gains ``memory-retrieval`` and ``lid-optimization`` intents.
+"""Issue #124 Part A: intent_map gains the ``memory-retrieval`` intent.
 
-The PRD ships agent-callable ToolSpecs for swmm-rag-memory and
-swmm-lid-optimization; the planner only routes prompts to them when an
-intent in ``agent/config/intent_map.json`` matches. This test asserts the
-two new intents are wired and reference the correct skills and tools.
+The PRD ships an agent-callable ToolSpec for swmm-rag-memory so the planner
+can route prompts like "have I seen this failure before" to ``retrieve_memory``
+when an intent in ``agent/config/intent_map.json`` matches. This test asserts
+the intent is wired and references the correct skill and tool.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ def _load_intent_map():
     )
 
 
-class IntentMapRagAndLidIntentsTests(unittest.TestCase):
+class IntentMapRagIntentTests(unittest.TestCase):
     def test_memory_retrieval_intent_present(self) -> None:
         intents = {it["id"]: it for it in _load_intent_map()["intents"]}
         self.assertIn("memory-retrieval", intents)
@@ -35,15 +35,6 @@ class IntentMapRagAndLidIntentsTests(unittest.TestCase):
             any("seen" in k or "recall" in k or "lessons" in k for k in keywords),
             f"memory-retrieval keywords must cover recall vocab; got {keywords}",
         )
-
-    def test_lid_optimization_intent_present(self) -> None:
-        intents = {it["id"]: it for it in _load_intent_map()["intents"]}
-        self.assertIn("lid-optimization", intents)
-        intent = intents["lid-optimization"]
-        self.assertIn("swmm-lid-optimization", intent["skills"])
-        self.assertIn("propose_lid_scenarios", intent["preferred_tools"])
-        keywords = [k.lower() for k in intent.get("keywords", [])]
-        self.assertIn("lid", keywords)
 
 
 if __name__ == "__main__":  # pragma: no cover
