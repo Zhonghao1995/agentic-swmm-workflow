@@ -60,9 +60,9 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.3-alpha (pre-release)](docs/releases/v0.6.3-alpha.md) · [v0.6.2-alpha](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
+After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.4](docs/releases/v0.6.4.md) · [v0.6.3-alpha](docs/releases/v0.6.3-alpha.md) · [v0.6.2-alpha](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
 
-Pre-release users: `pip install aiswmm==0.6.3a1` or `pip install --pre aiswmm`. Stable users on `pip install aiswmm` continue receiving v0.6.1.
+Stable users: `pip install aiswmm` now installs v0.6.4 (which ships a fully pinned `requirements.lock` for byte-reproducible builds). Earlier alphas remain available via `pip install aiswmm==0.6.3a1`.
 
 Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
 
