@@ -1,7 +1,7 @@
 FROM python:3.11-slim-bookworm
 
 ARG AGENTIC_SWMM_REPO=https://github.com/Zhonghao1995/agentic-swmm-workflow.git
-ARG AGENTIC_SWMM_REF=v0.6.3a1
+ARG AGENTIC_SWMM_REF=v0.6.4
 ARG SWMM_REF=v5.2.4
 
 LABEL org.opencontainers.image.title="Agentic SWMM Workflow"
@@ -46,11 +46,17 @@ RUN git init /app \
     && git -C /app checkout --detach FETCH_HEAD
 
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && if [ -f requirements.txt ]; then \
+    && if [ -f requirements.lock ]; then \
+         echo "Installing fully pinned dependencies from requirements.lock"; \
+         python -m pip install --no-cache-dir -r requirements.lock; \
+       elif [ -f requirements.txt ]; then \
+         echo "WARNING: requirements.lock not found; falling back to (unpinned) requirements.txt"; \
          python -m pip install --no-cache-dir -r requirements.txt; \
-       fi \
-    && if [ -f scripts/requirements.txt ]; then \
-         python -m pip install --no-cache-dir -r scripts/requirements.txt; \
+         if [ -f scripts/requirements.txt ]; then \
+           python -m pip install --no-cache-dir -r scripts/requirements.txt; \
+         fi; \
+       else \
+         echo "ERROR: no requirements.lock or requirements.txt found" >&2; exit 1; \
        fi
 
 RUN set -eux; \
