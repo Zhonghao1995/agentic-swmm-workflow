@@ -1,4 +1,4 @@
-# Agentic SWMM Workflow （Alpha: Under Active Development and Testing）
+# Agentic SWMM Workflow
 
 <p align="center">
   <img src="docs/figs/agentic_swmm_logo.png" alt="Agentic SWMM logo with agentic robot, stormwater system, and SWMM wordmark" width="900" />
@@ -28,8 +28,10 @@
   </a>
 </p>
 
+> **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`.
+
 **Agentic SWMM for reproducible stormwater modeling**<br>
-*[Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), or [Hermes Agent](https://github.com/NousResearch/hermes-agent) + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit*
+*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
 **A five-minute EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
@@ -44,9 +46,9 @@ License: **MIT**
 
 Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://aiswmm.com/)
 
-Paper: [*Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*](https://doi.org/10.31223/X5F47G)
+Paper: [*Agentic SWMM: Auditable and Reproducible Stormwater Modelling Management System with Skills and Model Context Protocol*](https://doi.org/10.31223/X5F47G)
 
-## Try it in one command（Alpha）
+## Try it in one command
 
 macOS and Linux:
 
@@ -72,7 +74,7 @@ Stormwater modelling is rarely one command. A typical SWMM project can involve G
 
 Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
 
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to rerun, inspect, remember, and trust.**
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.**
 
 ## What makes it different
 
@@ -173,4 +175,4 @@ GitHub citation metadata is provided in `CITATION.cff`.
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
 
 ### APA manuscript / preprint
-Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*. https://doi.org/10.31223/X5F47G
+Zhang, Z., & Valeo, C. (2026). *Agentic SWMM: Auditable and Reproducible Stormwater Modelling Management System with Skills and Model Context Protocol*. https://doi.org/10.31223/X5F47G
