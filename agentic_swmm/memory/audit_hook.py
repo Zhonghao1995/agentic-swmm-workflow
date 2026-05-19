@@ -355,6 +355,49 @@ def _record_parametric_from_provenance(
     return str(store_path)
 
 
+def _emit_audit_memory_trace(
+    *, run_dir: Path, memory_dir: Path, parametric_path: Path
+) -> Path | None:
+    """Write the audit-hook's memory_trace.jsonl line.
+
+    PRD-07 Phase 2 seed wire-up: every parametric_memory append also
+    leaves a transparency line in ``<run_dir>/memory_trace.jsonl``.
+    The line records the case the hook just observed and the count of
+    prior runs visible at that moment — enough for the user, reading
+    the run dir three months later, to see why memory grew.
+
+    Returns the trace path on success or ``None`` if the run dir is
+    not writable / provenance fields are missing. Either way, an
+    exception never propagates: the caller wraps this in
+    ``try/except`` for total isolation.
+    """
+    from agentic_swmm.agent.memory_context import gather_memory_context
+    from agentic_swmm.agent.memory_trace import log_memory_decision
+
+    provenance = _read_provenance(run_dir)
+    case_name = str(provenance.get("case_name") or "").strip()
+    if not case_name:
+        return None
+
+    # The trace records the *pre-write* view of memory: at this point
+    # we have just appended ``parametric_path`` so we want the count
+    # the user would have seen if they'd consulted the store before
+    # the hook fired. Gather first, then log.
+    context = gather_memory_context(
+        memory_dir=memory_dir,
+        case_name=case_name,
+        metrics_of_interest=("runoff_continuity_pct", "flow_continuity_pct"),
+    )
+
+    return log_memory_decision(
+        run_dir=run_dir,
+        decision_point="audit_hook_parametric_write",
+        context=context,
+        decision="recorded",
+        confidence="auto_complete",
+    )
+
+
 def _bump_corpus_mtime(rag_dir: Path) -> Path:
     rag_dir.mkdir(parents=True, exist_ok=True)
     corpus = rag_dir / "corpus.jsonl"
@@ -450,6 +493,21 @@ def trigger_memory_refresh(
         )
         if parametric_path:
             result["parametric_memory"] = parametric_path
+            # PRD-07 Phase 2: every parametric write also leaves an
+            # auditable transparency line in the run dir. The trace
+            # is the user-visible counterpart to the JSONL store and
+            # the seed wire-up for the disambiguator / QA replacement
+            # call sites the next phase introduces.
+            try:
+                trace_path = _emit_audit_memory_trace(
+                    run_dir=run_dir,
+                    memory_dir=memory_dir,
+                    parametric_path=Path(parametric_path),
+                )
+                if trace_path:
+                    result["memory_trace"] = str(trace_path)
+            except Exception as exc:  # noqa: BLE001 — never block the pipeline
+                result["errors"].append(f"memory trace write failed: {exc}")
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"parametric memory write failed: {exc}")
 
