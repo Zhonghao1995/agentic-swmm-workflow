@@ -5,7 +5,7 @@ import os
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, bootstrap_memory, capabilities, cite, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -37,6 +37,10 @@ COMMANDS = {
     # agentic_swmm/memory/.
     "compare",
     "cite",
+    # PRD-06 §2.2 reverse-lookup of a parameter value to its citation
+    # (Round 2). Listed top-level so the default-router does not punt
+    # it to the agent — pure CLI surface over a memory verb.
+    "cite-param",
     # PRD-06 Phase B.4 verbs. Top-level so the default-router does not
     # punt them to the agent — both are deterministic surfaces over
     # pure functions.
@@ -116,6 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
     # PRD-06 Phase B verbs.
     compare.register(subparsers)
     cite.register(subparsers)
+    # PRD-06 §2.2 — reverse-lookup parameter -> citation (Round 2).
+    cite_param.register(subparsers)
     # PRD-06 Phase B.4 — algorithmic design-storm generator.
     storm.register(subparsers)
     # PRD-07 Phase 5 — cross-watershed transfer-learning surface.

@@ -37,6 +37,62 @@ from typing import Any
 _SHAPES = ("uniform", "triangular", "front_loaded", "back_loaded")
 
 
+# ---------------------------------------------------------------------------
+# Dimensionless mass curves for engineering hyetographs.
+# ---------------------------------------------------------------------------
+# The four Huff quartiles each provide a cumulative-mass distribution that
+# rises from 0 at t=0 to 1.0 at t=duration. Each tuple is the cumulative
+# *fraction* of total depth at 10%, 20%, ..., 100% of the storm duration.
+# Q1 front-loads the peak in the first quarter, Q4 back-loads it.
+# Embedded as a coding convenience; values widely tabulated in the storm
+# engineering literature.
+_HUFF_CUMULATIVE = {
+    1: (0.18, 0.37, 0.58, 0.74, 0.84, 0.90, 0.94, 0.97, 0.99, 1.00),
+    2: (0.07, 0.18, 0.35, 0.56, 0.76, 0.87, 0.93, 0.96, 0.98, 1.00),
+    3: (0.04, 0.10, 0.17, 0.26, 0.40, 0.58, 0.78, 0.91, 0.97, 1.00),
+    4: (0.03, 0.06, 0.10, 0.16, 0.24, 0.34, 0.45, 0.61, 0.81, 1.00),
+}
+
+
+# SCS Type II 24-hr dimensionless mass curve at 1-hour increments
+# (0..24). Each pair is (hours_from_storm_start, cumulative_fraction).
+# Total depth is delivered between t=0 and t=24h; the steepest rise
+# (the peak) sits at t=12h (midpoint). The cumulative curve is
+# linearly interpolated in :func:`_scs_cumulative_at` so any
+# ``interval_min`` divisor produces a smooth hyetograph.
+_SCS_TYPE_II_24H_HOURLY = (
+    (0.0, 0.000),
+    (1.0, 0.011),
+    (2.0, 0.022),
+    (3.0, 0.035),
+    (4.0, 0.048),
+    (5.0, 0.064),
+    (6.0, 0.080),
+    (7.0, 0.098),
+    (8.0, 0.120),
+    (9.0, 0.147),
+    (10.0, 0.181),
+    (11.0, 0.236),
+    (11.5, 0.283),
+    (11.75, 0.357),
+    (12.0, 0.663),
+    (12.5, 0.735),
+    (13.0, 0.772),
+    (13.5, 0.799),
+    (14.0, 0.820),
+    (15.0, 0.854),
+    (16.0, 0.880),
+    (17.0, 0.898),
+    (18.0, 0.915),
+    (19.0, 0.930),
+    (20.0, 0.944),
+    (21.0, 0.958),
+    (22.0, 0.971),
+    (23.0, 0.985),
+    (24.0, 1.000),
+)
+
+
 # SWMM's [TIMESERIES] block prefers ``MM/DD/YYYY HH:MM`` separated by
 # whitespace. Most existing INP fixtures in the repo use this exact
 # format. Keep it isolated so a future schema migration is one place.
@@ -222,6 +278,422 @@ def _triangular_intensities(
         return [0.0] * n_steps
     peak = depth_mm / (weight_sum * dt_hr)
     return [w * peak for w in weights]
+
+
+def chicago_hyetograph(
+    *,
+    depth_mm: float | None = None,
+    idf_params: dict[str, float] | None = None,
+    duration_min: int,
+    peak_position: float = 0.5,
+    interval_min: int = 5,
+    start_time: str = "2000-01-01 00:00",
+) -> DesignStorm:
+    """Build a Chicago hyetograph (peak-centred, mirror-distributed).
+
+    The Chicago method places the peak intensity at ``peak_position *
+    duration``, then mirror-distributes equal-volume slices around it.
+    Two construction modes are supported:
+
+    1. **Depth + duration**: pass ``depth_mm`` plus ``duration_min``.
+       A generic Chicago shape is built whose total depth equals the
+       requested ``depth_mm`` and whose peak lands at ``peak_position``
+       of the duration (default 0.5; common regional values are 0.4 for
+       a Vancouver-class climate or about 0.375 for the US Midwest).
+
+    2. **IDF parameters + duration**: pass ``idf_params`` as a dict
+       ``{"a": ..., "b": ..., "c": ...}`` for the standard
+       intensity-duration formula ``i = a / (t + b)^c``. The function
+       integrates that curve to produce the matching depth and lays
+       out a Chicago hyetograph at the requested peak position.
+
+    ``peak_position`` must satisfy ``0 < peak_position < 1`` so both
+    legs have at least one ordinate. The function preserves total
+    depth: ``sum(intensity * dt_hr) ≈ depth``.
+    """
+    if duration_min <= 0:
+        raise ValueError("duration_min must be positive")
+    if interval_min <= 0:
+        raise ValueError("interval_min must be positive")
+    if duration_min % interval_min != 0:
+        raise ValueError(
+            f"duration_min ({duration_min}) must be a multiple of "
+            f"interval_min ({interval_min}) so the last step is not truncated"
+        )
+    if not (0.0 < peak_position < 1.0):
+        raise ValueError("peak_position must be strictly between 0 and 1")
+
+    if depth_mm is None and idf_params is None:
+        raise ValueError("provide either depth_mm or idf_params")
+    if depth_mm is not None and idf_params is not None:
+        raise ValueError("pass depth_mm OR idf_params, not both")
+
+    n_steps = duration_min // interval_min
+    dt_hr = interval_min / 60.0
+
+    if idf_params is not None:
+        try:
+            a = float(idf_params["a"])
+            b = float(idf_params["b"])
+            c = float(idf_params["c"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(
+                "idf_params must contain numeric 'a', 'b', and 'c'"
+            ) from exc
+        if a <= 0 or c <= 0:
+            raise ValueError("idf_params 'a' and 'c' must be positive")
+
+        intensities = _chicago_from_idf(
+            a=a,
+            b=b,
+            c=c,
+            duration_min=duration_min,
+            peak_position=peak_position,
+            interval_min=interval_min,
+        )
+        resolved_depth = sum(i * dt_hr for i in intensities)
+    else:
+        # depth-driven Chicago: use the IDF mode with synthetic a/b/c
+        # that integrate exactly to ``depth_mm``. Pick c=0.75 (common
+        # mid-range exponent) and b=0; scale ``a`` so the integral
+        # over duration matches depth_mm. The math:
+        #   depth = ∫ a / t^c dt from 0 to T (b=0 makes it integrable
+        #   via the same routine and avoids divide-by-zero by binning).
+        # We instead synthesise a unit-area Chicago shape and scale.
+        assert depth_mm is not None  # for type narrowing
+        if depth_mm < 0:
+            raise ValueError("depth_mm must be non-negative")
+        intensities = _chicago_unit(
+            duration_min=duration_min,
+            peak_position=peak_position,
+            interval_min=interval_min,
+        )
+        weight_sum = sum(intensities)
+        if weight_sum <= 0:
+            intensities = [0.0] * n_steps
+        else:
+            # scale so sum(intensity * dt_hr) == depth_mm
+            scale = depth_mm / (weight_sum * dt_hr)
+            intensities = [v * scale for v in intensities]
+        resolved_depth = depth_mm
+
+    start_dt = _parse_start_time(start_time)
+    times = [
+        (start_dt + timedelta(minutes=step * interval_min)).strftime(
+            _SWMM_TS_FORMAT
+        )
+        for step in range(n_steps)
+    ]
+
+    metadata: dict[str, Any] = {
+        "start_time_iso": start_dt.isoformat(timespec="minutes"),
+        "n_steps": n_steps,
+        "peak_position": peak_position,
+        "construction": "idf_params" if idf_params is not None else "depth",
+    }
+    if idf_params is not None:
+        metadata["idf_params"] = {"a": a, "b": b, "c": c}
+
+    return DesignStorm(
+        times=times,
+        intensities_mm_per_hr=intensities,
+        depth_mm=resolved_depth,
+        duration_min=duration_min,
+        shape="chicago",
+        interval_min=interval_min,
+        metadata=metadata,
+    )
+
+
+def huff_hyetograph(
+    *,
+    depth_mm: float,
+    duration_min: int,
+    quartile: int,
+    interval_min: int = 5,
+    start_time: str = "2000-01-01 00:00",
+) -> DesignStorm:
+    """Build a Huff quartile hyetograph for the requested storm depth.
+
+    ``quartile`` is the integer 1..4 identifying which quarter of the
+    storm holds the peak intensity (Q1 = front-loaded peak in the first
+    quarter, Q4 = back-loaded peak in the fourth quarter). The function
+    uses the dimensionless cumulative-mass table embedded in this
+    module, linearly interpolated to the requested step count.
+
+    Total depth is preserved (``sum(intensity * dt_hr) ≈ depth_mm``).
+    """
+    if depth_mm < 0:
+        raise ValueError("depth_mm must be non-negative")
+    if duration_min <= 0:
+        raise ValueError("duration_min must be positive")
+    if interval_min <= 0:
+        raise ValueError("interval_min must be positive")
+    if duration_min % interval_min != 0:
+        raise ValueError(
+            f"duration_min ({duration_min}) must be a multiple of "
+            f"interval_min ({interval_min}) so the last step is not truncated"
+        )
+    if quartile not in (1, 2, 3, 4):
+        raise ValueError(f"quartile must be 1, 2, 3, or 4 — got {quartile!r}")
+
+    n_steps = duration_min // interval_min
+    dt_hr = interval_min / 60.0
+    cumulative = _HUFF_CUMULATIVE[quartile]
+
+    # Cumulative fraction at the *end* of each step. Step k covers
+    # ``[(k/n)*duration, ((k+1)/n)*duration]``; interpolate from the
+    # 10-point table at fraction ``(k+1)/n``.
+    intensities: list[float] = []
+    prev_frac = 0.0
+    for step in range(n_steps):
+        end_fraction = (step + 1) / n_steps
+        cur_frac = _interp_huff(cumulative, end_fraction)
+        # Step depth (mm) = (cur_frac - prev_frac) * depth_mm;
+        # intensity (mm/hr) = step_depth / dt_hr.
+        step_depth = (cur_frac - prev_frac) * depth_mm
+        intensities.append(step_depth / dt_hr if dt_hr > 0 else 0.0)
+        prev_frac = cur_frac
+
+    start_dt = _parse_start_time(start_time)
+    times = [
+        (start_dt + timedelta(minutes=step * interval_min)).strftime(
+            _SWMM_TS_FORMAT
+        )
+        for step in range(n_steps)
+    ]
+
+    metadata = {
+        "start_time_iso": start_dt.isoformat(timespec="minutes"),
+        "n_steps": n_steps,
+        "quartile": quartile,
+    }
+    return DesignStorm(
+        times=times,
+        intensities_mm_per_hr=intensities,
+        depth_mm=depth_mm,
+        duration_min=duration_min,
+        shape="huff",
+        interval_min=interval_min,
+        metadata=metadata,
+    )
+
+
+def scs_type_ii_hyetograph(
+    *,
+    depth_mm: float,
+    duration_min: int = 1440,
+    interval_min: int = 5,
+    start_time: str = "2000-01-01 00:00",
+) -> DesignStorm:
+    """Build the SCS Type II 24-hour hyetograph at ``interval_min`` steps.
+
+    The dimensionless mass curve is the standard 24-hr Type II
+    distribution (peak around t=12 hours). The curve is linearly
+    interpolated to the requested step count and scaled to the
+    requested total depth.
+
+    Defaults to ``duration_min=1440`` (24 hours). Other durations are
+    accepted (the curve is rescaled to the requested span) so the
+    caller can produce, e.g., a 12-hr or 48-hr Type-II-shaped storm,
+    but the canonical use is 24-hr.
+    """
+    if depth_mm < 0:
+        raise ValueError("depth_mm must be non-negative")
+    if duration_min <= 0:
+        raise ValueError("duration_min must be positive")
+    if interval_min <= 0:
+        raise ValueError("interval_min must be positive")
+    if duration_min % interval_min != 0:
+        raise ValueError(
+            f"duration_min ({duration_min}) must be a multiple of "
+            f"interval_min ({interval_min}) so the last step is not truncated"
+        )
+
+    n_steps = duration_min // interval_min
+    dt_hr = interval_min / 60.0
+    total_hours = duration_min / 60.0
+
+    intensities: list[float] = []
+    prev_frac = 0.0
+    for step in range(n_steps):
+        # Scale step end time onto the table's [0, 24] domain.
+        end_hours = ((step + 1) / n_steps) * 24.0
+        cur_frac = _scs_cumulative_at(end_hours)
+        step_depth = (cur_frac - prev_frac) * depth_mm
+        intensities.append(step_depth / dt_hr if dt_hr > 0 else 0.0)
+        prev_frac = cur_frac
+
+    start_dt = _parse_start_time(start_time)
+    times = [
+        (start_dt + timedelta(minutes=step * interval_min)).strftime(
+            _SWMM_TS_FORMAT
+        )
+        for step in range(n_steps)
+    ]
+
+    metadata = {
+        "start_time_iso": start_dt.isoformat(timespec="minutes"),
+        "n_steps": n_steps,
+        "scs_total_hours": total_hours,
+    }
+    return DesignStorm(
+        times=times,
+        intensities_mm_per_hr=intensities,
+        depth_mm=depth_mm,
+        duration_min=duration_min,
+        shape="scs_type_ii",
+        interval_min=interval_min,
+        metadata=metadata,
+    )
+
+
+def _chicago_unit(
+    *,
+    duration_min: int,
+    peak_position: float,
+    interval_min: int,
+) -> list[float]:
+    """Build a unit Chicago shape (intensity *weights*, not mm/hr).
+
+    The Chicago method is asymmetric-mirror around the peak. We
+    construct it by computing how long *before* and *after* the peak
+    each bin sits, then assigning intensity proportional to
+    ``1 / (lead_or_lag)^0.75`` so the curve is monotone-rising up to
+    the peak and monotone-falling after. The exponent 0.75 produces a
+    realistic peakedness; the caller scales to the desired depth so
+    the absolute intensity is determined by total depth, not by this
+    exponent.
+    """
+    n_steps = duration_min // interval_min
+    if n_steps <= 0:
+        return []
+    peak_t = peak_position * duration_min  # peak time in minutes from start
+
+    weights: list[float] = []
+    for step in range(n_steps):
+        # Use bin centres so the curve is smooth.
+        bin_centre = (step + 0.5) * interval_min
+        # Distance from peak in minutes. Small ε prevents the peak bin
+        # from blowing up to infinity.
+        delta = abs(bin_centre - peak_t)
+        # Asymmetric stretch: a point ε*duration before the peak should
+        # rise as fast as a point ε*duration after it falls, but with
+        # the legs having different *lengths*. We normalise distance by
+        # the leg length so both legs reach the same minimum intensity.
+        if bin_centre <= peak_t:
+            leg = max(peak_t, 1e-6)
+        else:
+            leg = max(duration_min - peak_t, 1e-6)
+        normalised_delta = delta / leg
+        # Avoid divide-by-zero at the peak; cap at the bin-half width.
+        denom = max(normalised_delta, 0.5 / n_steps)
+        # Chicago peakedness exponent. Higher → sharper peak.
+        weights.append(1.0 / (denom ** 0.75))
+    return weights
+
+
+def _chicago_from_idf(
+    *,
+    a: float,
+    b: float,
+    c: float,
+    duration_min: int,
+    peak_position: float,
+    interval_min: int,
+) -> list[float]:
+    """Build a Chicago hyetograph from IDF parameters ``i = a/(t+b)^c``.
+
+    The Chicago method conventionally computes the intensity at
+    distance ``t_leg`` from the peak using the IDF curve evaluated at
+    that ``t_leg`` (treating the leading and trailing legs as separate
+    "subdurations" both peaking at the centre). We sample at bin
+    centres and produce mm/hr values directly.
+    """
+    n_steps = duration_min // interval_min
+    if n_steps <= 0:
+        return []
+    peak_t = peak_position * duration_min
+
+    intensities: list[float] = []
+    for step in range(n_steps):
+        bin_centre = (step + 0.5) * interval_min
+        if bin_centre <= peak_t:
+            leg = max(peak_t, 1e-6)
+            # Distance from start of leading leg back to the peak,
+            # scaled into [0, leg].
+            t_leg = peak_t - bin_centre
+        else:
+            leg = max(duration_min - peak_t, 1e-6)
+            t_leg = bin_centre - peak_t
+        # Map onto a positive sub-duration and evaluate IDF (intensity
+        # increases as sub-duration shrinks, peak at sub-duration ~0).
+        # Floor at half-bin so the peak bin is finite.
+        t_eval = max(t_leg, interval_min * 0.5)
+        # Normalise to ``leg`` to keep the curve scale-invariant in
+        # peak position, then evaluate on the leg-length time axis.
+        scaled_t = (t_eval / leg) * (duration_min / 2.0)
+        denom = (scaled_t + b)
+        if denom <= 0:
+            intensities.append(0.0)
+            continue
+        intensities.append(a / (denom ** c))
+    return intensities
+
+
+def _interp_huff(cumulative: tuple[float, ...], fraction: float) -> float:
+    """Interpolate the 10-point Huff cumulative table at ``fraction``.
+
+    ``cumulative`` holds values at 10%, 20%, ..., 100%. We treat
+    fraction 0.0 as cumulative 0.0; below 10% we linearly interpolate
+    between (0.0, 0.0) and the first table entry. Above 100% we cap at
+    1.0.
+    """
+    if fraction <= 0.0:
+        return 0.0
+    if fraction >= 1.0:
+        return float(cumulative[-1])
+    # Each table entry sits at fraction (k+1) * 0.1 for k=0..9.
+    pos = fraction * 10.0
+    lower_idx = int(pos) - 1  # 0-based table index immediately below
+    upper_idx = lower_idx + 1
+    if lower_idx < 0:
+        # Between 0.0 and 0.1 — interp from (0, 0) to cumulative[0].
+        return cumulative[0] * (fraction / 0.1)
+    if upper_idx >= len(cumulative):
+        return float(cumulative[-1])
+    lower_frac = (lower_idx + 1) * 0.1
+    upper_frac = (upper_idx + 1) * 0.1
+    span = upper_frac - lower_frac
+    if span <= 0:
+        return float(cumulative[lower_idx])
+    weight = (fraction - lower_frac) / span
+    return (
+        float(cumulative[lower_idx])
+        + weight * (float(cumulative[upper_idx]) - float(cumulative[lower_idx]))
+    )
+
+
+def _scs_cumulative_at(hours: float) -> float:
+    """Return the SCS Type II cumulative fraction at ``hours`` (0..24).
+
+    Linearly interpolated between table breakpoints. Values outside
+    the [0, 24] domain are clipped.
+    """
+    if hours <= 0.0:
+        return 0.0
+    if hours >= 24.0:
+        return 1.0
+    # Walk the table to find the bracketing pair.
+    for idx in range(len(_SCS_TYPE_II_24H_HOURLY) - 1):
+        t0, f0 = _SCS_TYPE_II_24H_HOURLY[idx]
+        t1, f1 = _SCS_TYPE_II_24H_HOURLY[idx + 1]
+        if t0 <= hours <= t1:
+            if t1 == t0:
+                return f0
+            weight = (hours - t0) / (t1 - t0)
+            return f0 + weight * (f1 - f0)
+    return 1.0
 
 
 def to_swmm_dat(

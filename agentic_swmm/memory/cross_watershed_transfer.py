@@ -236,6 +236,42 @@ def _format_rationale(source_case: str, similarity: float, record: CalibrationRe
     return "".join(parts)
 
 
+def _extract_storm_key(row: dict[str, Any]) -> str | None:
+    """Return the calibrated design-storm key from a calibration row.
+
+    Looks for ``metadata.case_design_storm_key`` (the Round 2 convention)
+    on the raw row dict. Returns ``None`` when the field is absent or
+    not a non-empty string. Tolerant: never raises.
+    """
+    metadata = row.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    key = metadata.get("case_design_storm_key")
+    if not isinstance(key, str) or not key.strip():
+        return None
+    return key.strip()
+
+
+def _storm_key_resolves(storm_key: str, repo_root: Path) -> bool:
+    """Return True when ``storm_key`` exists in the project storm library.
+
+    Best-effort: a missing storm_library file, a malformed YAML, or a
+    key that does not appear in the chicago_hyetographs block all
+    yield ``False`` without raising. Used as a guard so the rationale
+    only mentions storm keys the user can actually act on.
+    """
+    try:
+        # Lazy import: this module's other consumers should not pull
+        # storm_library into their import graph.
+        from agentic_swmm.memory.storm_library import recall_chicago_spec
+
+        library_path = repo_root / "memory" / "modeling-memory" / "storm_library.yaml"
+        spec = recall_chicago_spec(library_path, storm_key)
+        return spec is not None
+    except Exception:  # pragma: no cover - defensive
+        return False
+
+
 def recommend_parameters_for_new_case(
     target_inp: Path,
     *,
@@ -393,6 +429,17 @@ def recommend_parameters_for_new_case(
             )
             continue
         record = _record_from_row(best_row)
+        rationale = _format_rationale(source_case, float(sim), record)
+        # Round 2: when the source case has a recorded design-storm
+        # key in metadata that resolves to a storm_library entry,
+        # surface it in the rationale so the user can re-run the
+        # transfer against the same storm.
+        storm_key = _extract_storm_key(best_row)
+        if storm_key and _storm_key_resolves(storm_key, repo_root_path):
+            rationale = (
+                f"{rationale} — {source_case} calibrated against "
+                f"storm_library.chicago_hyetographs.{storm_key}"
+            )
         recommendations.append(
             TransferRecommendation(
                 target_case=target_case_name,
@@ -400,7 +447,7 @@ def recommend_parameters_for_new_case(
                 similarity=float(sim),
                 source_calibration_record=record,
                 proposed_parameters=dict(record.parameters),
-                rationale=_format_rationale(source_case, float(sim), record),
+                rationale=rationale,
                 confidence="memory_informed",
                 n_alternatives=n_alternatives,
             )
