@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
 
@@ -69,6 +70,30 @@ VALID_STAKES: tuple[str, ...] = ("low", "high")
 # token within the prompt. The actual intent classification still
 # runs upstream/downstream.
 _CASE_NAME_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_\-]{2,}")
+
+
+# Calibration-intent tokens. When any of these survives the utterance
+# tokenizer in lowercase form the policy treats the prompt as a
+# calibration request and is willing to consult cross-watershed
+# transfer. The set is intentionally tiny: the "tune" / "calibrate"
+# vocabulary is stable in this domain, and we want zero false
+# positives that would otherwise spam users with transfer offers on
+# unrelated verbs.
+_CALIBRATION_INTENT_TOKENS: frozenset[str] = frozenset(
+    {"calibrate", "calibration", "tune"}
+)
+
+
+def _has_calibration_intent(utterance: str) -> bool:
+    """Return True when the utterance contains a calibration verb.
+
+    Matches on whole tokens via :data:`_CASE_NAME_PATTERN` so a
+    substring like "calibrationally" (hypothetical) would not match —
+    the case-name regex requires the entire alphanumeric run to equal
+    a calibration token after lowercasing.
+    """
+    raw = _CASE_NAME_PATTERN.findall(utterance or "")
+    return any(tok.lower() in _CALIBRATION_INTENT_TOKENS for tok in raw)
 
 
 # Bare verbs / very common English words that we should never treat
@@ -229,11 +254,18 @@ def decide_with_memory(
     memory_context: MemoryContext,
     *,
     stakes: str = "low",
+    transfer_lookup: Callable[[], list[Any]] | None = None,
 ) -> PolicyDecision:
     """Return a :class:`PolicyDecision` for the given utterance + memory.
 
-    The function is **pure**: no I/O, no provider call, no mutation.
-    Given the same inputs it returns the same decision.
+    The function is **pure** in the sense that, given the same inputs
+    (including ``transfer_lookup``), it returns the same decision.
+    The policy itself performs no I/O — the optional
+    ``transfer_lookup`` callback is the *injection point* for the
+    Phase 5 cross-watershed recommender: callers wire the lookup
+    (which does read I/O) at the boundary, tests inject a fixture
+    lambda. The policy invokes the callback at most once, only when
+    the case actually has zero calibration history.
 
     Arguments:
         utterance: The raw user goal/prompt as typed.
@@ -246,9 +278,20 @@ def decide_with_memory(
             ``hitl``. Anything outside :data:`VALID_STAKES` raises
             :class:`ValueError` so the call site cannot invent a
             third bucket implicitly.
+        transfer_lookup: Optional callable returning a list of
+            :class:`TransferRecommendation`-shaped objects (anything
+            with a ``source_case`` and ``similarity`` attribute). Used
+            only when the utterance contains a calibration verb AND
+            ``memory_context`` is empty for the target case. The
+            callback is the *only* place the policy looks at
+            cross-watershed transfer; non-calibration intents skip it
+            entirely.
 
     Decision tree (high-to-low priority):
-        1. ``stakes="high"`` + zero parametric hits → ``hitl``.
+        1. ``stakes="high"`` + zero parametric hits + no transfer
+           recs → ``hitl``.
+        1a. Calibration intent + zero parametric hits + non-empty
+           transfer recs → ``memory_informed`` (transfer warm start).
         2. Exactly one parametric hit → ``auto_complete`` with that hit.
         3. Explicit case-name token matches exactly one hit →
            ``auto_complete`` with that hit.
@@ -264,6 +307,51 @@ def decide_with_memory(
         )
 
     hits = list(memory_context.parametric_hits)
+
+    # Cross-watershed transfer is consulted *only* when:
+    #   (a) the user asked for calibration / tuning,
+    #   (b) the case has zero parametric hits (no prior runs to lean
+    #       on within the same case), AND
+    #   (c) the caller wired a transfer_lookup callback.
+    # Doing this before Rule 1 lets a populated transfer set rescue a
+    # high-stakes prompt out of the hitl branch — recommended
+    # parameters are concrete evidence even when the target case has
+    # never been calibrated locally.
+    transfer_recs: list[Any] = []
+    if (
+        transfer_lookup is not None
+        and not hits
+        and _has_calibration_intent(utterance)
+    ):
+        try:
+            transfer_recs = list(transfer_lookup() or [])
+        except Exception:
+            # Defensive: a misbehaving lookup must not break the
+            # planner. We swallow and treat as "no recs available";
+            # the caller's logging layer (not the policy) is the
+            # right place to record the failure.
+            transfer_recs = []
+
+    if transfer_recs:
+        top = transfer_recs[0]
+        source = getattr(top, "source_case", None) or "(unknown)"
+        sim = getattr(top, "similarity", 0.0)
+        try:
+            sim_str = f"{float(sim):.3f}"
+        except (TypeError, ValueError):
+            sim_str = str(sim)
+        return PolicyDecision(
+            confidence="memory_informed",
+            resolved_case=None,
+            candidates=[
+                getattr(r, "source_case", "") for r in transfer_recs
+            ],
+            reasoning=(
+                f"no prior runs for the target case; cross-watershed "
+                f"transfer proposes parameters from {source} "
+                f"(similarity={sim_str})"
+            ),
+        )
 
     # Rule 1: high stakes + zero evidence → hitl. We escalate before
     # any other branch because high-stakes mistakes are the failure

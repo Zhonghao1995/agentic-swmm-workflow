@@ -245,5 +245,130 @@ class PolicyDecisionDataclassTests(unittest.TestCase):
         self.assertIsNone(d.escalation)
 
 
+class _FakeRec:
+    """Minimal stand-in for ``TransferRecommendation`` for policy tests.
+
+    The policy only reads ``source_case`` and ``similarity`` so this
+    bare-bones class is enough; it also keeps the policy test file
+    free of an import on the cross-watershed module (the policy
+    contract is "anything with those attributes works").
+    """
+
+    def __init__(self, source_case: str, similarity: float) -> None:
+        self.source_case = source_case
+        self.similarity = similarity
+
+
+class CrossWatershedTransferIntegrationTests(unittest.TestCase):
+    """Phase 5 — transfer_lookup is consulted only when relevant."""
+
+    def test_calibrate_intent_no_history_with_recs_returns_memory_informed(
+        self,
+    ) -> None:
+        recs = [_FakeRec("saanich-b8", 0.85)]
+        decision = decide_with_memory(
+            "calibrate this new model",
+            MemoryContext(),
+            transfer_lookup=lambda: recs,
+        )
+        self.assertEqual(decision.confidence, "memory_informed")
+        self.assertIn("saanich-b8", decision.reasoning)
+        self.assertIn("0.85", decision.reasoning)
+        # ``candidates`` reflects the source-case ordering for the UI.
+        self.assertEqual(decision.candidates, ["saanich-b8"])
+
+    def test_calibration_keyword_also_triggers_transfer(self) -> None:
+        recs = [_FakeRec("saanich-b8", 0.9)]
+        decision = decide_with_memory(
+            "run a calibration on the new INP",
+            MemoryContext(),
+            transfer_lookup=lambda: recs,
+        )
+        self.assertEqual(decision.confidence, "memory_informed")
+
+    def test_tune_keyword_also_triggers_transfer(self) -> None:
+        recs = [_FakeRec("saanich-b8", 0.7)]
+        decision = decide_with_memory(
+            "tune the model parameters",
+            MemoryContext(),
+            transfer_lookup=lambda: recs,
+        )
+        self.assertEqual(decision.confidence, "memory_informed")
+
+    def test_no_candidates_anywhere_with_high_stakes_returns_hitl(self) -> None:
+        decision = decide_with_memory(
+            "calibrate this model",
+            MemoryContext(),
+            stakes="high",
+            transfer_lookup=lambda: [],
+        )
+        self.assertEqual(decision.confidence, "hitl")
+        self.assertIsNotNone(decision.escalation)
+        self.assertTrue((decision.escalation or "").strip())
+
+    def test_no_candidates_low_stakes_returns_llm(self) -> None:
+        decision = decide_with_memory(
+            "calibrate this model",
+            MemoryContext(),
+            stakes="low",
+            transfer_lookup=lambda: [],
+        )
+        self.assertEqual(decision.confidence, "llm")
+        self.assertIsNone(decision.escalation)
+
+    def test_non_calibration_intent_skips_transfer_lookup(self) -> None:
+        """``run audit`` must not trigger transfer."""
+        # The lookup raises if invoked — proves it's never called.
+        def _explode() -> list[_FakeRec]:  # pragma: no cover - must not run
+            raise AssertionError("transfer_lookup must not fire for audit")
+
+        decision = decide_with_memory(
+            "run audit",
+            MemoryContext(),
+            transfer_lookup=_explode,
+        )
+        # Empty context + no calibration intent → standard llm path.
+        self.assertEqual(decision.confidence, "llm")
+
+    def test_existing_hits_skip_transfer_lookup(self) -> None:
+        """If the case already has parametric history, transfer is skipped."""
+
+        def _explode() -> list[_FakeRec]:  # pragma: no cover - must not run
+            raise AssertionError("transfer_lookup must not fire when hits exist")
+
+        ctx = MemoryContext(parametric_hits=[_hit("saanich-b8", "r1")])
+        decision = decide_with_memory(
+            "calibrate saanich-b8",
+            ctx,
+            transfer_lookup=_explode,
+        )
+        # Existing case wins on auto_complete.
+        self.assertEqual(decision.confidence, "auto_complete")
+
+    def test_misbehaving_lookup_swallowed(self) -> None:
+        """A lookup that raises must not crash the policy."""
+
+        def _broken() -> list[_FakeRec]:
+            raise RuntimeError("disk full")
+
+        decision = decide_with_memory(
+            "calibrate this model",
+            MemoryContext(),
+            transfer_lookup=_broken,
+        )
+        # Falls through as if no recs were returned.
+        self.assertEqual(decision.confidence, "llm")
+
+    def test_no_transfer_lookup_keeps_legacy_behaviour(self) -> None:
+        """Omitting ``transfer_lookup`` reproduces the pre-Phase-5 path."""
+        decision = decide_with_memory(
+            "calibrate this model",
+            MemoryContext(),
+            stakes="high",
+        )
+        # Without a lookup the high-stakes + zero-hits branch fires.
+        self.assertEqual(decision.confidence, "hitl")
+
+
 if __name__ == "__main__":
     unittest.main()
