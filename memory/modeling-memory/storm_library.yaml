@@ -1,0 +1,75 @@
+# ===========================================================================
+# STORM LIBRARY — curated design-storm specifications.
+# ---------------------------------------------------------------------------
+# This file is HAND-EDITED by the maintainer. The four blocks below cover
+# Chicago, Huff, SCS Type II, and free-form user-curated events. Schema-only
+# placeholder entries are preserved so the reader can validate keys before
+# the maintainer fills in real values.
+#
+# Three runtime consumers:
+#
+#   1. ``aiswmm storm --from-library <key>`` — looks up a chicago_hyetographs
+#      entry and constructs the Chicago hyetograph from its idf_params /
+#      peak_position. Numeric placeholder leaves cause the CLI to skip the
+#      entry with a clear "library entry not populated" message.
+#
+#   2. The Huff and SCS blocks let a maintainer add project-local overrides
+#      of the in-code dimensionless tables (typically not needed; the
+#      in-code defaults are the source of truth).
+#
+#   3. ``user_curated`` holds free-form historical / recorded events with
+#      a ``timeseries_csv`` reference. Currently consumed only by the
+#      reader; future CLI verbs will surface these directly.
+#
+# Loader: ``agentic_swmm/memory/storm_library.py``.
+# ===========================================================================
+
+schema_version: "1.0"
+
+# ---------------------------------------------------------------------------
+# Chicago hyetograph specifications keyed by region+return-period+duration.
+# Each entry's ``idf_params`` provides {a, b, c} for the IDF formula
+# ``i = a / (t + b)^c``. ``peak_position`` is the fractional location of
+# the peak (0.0..1.0).
+# ---------------------------------------------------------------------------
+chicago_hyetographs:
+  # Schema-demonstration entry. Replace placeholder fields with verified
+  # IDF parameters and add a ``citation`` key pointing into citations.yaml
+  # before relying on this entry at runtime.
+  example_region_100yr_3hr_5min:
+    idf_params:
+      a: null
+      b: null
+      c: null
+    peak_position: null
+    duration_min: 180
+    interval_min: 5
+    citation: null
+
+# ---------------------------------------------------------------------------
+# Huff quartile distributions are computed in code from embedded tables;
+# this block lets the maintainer override / add user-curated regional
+# variants. Each override entry mirrors the in-code shape:
+#   quartile: 1..4
+#   cumulative: [0.1, 0.2, ..., 1.0]  # 10-point monotone-increasing
+# ---------------------------------------------------------------------------
+huff_user_overrides: {}
+
+# ---------------------------------------------------------------------------
+# SCS Type II is computed in code; same override mechanism here. Each
+# override entry holds:
+#   total_hours: 24
+#   cumulative: [[hours, fraction], ...]
+# ---------------------------------------------------------------------------
+scs_user_overrides: {}
+
+# ---------------------------------------------------------------------------
+# Free-form user-curated events (one entry per historical or design storm).
+# ---------------------------------------------------------------------------
+user_curated:
+  # Schema-demonstration entry. ``timeseries_csv`` is the relative path to
+  # a two-column CSV (timestamp, intensity_mm_per_hr).
+  example_recorded_event:
+    source: null
+    timeseries_csv: null
+    notes: null
