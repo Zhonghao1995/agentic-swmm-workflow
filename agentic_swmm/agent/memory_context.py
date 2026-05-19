@@ -42,8 +42,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from agentic_swmm.memory.benchmark_resolver import (
+    PROJECT_OVERRIDES_FILENAME,
+    resolve_threshold,
+)
 from agentic_swmm.memory.parametric_memory import recall_parametric
-from agentic_swmm.memory.reference_benchmarks import recall_reference_benchmark
 
 
 @dataclass(frozen=True)
@@ -193,7 +196,10 @@ def _build_summary(
 
 
 def _gather_thresholds(
-    benchmarks_path: Path, metrics: Iterable[str]
+    benchmarks_path: Path,
+    metrics: Iterable[str],
+    *,
+    project_overrides_path: Path | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Prefill {metric_name: thresholds_dict} for the requested metrics.
 
@@ -201,6 +207,9 @@ def _gather_thresholds(
     instead of in the YAML itself so a renamed metric never silently
     fails — adding a new metric requires editing this table, which
     forces the developer to confirm the YAML path exists.
+
+    Resolution goes through :func:`resolve_threshold` so a project
+    overlay at ``project_overrides_path`` wins over the library leaf.
     """
     METRIC_TO_PATH = {
         "runoff_continuity_pct": "continuity_thresholds_pct.runoff",
@@ -212,8 +221,11 @@ def _gather_thresholds(
         path = METRIC_TO_PATH.get(metric)
         if path is None:
             continue
-        thresholds = recall_reference_benchmark(
-            benchmarks_path, path, default=None
+        thresholds = resolve_threshold(
+            path,
+            reference_benchmarks_path=benchmarks_path,
+            project_overrides_path=project_overrides_path,
+            default=None,
         )
         if not isinstance(thresholds, dict):
             continue
@@ -262,6 +274,7 @@ def gather_memory_context(
     memory_dir_path = Path(memory_dir)
     parametric_path = memory_dir_path / "parametric_memory.jsonl"
     benchmarks_path = memory_dir_path / "reference_benchmarks.yaml"
+    project_overrides_path = memory_dir_path / PROJECT_OVERRIDES_FILENAME
 
     filters: dict[str, Any] = {"case_name": case_name}
     if use_case:
@@ -272,7 +285,11 @@ def gather_memory_context(
 
     thresholds: dict[str, dict[str, Any]] = {}
     if metrics_of_interest:
-        thresholds = _gather_thresholds(benchmarks_path, metrics_of_interest)
+        thresholds = _gather_thresholds(
+            benchmarks_path,
+            metrics_of_interest,
+            project_overrides_path=project_overrides_path,
+        )
 
     summary = _build_summary(
         case_name=case_name,
@@ -284,6 +301,7 @@ def gather_memory_context(
         "memory_dir": str(memory_dir_path),
         "parametric_memory_path": str(parametric_path),
         "reference_benchmarks_path": str(benchmarks_path),
+        "project_overrides_path": str(project_overrides_path),
         "parametric_hit_count": len(hits),
         "reference_threshold_count": len(thresholds),
         "case_name": case_name,
