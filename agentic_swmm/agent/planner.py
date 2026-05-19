@@ -124,8 +124,21 @@ _HIGH_STAKES_TOKENS: tuple[str, ...] = (
 
 
 def _looks_high_stakes(goal: str) -> bool:
-    """Return True when the goal text reads like a memory-mutating verb."""
+    """Return True when the goal text reads like a memory-mutating verb.
+
+    Two passes: first the registry of memory verbs (PRD-06 Phase D.1)
+    — a goal mentioning a verb the registry labels ``stakes="high"``
+    is treated as high stakes without falling through to the keyword
+    sniff. Then the legacy keyword sniff covers the older
+    accept-calibration / promote-fact / reflect-apply verbs that
+    predate the registry.
+    """
+    from agentic_swmm.agent.memory_verbs import list_verbs
+
     lowered = (goal or "").lower()
+    for verb in list_verbs(mode="expert"):
+        if verb.stakes == "high" and verb.name.lower() in lowered:
+            return True
     return any(token in lowered for token in _HIGH_STAKES_TOKENS)
 
 
@@ -617,7 +630,12 @@ class OpenAIPlanner:
         if decision.confidence == "hitl":
             raise MemoryHITLRequired(
                 decision.escalation
-                or "Memory-informed policy requires human confirmation."
+                or "Memory-informed policy requires human confirmation.",
+                memory_context=context,
+                proposed_action=(
+                    f"dispatch goal {goal!r} (stakes={stakes})"
+                ),
+                decision_point="planner_intent_disambiguation",
             )
 
         return decision

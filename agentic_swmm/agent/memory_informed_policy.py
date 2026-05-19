@@ -130,7 +130,29 @@ class MemoryHITLRequired(Exception):
     rather than a return code so the high-stakes path is impossible
     to forget: a caller that ignores the policy result still cannot
     silently proceed past a hitl decision.
+
+    PRD-06 Phase D.2: the exception carries an optional
+    :class:`agentic_swmm.agent.memory_context.MemoryContext` snapshot
+    so the runtime's HITL formatter can render what the agent knew
+    when it escalated, plus an optional ``proposed_action`` and
+    ``decision_point`` label for the human-facing prompt. All three
+    attributes default to ``None`` / ``"unknown"`` so the existing
+    ``raise MemoryHITLRequired(message)`` call sites stay valid.
     """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        memory_context: Any | None = None,
+        proposed_action: str | None = None,
+        decision_point: str = "unknown",
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.memory_context = memory_context
+        self.proposed_action = proposed_action
+        self.decision_point = decision_point
 
 
 @dataclass(frozen=True)
