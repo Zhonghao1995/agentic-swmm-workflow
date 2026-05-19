@@ -5,7 +5,7 @@ import os
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, capabilities, cite, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, uncertainty
+from agentic_swmm.commands import agent, audit, capabilities, cite, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -33,6 +33,10 @@ COMMANDS = {
     # agentic_swmm/memory/.
     "compare",
     "cite",
+    # PRD-06 Phase B.4 verbs. Top-level so the default-router does not
+    # punt them to the agent — both are deterministic surfaces over
+    # pure functions.
+    "storm",
     # Uncertainty integration deliverable (issue #55). Lives at the top
     # level so the default-router does not punt it to the agent — it is
     # a deterministic CLI surface over a pure function.
@@ -101,6 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
     # PRD-06 Phase B verbs.
     compare.register(subparsers)
     cite.register(subparsers)
+    # PRD-06 Phase B.4 — algorithmic design-storm generator.
+    storm.register(subparsers)
     # Issue #55 — uncertainty source decomposition (paper-reviewer view).
     uncertainty.register(subparsers)
     # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
