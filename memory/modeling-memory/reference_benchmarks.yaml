@@ -1,0 +1,108 @@
+# ===========================================================================
+# WARNING — UN-CITED PLACEHOLDERS
+# ---------------------------------------------------------------------------
+# Most numeric leaves in this file are deliberately ``null`` until the Phase B
+# citation library (``citations.yaml``) lands. Earlier drafts of this file
+# carried specific numbers; those numbers were illustrative and had NOT been
+# verified against a citation library. They were removed to prevent a public
+# release artifact from quoting un-cited "expert" thresholds.
+#
+# Two consequences for runtime:
+#  * ``classify_metric`` returns ``"UNKNOWN"`` for any metric whose threshold
+#    leaf is ``null`` (see agentic_swmm/memory/reference_benchmarks.py).
+#  * ``recall_reference_benchmark(path, dotted_key, default)`` always returns
+#    the caller's ``default`` for a ``null`` leaf — callers must pass a
+#    safe-conservative numeric default.
+#
+# The only block that ships with concrete numbers is
+# ``continuity_thresholds_pct`` — those are the SWMM User Manual's own
+# magnitude bands for the runoff / flow / mass-balance continuity printout,
+# not a literature recall. Phase B will move them under a citation key too,
+# for consistency.
+# ===========================================================================
+
+schema_version: "1.0"
+
+# ---------------------------------------------------------------------------
+# Goodness-of-fit thresholds for calibrated runs. NSE = Nash-Sutcliffe.
+# Use case keys match ``model_structure.use_case`` in parametric_memory.
+#
+# Leaves are intentionally ``null`` — populate from the project's
+# citation library in Phase B (Moriasi-class watershed-modeling guidance
+# for streamflow; stormwater-event guidance is separate literature).
+# ---------------------------------------------------------------------------
+nse_acceptable_thresholds:
+  stormwater_event:
+    acceptable: null
+    good: null
+    excellent: null
+  stormwater_continuous:
+    acceptable: null
+    good: null
+    excellent: null
+  baseflow_low_flow:
+    acceptable: null
+    good: null
+    excellent: null
+
+# ---------------------------------------------------------------------------
+# Continuity error thresholds read from the .rpt by postflight_qa.
+# WARN bumps the run to manual review; FAIL gates downstream acceptance.
+# Magnitudes — see classify_metric() semantics.
+#
+# These bands track the SWMM User Manual's own continuity-error printout
+# convention (small percentages indicate a numerically sound run; double-digit
+# percentages indicate the simulation has gone off the rails). Treat them as
+# the project's *default* gate; project-local overrides should pass an
+# explicit ``benchmarks_path`` to ``postflight_qa``.
+# ---------------------------------------------------------------------------
+continuity_thresholds_pct:
+  runoff:
+    warn: 5.0
+    fail: 10.0
+  flow:
+    warn: 1.0
+    fail: 5.0
+  mass_balance:
+    warn: 2.0
+    fail: 5.0
+
+# ---------------------------------------------------------------------------
+# Manning's n for overland flow (SWMM SUBCATCHMENT N-IMPERV / N-PERV).
+#
+# Leaves are intentionally ``null`` pending Phase B citations.yaml.
+# Citation keys are kept inline so the Phase B migration is a value-only
+# fill, not a schema change.
+# ---------------------------------------------------------------------------
+manning_n_overland:
+  asphalt:
+    min: null
+    typical: null
+    max: null
+    citation: null  # populate together with values in Phase B
+  concrete:
+    min: null
+    typical: null
+    max: null
+    citation: null
+  grass_short:
+    min: null
+    typical: null
+    max: null
+    citation: null
+
+# ---------------------------------------------------------------------------
+# Manning's n for closed-conduit roughness (SWMM CONDUIT ROUGHNESS).
+# Leaves intentionally ``null`` pending Phase B citations.yaml.
+# ---------------------------------------------------------------------------
+manning_n_pipes:
+  concrete_smooth:
+    min: null
+    typical: null
+    max: null
+    citation: null
+  hdpe:
+    min: null
+    typical: null
+    max: null
+    citation: null
