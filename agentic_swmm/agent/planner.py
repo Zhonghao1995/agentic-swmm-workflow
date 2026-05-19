@@ -245,6 +245,7 @@ class OpenAIPlanner:
                 plan=plan,
                 route=early_route,
                 executor=executor,
+                trace_path=trace_path,
             )
 
         if _looks_like_swmm_request(goal) and auto_router_enabled:
@@ -297,6 +298,7 @@ class OpenAIPlanner:
                 plan=plan,
                 route=route,
                 executor=executor,
+                trace_path=trace_path,
             )
             if dispatched is not None:
                 return dispatched
@@ -711,6 +713,7 @@ class OpenAIPlanner:
         plan: list[ToolCall],
         route: dict[str, Any],
         executor: AgentExecutor,
+        trace_path: Path | None = None,
     ) -> PlannerRun | None:
         """Dispatch to a registered workflow-mode adapter, or ``None``.
 
@@ -718,12 +721,28 @@ class OpenAIPlanner:
         chain. Returns ``None`` when ``mode_name`` is empty, unregistered,
         or registered as a spec-only stub (no ``run`` method) — in
         which case the planner falls through to its LLM main loop.
+
+        Round 1 integration: when the adapter has a ``run`` method,
+        we wire a default :class:`MemoryIntegration` plus the
+        ``trace_path`` so the adapter's memory consult fires against
+        the real on-disk store and emits the mirror events onto
+        ``agent_trace.jsonl``. The integration is constructed each
+        dispatch so a long-lived planner does not cache stale
+        callables; the helpers are cheap (lazy imports).
         """
         if not mode_name:
             return None
         adapter = get_mode(mode_name)
         if adapter is None or not hasattr(adapter, "run"):
             return None
+        # Late import keeps the module-load graph small for callers
+        # (e.g. unit tests of the planner that never invoke a runnable
+        # adapter still don't pay the import cost).
+        from agentic_swmm.agent.workflow_modes._memory_integration import (
+            build_default_memory_integration,
+        )
+
+        case_name = _resolve_case_name_for_memory(goal, {})
         ctx = WorkflowContext(
             goal=goal,
             session_dir=session_dir,
@@ -731,6 +750,9 @@ class OpenAIPlanner:
             route=route,
             executor=executor,
             emit=self.emit,
+            trace_path=trace_path,
+            memory_integration=build_default_memory_integration(),
+            case_name=case_name,
         )
         return adapter.run(ctx)
 

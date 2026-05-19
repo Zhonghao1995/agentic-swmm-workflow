@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from agentic_swmm.agent.feature_flags import memory_informed_disabled
 from agentic_swmm.memory.benchmark_resolver import (
     PROJECT_OVERRIDES_FILENAME,
     resolve_threshold,
@@ -270,8 +271,32 @@ def gather_memory_context(
 
     None of these failure modes raise; the returned object always
     has the four fields populated to their natural empty value.
+
+    When ``AISWMM_DISABLE_MEMORY_INFORMED=1`` is set in the
+    environment the function short-circuits *before* any store is
+    read and returns an empty :class:`MemoryContext` with a
+    ``disabled`` marker in the provenance. Callers do not need to
+    branch on the flag — they see the same shape as a fresh project.
     """
     memory_dir_path = Path(memory_dir)
+
+    if memory_informed_disabled():
+        return MemoryContext(
+            parametric_hits=[],
+            reference_thresholds={},
+            summary="",
+            provenance={
+                "memory_dir": str(memory_dir_path),
+                "case_name": case_name,
+                "use_case": use_case,
+                "metrics_of_interest": list(metrics_of_interest),
+                "gathered_at_utc": _now_iso(),
+                "schema_version": "1.0",
+                "disabled": True,
+                "disabled_reason": "AISWMM_DISABLE_MEMORY_INFORMED",
+            },
+        )
+
     parametric_path = memory_dir_path / "parametric_memory.jsonl"
     benchmarks_path = memory_dir_path / "reference_benchmarks.yaml"
     project_overrides_path = memory_dir_path / PROJECT_OVERRIDES_FILENAME

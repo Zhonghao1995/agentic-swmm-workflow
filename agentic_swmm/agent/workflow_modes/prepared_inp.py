@@ -20,6 +20,13 @@ from agentic_swmm.agent.workflow_modes._helpers import (
     prepared_inp_done_text,
     workflow_route_args,
 )
+from agentic_swmm.agent.workflow_modes._memory_hooks import (
+    consult_memory,
+    format_postflight_failure,
+    format_preflight_failure,
+    run_postflight_gate,
+    run_preflight_gate,
+)
 from agentic_swmm.agent.workflow_modes.base import WorkflowContext, register
 
 
@@ -42,6 +49,11 @@ class PreparedInpMode:
         # Late import avoids the planner -> workflow_modes import cycle.
         from agentic_swmm.agent.planner import PlannerRun
 
+        # Round 1 memory integration: consult before any tool call so
+        # ctx.memory_context is populated for downstream decision hooks.
+        # consult_memory is a no-op when ctx.memory_integration is None.
+        consult_memory(ctx)
+
         inp_path = str(
             ctx.route.get("provided_values", {}).get("inp_path")
             or workflow_route_args(ctx.goal).get("inp_path")
@@ -53,6 +65,19 @@ class PreparedInpMode:
                 plan=ctx.plan,
                 results=ctx.executor.results,
                 final_text="Please provide a SWMM INP path before running.",
+            )
+
+        # Pre-flight gate: block the SWMM run when structural FAILs
+        # were detected. The gate is skipped when
+        # AISWMM_DISABLE_SWMM_GATES=1 or when memory_integration is
+        # not wired (test-mode without injection).
+        pre = run_preflight_gate(ctx, inp_path)
+        if pre.ran and not pre.ok:
+            return PlannerRun(
+                ok=False,
+                plan=ctx.plan,
+                results=ctx.executor.results,
+                final_text=format_preflight_failure(pre.report, inp_path=inp_path),
             )
 
         node = extract_after_label(ctx.goal, ("node", "outfall", "节点", "出口"))
@@ -70,6 +95,22 @@ class PreparedInpMode:
                 plan=ctx.plan,
                 results=ctx.executor.results,
                 final_text="SWMM run failed; inspect the saved stderr/stdout artifacts.",
+            )
+
+        # Post-flight QA gate: continuity out of bounds (etc.) blocks
+        # plot generation and surfaces an HITL prompt so the user can
+        # decide whether to override and continue or fix and re-run.
+        post = run_postflight_gate(ctx, str(ctx.session_dir))
+        if post.ran and not post.ok:
+            return PlannerRun(
+                ok=False,
+                plan=ctx.plan,
+                results=ctx.executor.results,
+                final_text=format_postflight_failure(
+                    post.report,
+                    run_dir=str(ctx.session_dir),
+                    memory_context=getattr(ctx, "memory_context", None),
+                ),
             )
 
         audit_result = ctx.step(

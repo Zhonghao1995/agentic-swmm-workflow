@@ -47,6 +47,22 @@ class WorkflowContext:
     Adapters drive the planner's tool dispatch through this context;
     they must not reach into ``OpenAIPlanner`` internals. This keeps
     each mode's behaviour testable in isolation.
+
+    Round 1 memory integration adds three optional attributes that
+    default to ``None`` so the existing dispatch path stays valid:
+
+    * ``trace_path`` — where ``memory_consultation`` /
+      ``memory_informed_decision`` events should be appended. When
+      ``None``, the adapter skips mirror-event writes.
+    * ``memory_integration`` — a :class:`MemoryIntegration` shim
+      bundling the memory-consult and pre/postflight gate callables.
+      When ``None``, the adapter skips memory consultation entirely
+      (the planner can still invoke ``run`` against an old call site
+      that has not been updated).
+    * ``case_name`` — best-effort anchor for memory consultation. When
+      ``None``, the consult fires but yields an empty context.
+    * ``memory_context`` — populated by the adapter at the top of
+      ``run`` so downstream helpers do not have to re-read.
     """
 
     goal: str
@@ -55,6 +71,10 @@ class WorkflowContext:
     route: dict[str, Any]
     executor: "AgentExecutor"
     emit: Callable[[str], None]
+    trace_path: Path | None = None
+    memory_integration: Any | None = None
+    case_name: str | None = None
+    memory_context: Any | None = None
 
     def step(self, call: "ToolCall") -> dict[str, Any]:
         """Append ``call`` to the plan, emit the standard progress line, execute it."""
