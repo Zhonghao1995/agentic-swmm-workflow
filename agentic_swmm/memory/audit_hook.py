@@ -284,6 +284,77 @@ def _run_decay_pass(
     return payload
 
 
+def _record_parametric_from_provenance(
+    *, run_dir: Path, memory_dir: Path
+) -> str | None:
+    """Append a parametric_memory row for ``run_dir`` if provenance exists.
+
+    PRD-06 Phase A.5: every successful, non-skipped run gets one JSONL
+    line describing its quantitative fingerprint. We pull only fields
+    the audit pipeline already writes — this hook is a *bridge*, not
+    a new source of truth.
+
+    Returns the path to the written JSONL, or ``None`` when nothing
+    was written (no provenance, missing required fields, write error).
+    Failures are soft: a broken parametric write must not block the
+    rest of the memory refresh.
+    """
+    from agentic_swmm.memory.parametric_memory import (
+        ParametricRecord,
+        record_parametric_run,
+    )
+
+    provenance = _read_provenance(run_dir)
+    if not provenance:
+        return None
+
+    run_id = str(provenance.get("run_id") or "").strip()
+    case_name = str(provenance.get("case_name") or "").strip()
+    if not run_id or not case_name:
+        return None
+
+    tools = provenance.get("tools") or {}
+    swmm_version = tools.get("swmm5_version") or tools.get("swmm_version")
+
+    # Continuity values live under metrics.continuity_error.values
+    # in the existing v1.1 audit schema (see audit_run.py:984).
+    metrics = provenance.get("metrics") or {}
+    continuity = (metrics.get("continuity_error") or {}).get("values") or {}
+    qa_metrics: dict[str, Any] = {}
+    if "runoff" in continuity:
+        try:
+            qa_metrics["runoff_continuity_pct"] = float(continuity["runoff"])
+        except (TypeError, ValueError):
+            pass
+    if "flow" in continuity:
+        try:
+            qa_metrics["flow_continuity_pct"] = float(continuity["flow"])
+        except (TypeError, ValueError):
+            pass
+
+    workflow_mode = provenance.get("workflow_mode")
+    model_structure: dict[str, Any] = {}
+    if workflow_mode:
+        model_structure["workflow_mode"] = workflow_mode
+
+    record = ParametricRecord(
+        run_id=run_id,
+        case_name=case_name,
+        swmm_version=str(swmm_version) if swmm_version else None,
+        model_structure=model_structure,
+        qa_metrics=qa_metrics,
+        performance_metrics={},
+        watershed_classification={},
+    )
+
+    store_path = memory_dir / "parametric_memory.jsonl"
+    try:
+        record_parametric_run(store_path, record)
+    except (ValueError, OSError):
+        return None
+    return str(store_path)
+
+
 def _bump_corpus_mtime(rag_dir: Path) -> Path:
     rag_dir.mkdir(parents=True, exist_ok=True)
     corpus = rag_dir / "corpus.jsonl"
@@ -370,6 +441,17 @@ def trigger_memory_refresh(
         result["lifecycle_metadata"] = meta_summary
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"lifecycle metadata update failed: {exc}")
+
+    # PRD-06 Phase A.5: bridge audit -> parametric_memory. Pull only
+    # what experiment_provenance.json already records; soft failures.
+    try:
+        parametric_path = _record_parametric_from_provenance(
+            run_dir=run_dir, memory_dir=memory_dir
+        )
+        if parametric_path:
+            result["parametric_memory"] = parametric_path
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        result["errors"].append(f"parametric memory write failed: {exc}")
 
     # ME-2 (issue #62): apply confidence decay + status transitions
     # AFTER the metadata bump. Retired patterns are moved into
