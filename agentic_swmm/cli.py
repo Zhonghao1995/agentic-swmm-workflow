@@ -343,9 +343,25 @@ def _case_init_main(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
+    # ``--ignore-memory`` is a top-level escape hatch for the
+    # memory-informed runtime. We strip it from argv *before* the
+    # default-router prepends ``agent`` and *before* argparse parses,
+    # so the flag works regardless of which subcommand the user
+    # invokes (``aiswmm --ignore-memory plot ...`` /
+    # ``aiswmm plot --ignore-memory ...``). The flag is one-shot:
+    # the env var lives only for the duration of this invocation,
+    # so chained commands in the same shell session pick the memory
+    # back up automatically.
+    argv, ignore_memory = _strip_ignore_memory(argv)
     argv = _route_default_to_agent(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    from agentic_swmm.agent.feature_flags import MEMORY_INFORMED_ENV
+
+    prior_env = os.environ.get(MEMORY_INFORMED_ENV)
+    if ignore_memory:
+        os.environ[MEMORY_INFORMED_ENV] = "1"
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:
@@ -354,6 +370,26 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    finally:
+        # Restore the env so a second call in the same process does
+        # not inherit our toggle. The flag is one-shot by contract.
+        if ignore_memory:
+            if prior_env is None:
+                os.environ.pop(MEMORY_INFORMED_ENV, None)
+            else:
+                os.environ[MEMORY_INFORMED_ENV] = prior_env
+
+
+def _strip_ignore_memory(argv: list[str]) -> tuple[list[str], bool]:
+    """Remove the top-level ``--ignore-memory`` flag from ``argv``.
+
+    Returns the cleaned argv and a boolean indicating whether the
+    flag was present. The flag is a bare boolean (no value), so we
+    drop it wherever it appears.
+    """
+    if "--ignore-memory" not in argv:
+        return argv, False
+    return [arg for arg in argv if arg != "--ignore-memory"], True
 
 
 def _route_default_to_agent(argv: list[str]) -> list[str]:

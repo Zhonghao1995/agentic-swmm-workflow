@@ -163,6 +163,76 @@ Transfer is advisory only. The recommender never edits an INP — the
 user is the only path by which a recommendation lands in a calibration
 run.
 
+## Opt-out flags
+
+Three independent escape hatches let the user bypass the
+memory-informed runtime or the SWMM pre/postflight gates without
+editing project config. All three are runtime knobs — they exist
+for the moment something is wrong and the user needs to move on.
+
+### `AISWMM_DISABLE_SWMM_GATES=1`
+
+When set, the pre-flight INP validation and the post-flight QA gate
+are skipped entirely. Each runnable :class:`WorkflowMode` adapter
+checks this before invoking the gate, so the SWMM run + audit + plot
+pipeline executes regardless of whether the INP would have failed
+preflight or the .rpt would have failed postflight. Use this when the
+gate is wrong for your case (e.g. a custom non-SWMM-5 routing rule)
+and you have manually verified the run.
+
+### `AISWMM_DISABLE_MEMORY_INFORMED=1`
+
+When set, ``gather_memory_context`` short-circuits to an empty
+:class:`MemoryContext` before reading any store. Every consumer
+sees the same shape as a fresh project: the policy returns ``llm``
+for low-stakes goals and ``hitl`` for high-stakes goals. Use this
+when memory has accumulated incorrect rows and you want a clean
+"as if first run" execution while you triage the store.
+
+### `--ignore-memory` (CLI flag)
+
+A one-shot equivalent of ``AISWMM_DISABLE_MEMORY_INFORMED=1``: the
+CLI sets the env var only for the duration of one invocation, then
+restores the prior value. Subsequent commands in the same shell
+session see memory again. The flag works at any position on the
+command line: ``aiswmm --ignore-memory plot ...`` and
+``aiswmm plot --ignore-memory ...`` are equivalent.
+
+The two env-var flags and the CLI flag are mutually independent —
+each controls one boundary. A user who wants both off sets both
+variables; a user who wants only the SWMM gates off sets only
+``AISWMM_DISABLE_SWMM_GATES``.
+
+## Chat-note "Memory-informed defaults" section
+
+When a chat session involves at least one memory-informed decision
+the agent automatically inserts a section titled
+**Memory-informed defaults** into ``chat_note.md``. The section is a
+three-column Markdown table — Field / Value / Source — with one row
+per decision. Empty trace (no memory-informed decisions) means the
+section is omitted entirely, so a fresh-project chat note stays
+clean. The table is rendered from ``memory_informed_decision``
+events on ``agent_trace.jsonl``, which the runtime writes alongside
+the existing ``memory_trace.jsonl`` per-run log.
+
+## agent_trace.jsonl mirror events
+
+The transparency log lives in two places. ``memory_trace.jsonl``
+(per-run) carries one line per consultation for chat-time audit.
+``agent_trace.jsonl`` (per-session) gains two mirror event types so
+the run-time audit pipeline sees the same decisions:
+
+* ``memory_consultation`` — fires once per workflow-mode adapter
+  run, with fields ``kind``, ``case_meta``, ``evidence_count``,
+  ``consensus_fields``, ``ambiguous_fields``, ``queried_at_utc``.
+* ``memory_informed_decision`` — fires once per memory-informed
+  default the agent picked, with fields ``field``, ``value_chosen``,
+  ``rationale``, ``source_runs``.
+
+The duplication is intentional. The chat-note generator reads the
+agent trace; the audit hook reads the memory trace; both consumers
+can stay loosely coupled because they never share a file.
+
 ## Adding a new verb
 
 The drift bug PRD-04 warned about (three files in lockstep) is now

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -658,13 +659,20 @@ class AgenticSwmmCliTests(unittest.TestCase):
         }
         executor = FakePreparedInpExecutor(route)
         planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
-        with tempfile.TemporaryDirectory() as tmp:
-            outcome = planner.run(
-                goal="examples/tecnopolo/。你帮我跑一下这个我看看",
-                session_dir=Path(tmp),
-                trace_path=Path(tmp) / "agent_trace.jsonl",
-                executor=executor,
-            )
+        # Round 1 integration adds a post-flight QA gate that reads the
+        # .rpt SWMM would have produced. This test uses a fake executor
+        # so no .rpt exists; opt the gate out for this routing-focused
+        # test. The integration test in
+        # test_workflow_mode_memory_integration.py exercises the gate
+        # path proper.
+        with mock.patch.dict(os.environ, {"AISWMM_DISABLE_SWMM_GATES": "1"}):
+            with tempfile.TemporaryDirectory() as tmp:
+                outcome = planner.run(
+                    goal="examples/tecnopolo/。你帮我跑一下这个我看看",
+                    session_dir=Path(tmp),
+                    trace_path=Path(tmp) / "agent_trace.jsonl",
+                    executor=executor,
+                )
 
         self.assertTrue(outcome.ok)
         skill_names = [call.args["skill_name"] for call in outcome.plan if call.name == "read_skill"]
@@ -685,13 +693,16 @@ class AgenticSwmmCliTests(unittest.TestCase):
         }
         executor = FakePreparedInpExecutor(route)
         planner = OpenAIPlanner(provider=None, registry=AgentToolRegistry(), max_steps=16)
-        with tempfile.TemporaryDirectory() as tmp:
-            outcome = planner.run(
-                goal="examples/tecnopolo/ 帮我画 OU2 的水深图",
-                session_dir=Path(tmp),
-                trace_path=Path(tmp) / "agent_trace.jsonl",
-                executor=executor,
-            )
+        # Round 1 integration: opt out of the post-flight gate (no
+        # real SWMM run = no .rpt for the gate to read).
+        with mock.patch.dict(os.environ, {"AISWMM_DISABLE_SWMM_GATES": "1"}):
+            with tempfile.TemporaryDirectory() as tmp:
+                outcome = planner.run(
+                    goal="examples/tecnopolo/ 帮我画 OU2 的水深图",
+                    session_dir=Path(tmp),
+                    trace_path=Path(tmp) / "agent_trace.jsonl",
+                    executor=executor,
+                )
 
         self.assertTrue(outcome.ok)
         self.assertEqual(outcome.plan[-1].name, "plot_run")

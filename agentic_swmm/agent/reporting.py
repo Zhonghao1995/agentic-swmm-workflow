@@ -141,6 +141,103 @@ def write_event(path: Path, payload: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Memory-informed runtime mirror events (PRD-07 §2).
+# ---------------------------------------------------------------------------
+#
+# The runtime already writes ``memory_trace.jsonl`` for chat-time
+# inspection. PRD-07 §2 specifies that the same decisions also mirror
+# into the agent-level ``agent_trace.jsonl`` so a run-time audit (which
+# reads the agent trace) sees the memory consultations alongside the
+# tool calls. The duplication is intentional — chat-time vs run-time
+# audit have different consumers.
+#
+# Both helpers go through ``write_event`` so the timestamp + JSON
+# formatting stay identical to every other agent_trace event. They
+# accept the structural fields PRD-07 specified and let the caller
+# omit anything that has no meaningful value at the call site.
+
+
+def write_memory_consultation(
+    path: Path,
+    *,
+    kind: str,
+    case_meta: dict[str, Any] | None,
+    evidence_count: int,
+    consensus_fields: list[str] | None = None,
+    ambiguous_fields: list[str] | None = None,
+    queried_at_utc: str | None = None,
+) -> None:
+    """Append one ``memory_consultation`` event to ``path``.
+
+    Arguments mirror PRD-07 §2:
+
+    * ``kind`` — short label identifying which decision point did the
+      consult (e.g. ``"workflow_defaults"``,
+      ``"planner_intent_disambiguation"``).
+    * ``case_meta`` — best-effort case identifier dict. Empty/None
+      collapses to ``{}`` so the JSON shape stays stable.
+    * ``evidence_count`` — number of parametric hits visible to the
+      decision point.
+    * ``consensus_fields`` / ``ambiguous_fields`` — optional lists
+      naming which fields the memory consensus covered vs. which
+      remained ambiguous. Default to empty lists when omitted.
+    * ``queried_at_utc`` — caller-supplied timestamp. When ``None``
+      the helper does *not* invent one — ``write_event`` already
+      stamps the line with ``timestamp_utc`` so consumers always
+      have a wall-clock for the consult.
+
+    The event is best-effort: an exception during the write is
+    *not* swallowed here because the call sites already wrap this in
+    try/except (memory must never break dispatch). Surfacing the
+    exception locally makes failures easier to diagnose during
+    testing.
+    """
+    payload: dict[str, Any] = {
+        "event": "memory_consultation",
+        "kind": kind,
+        "case_meta": dict(case_meta or {}),
+        "evidence_count": int(evidence_count),
+        "consensus_fields": list(consensus_fields or []),
+        "ambiguous_fields": list(ambiguous_fields or []),
+    }
+    if queried_at_utc:
+        payload["queried_at_utc"] = queried_at_utc
+    write_event(path, payload)
+
+
+def write_memory_informed_decision(
+    path: Path,
+    *,
+    field: str,
+    value_chosen: Any,
+    rationale: str,
+    source_runs: list[str] | None = None,
+) -> None:
+    """Append one ``memory_informed_decision`` event to ``path``.
+
+    The schema is the PRD-07 §2 contract:
+
+    * ``field`` — short identifier of the decision point (e.g.
+      ``"plot_node"``, ``"rain_kind"``, ``"time_step_sec"``).
+    * ``value_chosen`` — the value the agent picked. Rendered into
+      JSON as-is, so callers should pass scalars or json-safe types.
+    * ``rationale`` — short human-readable phrase the chat note
+      will surface in its Source column.
+    * ``source_runs`` — optional list of ``run_id`` strings the
+      decision drew on. Defaults to an empty list so the JSON
+      shape is stable across call sites.
+    """
+    payload: dict[str, Any] = {
+        "event": "memory_informed_decision",
+        "field": field,
+        "value_chosen": value_chosen,
+        "rationale": rationale,
+        "source_runs": list(source_runs or []),
+    }
+    write_event(path, payload)
+
+
+# ---------------------------------------------------------------------------
 # Retro-chrome final result card (PRD-TUI-REDESIGN).
 # CONCURRENCY-OWNER: PRD-TUI-REDESIGN
 # ---------------------------------------------------------------------------
