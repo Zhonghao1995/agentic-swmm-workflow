@@ -1,0 +1,56 @@
+# ===========================================================================
+# CITATION LIBRARY — PRD-06 Phase B.2
+# ---------------------------------------------------------------------------
+# This file is HAND-EDITED. Each entry is a citation token (the dictionary
+# key) plus the bibliographic fields needed to look up the original source
+# manually. The library is the substrate behind two things:
+#
+#   1. The ``citation`` leaf next to every numeric range in
+#      ``reference_benchmarks.yaml``. A reference-benchmark range is only
+#      populated AFTER the matching citations.yaml entry has been verified
+#      against the original work — bibliographic placeholder entries do not
+#      authorise populating numeric leaves.
+#
+#   2. The ``aiswmm cite <citation_key>`` CLI surface, which prints the entry
+#      so a human (or agent in transparency mode) can audit which work backs
+#      a parameter choice.
+#
+# Verification contract:
+#   * Every entry MUST be hand-verified by the maintainer before it is used
+#     to backfill a numeric leaf in ``reference_benchmarks.yaml``.
+#   * The ``verified_by`` and ``verified_on`` fields record who and when.
+#   * Unverified entries are useful as schema placeholders only.
+#
+# Schema (every entry must follow this shape):
+#   <citation_key>:
+#     authors: "..."                 # full author list as printed on source
+#     year: <int>                    # publication year
+#     title: "..."                   # title of the work
+#     work: "..."                    # journal / book / report container
+#     locator: "..."                 # page / table / section locator
+#     url: ""                        # optional, may be empty
+#     verified_by: "..."             # maintainer who verified the entry
+#     verified_on: "YYYY-MM-DD"      # ISO date of verification
+#
+# Keys are snake_case. Use the convention ``<lead-author>_<year>_<short>`` so
+# the token reads cleanly in code comments and audit notes.
+# ===========================================================================
+
+schema_version: "1.0"
+
+# ---------------------------------------------------------------------------
+# Worked-example entry — schema demonstration only.
+# Replace these placeholder fields once the maintainer has verified the
+# underlying source. Do NOT cite this entry from reference_benchmarks.yaml
+# until the placeholder text has been replaced with verified bibliographic
+# data.
+# ---------------------------------------------------------------------------
+worked_example_pending_verification:
+  authors: "<author-list-pending-verification>"
+  year: 0
+  title: "<title-pending-verification>"
+  work: "<container-pending-verification>"
+  locator: "<page-or-table-pending-verification>"
+  url: ""
+  verified_by: ""
+  verified_on: ""

@@ -1,11 +1,12 @@
 # ===========================================================================
 # WARNING — UN-CITED PLACEHOLDERS
 # ---------------------------------------------------------------------------
-# Most numeric leaves in this file are deliberately ``null`` until the Phase B
-# citation library (``citations.yaml``) lands. Earlier drafts of this file
-# carried specific numbers; those numbers were illustrative and had NOT been
-# verified against a citation library. They were removed to prevent a public
-# release artifact from quoting un-cited "expert" thresholds.
+# Most numeric leaves in this file are deliberately ``null``. Each null leaf
+# has a sibling ``citation`` key pointing into ``citations.yaml`` (also under
+# this directory). A numeric leaf lands ONLY AFTER the matching citation
+# entry has been verified by the maintainer (``verified_by`` and
+# ``verified_on`` populated) — schema-only placeholder entries are not
+# sufficient. See ``agentic_swmm/memory/citations.py`` for the typed reader.
 #
 # Two consequences for runtime:
 #  * ``classify_metric`` returns ``"UNKNOWN"`` for any metric whose threshold
@@ -17,8 +18,8 @@
 # The only block that ships with concrete numbers is
 # ``continuity_thresholds_pct`` — those are the SWMM User Manual's own
 # magnitude bands for the runoff / flow / mass-balance continuity printout,
-# not a literature recall. Phase B will move them under a citation key too,
-# for consistency.
+# not a literature recall. A later phase will move them under a citation
+# key too, for consistency.
 # ===========================================================================
 
 schema_version: "1.0"
@@ -36,14 +37,17 @@ nse_acceptable_thresholds:
     acceptable: null
     good: null
     excellent: null
+    citation: null  # lands when matching citations.yaml entry is verified
   stormwater_continuous:
     acceptable: null
     good: null
     excellent: null
+    citation: null  # lands when matching citations.yaml entry is verified
   baseflow_low_flow:
     acceptable: null
     good: null
     excellent: null
+    citation: null  # lands when matching citations.yaml entry is verified
 
 # ---------------------------------------------------------------------------
 # Continuity error thresholds read from the .rpt by postflight_qa.
