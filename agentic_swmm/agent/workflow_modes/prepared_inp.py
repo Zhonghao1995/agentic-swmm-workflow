@@ -24,6 +24,7 @@ from agentic_swmm.agent.workflow_modes._memory_hooks import (
     consult_memory,
     format_postflight_failure,
     format_preflight_failure,
+    maybe_offer_onboarding_for_ctx,
     run_postflight_gate,
     run_preflight_gate,
 )
@@ -58,6 +59,15 @@ class PreparedInpMode:
             ctx.route.get("provided_values", {}).get("inp_path")
             or workflow_route_args(ctx.goal).get("inp_path")
             or ""
+        )
+
+        # Round 7: on a new case + workflow-intent utterance + at least
+        # one similar prior case, raise MemoryHITLRequired so the
+        # runtime renders the onboarding chat block. The user's reply
+        # in the next turn drives downstream defaults.
+        from pathlib import Path as _Path
+        maybe_offer_onboarding_for_ctx(
+            ctx, target_inp=_Path(inp_path) if inp_path else None
         )
         if not inp_path:
             return PlannerRun(

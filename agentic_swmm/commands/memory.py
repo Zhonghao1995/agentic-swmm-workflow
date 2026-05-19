@@ -75,6 +75,21 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
     expert_memory_reflect.add_subparser(sub)
 
+    # Round 7: one-shot migration of negative_lessons.jsonl -> .md.
+    migrate_neg = sub.add_parser(
+        "migrate-negative-lessons-md",
+        help=(
+            "Convert negative_lessons.jsonl into negative_lessons.md (idempotent). "
+            "After migration the audit hook writes new sections to the markdown store."
+        ),
+    )
+    migrate_neg.add_argument(
+        "--archive",
+        action="store_true",
+        help="Run apply_decay + archive_retired on the markdown after migration.",
+    )
+    migrate_neg.set_defaults(func=migrate_negative_lessons_md_main)
+
 
 def _dispatch(args: argparse.Namespace) -> int:
     """Route between the legacy summarise-memory mode and new subcommands."""
@@ -259,3 +274,50 @@ def _rebuild_rag_corpus(memory_dir: Path, rag_dir: Path, runs_dir: Path) -> dict
         return {"returncode": proc.returncode, "stderr_tail": (proc.stderr or "")[-400:]}
     except (OSError, subprocess.SubprocessError) as exc:
         return {"returncode": 1, "stderr_tail": str(exc)}
+
+
+def migrate_negative_lessons_md_main(args: argparse.Namespace) -> int:
+    """Drive ``aiswmm memory migrate-negative-lessons-md``.
+
+    Migrates the existing JSONL store to the markdown lifecycle file and
+    optionally runs the decay/archive pass when ``--archive`` is set.
+    """
+    from agentic_swmm.memory.negative_lessons_markdown import (
+        apply_decay,
+        archive_retired,
+        migrate_jsonl_to_md,
+    )
+
+    memory_dir = _resolve_memory_dir()
+    jsonl_path = memory_dir / "negative_lessons.jsonl"
+    md_path = memory_dir / "negative_lessons.md"
+    archive_path = memory_dir / "negative_lessons_archived.md"
+
+    if not jsonl_path.is_file():
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "migrated": 0,
+                    "reason": "no negative_lessons.jsonl to migrate",
+                    "jsonl_path": str(jsonl_path),
+                }
+            )
+        )
+        return 0
+
+    migrated = migrate_jsonl_to_md(jsonl_path, md_path)
+    summary: dict = {
+        "ok": True,
+        "migrated": migrated,
+        "jsonl_path": str(jsonl_path),
+        "md_path": str(md_path),
+    }
+    if getattr(args, "archive", False):
+        counts = apply_decay(md_path)
+        archived = archive_retired(md_path, archive_path)
+        summary["decay_counts"] = counts
+        summary["archived"] = archived
+        summary["archive_path"] = str(archive_path)
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0
