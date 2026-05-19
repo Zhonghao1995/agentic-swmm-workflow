@@ -36,9 +36,23 @@ from typing import Any
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
 
 
-# Closing question. Hardcoded — making it configurable would invite
-# spell-checking creep in every locale; the prompt is short by design.
-_CLOSING_QUESTION = "Please confirm or override."
+# Closing question. PRD-08 A.3 (audit #19): the previous one-line
+# "Please confirm or override." gave the user no actionable vocabulary
+# in a chat REPL. The new block names three concrete responses so a
+# new user knows what to type.
+#
+# The onboarding flow has its own ``[Y / n / customize]`` prompt that
+# is more specific to that decision point; runtime.py passes
+# ``decision_point="new_case_onboarding"`` so this generic block does
+# not double up with the onboarding's own question.
+_CLOSING_QUESTION = (
+    "Please respond:\n"
+    '  • "accept" or "yes" to proceed with the proposed action\n'
+    '  • "cancel" or "no" to abort\n'
+    '  • Paste a JSON object to override parameters '
+    '(e.g. {"manning_n": 0.013})'
+)
+_ONBOARDING_DECISION_POINT = "new_case_onboarding"
 
 
 def _summarise_metric(values: list[float]) -> str | None:
@@ -194,7 +208,11 @@ def format_hitl_prompt(
         if not summary and not hits:
             lines.append("  (no prior runs or thresholds were recorded)")
 
-        lines.extend(["", _CLOSING_QUESTION])
+        # PRD-08 A.3 (audit #19): omit the generic action vocabulary
+        # when the runtime is about to surface the onboarding chat
+        # block, which has its own ``[Y / n / customize]`` prompt.
+        if decision_point != _ONBOARDING_DECISION_POINT:
+            lines.extend(["", _CLOSING_QUESTION])
         return "\n".join(lines)
     except Exception:  # pragma: no cover - defensive
         # The formatter must never raise. Falling through to a

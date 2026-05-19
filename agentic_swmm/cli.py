@@ -326,6 +326,7 @@ def _case_main(args: argparse.Namespace) -> int:
 
 # CONCURRENCY-OWNER: PRD-CASE-ID
 def _case_show_main(args: argparse.Namespace) -> int:
+    from agentic_swmm.agent.error_remediation import case_not_found
     from agentic_swmm.case import case_registry
     from agentic_swmm.case.case_id import CaseIdValidationError
 
@@ -333,7 +334,19 @@ def _case_show_main(args: argparse.Namespace) -> int:
         meta = case_registry.read_case_meta(
             args.case_id, repo_root=case_registry.repo_root()
         )
-    except (case_registry.CaseMetaNotFoundError, CaseIdValidationError) as exc:
+    except case_registry.CaseMetaNotFoundError:
+        # PRD-08 A.3 (audit #18): the bare "no case_meta.yaml" line
+        # gave no fuzzy hint. Walk the registry to find close-match
+        # candidates so a typo like ``tod-creek`` surfaces ``todcreek``.
+        try:
+            existing = case_registry.list_cases(case_registry.repo_root())
+            candidates = [m.case_id for m in existing]
+        except Exception:
+            candidates = []
+        err = case_not_found(slug=args.case_id, candidates=candidates)
+        sys.stderr.write(err.format_for_stderr() + "\n")
+        return 1
+    except CaseIdValidationError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
@@ -458,6 +471,43 @@ def main(argv: list[str] | None = None) -> int:
                 os.environ[MEMORY_INFORMED_ENV] = prior_env
 
 
+def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
+    """Swap the planner to ``rule`` when no LLM provider is configured.
+
+    The interactive shell currently hard-routes to
+    ``--planner openai``; if no key is set, the first prompt fails
+    mid-turn. We surface a guidance block on stderr and rewrite the
+    dispatched argv to use the rule planner so the user can still
+    discover the deterministic verbs without an API key.
+
+    Only ``--interactive`` dispatches trigger the preflight — a bare
+    one-shot ``agent`` call that the user typed deliberately is left
+    alone so the existing error path continues to surface.
+    """
+    if "--interactive" not in argv:
+        return argv
+    from agentic_swmm.agent.provider_preflight import check_interactive_provider
+
+    result = check_interactive_provider()
+    if result.has_configured_provider:
+        return argv
+    if result.guidance_message:
+        print(result.guidance_message, file=sys.stderr)
+    rewritten: list[str] = []
+    swap_next = False
+    for item in argv:
+        if swap_next:
+            rewritten.append(result.fallback_planner)
+            swap_next = False
+            continue
+        if item == "--planner":
+            rewritten.append(item)
+            swap_next = True
+            continue
+        rewritten.append(item)
+    return rewritten
+
+
 def _strip_ignore_memory(argv: list[str]) -> tuple[list[str], bool]:
     """Remove the top-level ``--ignore-memory`` flag from ``argv``.
 
@@ -472,9 +522,21 @@ def _strip_ignore_memory(argv: list[str]) -> tuple[list[str], bool]:
 
 def _route_default_to_agent(argv: list[str]) -> list[str]:
     if not argv:
-        return ["agent", "--planner", "openai", "--interactive"]
+        # PRD-08 A.3 (audit #6): when the user types bare ``aiswmm`` we
+        # are about to drop them into the interactive shell with the
+        # OpenAI planner. If no provider is configured, print a stderr
+        # guidance block and downgrade to the rule planner so the user
+        # at least sees the deterministic verbs.
+        return _preflight_interactive_dispatch(
+            ["agent", "--planner", "openai", "--interactive"]
+        )
     if argv[0] == "chat":
-        return ["agent", "--planner", "openai", *argv[1:]] if len(argv) > 1 else ["agent", "--planner", "openai", "--interactive"]
+        dispatched = (
+            ["agent", "--planner", "openai", *argv[1:]]
+            if len(argv) > 1
+            else ["agent", "--planner", "openai", "--interactive"]
+        )
+        return _preflight_interactive_dispatch(dispatched)
     if argv[0] in COMMANDS:
         if (
             argv[0] == "run"

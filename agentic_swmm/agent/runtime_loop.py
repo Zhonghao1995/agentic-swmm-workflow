@@ -332,6 +332,20 @@ def run_openai_planner(
     if args.verbose:
         _agent_say(f"Allowed tools: {', '.join(registry.sorted_names())}")
 
+    # PRD-08 A.3 (audit #21): emit a ``user_prompt`` event at the top
+    # of every planner turn so the chat-note renderer can populate
+    # "What user asked". Previously the trace only carried tool calls
+    # and the final answer, so chat_note showed "(no user prompts
+    # recorded)" for every interactive session.
+    _write_event(
+        trace_path,
+        {
+            "event": "user_prompt",
+            "text": goal,
+            "timestamp_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    )
+
     # Late import keeps the agent runtime free of a CLI-layer dependency
     # in the import graph (commands/agent.py imports runtime_loop).
     from agentic_swmm.commands.agent import resolve_profile_from_args

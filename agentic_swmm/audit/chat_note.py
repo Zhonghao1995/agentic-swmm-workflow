@@ -244,7 +244,13 @@ def build_chat_note(session_state: dict, agent_trace: list[dict]) -> str:
         or session_state.get("session_id")
         or "Chat Session"
     )
-    lines.extend([f"# Chat Session - {title}", ""])
+    # PRD-08 A.3 (audit #21): the previous renderer produced
+    # ``# Chat Session - Chat Session`` when ``title`` was the fallback;
+    # collapse to a single ``# Chat Session`` heading in that case.
+    if title == "Chat Session":
+        lines.extend(["# Chat Session", ""])
+    else:
+        lines.extend([f"# Chat Session - {title}", ""])
 
     goal = session_state.get("goal") or _first_user_prompt(agent_trace) or "(no goal recorded)"
     lines.extend(["## Goal", "", str(goal), ""])

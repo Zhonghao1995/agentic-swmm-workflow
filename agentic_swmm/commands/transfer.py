@@ -226,6 +226,22 @@ def _format_enrichment_sections(
     return "\n".join(lines)
 
 
+def _count_calibration_rows(store_path: Path) -> int:
+    """Return the row count in ``calibration_memory.jsonl`` or 0 if missing.
+
+    Used to distinguish "store missing", "store empty", and "store has
+    rows but no similar matches" — see audit #30.
+    """
+    if not store_path.is_file():
+        return 0
+    try:
+        return sum(
+            1 for line in store_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+    except OSError:
+        return 0
+
+
 def main(args: argparse.Namespace) -> int:
     target = args.inp
     if not target.is_file():
@@ -253,9 +269,25 @@ def main(args: argparse.Namespace) -> int:
             "recommendations": [r.to_dict() for r in recs],
         }
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    else:
-        sys.stdout.write(_format_table(recs))
-        enrichment = _format_enrichment_sections(recs)
-        if enrichment:
-            sys.stdout.write(enrichment)
+        return 0
+
+    if not recs:
+        # PRD-08 A.3 (audit #30): differentiate the three "no
+        # candidates" sub-cases instead of one generic line.
+        from agentic_swmm.agent.error_remediation import transfer_empty_result
+
+        store_path = Path(args.calibration_store)
+        row_count = _count_calibration_rows(store_path)
+        err = transfer_empty_result(
+            calibration_store_exists=store_path.is_file(),
+            similar_cases_found=row_count,
+            store_path=store_path,
+        )
+        sys.stderr.write(err.format_for_stderr() + "\n")
+        return 0
+
+    sys.stdout.write(_format_table(recs))
+    enrichment = _format_enrichment_sections(recs)
+    if enrichment:
+        sys.stdout.write(enrichment)
     return 0

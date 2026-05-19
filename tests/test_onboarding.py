@@ -215,7 +215,7 @@ class MaybeOfferOnboardingTests(unittest.TestCase):
             block = decision.chat_block or ""
             self.assertIn("source_case", block)
             self.assertIn("Recommended starter calibration", block)
-            self.assertIn("[Y/n/customize]", block)
+            self.assertIn("[Y / n / customize]", block)
 
     def test_memory_disabled_short_circuits(self) -> None:
         os.environ[MEMORY_INFORMED_ENV] = "1"
@@ -257,7 +257,7 @@ class FormatOnboardingChatBlockTests(unittest.TestCase):
         # must not render.
         self.assertNotIn("Recommended design storm", block)
         self.assertNotIn("Known pitfall", block)
-        self.assertIn("[Y/n/customize]", block)
+        self.assertIn("[Y / n / customize]", block)
 
     def test_full_recommendation_renders_optional_lines(self) -> None:
         rec = TransferRecommendation(

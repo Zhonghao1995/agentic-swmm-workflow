@@ -122,14 +122,26 @@ def promote_facts_main(args: argparse.Namespace) -> int:
     Hands control off to the user's ``$EDITOR`` on the staging file
     and, if the editor exits cleanly, appends the (possibly edited)
     content to ``facts.md`` then truncates staging.
+
+    PRD-08 A.3 (audit #32): when the staging file is empty, emit a
+    typed remediation stanza pointing at ``record_fact`` rather than
+    the bare "staging is empty" line.
     """
+    from agentic_swmm.agent.error_remediation import staged_facts_empty
     from agentic_swmm.memory import facts as _facts_mod
 
     result = _facts_mod.promote_facts(editor=getattr(args, "editor", None))
     if not result.get("ok"):
         print(result.get("reason", "promote-facts failed"))
         return 1
-    print(result.get("reason", "promote-facts: done"))
+    reason = result.get("reason", "promote-facts: done")
+    if reason == "staging is empty":
+        staging_path = result.get("staging_md")
+        staging = Path(staging_path) if staging_path else None
+        err = staged_facts_empty(staging_md=staging)
+        sys.stderr.write(err.format_for_stderr() + "\n")
+        return 0
+    print(reason)
     return 0
 
 

@@ -256,11 +256,34 @@ def main(args: argparse.Namespace) -> int:
         lib_path = args.storm_library or _default_library_path()
         spec = recall_chicago_spec(lib_path, args.from_library)
         if spec is None:
-            print(
-                f"error: storm_library entry '{args.from_library}' not found "
-                f"or has only placeholder fields under {lib_path}",
-                file=sys.stderr,
+            # PRD-08 A.3 (audit #35): differentiate three sub-cases —
+            # library file missing, entry missing, or entry present
+            # but only placeholder leaves.
+            from agentic_swmm.agent.error_remediation import (
+                storm_library_not_found,
             )
+            from agentic_swmm.memory.storm_library import load_storm_library
+
+            if not Path(lib_path).is_file():
+                failure_mode = "library_missing"
+                available_keys: list[str] = []
+            else:
+                lib_dict = load_storm_library(Path(lib_path)) or {}
+                chicago_block = lib_dict.get("chicago_hyetographs") or {}
+                if not isinstance(chicago_block, dict):
+                    chicago_block = {}
+                available_keys = list(chicago_block.keys())
+                if args.from_library in chicago_block:
+                    failure_mode = "entry_placeholder"
+                else:
+                    failure_mode = "entry_missing"
+            err = storm_library_not_found(
+                entry_key=args.from_library,
+                library_path=Path(lib_path),
+                available_keys=available_keys,
+                failure_mode=failure_mode,
+            )
+            sys.stderr.write(err.format_for_stderr() + "\n")
             return 1
         # Treat the spec as if the user had passed equivalent flags;
         # explicit CLI arguments still win.

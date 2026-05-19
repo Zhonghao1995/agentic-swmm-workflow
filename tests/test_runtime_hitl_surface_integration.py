@@ -119,8 +119,10 @@ class RuntimeHitlIntegrationTests(unittest.TestCase):
                     outcome.final_text,
                 )
                 # The closing question is always there.
+                # PRD-08 A.3: action vocabulary replaces the bare
+                # "Please confirm or override." line.
                 self.assertIn(
-                    "Please confirm or override.",
+                    "Please respond:",
                     outcome.final_text,
                 )
                 # Memory summary surfaces too.
