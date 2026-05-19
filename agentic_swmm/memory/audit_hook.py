@@ -347,14 +347,61 @@ def _record_parametric_from_provenance(
     if workflow_mode:
         model_structure["workflow_mode"] = workflow_mode
 
+    # Round 5 / PRD-06 §4.1: surface watershed_classification and
+    # performance_metrics from provenance when present. Upstream may
+    # or may not populate these (depends on workflow mode); when
+    # absent the record's defaults keep them as empty dicts.
+    watershed_classification = provenance.get("watershed_classification")
+    if not isinstance(watershed_classification, dict):
+        watershed_classification = {}
+
+    performance_metrics_in = provenance.get("performance_metrics")
+    if not isinstance(performance_metrics_in, dict):
+        performance_metrics_in = {}
+
+    # calibration_status / parameter_set_ref: passed through verbatim
+    # when the provenance carries them, validated against the allowed
+    # set by ``record_parametric_run`` itself.
+    calibration_block = provenance.get("calibration") or {}
+    calibration_status_in = provenance.get("calibration_status")
+    if calibration_status_in is None and isinstance(calibration_block, dict):
+        calibration_status_in = calibration_block.get("status")
+    if calibration_status_in is not None:
+        calibration_status_in = str(calibration_status_in)
+
+    parameter_set_ref_in = provenance.get("parameter_set_ref")
+    if parameter_set_ref_in is None and isinstance(calibration_block, dict):
+        parameter_set_ref_in = calibration_block.get("parameter_set_ref")
+    if parameter_set_ref_in is not None:
+        parameter_set_ref_in = str(parameter_set_ref_in)
+
+    # ``evidence_runs_count`` defaults to 1 per the dataclass; only the
+    # CalibrationBatch flush overrides it when consolidating iterations.
+    evidence_runs_in = provenance.get("evidence_runs_count")
+    try:
+        evidence_runs_count = int(evidence_runs_in) if evidence_runs_in is not None else 1
+    except (TypeError, ValueError):
+        evidence_runs_count = 1
+    if evidence_runs_count < 1:
+        evidence_runs_count = 1
+
     record = ParametricRecord(
         run_id=run_id,
         case_name=case_name,
         swmm_version=str(swmm_version) if swmm_version else None,
         model_structure=model_structure,
         qa_metrics=qa_metrics,
-        performance_metrics={},
-        watershed_classification={},
+        performance_metrics=performance_metrics_in,
+        watershed_classification=watershed_classification,
+        calibration_status=calibration_status_in
+        if calibration_status_in in {
+            "uncalibrated",
+            "calibrated_against_observed",
+            "validation_only",
+        }
+        else None,
+        parameter_set_ref=parameter_set_ref_in,
+        evidence_runs_count=evidence_runs_count,
     )
 
     store_path = memory_dir / "parametric_memory.jsonl"

@@ -60,6 +60,36 @@ def _identity_migration_1_0(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _parametric_1_0_to_2_0(row: dict[str, Any]) -> dict[str, Any]:
+    """Upgrade a ``parametric_memory`` row from ``1.0`` to ``2.0``.
+
+    Round 5 added one new required-on-disk field
+    (``evidence_runs_count``, default ``1``) and explicit ``None``
+    handling for ``calibration_status`` / ``parameter_set_ref`` (which
+    1.0 already wrote as ``null`` for uncalibrated runs — the migration
+    is a no-op for those keys). The function is idempotent on rows
+    already at ``2.0`` so a chained future ``2.0 -> 2.1`` does not need
+    to re-check legacy state.
+    """
+    # Only act on rows below 2.0 — a 2.0 row is already in the target
+    # shape, and idempotence keeps the chained loop terminating.
+    if str(row.get("schema_version", "1.0")) >= "2.0":
+        return row
+
+    row = dict(row)
+    row.setdefault("evidence_runs_count", 1)
+    # The other 2.0-shape fields (calibration_status, parameter_set_ref,
+    # watershed_classification, performance_metrics) already existed in
+    # the 1.0 writer; the migration only guarantees their presence so
+    # SQLite indexing can rely on the column being addressable.
+    row.setdefault("calibration_status", None)
+    row.setdefault("parameter_set_ref", None)
+    row.setdefault("watershed_classification", {})
+    row.setdefault("performance_metrics", {})
+    row["schema_version"] = "2.0"
+    return row
+
+
 # Migration registry keyed by store name. Each value is an ordered list
 # of migration functions: ``MIGRATIONS[store][i]`` upgrades a row from
 # schema version ``versions[i]`` to ``versions[i+1]``. ``migrate_record``
@@ -70,7 +100,7 @@ def _identity_migration_1_0(row: dict[str, Any]) -> dict[str, Any]:
 # for setting ``row["schema_version"]`` to its output version so the
 # loop terminates.
 MIGRATIONS: dict[str, list[MigrationFn]] = {
-    "parametric_memory": [_identity_migration_1_0],
+    "parametric_memory": [_identity_migration_1_0, _parametric_1_0_to_2_0],
     "calibration_memory": [_identity_migration_1_0],
     "negative_lessons": [_identity_migration_1_0],
 }
