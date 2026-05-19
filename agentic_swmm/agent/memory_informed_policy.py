@@ -470,9 +470,62 @@ def decide_with_memory(
     )
 
 
+def build_transfer_lookup(
+    target_inp: Any,
+    *,
+    calibration_store: Any,
+    top_k: int = 3,
+    storm_library_path: Any = None,
+    negative_lessons_store: Any = None,
+    benchmarks_path: Any = None,
+    run_dir: Any = None,
+) -> Callable[[], list[Any]]:
+    """Build a zero-arg lookup callback for :func:`decide_with_memory`.
+
+    The callback closes over the new enrichment kwargs from Round 3 so
+    every dispatched policy decision benefits from the deeper
+    recommendation surface — design-storm + Manning's *n* + known
+    failure patterns. Each invocation appends one
+    ``memory_trace.jsonl`` line via :func:`recommend_parameters_for_new_case`'s
+    own trace contract (driven by ``run_dir``); no separate trace
+    pathway lives here so a future change to that contract stays
+    single-sourced.
+
+    Arguments mirror :func:`recommend_parameters_for_new_case`. ``None``
+    paths fall through to its defaults under
+    ``memory/modeling-memory/``.
+
+    Returns a zero-arg callable so the policy stays one-shot — the
+    callback is invoked at most once per ``decide_with_memory`` call,
+    only when the case has no parametric history.
+    """
+
+    def _lookup() -> list[Any]:
+        # Lazy import: keep the policy's import graph from pulling
+        # the cross-watershed transfer module on every planner load.
+        from agentic_swmm.memory.cross_watershed_transfer import (
+            recommend_parameters_for_new_case,
+        )
+
+        return list(
+            recommend_parameters_for_new_case(
+                target_inp,
+                calibration_store=calibration_store,
+                top_k=int(top_k),
+                run_dir=run_dir,
+                storm_library_path=storm_library_path,
+                negative_lessons_store=negative_lessons_store,
+                benchmarks_path=benchmarks_path,
+            )
+        )
+
+    return _lookup
+
+
 __all__ = [
     "MemoryHITLRequired",
     "PolicyDecision",
     "VALID_STAKES",
+    "build_transfer_lookup",
     "decide_with_memory",
 ]
