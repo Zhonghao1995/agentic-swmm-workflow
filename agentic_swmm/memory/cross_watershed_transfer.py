@@ -81,6 +81,12 @@ class TransferRecommendation:
     fields are flat so JSON serialisation is mechanical (the CLI's
     ``--json`` mode dumps these directly).
 
+    Round-3 fields (``recommended_design_storm``,
+    ``recommended_manning_n``, ``known_failure_patterns``) are
+    additive: a caller that does not pass the new stores still gets a
+    valid recommendation with the original fields populated and the
+    new ones defaulting to ``None`` / ``{}`` / ``[]``.
+
     Attributes:
         target_case: The new case being recommended *for*. Today this
             is always the INP filename stem; future callers may pass
@@ -105,6 +111,22 @@ class TransferRecommendation:
         n_alternatives: How many other source cases were considered
             during ranking. Lets the user understand whether the top-1
             was the only option or one of many close matches.
+        recommended_design_storm: When the source case's calibration
+            row carries ``metadata.case_design_storm_key`` and that
+            key resolves against the project storm library, the
+            resolved spec dict (with ``key`` echoed back so the CLI
+            can name it). ``None`` when the source has no storm key
+            or the library does not resolve it.
+        recommended_manning_n: Calibrated Manning's *n* values from
+            ``source_calibration_record.parameters`` whose key matches
+            a known ``manning_n_*`` prefix from
+            ``reference_benchmarks.yaml``. Empty dict when nothing
+            matches.
+        known_failure_patterns: Lessons from ``negative_lessons.jsonl``
+            associated with the source case. Each entry is a flat dict
+            of ``{lesson_type, parameters_tried, note}`` so a CLI
+            consumer can render without instantiating dataclasses.
+            Empty list when no lessons or the store is missing.
     """
 
     target_case: str
@@ -115,6 +137,9 @@ class TransferRecommendation:
     rationale: str = ""
     confidence: str = "memory_informed"
     n_alternatives: int = 0
+    recommended_design_storm: dict[str, Any] | None = None
+    recommended_manning_n: dict[str, float] = field(default_factory=dict)
+    known_failure_patterns: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe shape for CLI / trace consumers.
@@ -137,6 +162,15 @@ class TransferRecommendation:
             "rationale": self.rationale,
             "confidence": self.confidence,
             "n_alternatives": self.n_alternatives,
+            "recommended_design_storm": (
+                dict(self.recommended_design_storm)
+                if self.recommended_design_storm is not None
+                else None
+            ),
+            "recommended_manning_n": dict(self.recommended_manning_n),
+            "known_failure_patterns": [
+                dict(item) for item in self.known_failure_patterns
+            ],
         }
 
 
@@ -272,6 +306,125 @@ def _storm_key_resolves(storm_key: str, repo_root: Path) -> bool:
         return False
 
 
+def _resolve_design_storm(
+    storm_key: str | None, library_path: Path
+) -> dict[str, Any] | None:
+    """Return the resolved storm-library spec for ``storm_key`` or ``None``.
+
+    The returned dict echoes the storm-library entry plus a ``key``
+    field so a downstream CLI can name the recommendation without a
+    second lookup. ``None`` when the key is empty, the library cannot
+    be loaded, or the entry does not exist / is a schema-only
+    placeholder.
+    """
+    if not storm_key:
+        return None
+    try:
+        from agentic_swmm.memory.storm_library import recall_chicago_spec
+
+        spec = recall_chicago_spec(library_path, storm_key)
+    except Exception:  # pragma: no cover - defensive
+        return None
+    if spec is None:
+        return None
+    out = dict(spec)
+    out.setdefault("key", storm_key)
+    return out
+
+
+def _known_manning_n_prefixes(benchmarks_path: Path) -> set[str]:
+    """Return the set of top-level ``manning_n_*`` keys from the YAML.
+
+    A SWMM project file typically uses parameter names like
+    ``manning_n_overland_grass_short`` or ``manning_n_pipes_concrete``.
+    The reference benchmarks YAML groups those under top-level blocks
+    named with a ``manning_n_`` prefix (e.g. ``manning_n_overland``,
+    ``manning_n_pipes``). The recommender uses those prefixes as the
+    filter: any calibration parameter whose name starts with one of
+    these prefixes is plausibly a Manning's *n* value worth surfacing.
+
+    Returns the empty set when the YAML cannot be loaded or contains
+    no ``manning_n_*`` keys — the caller then yields an empty Manning's
+    block rather than erroring.
+    """
+    try:
+        from agentic_swmm.memory.reference_benchmarks import (
+            load_reference_benchmarks,
+        )
+
+        data = load_reference_benchmarks(benchmarks_path)
+    except Exception:  # pragma: no cover - defensive
+        return set()
+    if not isinstance(data, dict):
+        return set()
+    return {
+        key for key in data.keys() if isinstance(key, str) and key.startswith("manning_n_")
+    }
+
+
+def _extract_recommended_manning_n(
+    parameters: dict[str, Any], benchmarks_path: Path
+) -> dict[str, float]:
+    """Filter ``parameters`` down to keys that look like Manning's *n*.
+
+    Matches the calibration parameter name against the set of
+    ``manning_n_*`` prefixes from ``reference_benchmarks.yaml``. A
+    parameter named e.g. ``manning_n_overland_grass`` matches when
+    ``manning_n_overland`` is one of the known prefixes. Non-numeric
+    values are dropped so the returned dict is always
+    ``str -> float``.
+    """
+    if not parameters:
+        return {}
+    prefixes = _known_manning_n_prefixes(benchmarks_path)
+    if not prefixes:
+        return {}
+    out: dict[str, float] = {}
+    for name, value in parameters.items():
+        if not isinstance(name, str):
+            continue
+        if not any(name.startswith(p) for p in prefixes):
+            continue
+        try:
+            out[name] = float(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _load_known_failure_patterns(
+    source_case: str, store_path: Path
+) -> list[dict[str, Any]]:
+    """Return negative lessons for ``source_case`` as flat dicts.
+
+    Returns the empty list when the store is missing, the case has
+    no lessons, or any read error fires. We surface ``lesson_type``,
+    ``parameters_tried``, ``note``, and ``recorded_at`` so a CLI
+    consumer can rank the lessons by date without instantiating a
+    :class:`NegativeLesson` dataclass.
+    """
+    try:
+        from agentic_swmm.memory.negative_lessons import recall_negative_lessons
+
+        lessons = recall_negative_lessons(store_path, {"case_name": source_case})
+    except Exception:  # pragma: no cover - defensive
+        return []
+    out: list[dict[str, Any]] = []
+    for lesson in lessons:
+        out.append(
+            {
+                "lesson_type": lesson.lesson_type,
+                "parameters_tried": dict(lesson.parameters_tried),
+                "note": lesson.note,
+                "recorded_at": lesson.recorded_at,
+            }
+        )
+    # Newest first — calibration consumers want the most recent
+    # observation when deciding whether a parameter region is still bad.
+    out.sort(key=lambda item: (item.get("recorded_at") or ""), reverse=True)
+    return out
+
+
 def recommend_parameters_for_new_case(
     target_inp: Path,
     *,
@@ -281,6 +434,9 @@ def recommend_parameters_for_new_case(
     attribute_extractor: Callable[[Path], WatershedAttributes] | None = None,
     run_dir: Path | None = None,
     repo_root: Path | None = None,
+    storm_library_path: Path | None = None,
+    negative_lessons_store: Path | None = None,
+    benchmarks_path: Path | None = None,
 ) -> list[TransferRecommendation]:
     """Recommend warm-start parameters for ``target_inp`` from prior cases.
 
@@ -332,6 +488,18 @@ def recommend_parameters_for_new_case(
         repo_root: Root directory the conventional-location lookup
             uses. Defaults to the calibration store's grandparent
             (so ``memory/modeling-memory/x.jsonl`` → project root).
+        storm_library_path: Path to ``storm_library.yaml``. Default:
+            ``<repo_root>/memory/modeling-memory/storm_library.yaml``.
+            Used to resolve the source case's ``case_design_storm_key``
+            into a ``recommended_design_storm`` payload.
+        negative_lessons_store: Path to ``negative_lessons.jsonl``.
+            Default: ``<repo_root>/memory/modeling-memory/negative_lessons.jsonl``.
+            Used to populate ``known_failure_patterns`` for the source
+            case.
+        benchmarks_path: Path to ``reference_benchmarks.yaml``. Default:
+            ``<repo_root>/memory/modeling-memory/reference_benchmarks.yaml``.
+            Used to discover ``manning_n_*`` prefixes that select which
+            calibration parameters land in ``recommended_manning_n``.
 
     Failure modes:
         * Missing ``calibration_store`` → empty list, optional ``llm``
@@ -416,6 +584,24 @@ def recommend_parameters_for_new_case(
     target_case_name = target_inp.stem if hasattr(target_inp, "stem") else str(target_inp)
     n_alternatives = max(0, len(scored) - len(top))
 
+    # Resolve enrichment-store paths once per call so per-source-case
+    # lookups stay cheap and the defaults derive from ``repo_root``.
+    storm_library = (
+        Path(storm_library_path)
+        if storm_library_path is not None
+        else repo_root_path / "memory" / "modeling-memory" / "storm_library.yaml"
+    )
+    negative_store = (
+        Path(negative_lessons_store)
+        if negative_lessons_store is not None
+        else repo_root_path / "memory" / "modeling-memory" / "negative_lessons.jsonl"
+    )
+    benchmarks = (
+        Path(benchmarks_path)
+        if benchmarks_path is not None
+        else repo_root_path / "memory" / "modeling-memory" / "reference_benchmarks.yaml"
+    )
+
     recommendations: list[TransferRecommendation] = []
     for source_case, sim in top:
         best_row = _pick_best_record(by_case.get(source_case, []))
@@ -440,6 +626,13 @@ def recommend_parameters_for_new_case(
                 f"{rationale} — {source_case} calibrated against "
                 f"storm_library.chicago_hyetographs.{storm_key}"
             )
+
+        # Round 3: enrichment. None-tolerant: each helper degrades to
+        # the empty value when its underlying store is missing.
+        design_storm = _resolve_design_storm(storm_key, storm_library)
+        manning_n = _extract_recommended_manning_n(record.parameters, benchmarks)
+        failure_patterns = _load_known_failure_patterns(source_case, negative_store)
+
         recommendations.append(
             TransferRecommendation(
                 target_case=target_case_name,
@@ -450,6 +643,9 @@ def recommend_parameters_for_new_case(
                 rationale=rationale,
                 confidence="memory_informed",
                 n_alternatives=n_alternatives,
+                recommended_design_storm=design_storm,
+                recommended_manning_n=manning_n,
+                known_failure_patterns=failure_patterns,
             )
         )
 

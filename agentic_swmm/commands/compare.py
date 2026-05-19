@@ -60,6 +60,37 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Emit the RunComparison as JSON on stdout instead of a table.",
     )
+    parser.add_argument(
+        "--per-node",
+        action="store_true",
+        help="Expand the full per-node peak-flow table in the default output.",
+    )
+    parser.add_argument(
+        "--per-subcatch",
+        action="store_true",
+        help="Expand the full per-subcatch runoff table in the default output.",
+    )
+    parser.add_argument(
+        "--override-version",
+        action="store_true",
+        help=(
+            "Force the comparison through when the two runs report "
+            "different SWMM solver versions (e.g. 5.1.x vs 5.2.x). "
+            "Without this flag the comparison returns "
+            "verdict='incomparable' to avoid mistaking solver-behaviour "
+            "deltas for parameter-change deltas."
+        ),
+    )
+    parser.add_argument(
+        "--parametric-store",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to parametric_memory.jsonl used as a fallback "
+            "lookup when experiment_provenance.json lacks a swmm_version "
+            "field. Default: no fallback."
+        ),
+    )
     parser.set_defaults(func=main)
 
 
@@ -70,11 +101,19 @@ def main(args: argparse.Namespace) -> int:
         args.run_b,
         metrics=metrics,
         benchmarks_path=args.benchmarks_path,
+        override_version=getattr(args, "override_version", False),
+        parametric_store=getattr(args, "parametric_store", None),
     )
     if getattr(args, "json", False):
         print(json.dumps(comparison.to_dict(), indent=2, sort_keys=True))
     else:
-        print(render_comparison_table(comparison))
+        print(
+            render_comparison_table(
+                comparison,
+                show_per_node=getattr(args, "per_node", False),
+                show_per_subcatch=getattr(args, "per_subcatch", False),
+            )
+        )
     # An "incomparable" verdict exits non-zero so a scripted pipeline can
     # detect the failure mode without parsing JSON. Other verdicts return 0
     # regardless of which run "won" — the verdict is informational, not an

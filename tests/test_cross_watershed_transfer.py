@@ -493,6 +493,10 @@ class TransferRecommendationDataclassTests(unittest.TestCase):
                 "rationale",
                 "confidence",
                 "n_alternatives",
+                # Round 3 additive enrichment fields.
+                "recommended_design_storm",
+                "recommended_manning_n",
+                "known_failure_patterns",
             },
         )
         self.assertEqual(d["objective_name"], "NSE")

@@ -72,6 +72,36 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Emit a machine-readable JSON list instead of a table.",
     )
+    parser.add_argument(
+        "--storm-library",
+        type=Path,
+        default=None,
+        help=(
+            "Path to storm_library.yaml. Defaults to "
+            "memory/modeling-memory/storm_library.yaml under the "
+            "repo root."
+        ),
+    )
+    parser.add_argument(
+        "--negative-lessons",
+        type=Path,
+        default=None,
+        help=(
+            "Path to negative_lessons.jsonl. Defaults to "
+            "memory/modeling-memory/negative_lessons.jsonl under the "
+            "repo root."
+        ),
+    )
+    parser.add_argument(
+        "--benchmarks-path",
+        type=Path,
+        default=None,
+        help=(
+            "Path to reference_benchmarks.yaml. Defaults to "
+            "memory/modeling-memory/reference_benchmarks.yaml under "
+            "the repo root."
+        ),
+    )
     parser.set_defaults(func=main)
 
 
@@ -128,6 +158,56 @@ def _format_table(recs: list[TransferRecommendation]) -> str:
     return "".join(lines)
 
 
+def _format_enrichment_sections(
+    recs: list[TransferRecommendation], *, max_lessons: int = 3
+) -> str:
+    """Render Round-3 enrichment blocks under the main table.
+
+    Each section prints only when at least one recommendation carries
+    a non-empty value for that field. Recommendations are processed in
+    rank order so the highest-similarity source's data leads.
+
+    ``max_lessons`` caps the number of recent failure patterns shown
+    per source so the default human-readable output stays terminal-
+    friendly. The full lessons list is still available via ``--json``.
+    """
+    lines: list[str] = []
+    for rec in recs:
+        if rec.recommended_design_storm is not None:
+            key = rec.recommended_design_storm.get("key") or "(unnamed)"
+            lines.append(
+                f"\nRecommended design storm: {key} from storm_library "
+                f"(source: {rec.source_case})"
+            )
+        if rec.recommended_manning_n:
+            joined = ", ".join(
+                f"{k}={v}" for k, v in sorted(rec.recommended_manning_n.items())
+            )
+            lines.append(
+                f"\nRecommended Manning's n starters from {rec.source_case}: "
+                f"{joined}"
+            )
+        if rec.known_failure_patterns:
+            shown = rec.known_failure_patterns[:max_lessons]
+            lines.append(
+                f"\nKnown failure patterns from {rec.source_case}: "
+                f"{len(rec.known_failure_patterns)} lesson(s) — "
+                f"{len(shown)} most-recent shown"
+            )
+            for lesson in shown:
+                params = lesson.get("parameters_tried") or {}
+                params_str = ", ".join(
+                    f"{k}={v}" for k, v in sorted(params.items())
+                ) or "—"
+                lines.append(
+                    f"  - {lesson.get('lesson_type', '?')}: "
+                    f"params=[{params_str}] note={lesson.get('note') or ''}"
+                )
+    if lines:
+        lines.append("")
+    return "\n".join(lines)
+
+
 def main(args: argparse.Namespace) -> int:
     target = args.inp
     if not target.is_file():
@@ -139,6 +219,9 @@ def main(args: argparse.Namespace) -> int:
             calibration_store=args.calibration_store,
             top_k=args.top_k,
             repo_root=args.repo_root,
+            storm_library_path=args.storm_library,
+            negative_lessons_store=args.negative_lessons,
+            benchmarks_path=args.benchmarks_path,
         )
     except Exception as exc:  # pragma: no cover - defensive
         print(f"error: {exc}", file=sys.stderr)
@@ -154,4 +237,7 @@ def main(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:
         sys.stdout.write(_format_table(recs))
+        enrichment = _format_enrichment_sections(recs)
+        if enrichment:
+            sys.stdout.write(enrichment)
     return 0
