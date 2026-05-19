@@ -284,7 +284,7 @@ def main(args: argparse.Namespace) -> int:
         moc_path = _write_moc(run_dir)
         # M2 audit -> memory auto-trigger. Runs after the audit subprocess
         # succeeded and after the runs/INDEX.md MOC has been regenerated.
-        from agentic_swmm.memory.audit_hook import trigger_memory_refresh
+        from agentic_swmm.memory import trigger_memory_refresh
 
         memory_hook = trigger_memory_refresh(
             run_dir,
