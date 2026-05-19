@@ -171,9 +171,40 @@ def is_param_set_known_bad(
     nothing matches. Tolerance is computed as
     ``abs(candidate - recorded) / max(abs(recorded), 1e-9) * 100`` so
     zero-valued recorded parameters still work without div-by-zero.
+
+    Round 7: when the markdown store
+    (``negative_lessons.md`` next to the given JSONL store) exists, the
+    markdown lookup wins. The JSONL path stays as the back-compat
+    fallback for projects that have not yet run the one-shot migration.
     """
     if tolerance_pct < 0:
         raise ValueError("tolerance_pct must be non-negative")
+
+    md_store = Path(store).with_suffix(".md")
+    if md_store.is_file():
+        from agentic_swmm.memory.negative_lessons_markdown import (
+            is_param_set_known_bad_md,
+        )
+
+        md_match = is_param_set_known_bad_md(
+            md_store,
+            case_name,
+            params,
+            tolerance_pct=tolerance_pct,
+        )
+        if md_match is None:
+            return None
+        # Project the markdown record into the legacy NegativeLesson
+        # shape so existing callers keep their attribute access.
+        return NegativeLesson(
+            run_id=md_match.evidence_runs[0] if md_match.evidence_runs else "",
+            case_name=md_match.case,
+            lesson_type=md_match.lesson_type,
+            parameters_tried=dict(md_match.parameters_tried),
+            metric_observed={},
+            note=md_match.note,
+            recorded_at=md_match.last_seen,
+        )
 
     lessons = recall_negative_lessons(store, {"case_name": case_name})
     if not lessons:

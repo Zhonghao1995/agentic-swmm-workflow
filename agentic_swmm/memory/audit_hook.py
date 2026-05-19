@@ -495,12 +495,38 @@ def _record_negative_lesson_for_continuity_fail(
         note=f"postflight FAIL on {', '.join(sorted(fail_codes))}",
     )
 
-    store_path = memory_dir / "negative_lessons.jsonl"
+    # Round 7: prefer the markdown store when it exists so the curator
+    # gets one file to grep instead of two formats. The JSONL store
+    # stays as the back-compat fallback for projects that have not yet
+    # run the one-shot migration.
+    md_path = memory_dir / "negative_lessons.md"
+    jsonl_path = memory_dir / "negative_lessons.jsonl"
+    if md_path.is_file():
+        try:
+            from agentic_swmm.memory.negative_lessons_markdown import (
+                NegativeLessonMd,
+                _section_name,
+                add_negative_lesson,
+            )
+
+            md_record = NegativeLessonMd(
+                name=_section_name("continuity_fail", case_name),
+                case=case_name,
+                lesson_type="continuity_fail",
+                parameters_tried=dict(parameters_tried),
+                note=f"postflight FAIL on {', '.join(sorted(fail_codes))}",
+                evidence_runs=[run_id],
+            )
+            add_negative_lesson(md_path, md_record)
+        except (ValueError, OSError):
+            return None
+        return str(md_path)
+
     try:
-        record_negative_lesson(store_path, lesson)
+        record_negative_lesson(jsonl_path, lesson)
     except (ValueError, OSError):
         return None
-    return str(store_path)
+    return str(jsonl_path)
 
 
 def _record_calibration_from_provenance(

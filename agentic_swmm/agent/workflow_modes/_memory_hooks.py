@@ -1,5 +1,14 @@
 """Per-adapter memory-consult + gate hooks (Round 1 integration).
 
+Round 7 extension: also surfaces the onboarding chat block when the
+case is new and the user's utterance signals workflow intent. The
+adapter raises :class:`MemoryHITLRequired` from inside ``run`` so the
+existing HITL surface in :mod:`agentic_swmm.agent.runtime` renders the
+chat block. The runtime detects ``decision_point="new_case_onboarding"``
+and renders the message verbatim (the chat block already carries the
+Y/n/customize prompt; we do not need the structured HITL wrapper).
+
+
 The runnable :class:`WorkflowMode` adapters all need the same five
 operations at the top of their ``run`` method:
 
@@ -308,12 +317,116 @@ def _emit_consultation_event(
         return
 
 
+def maybe_offer_onboarding_for_ctx(
+    ctx: Any, *, target_inp: Path | None = None
+) -> None:
+    """Run the onboarding gate; raise ``MemoryHITLRequired`` when it fires.
+
+    Best-effort everywhere — a missing parametric_store path, a
+    recommender exception, or a missing case anchor degrades to a
+    silent no-op. The adapter calls this *after* :func:`consult_memory`
+    so ``ctx.memory_context`` is populated before the HITL escalation
+    surfaces.
+
+    The lookup paths follow the canonical layout:
+
+    * ``AISWMM_MEMORY_DIR`` env var or ``<repo_root>/memory/modeling-memory``
+    * Parametric / calibration / negative-lessons / storm-library /
+      benchmarks files live under that directory by convention.
+    """
+    from agentic_swmm.agent.memory_informed_policy import MemoryHITLRequired
+    from agentic_swmm.agent.onboarding import maybe_offer_onboarding
+
+    case_name = _resolve_case_name(ctx)
+    if not case_name:
+        return
+
+    utterance = getattr(ctx, "goal", "") or ""
+
+    memory_dir = _resolve_memory_dir(ctx)
+    parametric_store = memory_dir / "parametric_memory.jsonl"
+    calibration_store = memory_dir / "calibration_memory.jsonl"
+    negative_store = memory_dir / "negative_lessons.jsonl"
+    storm_library = memory_dir / "storm_library.yaml"
+    benchmarks = memory_dir / "reference_benchmarks.yaml"
+
+    try:
+        decision = maybe_offer_onboarding(
+            case_name=case_name,
+            utterance=utterance,
+            target_inp=target_inp,
+            parametric_store=parametric_store,
+            calibration_store=calibration_store,
+            negative_lessons_store=negative_store,
+            storm_library_path=storm_library,
+            benchmarks_path=benchmarks,
+            top_k=3,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return
+
+    if not decision.triggered or not decision.chat_block:
+        return
+
+    _emit_onboarding_event(ctx, decision)
+
+    raise MemoryHITLRequired(
+        decision.chat_block,
+        memory_context=getattr(ctx, "memory_context", None),
+        decision_point="new_case_onboarding",
+        proposed_action="apply_transfer_learning_defaults",
+    )
+
+
+def _resolve_memory_dir(ctx: Any) -> Path:
+    import os
+
+    override = os.environ.get("AISWMM_MEMORY_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    # Best-effort: walk up from session_dir until ``memory/modeling-memory``
+    # is found; otherwise fall back to ``./memory/modeling-memory``.
+    session_dir = getattr(ctx, "session_dir", None)
+    if session_dir is not None:
+        current = Path(session_dir).resolve()
+        for _ in range(6):
+            candidate = current / "memory" / "modeling-memory"
+            if candidate.is_dir():
+                return candidate
+            if current.parent == current:
+                break
+            current = current.parent
+    return Path.cwd() / "memory" / "modeling-memory"
+
+
+def _emit_onboarding_event(ctx: Any, decision: Any) -> None:
+    """Best-effort ``memory_consultation`` event for the onboarding gate."""
+    trace_path = getattr(ctx, "trace_path", None)
+    if trace_path is None:
+        return
+    try:
+        from agentic_swmm.agent.reporting import write_memory_consultation
+
+        write_memory_consultation(
+            Path(trace_path),
+            kind="new_case_onboarding",
+            case_meta={"case_name": decision.target_case},
+            evidence_count=len(decision.recommendations),
+            consensus_fields=[],
+            ambiguous_fields=[],
+            queried_at_utc=None,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return
+
+
 __all__ = [
     "PostflightGateResult",
     "PreflightGateResult",
     "consult_memory",
     "format_postflight_failure",
     "format_preflight_failure",
+    "maybe_offer_onboarding_for_ctx",
     "run_postflight_gate",
     "run_preflight_gate",
 ]

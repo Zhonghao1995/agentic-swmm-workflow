@@ -87,15 +87,30 @@ def run_openai_plan(
             # ``memory_trace.jsonl`` and ``memory_informed_policy``
             # trace events; the formatted prompt is the human-facing
             # surface.
+            #
+            # Round 7: ``new_case_onboarding`` carries a fully-rendered
+            # chat block (the recommender's recommendations plus the
+            # Y/n/customize prompt). Wrapping it in the structured HITL
+            # template would double the question and dilute the call to
+            # action, so we surface the chat block verbatim.
             ctx = getattr(escalation, "memory_context", None) or MemoryContext()
-            final_text = format_hitl_prompt(
-                getattr(escalation, "message", "") or str(escalation),
-                ctx,
-                decision_point=getattr(
-                    escalation, "decision_point", "unknown"
-                ),
-                proposed_action=getattr(escalation, "proposed_action", None),
+            decision_point = getattr(
+                escalation, "decision_point", "unknown"
             )
+            raw_message = (
+                getattr(escalation, "message", "") or str(escalation)
+            )
+            if decision_point == "new_case_onboarding":
+                final_text = raw_message
+            else:
+                final_text = format_hitl_prompt(
+                    raw_message,
+                    ctx,
+                    decision_point=decision_point,
+                    proposed_action=getattr(
+                        escalation, "proposed_action", None
+                    ),
+                )
             write_event(
                 trace_path,
                 {

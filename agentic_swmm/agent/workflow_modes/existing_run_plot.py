@@ -14,7 +14,10 @@ from agentic_swmm.agent.workflow_modes._helpers import (
     plot_choice_prompt,
     plot_output_path,
 )
-from agentic_swmm.agent.workflow_modes._memory_hooks import consult_memory
+from agentic_swmm.agent.workflow_modes._memory_hooks import (
+    consult_memory,
+    maybe_offer_onboarding_for_ctx,
+)
 from agentic_swmm.agent.workflow_modes.base import WorkflowContext, register
 
 
@@ -35,6 +38,11 @@ class ExistingRunPlotMode:
         # Round 1 memory integration: consult to populate ctx.memory_context.
         # This mode does not run SWMM so no pre/postflight gate fires.
         consult_memory(ctx)
+
+        # Round 7: plot-only mode never has an INP. The onboarding gate
+        # still fires for new cases as long as the recommender resolves
+        # any candidate attributes from the conventional layout.
+        maybe_offer_onboarding_for_ctx(ctx, target_inp=None)
 
         run_dir = str(ctx.route.get("provided_values", {}).get("run_dir") or ctx.session_dir)
 

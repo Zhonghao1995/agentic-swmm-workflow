@@ -11,7 +11,10 @@ text rather than declarative state, so it stays at the call site.
 from __future__ import annotations
 
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.agent.workflow_modes._memory_hooks import consult_memory
+from agentic_swmm.agent.workflow_modes._memory_hooks import (
+    consult_memory,
+    maybe_offer_onboarding_for_ctx,
+)
 from agentic_swmm.agent.workflow_modes.base import WorkflowContext, register
 
 
@@ -33,6 +36,13 @@ class AuditOnlyOrComparisonMode:
         # so no gate fires; the consult still populates ctx.memory_context
         # for any downstream decision hook the audit_run tool consults.
         consult_memory(ctx)
+
+        # Round 7: audit-only mode never has an INP to extract attributes
+        # from (it ingests existing run artifacts), so target_inp=None.
+        # The gate still fires when the case is genuinely new and the
+        # recommender can resolve candidate attributes from the
+        # conventional location lookup.
+        maybe_offer_onboarding_for_ctx(ctx, target_inp=None)
 
         run_dir = str(ctx.route.get("provided_values", {}).get("run_dir") or "")
         if not run_dir:
