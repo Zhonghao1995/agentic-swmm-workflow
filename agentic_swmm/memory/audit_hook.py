@@ -355,6 +355,97 @@ def _record_parametric_from_provenance(
     return str(store_path)
 
 
+def _record_negative_lesson_for_continuity_fail(
+    *, run_dir: Path, memory_dir: Path
+) -> str | None:
+    """Bridge audit -> negative_lessons when continuity classifies FAIL.
+
+    PRD-06 Phase C.2 integration: a run that posts continuity values
+    above the FAIL band leaves a parametric record (the parametric
+    bridge ran first). When that record exists AND continuity is in
+    the FAIL band, also write a negative_lesson so the agent will not
+    re-propose the same parameter region next time.
+
+    The "FAIL band" thresholds follow the same conservative library
+    fallbacks the runtime gate uses (``postflight.py``): runoff
+    continuity above 10% magnitude, or flow continuity above 5%. We
+    keep them in-line rather than re-importing the YAML resolver so a
+    broken benchmarks file never blocks the lesson record.
+
+    Returns the negative-lessons store path on success, ``None`` when
+    no lesson was written (no provenance, no continuity values, not in
+    FAIL band, missing required fields, write error). Soft-fail
+    everywhere — same contract as the parametric / calibration bridges.
+    """
+    from agentic_swmm.memory.negative_lessons import (
+        NegativeLesson,
+        record_negative_lesson,
+    )
+
+    provenance = _read_provenance(run_dir)
+    if not provenance:
+        return None
+
+    run_id = str(provenance.get("run_id") or "").strip()
+    case_name = str(provenance.get("case_name") or "").strip()
+    if not run_id or not case_name:
+        return None
+
+    metrics = provenance.get("metrics") or {}
+    continuity = (metrics.get("continuity_error") or {}).get("values") or {}
+    metric_observed: dict[str, float] = {}
+    fail_codes: list[str] = []
+    for key, threshold in (("runoff", 10.0), ("flow", 5.0)):
+        if key not in continuity:
+            continue
+        try:
+            value = float(continuity[key])
+        except (TypeError, ValueError):
+            continue
+        metric_observed[f"{key}_continuity_pct"] = value
+        if abs(value) >= threshold:
+            fail_codes.append(f"{key}_continuity_pct")
+
+    if not fail_codes:
+        # PASS / WARN — nothing for the negative-lessons store.
+        return None
+
+    # Parameters tried: pull whatever the calibration block or the
+    # provenance ``parameters`` block carries. A FAIL on an un-tuned
+    # run still records the metric so the next caller can still spot
+    # the case-level pattern even without a parameter set.
+    parameters_tried: dict[str, float] = {}
+    calibration = provenance.get("calibration") or {}
+    if isinstance(calibration, dict):
+        for name, value in (calibration.get("parameters") or {}).items():
+            try:
+                parameters_tried[str(name)] = float(value)
+            except (TypeError, ValueError):
+                continue
+    if not parameters_tried:
+        for name, value in (provenance.get("parameters") or {}).items():
+            try:
+                parameters_tried[str(name)] = float(value)
+            except (TypeError, ValueError):
+                continue
+
+    lesson = NegativeLesson(
+        run_id=run_id,
+        case_name=case_name,
+        lesson_type="continuity_fail",
+        parameters_tried=parameters_tried,
+        metric_observed=metric_observed,
+        note=f"postflight FAIL on {', '.join(sorted(fail_codes))}",
+    )
+
+    store_path = memory_dir / "negative_lessons.jsonl"
+    try:
+        record_negative_lesson(store_path, lesson)
+    except (ValueError, OSError):
+        return None
+    return str(store_path)
+
+
 def _record_calibration_from_provenance(
     *, run_dir: Path, memory_dir: Path
 ) -> str | None:
@@ -625,6 +716,21 @@ def trigger_memory_refresh(
             result["calibration_memory"] = calibration_path
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"calibration memory write failed: {exc}")
+
+    # PRD-06 Phase C.2: bridge audit -> negative_lessons when continuity
+    # classifies FAIL AND the parametric bridge already produced a row.
+    # The parametric record is the eligibility marker: a run that never
+    # made it into parametric_memory should not seed a negative lesson.
+    # Soft-fail: any write error never blocks the audit.
+    if result.get("parametric_memory"):
+        try:
+            negative_path = _record_negative_lesson_for_continuity_fail(
+                run_dir=run_dir, memory_dir=memory_dir
+            )
+            if negative_path:
+                result["negative_lessons"] = negative_path
+        except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+            result["errors"].append(f"negative lesson write failed: {exc}")
 
     # ME-2 (issue #62): apply confidence decay + status transitions
     # AFTER the metadata bump. Retired patterns are moved into
