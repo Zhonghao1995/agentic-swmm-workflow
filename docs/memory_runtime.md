@@ -233,6 +233,60 @@ The duplication is intentional. The chat-note generator reads the
 agent trace; the audit hook reads the memory trace; both consumers
 can stay loosely coupled because they never share a file.
 
+## Honesty layer & opt-outs
+
+The runtime gates a small set of trust-breakers so a downstream
+``&&``-chained script cannot accept a manifest that looks healthy
+when SWMM in fact reported `ERROR`. The substrate lives in
+`agentic_swmm/agent/honesty.py` and is wired through three surfaces:
+
+* **Postflight gate**: after every SWMM invocation, `postflight_qa`
+  scans the `.rpt` for verbatim `ERROR \d+:` lines and surfaces them
+  as a `swmm_solver_error` failure on the `QAReport`. `aiswmm run`
+  uses this to exit non-zero with the verbatim error line on stderr;
+  the manifest is still written so an audit can inspect the run.
+* **STUB banner**: while the calibration solver hookup is still
+  synthetic, `aiswmm calibrate` prints a prominent warning at the
+  top of every invocation so the deterministic stub output cannot be
+  mistaken for a real result. The verb also refuses to start when
+  `--base-inp` does not exist (fail-fast with exit code 2).
+* **Silent-default / silent-override notices**: `aiswmm storm`
+  emits a stderr `note:` line when `--shape` is omitted (default
+  `uniform`) and a stderr `warning:` line when `--depth-mm` is
+  silently overridden by `--idf`.
+
+Set `AISWMM_DISABLE_HONESTY_LAYER=1` to restore the legacy "always
+exit 0" path for `aiswmm run`. The opt-out is documented in
+`aiswmm doctor`'s **Runtime knobs** section so a user who set it can
+see what state they're in. Set it on a per-invocation basis when
+intentionally consuming partial runs (replay tooling, archival
+fixers); leave it unset for interactive modeling work.
+
+## Doctor sections
+
+`aiswmm doctor` prints five sections in this order:
+
+1. **Install** — Python, swmm5, MCP routing, package skills.
+2. **Memory stores** — file existence, row counts, last-modified
+   timestamps, and verified-entry counts for every store under
+   `memory/modeling-memory/`. A fresh PyPI install shows seven
+   `MISSING` rows pointing the user at `aiswmm bootstrap memory`
+   or the YAML-library copy paths.
+3. **Runtime knobs** — current state (set/unset and raw value) of
+   the five opt-out env vars: `AISWMM_DISABLE_MEMORY_INFORMED`,
+   `AISWMM_DISABLE_SWMM_GATES`, `AISWMM_DISABLE_HONESTY_LAYER`,
+   `AISWMM_DISABLE_WELCOME`, `AISWMM_MEMORY_DIR`.
+4. **Issues (grouped)** — WARN/MISSING rows from the install block
+   with identical-cause rows collapsed into one summary. When 11
+   MCP servers all drift to the same checkout, the section reports
+   "11 MCP servers drift to <path>" once with one remediation line.
+5. **Suggested actions** — when remediable issues exist, doctor
+   lists the commands that would fix them. Pass `--fix` to walk
+   each one interactively (`--yes` skips the per-action prompt).
+
+`aiswmm doctor --json` emits the full report as JSON on stdout so
+CI integrations can parse it without scraping the text layout.
+
 ## Adding a new verb
 
 The drift bug PRD-04 warned about (three files in lockstep) is now

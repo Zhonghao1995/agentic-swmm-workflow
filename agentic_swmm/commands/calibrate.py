@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.honesty import STUB_BANNER, fail_fast_if_path_missing
 from agentic_swmm.agent.swmm_runtime.calibration_runner import (
     CalibrationRunConfig,
     run_calibration_with_checkpoints,
@@ -80,8 +81,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--observed-csv",
         type=Path,
-        required=True,
-        help="Observed CSV path (stamped into config; not opened by the stub).",
+        default=None,
+        help=(
+            "Observed CSV path (stamped into config; not opened by the "
+            "stub). Optional while the synthetic walker is in place."
+        ),
     )
     parser.add_argument(
         "--param",
@@ -119,6 +123,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help=(
             "When --progress is set, emit a line every N checkpointed "
             "iterations (default 1)."
+        ),
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help=(
+            "Suppress the STUB banner. The banner is emitted while the "
+            "real solver hookup is pending; --quiet hides it for "
+            "scripted callers that already know."
         ),
     )
     parser.set_defaults(func=main)
@@ -159,6 +172,17 @@ def _append_trace_line(run_dir: Path, payload: dict[str, Any]) -> None:
 
 
 def main(args: argparse.Namespace) -> int:
+    # PRD-08 A.1 (audit #2): print the STUB banner to stdout before any
+    # numbers appear so a domain user cannot mistake the synthetic walker
+    # for a real calibration. --quiet suppresses it for scripted callers.
+    if not getattr(args, "quiet", False):
+        print(STUB_BANNER)
+
+    # PRD-08 A.1 (audit #2): the synthetic walker historically claimed
+    # success even when --base-inp pointed at a non-existent file.
+    # Refuse to start with an actionable stderr error.
+    fail_fast_if_path_missing(args.base_inp, "--base-inp")
+
     try:
         parameters = _parse_param_specs(args.param)
     except ValueError as exc:

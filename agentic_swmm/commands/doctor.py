@@ -8,6 +8,20 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from agentic_swmm.commands.doctor_extension import (
+    apply_fix_actions,
+    collect_fix_actions,
+    collect_memory_store_status,
+    collect_optout_status,
+    fix_action_to_dict,
+    group_identical_warns,
+    grouped_warn_to_dict,
+    memory_store_status_to_dict,
+    optout_status_to_dict,
+    render_grouped_warns_section,
+    render_memory_stores_section,
+    render_runtime_knobs_section,
+)
 from agentic_swmm.config import mcp_registry_path
 from agentic_swmm.utils.paths import repo_root
 
@@ -158,39 +172,102 @@ def _is_git_worktree(root: Path) -> bool:
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("doctor", help="Check local runtime dependencies.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=(
+            "Emit the full doctor report as JSON on stdout instead of "
+            "the human-readable sections. Useful for CI integration."
+        ),
+    )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help=(
+            "After printing the report, walk through the suggested "
+            "remediations (mcp.json refresh, bootstrap memory). Each "
+            "action prompts y/N unless --yes is set."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "When combined with --fix, apply remediations without "
+            "asking for confirmation. Safe for CI/automation."
+        ),
+    )
     parser.set_defaults(func=main)
 
 
-def main(args: argparse.Namespace) -> int:
-    root = repo_root()
+def _memory_dir(root: Path) -> Path:
+    """Resolve the active memory directory.
+
+    Honours ``AISWMM_MEMORY_DIR`` so a user who redirected memory sees
+    the redirected location in the doctor report.
+    """
+    override = os.environ.get("AISWMM_MEMORY_DIR")
+    if override:
+        return Path(override)
+    return root / "memory" / "modeling-memory"
+
+
+def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
+    """The historical install-checks block, factored so the JSON path
+    and the text path share one source of truth."""
     checks: list[tuple[str, bool, str, bool]] = []
     checks.append(("repo root", root.exists(), str(root), True))
-    # Issue #113: warn when the editable install resolves into a
-    # Claude Code worktree. pip install -e . inside .claude/worktrees/
-    # pins the runtime to that branch's snapshot; main can move forward
-    # while the user keeps running stale code. Non-fatal — the user
-    # decides when to re-install.
     worktree_detail = _worktree_install_detail(root)
     if worktree_detail is not None:
         checks.append(("editable install", False, worktree_detail, False))
-    # Issue #114: warn when ~/.aiswmm/mcp.json routes any MCP server to
-    # a launcher path outside the active editable install. Each drifted
-    # server gets its own WARN row so the user can see which servers
-    # the runtime is actually loading from elsewhere.
     for server_name, drift_detail in _mcp_json_drift(root):
         checks.append(
             (f"mcp.json: {server_name}", False, drift_detail, False)
         )
-    checks.append(("OPENAI_API_KEY", bool(os.environ.get("OPENAI_API_KEY")), "set" if os.environ.get("OPENAI_API_KEY") else "not set; needed for OpenAI agent planner mode", False))
+    checks.append(
+        (
+            "OPENAI_API_KEY",
+            bool(os.environ.get("OPENAI_API_KEY")),
+            "set"
+            if os.environ.get("OPENAI_API_KEY")
+            else "not set; needed for OpenAI agent planner mode",
+            False,
+        )
+    )
     claude = shutil.which("claude")
-    checks.append(("claude code CLI", claude is not None, claude or "not found; optional future provider", False))
+    checks.append(
+        (
+            "claude code CLI",
+            claude is not None,
+            claude or "not found; optional future provider",
+            False,
+        )
+    )
     node = shutil.which("node")
-    checks.append(("node executable", node is not None, node or "not found; needed for MCP server launchers", True))
+    checks.append(
+        (
+            "node executable",
+            node is not None,
+            node or "not found; needed for MCP server launchers",
+            True,
+        )
+    )
     swmm = _which_swmm5()
-    swmm_detail = f"{swmm}; {_swmm_version() or 'version unavailable'}" if swmm else "not found on PATH or repo .local/bin"
+    swmm_detail = (
+        f"{swmm}; {_swmm_version() or 'version unavailable'}"
+        if swmm
+        else "not found on PATH or repo .local/bin"
+    )
     checks.append(("swmm5 executable", swmm is not None, swmm_detail, True))
     for module in ("numpy", "matplotlib", "swmmtoolbox"):
-        checks.append((f"python module: {module}", _module_available(module), "importable" if _module_available(module) else "missing", True))
+        checks.append(
+            (
+                f"python module: {module}",
+                _module_available(module),
+                "importable" if _module_available(module) else "missing",
+                True,
+            )
+        )
     for path in (
         Path("skills/swmm-runner/scripts/swmm_runner.py"),
         Path("skills/swmm-experiment-audit/scripts/audit_run.py"),
@@ -199,10 +276,105 @@ def main(args: argparse.Namespace) -> int:
     ):
         full = root / path
         checks.append((str(path), full.exists(), str(full), True))
+    return checks
 
-    ok = True
-    for name, passed, detail, required in checks:
-        ok = ok and (passed or not required)
-        status = "OK" if passed else ("MISSING" if required else "WARN")
-        print(f"{status:7} {name} - {detail}")
+
+def _checks_to_dicts(
+    checks: list[tuple[str, bool, str, bool]],
+) -> list[dict]:
+    return [
+        {
+            "name": name,
+            "passed": passed,
+            "detail": detail,
+            "required": required,
+        }
+        for (name, passed, detail, required) in checks
+    ]
+
+
+def main(args: argparse.Namespace) -> int:
+    root = repo_root()
+    install_checks = _build_install_checks(root)
+    install_check_dicts = _checks_to_dicts(install_checks)
+
+    memory_dir = _memory_dir(root)
+    memory_stores = collect_memory_store_status(memory_dir)
+    optout_flags = collect_optout_status()
+
+    # Pull the non-passing rows into a WARN/MISSING bucket so the
+    # grouping can collapse identical-cause WARNs (PRD-08 audit #28).
+    warn_or_missing = [
+        d for d in install_check_dicts if not d["passed"]
+    ]
+    grouped = group_identical_warns(warn_or_missing)
+
+    report = {
+        "checks": install_check_dicts,
+        "memory_stores": memory_stores,
+        "optout_status": optout_flags,
+        "grouped_warns": grouped,
+    }
+
+    if getattr(args, "json", False):
+        payload = {
+            "checks": install_check_dicts,
+            "memory_stores": [
+                memory_store_status_to_dict(s) for s in memory_stores
+            ],
+            "optout_status": [
+                optout_status_to_dict(s) for s in optout_flags
+            ],
+            "grouped_warns": [grouped_warn_to_dict(r) for r in grouped],
+        }
+        # When --fix is set we still print the fix-action candidates
+        # so a CI consumer can decide what to run.
+        if getattr(args, "fix", False):
+            payload["fix_actions"] = [
+                fix_action_to_dict(a) for a in collect_fix_actions(report)
+            ]
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        # Section 1 — Install.
+        print("Install:")
+        for name, passed, detail, required in install_checks:
+            status = "OK" if passed else ("MISSING" if required else "WARN")
+            # Skip rows that have been absorbed into a grouped WARN; the
+            # grouped section will display them.
+            if not passed:
+                continue
+            print(f"  {status:7} {name} - {detail}")
+        # Section 2 — Memory stores.
+        print()
+        print(render_memory_stores_section(memory_stores))
+        # Section 3 — Runtime knobs.
+        print()
+        print(render_runtime_knobs_section(optout_flags))
+        # Section 4 — Issues (grouped).
+        body = render_grouped_warns_section(grouped)
+        if body:
+            print()
+            print(body)
+        # Section 5 — Suggested actions.
+        fix_actions = collect_fix_actions(report)
+        if fix_actions and not getattr(args, "fix", False):
+            print()
+            print("Suggested actions (run `aiswmm doctor --fix` to apply):")
+            for action in fix_actions:
+                print(f"  - {action.label}: {' '.join(action.command)}")
+
+    # ---- --fix interactive remediation
+    if getattr(args, "fix", False):
+        actions = collect_fix_actions(report)
+        if not actions:
+            print("\nno remediable actions available.")
+        else:
+            print("\nApplying fixes:")
+            apply_fix_actions(actions, yes=getattr(args, "yes", False))
+
+    # Overall exit code: 0 iff every required install check passed AND
+    # no MEMORY-store store is missing in a way that would block the
+    # core verbs. MISSING memory stores are advisory; required install
+    # rows decide the exit code.
+    ok = all(passed or not required for (_, passed, _, required) in install_checks)
     return 0 if ok else 1

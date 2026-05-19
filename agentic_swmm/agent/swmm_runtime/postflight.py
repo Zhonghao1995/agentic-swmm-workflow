@@ -27,6 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.honesty import scan_rpt_for_errors
 from agentic_swmm.memory.benchmark_resolver import (
     default_project_overrides_path,
     resolve_threshold,
@@ -251,6 +252,20 @@ def postflight_qa(
         )
         report.status = "FAIL"
         return report
+
+    # PRD-08 A.1 (audit #1): scan for verbatim SWMM ERROR lines before
+    # touching continuity. A solver error means the rpt cannot be
+    # trusted — surface the first error line so downstream callers see
+    # a structured FAIL instead of "continuity_parsed: false". The
+    # continuity parse still runs because postflight has historically
+    # been best-effort; bumping the report status to FAIL is enough to
+    # gate the dispatch pipeline.
+    error_lines = scan_rpt_for_errors(rpt)
+    if error_lines:
+        report.failures.append(
+            {"code": "swmm_solver_error", "detail": error_lines[0]}
+        )
+        report._bump("FAIL")
 
     metrics = parse_continuity_from_rpt(text)
     benchmarks = benchmarks_path or _resolve_default_benchmarks_path()

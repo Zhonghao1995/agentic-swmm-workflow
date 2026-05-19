@@ -66,26 +66,23 @@ def test_doctor_warns_when_mcp_json_routes_to_a_different_checkout(
     monkeypatch.setenv("AISWMM_CONFIG_DIR", str(config_dir))
     monkeypatch.setattr(doctor, "repo_root", lambda: active_root)
 
-    doctor.main(argparse.Namespace())
+    # PRD-08 A.1 (audit #5/#28): the historical layout emitted one
+    # ``WARN `` line per drifted server. The grouped-warns layout
+    # collapses identical-cause rows into the new ``Issues:`` section,
+    # so the test now checks that section instead.
+    namespace = argparse.Namespace(json=False, fix=False, yes=False)
+    doctor.main(namespace)
     output = capsys.readouterr().out
 
-    warn_lines = [
-        line for line in output.splitlines() if line.startswith("WARN")
-    ]
-    drift_lines = [line for line in warn_lines if "mcp.json" in line.lower()]
-    assert drift_lines, (
-        f"expected a WARN row mentioning mcp.json drift; got:\n{output}"
+    # The grouped WARN must mention the drift target and the fix.
+    assert "MCP server" in output and "drift" in output, (
+        f"expected grouped MCP-drift summary; got:\n{output}"
     )
-    # The drift WARN should mention the drifted checkout path so the
-    # user can see which checkout the runtime is actually loading from.
-    assert any(str(other_root) in line for line in drift_lines), (
-        f"expected drift WARN to reference the other checkout; got:\n"
-        f"{drift_lines}"
+    assert str(other_root) in output, (
+        f"expected drift summary to reference the other checkout; got:\n{output}"
     )
-    # And the remediation hint must point at --refresh-mcp.
-    assert any("--refresh-mcp" in line for line in drift_lines), (
-        f"expected --refresh-mcp remediation in drift WARN; got:\n"
-        f"{drift_lines}"
+    assert "--refresh-mcp" in output, (
+        f"expected --refresh-mcp remediation in grouped output; got:\n{output}"
     )
 
 
@@ -105,14 +102,14 @@ def test_doctor_does_not_warn_when_mcp_json_matches_active_checkout(
     monkeypatch.setenv("AISWMM_CONFIG_DIR", str(config_dir))
     monkeypatch.setattr(doctor, "repo_root", lambda: active_root)
 
-    doctor.main(argparse.Namespace())
+    namespace = argparse.Namespace(json=False, fix=False, yes=False)
+    doctor.main(namespace)
     output = capsys.readouterr().out
 
-    for line in output.splitlines():
-        if line.startswith("WARN"):
-            assert "mcp.json" not in line.lower(), (
-                f"unexpected mcp.json WARN when paths are aligned: {line}"
-            )
+    # When paths align the grouped MCP-drift summary must not appear.
+    assert "MCP server" not in output or "drift" not in output, (
+        f"unexpected MCP-drift summary when paths are aligned: {output}"
+    )
 
 
 def test_doctor_skips_mcp_drift_check_when_no_mcp_json_exists(
@@ -130,13 +127,12 @@ def test_doctor_skips_mcp_drift_check_when_no_mcp_json_exists(
     monkeypatch.setenv("AISWMM_CONFIG_DIR", str(config_dir))
     monkeypatch.setattr(doctor, "repo_root", lambda: active_root)
 
-    rc = doctor.main(argparse.Namespace())
+    namespace = argparse.Namespace(json=False, fix=False, yes=False)
+    rc = doctor.main(namespace)
     output = capsys.readouterr().out
 
-    for line in output.splitlines():
-        if line.startswith("WARN"):
-            assert "mcp.json" not in line.lower(), (
-                f"unexpected mcp.json WARN when mcp.json is absent: {line}"
-            )
+    assert "MCP server" not in output or "drift" not in output, (
+        f"unexpected MCP-drift summary when mcp.json is absent: {output}"
+    )
     # Doctor still completes (no crash).
     assert isinstance(rc, int)
