@@ -5,10 +5,16 @@ import hashlib
 import json
 import re
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.honesty import (
+    SwmmRunError,
+    assert_swmm_run_ok,
+    is_honesty_layer_disabled,
+)
 from agentic_swmm.utils.paths import repo_root, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
@@ -211,4 +217,25 @@ def main(args: argparse.Namespace) -> int:
     print(result.stdout.strip())
     print(f"run directory: {run_dir}")
     print("standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, manifest.json, command_trace.json")
+
+    # PRD-08 A.1 (audit #1): the runner historically returned 0 even
+    # when SWMM wrote ``ERROR \d+:`` lines into the .rpt. The manifest
+    # has already been written (so downstream auditors can still see
+    # what happened); now we surface the verbatim error line to stderr
+    # and exit non-zero so an ``&&``-chained pipeline aborts cleanly.
+    # The ``AISWMM_DISABLE_HONESTY_LAYER`` env var preserves the legacy
+    # path for callers that intentionally accept partial runs.
+    if not is_honesty_layer_disabled() and runner_files.get("rpt"):
+        rpt_path = Path(runner_files["rpt"])
+        try:
+            assert_swmm_run_ok(rpt_path)
+        except SwmmRunError as exc:
+            for line in exc.error_lines:
+                print(line, file=sys.stderr)
+            print(
+                f"error: SWMM reported {len(exc.error_lines)} error(s); "
+                f"see {rpt_path}",
+                file=sys.stderr,
+            )
+            return 1
     return result.return_code

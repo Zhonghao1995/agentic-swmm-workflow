@@ -13,8 +13,22 @@ from agentic_swmm.cli import main as cli_main
 
 
 def _build_args(run_dir: Path, *, print_every: int = 2, total: int = 6) -> list[str]:
+    # PRD-08 A.1: ``aiswmm calibrate`` now refuses to start when
+    # ``--base-inp`` does not exist. The stub doesn't open the file, but
+    # the existence check is the trust-restoring fix. Tests create a
+    # placeholder so the wiring under exercise is the calibration loop,
+    # not the path-check. ``--quiet`` suppresses the STUB banner so the
+    # stdout-parsing assertions below stay focused on the structured
+    # progress lines + JSON summary.
+    inp_path = run_dir / "model.inp"
+    if not inp_path.exists():
+        inp_path.write_text("[TITLE]\nstub\n", encoding="utf-8")
+    obs_path = run_dir / "obs.csv"
+    if not obs_path.exists():
+        obs_path.write_text("t,q\n", encoding="utf-8")
     return [
         "calibrate",
+        "--quiet",
         "--run-id",
         "cli-r1",
         "--algorithm",
@@ -24,9 +38,9 @@ def _build_args(run_dir: Path, *, print_every: int = 2, total: int = 6) -> list[
         "--checkpoint-every",
         "1",
         "--base-inp",
-        str(run_dir / "model.inp"),
+        str(inp_path),
         "--observed-csv",
-        str(run_dir / "obs.csv"),
+        str(obs_path),
         "--param",
         "manning_n=0.01,0.03",
         "--objective",

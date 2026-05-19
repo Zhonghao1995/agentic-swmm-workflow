@@ -22,6 +22,10 @@ import argparse
 import sys
 from pathlib import Path
 
+from agentic_swmm.agent.honesty import (
+    emit_silent_default_warning,
+    emit_silent_override_warning,
+)
 from agentic_swmm.agent.swmm_runtime.design_storm import (
     chicago_hyetograph,
     generate_design_storm,
@@ -74,10 +78,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--shape",
         choices=_SHAPE_CHOICES,
-        default="uniform",
+        default=None,
         help=(
             "Hyetograph shape. ``chicago`` / ``huff`` / ``scs`` are the "
-            "new engineering shapes; the others are the primitive shapes."
+            "new engineering shapes; the others are the primitive shapes. "
+            "Defaults to ``uniform`` with a stderr notice; pass --shape "
+            "explicitly to silence the notice."
         ),
     )
     parser.add_argument(
@@ -193,6 +199,22 @@ def _parse_idf(text: str) -> dict[str, float]:
 
 
 def main(args: argparse.Namespace) -> int:
+    # PRD-08 A.1 (audit #11): the historical default was a silent
+    # ``uniform`` shape. A modeler asking for "a 25 mm 1-hour storm"
+    # usually wants a Chicago / triangular shape; surface the default
+    # to stderr so the choice is at least visible. Library lookups
+    # below override the shape, so the notice only fires when the user
+    # truly omitted both ``--shape`` and ``--from-library``.
+    shape_was_user_supplied = args.shape is not None
+    if not shape_was_user_supplied and not args.from_library:
+        emit_silent_default_warning(
+            flag_omitted="--shape",
+            default_chosen="uniform",
+            hint="pass --shape chicago for IDF-driven hyetograph",
+        )
+    if args.shape is None:
+        args.shape = "uniform"
+
     # ---- Resolve a storm_library override ahead of shape dispatch.
     library_overrides: dict[str, object] = {}
     if args.from_library:
@@ -215,6 +237,17 @@ def main(args: argparse.Namespace) -> int:
         }
         # The library always implies a Chicago shape on this key.
         args.shape = "chicago"
+
+    # PRD-08 A.1 (audit #12): when ``--idf`` is set the runtime
+    # computes the depth from the IDF integral and silently drops
+    # ``--depth-mm``. A modeler who asked for 25 mm got 72.19 mm
+    # without warning. Emit the override notice before computing.
+    if args.shape == "chicago" and args.idf and args.depth_mm is not None:
+        emit_silent_override_warning(
+            flag_user_set="--depth-mm",
+            flag_user_value=args.depth_mm,
+            reason="--idf is set; computed depth from IDF will be used",
+        )
 
     duration_min = args.duration_min
     if duration_min is None:

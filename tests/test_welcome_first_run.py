@@ -120,6 +120,15 @@ class ExtendedWelcomeRenderTests(unittest.TestCase):
         for token in ("SWMM", "Calibrate", "uncertainty", "lessons"):
             self.assertIn(token, text)
 
+    def test_includes_memory_verb_capability_bullet(self) -> None:
+        # PRD-08 A.1 (audit #36): the welcome banner historically did
+        # not surface the new memory-aware verbs. A modeler reading the
+        # tour must see at least the canonical compare/transfer/cite
+        # triad so they can discover them without grep-ing the source.
+        text = welcome.render_extended_welcome()
+        for token in ("compare", "transfer", "cite"):
+            self.assertIn(token, text)
+
     def test_includes_things_to_try(self) -> None:
         text = welcome.render_extended_welcome()
         self.assertIn("Things to try", text)

@@ -12,6 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
+from agentic_swmm.agent.honesty import fail_fast_if_path_missing
 from agentic_swmm.agent.swmm_runtime.compare import (
     compare_runs,
     render_comparison_table,
@@ -95,6 +96,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def main(args: argparse.Namespace) -> int:
+    # PRD-08 A.1 (audit #16): historically a missing ``--run-a`` or
+    # ``--run-b`` directory produced ``verdict: incomparable`` after
+    # rendering a comparison table. A scripted pipeline could not tell
+    # the difference between "real diverging runs" and "you typo'd the
+    # path". Fail fast with exit code 2 so the structural error is
+    # surfaced before any table renders.
+    fail_fast_if_path_missing(args.run_a, "--run-a")
+    fail_fast_if_path_missing(args.run_b, "--run-b")
+
     metrics = list(args.metrics) if args.metrics else None
     comparison = compare_runs(
         args.run_a,

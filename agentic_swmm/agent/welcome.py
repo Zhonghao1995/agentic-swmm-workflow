@@ -325,6 +325,8 @@ def render_extended_welcome() -> str:
         "  - Calibrate model parameters against observed flow data",
         "  - Quantify uncertainty in your stormwater predictions",
         "  - Remember lessons across modeling sessions",
+        "  - Compare runs, transfer parameters, and cite choices",
+        "      (`aiswmm compare/transfer/cite`)",
     ]
     things_header = ui_colors.colorize("Things to try:", ui_colors.BOLD)
     first_case = _first_case_display_name()
