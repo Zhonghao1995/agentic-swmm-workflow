@@ -5,7 +5,7 @@ import os
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, bootstrap_memory, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -54,6 +54,8 @@ COMMANDS = {
     # level so the default-router does not punt it to the agent — it is
     # a deterministic CLI surface over a pure function.
     "uncertainty",
+    # PRD-06 Phase C.5 verb. Checkpoint-aware calibration loop.
+    "calibrate",
     # Expert-only commands (PRD-Z). Listed here so the default-router
     # does not punt them to the agent; the agent itself has no
     # ToolSpec entries for these names.
@@ -128,6 +130,8 @@ def build_parser() -> argparse.ArgumentParser:
     transfer.register(subparsers)
     # Issue #55 — uncertainty source decomposition (paper-reviewer view).
     uncertainty.register(subparsers)
+    # PRD-06 Phase C.5 — checkpoint-aware calibration runner facade.
+    calibrate.register(subparsers)
     # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
     # so the help renders an "expert-only" grouping naturally; none of
     # them is registered as an agent ToolSpec or as an MCP tool.

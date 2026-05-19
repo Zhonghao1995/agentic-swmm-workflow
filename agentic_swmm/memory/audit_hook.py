@@ -294,15 +294,25 @@ def _record_parametric_from_provenance(
     the audit pipeline already writes — this hook is a *bridge*, not
     a new source of truth.
 
+    PRD-06 Phase C §15 — when an outer :class:`CalibrationBatch` has
+    flagged ``AISWMM_IN_CALIBRATION_BATCH=1`` we *do not* write the
+    per-run row; the batch flushes one consolidated row at the end.
+
     Returns the path to the written JSONL, or ``None`` when nothing
-    was written (no provenance, missing required fields, write error).
-    Failures are soft: a broken parametric write must not block the
-    rest of the memory refresh.
+    was written (no provenance, missing required fields, write error,
+    or in-batch suppression). Failures are soft: a broken parametric
+    write must not block the rest of the memory refresh.
     """
+    from agentic_swmm.agent.calibration_batch import is_batch_active
     from agentic_swmm.memory.parametric_memory import (
         ParametricRecord,
         record_parametric_run,
     )
+
+    if is_batch_active():
+        # Calibration batch is active — suppress the per-iteration write.
+        # The batch's __exit__ flushes one consolidated record.
+        return None
 
     provenance = _read_provenance(run_dir)
     if not provenance:
