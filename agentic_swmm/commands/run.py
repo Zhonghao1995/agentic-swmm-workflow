@@ -10,6 +10,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.agent.honesty import (
     SwmmRunError,
     assert_swmm_run_ok,
@@ -17,6 +21,12 @@ from agentic_swmm.agent.honesty import (
 )
 from agentic_swmm.utils.paths import repo_root, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
+
+
+_RUN_EXAMPLE = (
+    "aiswmm run --inp examples/<case>/model.inp "
+    "--run-dir runs/<case> --node O1"
+)
 
 
 def _now_utc() -> str:
@@ -78,6 +88,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--node", default="O1", help="Node/outfall used for peak-flow parsing.")
     parser.add_argument("--rpt-name", help="Report file name. Defaults to model.rpt.")
     parser.add_argument("--out-name", help="Binary output file name. Defaults to model.out.")
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_RUN_EXAMPLE)
     parser.set_defaults(func=main)
 
 

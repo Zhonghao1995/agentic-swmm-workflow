@@ -29,6 +29,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_inp_flag,
+)
 from agentic_swmm.agent.honesty import STUB_BANNER, fail_fast_if_path_missing
 from agentic_swmm.agent.swmm_runtime.calibration_runner import (
     CalibrationRunConfig,
@@ -37,6 +41,13 @@ from agentic_swmm.agent.swmm_runtime.calibration_runner import (
 from agentic_swmm.memory.run_progress import (
     ProgressCheckpoint,
     summarize_progress,
+)
+
+
+_CALIBRATE_EXAMPLE = (
+    "aiswmm calibrate --inp model.inp --run-id calib_001 "
+    "--total-iters 100 --param manning_n=0.010,0.018 "
+    "--run-dir runs/calib_001"
 )
 
 
@@ -72,11 +83,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=1,
         help="Write progress.json every N iterations (default 1).",
     )
-    parser.add_argument(
-        "--base-inp",
-        type=Path,
+    # PRD-08 A.2: ``--inp`` is the canonical flag; ``--base-inp`` is the
+    # deprecated alias kept for one release. Both populate ``args.inp``
+    # via :func:`register_inp_flag`.
+    register_inp_flag(
+        parser,
         required=True,
-        help="Base INP path (stamped into config; not opened by the stub).",
+        help_text=(
+            "INP path (stamped into config; not opened by the stub)."
+        ),
     )
     parser.add_argument(
         "--observed-csv",
@@ -134,6 +149,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "scripted callers that already know."
         ),
     )
+    # PRD-08 A.2: every verb learns ``--example`` so a user can paste a
+    # known-working invocation without leaving the terminal.
+    register_example_flag(parser, example_text=_CALIBRATE_EXAMPLE)
     parser.set_defaults(func=main)
 
 
@@ -179,9 +197,9 @@ def main(args: argparse.Namespace) -> int:
         print(STUB_BANNER)
 
     # PRD-08 A.1 (audit #2): the synthetic walker historically claimed
-    # success even when --base-inp pointed at a non-existent file.
+    # success even when --inp pointed at a non-existent file.
     # Refuse to start with an actionable stderr error.
-    fail_fast_if_path_missing(args.base_inp, "--base-inp")
+    fail_fast_if_path_missing(args.inp, "--inp")
 
     try:
         parameters = _parse_param_specs(args.param)
@@ -193,7 +211,7 @@ def main(args: argparse.Namespace) -> int:
         run_id=args.run_id,
         algorithm=args.algorithm,
         total_iters=args.total_iters,
-        base_inp=args.base_inp,
+        base_inp=args.inp,
         observed_csv=args.observed_csv,
         parameters=parameters,
         objective=args.objective,

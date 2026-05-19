@@ -24,12 +24,16 @@ from agentic_swmm.commands import storm as storm_cmd
 
 
 def _calibrate_namespace(**overrides) -> argparse.Namespace:
+    # PRD-08 A.2: the canonical attribute is ``inp``; ``base_inp`` is
+    # an alias on the CLI surface but the namespace destination is
+    # unified. Tests now pass ``inp=`` (or via the back-compat shim
+    # below, ``base_inp=``).
     base = {
         "run_id": "test",
         "algorithm": "sceua",
         "total_iters": 1,
         "checkpoint_every": 1,
-        "base_inp": Path("/nonexistent/base.inp"),
+        "inp": Path("/nonexistent/base.inp"),
         "observed_csv": None,
         "param": ["a=0,1"],
         "objective": "nse",
@@ -38,6 +42,11 @@ def _calibrate_namespace(**overrides) -> argparse.Namespace:
         "print_every": 1,
         "quiet": False,
     }
+    # Test shim: a caller that still passes ``base_inp=`` overrides
+    # ``inp`` so existing test bodies do not have to be rewritten in
+    # bulk.
+    if "base_inp" in overrides:
+        overrides["inp"] = overrides.pop("base_inp")
     base.update(overrides)
     return argparse.Namespace(**base)
 
@@ -128,7 +137,9 @@ class CalibrateWiringTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as cm:
                 calibrate_cmd.main(ns)
         self.assertEqual(cm.exception.code, 2)
-        self.assertIn("error: --base-inp does not exist:", stderr.getvalue())
+        # PRD-08 A.2: the canonical flag is ``--inp``; the
+        # fail-fast error mirrors the canonical name.
+        self.assertIn("error: --inp does not exist:", stderr.getvalue())
 
 
 # ---------------------------------------------------------------------------

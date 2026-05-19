@@ -29,6 +29,20 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_inp_flag,
+    register_json_flag,
+    register_path_flag,
+    register_quiet_flag,
+)
+
+
+_UNCERTAINTY_PLAN_EXAMPLE = (
+    "aiswmm uncertainty plan --inp model.inp "
+    "--param manning_n=0.010,0.018 --method morris --n-samples 50"
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SOURCE_DECOMP_PY = (
@@ -87,11 +101,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "sample list; does NOT execute SWMM."
         ),
     )
-    plan_parser.add_argument(
-        "--base-inp",
-        type=Path,
+    # PRD-08 A.2: ``--inp`` is canonical; ``--base-inp`` is the
+    # deprecated alias. Both populate ``args.inp``.
+    register_inp_flag(
+        plan_parser,
         required=True,
-        help="Base INP whose hash gets stamped into the plan provenance.",
+        help_text=(
+            "INP whose hash gets stamped into the plan provenance."
+        ),
     )
     plan_parser.add_argument(
         "--param",
@@ -175,16 +192,32 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "per-run estimate."
         ),
     )
-    plan_parser.add_argument(
-        "--parametric-store",
-        type=Path,
+    register_path_flag(
+        plan_parser,
+        noun="parametric-memory",
+        help_text=(
+            "Optional path to parametric_memory.jsonl (case_name lookup)."
+        ),
         default=None,
-        help="Optional path to parametric_memory.jsonl (case_name lookup).",
+        legacy_aliases=("--parametric-store",),
+        dest="parametric_store",
     )
     plan_parser.add_argument(
         "--yes",
         action="store_true",
         help="Skip the launch prompt (non-interactive callers / CI).",
+    )
+    register_json_flag(
+        plan_parser,
+        help_text=(
+            "Emit the plan JSON to stdout (default behaviour when "
+            "--out is omitted). Future-proof flag for callers that "
+            "want to be explicit."
+        ),
+    )
+    register_quiet_flag(plan_parser)
+    register_example_flag(
+        plan_parser, example_text=_UNCERTAINTY_PLAN_EXAMPLE
     )
     plan_parser.set_defaults(func=plan_main)
 
@@ -312,7 +345,7 @@ def plan_main(args: argparse.Namespace) -> int:
 
     try:
         plan = plan_uncertainty_run(
-            base_inp=args.base_inp,
+            base_inp=args.inp,
             parameters=parameters,
             method=args.method,
             n_samples=args.n_samples,

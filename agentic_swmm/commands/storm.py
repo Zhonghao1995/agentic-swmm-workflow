@@ -19,9 +19,17 @@ and pulls IDF / peak_position from the storm_library.yaml entry.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_json_flag,
+    register_library_entry_flag,
+    register_path_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.agent.honesty import (
     emit_silent_default_warning,
     emit_silent_override_warning,
@@ -35,6 +43,12 @@ from agentic_swmm.agent.swmm_runtime.design_storm import (
 )
 from agentic_swmm.memory.storm_library import recall_chicago_spec
 from agentic_swmm.utils.paths import repo_root
+
+
+_STORM_EXAMPLE = (
+    "aiswmm storm --shape chicago --depth-mm 25 --duration-min 60 "
+    "--peak-position 0.4 --out storm.dat"
+)
 
 
 # Choices for ``--shape``. ``chicago``/``huff``/``scs`` are the new
@@ -133,26 +147,34 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         choices=(1, 2, 3, 4),
         help="Huff quartile (1=front-loaded, 4=back-loaded). Required for --shape huff.",
     )
-    # Storm library lookup.
-    parser.add_argument(
-        "--from-library",
-        type=str,
-        default=None,
-        help=(
-            "Storm library entry key, e.g. 'example_region_100yr_3hr_5min'. "
-            "Looks up the entry under chicago_hyetographs and uses its "
-            "idf_params/peak_position/duration_min. ``--depth-mm`` is still "
+    # Storm library lookup. PRD-08 A.2: canonical names are
+    # ``--storm-library-entry`` (key inside the library) and
+    # ``--storm-library-path`` (path to the YAML). The historical
+    # spellings ``--from-library`` and ``--storm-library`` continue
+    # to work as deprecated aliases.
+    register_library_entry_flag(
+        parser,
+        noun="storm-library",
+        help_text=(
+            "Storm library entry key, e.g. "
+            "'example_region_100yr_3hr_5min'. Looks up the entry "
+            "under chicago_hyetographs and uses its idf_params / "
+            "peak_position / duration_min. ``--depth-mm`` is still "
             "required when the library entry is depth-driven."
         ),
+        legacy_aliases=("--from-library",),
+        dest="from_library",
     )
-    parser.add_argument(
-        "--storm-library",
-        type=Path,
-        default=None,
-        help=(
+    register_path_flag(
+        parser,
+        noun="storm-library",
+        help_text=(
             "Optional override for the storm_library.yaml location. "
             "Defaults to memory/modeling-memory/storm_library.yaml."
         ),
+        default=None,
+        legacy_aliases=("--storm-library",),
+        dest="storm_library",
     )
     parser.add_argument(
         "--out",
@@ -163,6 +185,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "block is printed to stdout so a shell redirect still works."
         ),
     )
+    # PRD-08 A.2: when ``--json`` is set, stdout receives a
+    # machine-readable payload (start_time, interval_min, depth_mm,
+    # intensities) instead of the DAT block. The DAT block is still
+    # what ``--out`` writes when ``--out`` is supplied.
+    register_json_flag(
+        parser,
+        help_text=(
+            "Emit a structured DesignStorm JSON payload on stdout "
+            "(intensities + provenance) instead of the SWMM DAT block."
+        ),
+    )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_STORM_EXAMPLE)
     parser.set_defaults(func=main)
 
 
@@ -337,6 +372,19 @@ def main(args: argparse.Namespace) -> int:
         return 1
 
     text = to_swmm_dat(storm, station_id=args.station_id)
+    # PRD-08 A.2 (audit #38 etc.): when ``--json`` is set we emit the
+    # structured DesignStorm payload on stdout so downstream tools
+    # (the agent surface, a notebook) can consume it without parsing
+    # the DAT text. ``--out`` still controls whether the DAT file is
+    # written to disk.
+    if getattr(args, "json", False):
+        payload = storm.to_dict()
+        payload["station_id"] = args.station_id
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
+        return 0
     if args.out is None:
         sys.stdout.write(text)
     else:

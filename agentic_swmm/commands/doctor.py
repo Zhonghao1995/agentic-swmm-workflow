@@ -8,6 +8,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.commands.doctor_extension import (
     apply_fix_actions,
     collect_fix_actions,
@@ -24,6 +28,9 @@ from agentic_swmm.commands.doctor_extension import (
 )
 from agentic_swmm.config import mcp_registry_path
 from agentic_swmm.utils.paths import repo_root
+
+
+_DOCTOR_EXAMPLE = "aiswmm doctor --fix --yes"
 
 
 def _module_available(name: str) -> bool:
@@ -197,6 +204,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "asking for confirmation. Safe for CI/automation."
         ),
     )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_DOCTOR_EXAMPLE)
     parser.set_defaults(func=main)
 
 
