@@ -35,6 +35,14 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.swmm_runtime.postflight import QAReport, postflight_qa
+from agentic_swmm.memory.benchmark_resolver import resolve_threshold
+
+
+# Tiebreaker tolerance for aggregate-continuity comparisons. Centralised
+# via :func:`resolve_threshold` so a project can loosen the floor for
+# coarse-precision .rpt outputs without touching this module.
+_TIE_TOL_DEFAULT = 1e-3
+_TIE_TOL_DOTTED_KEY = "compare_runs.tie_tol_continuity_magnitude"
 
 
 # Default metric set for Phase B.1. Mass-balance and peak deltas arrive
@@ -117,7 +125,10 @@ class RunComparison:
 
 # Treat continuity-magnitude differences below this as a tie. Continuity
 # is reported to three decimals by SWMM, so 1e-3 is the natural floor.
-_TIE_TOL = 1e-3
+# This is now resolved per-invocation via :func:`resolve_threshold`; the
+# module-level constant is the conservative default when no overlay or
+# library leaf is configured.
+_TIE_TOL = _TIE_TOL_DEFAULT
 
 
 def _resolve_run_id(run_dir: Path) -> str:
@@ -215,8 +226,15 @@ def _decide_verdict(
     report_a: QAReport,
     report_b: QAReport,
     metrics: tuple[str, ...],
+    *,
+    tie_tol: float = _TIE_TOL_DEFAULT,
 ) -> tuple[str, list[str]]:
-    """Return ``(verdict, notes)`` for the comparison."""
+    """Return ``(verdict, notes)`` for the comparison.
+
+    ``tie_tol`` lets the caller plug in a project-overlay-resolved
+    tolerance — see :func:`compare_runs`. The default preserves the
+    historical 1e-3 magnitude floor.
+    """
     notes: list[str] = []
 
     worst_a = _worst_classification(diffs, "a")
@@ -239,10 +257,10 @@ def _decide_verdict(
     # Classifications tied — fall back to aggregate continuity magnitude.
     mag_a = _aggregate_magnitude(report_a, metrics)
     mag_b = _aggregate_magnitude(report_b, metrics)
-    if abs(mag_a - mag_b) <= _TIE_TOL:
+    if abs(mag_a - mag_b) <= tie_tol:
         notes.append(
             f"both runs share worst-classification {worst_a} and "
-            f"continuity magnitudes are within {_TIE_TOL}"
+            f"continuity magnitudes are within {tie_tol}"
         )
         return "tie", notes
     if mag_a < mag_b:
@@ -264,13 +282,17 @@ def compare_runs(
     *,
     metrics: list[str] | None = None,
     benchmarks_path: Path | None = None,
+    project_overrides_path: Path | None = None,
 ) -> RunComparison:
     """Compare two SWMM run directories.
 
     ``metrics`` selects which QA metrics to diff; defaults to
     :data:`DEFAULT_METRICS`. ``benchmarks_path`` lets the caller pass a
     project-local thresholds YAML — by default postflight uses the
-    repo-shipped library.
+    repo-shipped library. ``project_overrides_path`` (PRD-07 Phase 4)
+    is an optional overlay; when present, its leaves override the
+    library — including the tiebreaker tolerance under
+    ``compare_runs.tie_tol_continuity_magnitude``.
 
     Missing .rpt in either run yields ``verdict="incomparable"`` with a
     note pointing at the offending run.
@@ -285,8 +307,27 @@ def compare_runs(
     run_a_id = _resolve_run_id(run_dir_a)
     run_b_id = _resolve_run_id(run_dir_b)
 
-    report_a = postflight_qa(run_dir_a, benchmarks_path=benchmarks_path)
-    report_b = postflight_qa(run_dir_b, benchmarks_path=benchmarks_path)
+    report_a = postflight_qa(
+        run_dir_a,
+        benchmarks_path=benchmarks_path,
+        project_overrides_path=project_overrides_path,
+    )
+    report_b = postflight_qa(
+        run_dir_b,
+        benchmarks_path=benchmarks_path,
+        project_overrides_path=project_overrides_path,
+    )
+
+    # Resolve the tiebreaker tolerance through the same overlay path
+    # so a project can loosen the floor for coarse-precision .rpts.
+    tie_tol = float(
+        resolve_threshold(
+            _TIE_TOL_DOTTED_KEY,
+            reference_benchmarks_path=benchmarks_path,
+            project_overrides_path=project_overrides_path,
+            default=_TIE_TOL_DEFAULT,
+        )
+    )
 
     diffs = _build_metric_diffs(report_a, report_b, metric_set)
 
@@ -322,7 +363,9 @@ def compare_runs(
             notes=notes,
         )
 
-    verdict, verdict_notes = _decide_verdict(diffs, report_a, report_b, metric_set)
+    verdict, verdict_notes = _decide_verdict(
+        diffs, report_a, report_b, metric_set, tie_tol=tie_tol
+    )
     notes.extend(verdict_notes)
 
     # Tag legible PASS/FAIL observations so the human-readable table

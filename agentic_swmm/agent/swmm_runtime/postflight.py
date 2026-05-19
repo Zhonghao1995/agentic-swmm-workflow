@@ -25,10 +25,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.memory.reference_benchmarks import (
-    classify_metric,
-    recall_reference_benchmark,
+from agentic_swmm.memory.benchmark_resolver import (
+    default_project_overrides_path,
+    resolve_threshold,
 )
+from agentic_swmm.memory.reference_benchmarks import classify_metric
+
+
+# Library-conservative fallbacks. These match the SWMM User Manual's
+# continuity-error magnitude bands and Phase A's shipped library so
+# the runtime gate stays identical when neither the YAML nor a project
+# overlay carries a value.
+_FALLBACK_CONTINUITY_THRESHOLDS: dict[str, dict[str, float]] = {
+    "runoff_continuity_pct": {"warn": 5.0, "fail": 10.0},
+    "flow_continuity_pct": {"warn": 1.0, "fail": 5.0},
+    "mass_balance_pct": {"warn": 2.0, "fail": 5.0},
+}
 
 
 _RUNOFF_HEADER_RE = re.compile(r"Runoff\s+Quantity\s+Continuity", re.IGNORECASE)
@@ -134,13 +146,24 @@ def _find_rpt(run_dir: Path) -> Path | None:
 
 
 def postflight_qa(
-    run_dir: Path, *, benchmarks_path: Path | None = None
+    run_dir: Path,
+    *,
+    benchmarks_path: Path | None = None,
+    project_overrides_path: Path | None = None,
 ) -> QAReport:
     """Parse ``run_dir``'s .rpt, classify continuity, return a :class:`QAReport`.
 
-    ``benchmarks_path`` lets the caller swap in a custom thresholds
-    YAML (tests, project-local overrides). Default is the repo's
-    shipped ``memory/modeling-memory/reference_benchmarks.yaml``.
+    ``benchmarks_path`` lets the caller swap in a custom default
+    thresholds YAML (tests, project-local libraries). Default is the
+    repo-shipped ``memory/modeling-memory/reference_benchmarks.yaml``.
+
+    ``project_overrides_path`` (PRD-07 Phase 4) is an optional overlay
+    YAML — same shape as the library — whose values win over the
+    library leaf. When ``None``, the conventional location
+    ``<memory_dir>/project_overrides.yaml`` is consulted; if that file
+    is also missing the overlay is a no-op. Library nulls always fall
+    through to the in-module conservative fallback so the runtime gate
+    is never silently disabled.
     """
     report = QAReport()
     run_dir = Path(run_dir)
@@ -164,6 +187,13 @@ def postflight_qa(
     metrics = parse_continuity_from_rpt(text)
     benchmarks = benchmarks_path or _resolve_default_benchmarks_path()
 
+    # Project overlay defaults to a sibling of the library so a
+    # project-local override file is picked up without a CLI flag.
+    if project_overrides_path is None:
+        project_overrides_path = default_project_overrides_path(
+            Path(benchmarks).parent
+        )
+
     classification_map = {
         "runoff_continuity_pct": "continuity_thresholds_pct.runoff",
         "flow_continuity_pct": "continuity_thresholds_pct.flow",
@@ -171,11 +201,28 @@ def postflight_qa(
 
     for metric_name, value in metrics.items():
         dotted = classification_map.get(metric_name)
+        fallback = _FALLBACK_CONTINUITY_THRESHOLDS.get(metric_name, {})
         thresholds = (
-            recall_reference_benchmark(benchmarks, dotted, default={})
+            resolve_threshold(
+                dotted,
+                reference_benchmarks_path=benchmarks,
+                project_overrides_path=project_overrides_path,
+                default=fallback,
+            )
             if dotted
-            else {}
+            else fallback
         )
+        if not isinstance(thresholds, dict):
+            thresholds = fallback
+        # If the resolved dict still has null warn/fail (the Phase A
+        # un-cited placeholder pattern), prefer the in-module fallback
+        # so the runtime gate never silently degrades to UNKNOWN.
+        if (
+            thresholds.get("warn") is None
+            and thresholds.get("fail") is None
+            and fallback
+        ):
+            thresholds = fallback
         classification = (
             classify_metric(value, thresholds) if thresholds else "UNKNOWN"
         )
