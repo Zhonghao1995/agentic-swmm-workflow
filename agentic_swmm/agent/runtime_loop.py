@@ -1,15 +1,30 @@
-"""Interactive shell and OpenAI planner turn loop for ``aiswmm``.
+"""Interactive shell facade + OpenAI planner turn driver for ``aiswmm``.
 
-This module owns the long-lived interactive ``aiswmm`` shell as well as
-the single-turn OpenAI planner driver used by both interactive and
+PRD-02 split this file into deeper modules:
+
+- :mod:`agentic_swmm.agent.repl` — REPL input/dispatch loop.
+- :mod:`agentic_swmm.agent.warm_intro` — warm-intro state machine.
+- :mod:`agentic_swmm.agent.session_bootstrap` — date-dir + slug + naming
+  helpers.
+
+This module is now the facade that boots the REPL with real
+collaborators (real ``input``, real planner) and continues to host the
+single-turn OpenAI planner driver used by both interactive and
 non-interactive flows. The audit PRD's chat-only-turn hook
 (``_write_chat_note_for_session``) lives here unchanged: chat-style
 turns persist a ``session_state.json`` skeleton and an Obsidian-ready
 ``chat_note.md`` next to the agent trace.
 
-This file was extracted from ``agentic_swmm/commands/agent.py`` in the
-first commit of the Runtime UX PRD; the move was a pure split with no
-behaviour change.
+Public-name compatibility: every name external callers used before
+PRD-02 (``is_open_shaped_prompt``, ``maybe_warm_intro``,
+``WARM_INTRO_TEMPLATE``, ``format_startup_banner``,
+``run_interactive_shell``, ``run_openai_planner``, ``_case_slug``,
+``_new_interactive_session``, ``_display_path``, ``_safe_name``,
+``_refresh_moc_after_session``, ``_build_system_prompt_extras``,
+``invoke_tool_with_gap_fill``, ``execute_with_chrome``, ``_is_tty``,
+``OpenAIProvider``, ``load_config``, ``generate_moc``) is re-exported
+from here, so existing imports and ``unittest.mock.patch`` targets
+continue to work without changes.
 """
 
 from __future__ import annotations
@@ -50,13 +65,39 @@ from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
+# PRD-02 — deep-module split. New modules with the carved-out behaviour;
+# names below are re-exported so legacy imports continue to resolve.
+from agentic_swmm.agent.repl import run_repl
+from agentic_swmm.agent.session_bootstrap import (
+    infer_case_slug as _case_slug,
+    new_interactive_session as _new_interactive_session,
+)
+from agentic_swmm.agent.warm_intro import (
+    WarmIntroState,
+    maybe_emit_warm_intro,
+)
+
 _log = logging.getLogger(__name__)
 
-# `_safe_name` is shared with the non-interactive path; both files need it.
+# ``_safe_name`` was previously re-exported from ``single_shot`` here.
+# Tests and callers continue to import it from this module unchanged.
 from agentic_swmm.agent.single_shot import _safe_name
 
 
 def run_interactive_shell(args: argparse.Namespace) -> int:
+    """Boot the interactive shell and hand control to the REPL.
+
+    This function owns the boot-time concerns:
+
+    - argument validation (``--planner openai`` required),
+    - root run-folder resolution (``args.session_dir`` or ``repo_root()/runs``),
+    - first-session bootstrap (``_new_interactive_session``),
+    - welcome banner + startup banner.
+
+    After that, it delegates the input → dispatch → planner loop to
+    :func:`agentic_swmm.agent.repl.run_repl` with real collaborators
+    (real ``input``, real ``_run_planner_for_prompt`` planner runner).
+    """
     if args.planner != "openai":
         raise ValueError("interactive agent shell currently requires `--planner openai`.")
 
@@ -83,8 +124,6 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     )
 
     # PRD_runtime user story 6: one-line startup banner.
-    # The ``profile=`` segment was added when QUICK became the default
-    # (see ``format_startup_banner`` for the rendering contract).
     _agent_say(
         format_startup_banner(
             session_label=session_label,
@@ -93,65 +132,55 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         )
     )
 
-    turn = 0
-    active_run_dir: Path | None = None
-    while True:
-        try:
-            prompt = input("you> ").strip()
-        except EOFError:
-            print()
-            return 0
-        if prompt in {"/exit", "/quit", "exit", "quit"}:
-            return 0
-        if prompt in {"/new-session", "/new session", "new session"}:
-            date_dir, session_label = _new_interactive_session(base_dir)
-            active_run_dir = None
-            turn = 0
-            _agent_say(f"New session: {session_label}")
-            _agent_say(f"Date folder: {_display_path(date_dir)}\n")
-            continue
-        if not prompt:
-            continue
+    # Per-turn planner runner: dispatches each prompt through the real
+    # OpenAI planner with the proper session-dir + chat-vs-run choice.
+    # The closure captures ``date_dir`` (and the mutable ``active_run_dir``
+    # box) so the REPL stays agnostic of these concerns.
+    active_run_dir: list[Path | None] = [None]
+    # ``date_dir`` is a list-of-one so the ``/new-session`` callback can
+    # rebind it without losing closure scope. ``session_label`` lives
+    # in the same shape for the user-visible banner string.
+    date_dir_box: list[Path] = [date_dir]
+    session_label_box: list[str] = [session_label]
 
-        turn += 1
+    def on_new_session() -> None:
+        new_date_dir, new_label = _new_interactive_session(base_dir)
+        date_dir_box[0] = new_date_dir
+        session_label_box[0] = new_label
+        active_run_dir[0] = None
+        _agent_say(f"New session: {new_label}")
+        _agent_say(f"Date folder: {_display_path(new_date_dir)}\n")
 
-        # Issue #59 (UX-4): on the *first* user prompt of a session,
-        # detect open-shaped requests (greetings, identity questions,
-        # short/verbless) and emit the warm intro before any tool
-        # call. Task-shaped first prompts (run/build/calibrate/...)
-        # fall through to the normal planner dispatch.
-        intro_text = maybe_warm_intro(prompt, turn=turn)
-        if intro_text is not None:
-            print()
-            _agent_say(intro_text)
-            print()
-            # Hold the planner so the user can answer the "what would
-            # you like to work on?" line. ``turn`` is NOT reset here:
-            # ``maybe_warm_intro`` already enforces "fires only on
-            # turn=1" via its own guard, so leaving the counter to
-            # advance naturally lets the second open-shaped prompt
-            # fall through to the planner instead of re-firing the
-            # canned template every greeting (regression for the
-            # ``turn = 0`` reset that previously lived here).
-            continue
-
-        use_active_run = active_run_dir is not None and _looks_like_run_continuation(prompt)
+    def planner_runner(
+        run_args: argparse.Namespace,
+        prompt: str,
+        _placeholder_session_dir: Path,
+        _placeholder_trace_path: Path,
+        _placeholder_registry: Any,
+        *,
+        chat_session: bool = False,
+        prior_session_state: dict[str, Any] | None = None,
+    ) -> int:
+        use_active_run = (
+            active_run_dir[0] is not None and _looks_like_run_continuation(prompt)
+        )
         goal = prompt
         is_chat_turn = False
         if use_active_run:
-            session_dir = active_run_dir
-            goal = f"{prompt}\n\nPrevious run directory: {active_run_dir}"
+            session_dir = active_run_dir[0]
+            assert session_dir is not None  # mypy
+            goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
         elif _looks_like_swmm_request(prompt):
-            session_dir = _new_turn_dir(date_dir, prompt, kind="run")
+            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="run")
         else:
-            session_dir = _new_turn_dir(date_dir, prompt, kind="chat")
+            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="chat")
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
-        prior_state = _load_prior_session_state(active_run_dir)
+        prior_state = _load_prior_session_state(active_run_dir[0])
         print()
-        result = run_openai_planner(
-            args,
+        rc = run_openai_planner(
+            run_args,
             goal,
             session_dir,
             trace_path,
@@ -159,11 +188,20 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             chat_session=is_chat_turn,
             prior_session_state=prior_state,
         )
-        if result == 0 and _is_swmm_run_dir(session_dir):
-            active_run_dir = session_dir
+        if rc == 0 and _is_swmm_run_dir(session_dir):
+            active_run_dir[0] = session_dir
         print()
-        if result != 0:
-            _agent_say(f"Turn failed with exit code {result}. You can continue or type /exit.\n")
+        return rc
+
+    return run_repl(
+        args,
+        base_dir=base_dir,
+        profile_name=profile_name,
+        input_source=input,
+        planner_runner=planner_runner,
+        output=_agent_say,
+        on_new_session=on_new_session,
+    )
 
 
 def format_startup_banner(
@@ -187,15 +225,6 @@ def format_startup_banner(
     )
 
 
-def _new_interactive_session(base_dir: Path) -> tuple[Path, str]:
-    now = datetime.now()
-    date_dir = base_dir / now.strftime("%Y-%m-%d")
-    date_dir.mkdir(parents=True, exist_ok=True)
-    session_label = f"session-{now.strftime('%H%M%S')}"
-    _append_session_index(date_dir, {"event": "session_start", "session": session_label, "created_at": now.isoformat(timespec="seconds")})
-    return date_dir, session_label
-
-
 def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
     now = datetime.now()
     case = _case_slug(prompt)
@@ -207,56 +236,26 @@ def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
     return folder
 
 
-def _case_slug(prompt: str) -> str:
-    lowered = prompt.lower()
-    example = re.search(r"examples/([^/\s，。；;,)]+)", prompt, flags=re.I)
-    if example:
-        return _safe_name(example.group(1))[:32]
-    inp = re.search(r"([^/\s，。；;,)]+)\.inp", prompt, flags=re.I)
-    if inp:
-        return _safe_name(inp.group(1))[:32]
-    # PRD #118: drive case identification from cases/<id>/case_meta.yaml
-    # so portability does not require code edits when a new watershed
-    # is added.
-    registry_hit = _match_registered_case(lowered)
-    if registry_hit is not None:
-        return registry_hit
-    if any(word in lowered for word in ("plot", "作图", "画图", "图")):
-        return "plot-selection"
-    return _safe_name(prompt)[:32]
-
-
 def _match_registered_case(lowered_prompt: str) -> str | None:
     """Return the first ``case_id`` whose id / display_name / alias appears in the prompt.
 
-    Lookups are substring-based against the lowered prompt; both the
-    case_id slug and the case_meta ``display_name`` (and any optional
-    ``aliases`` list under ``extra``) are searched. Returns ``None``
-    when no registered case matches — the caller decides the fallback.
+    Re-exported facade over
+    ``session_bootstrap._match_registered_case`` so existing imports
+    continue to work.
     """
-    from agentic_swmm.case import case_registry  # local import: registry pulls yaml
+    from agentic_swmm.agent.session_bootstrap import _match_registered_case as _impl
 
-    try:
-        cases = case_registry.list_cases()
-    except Exception:  # pragma: no cover - defensive: never block a turn on registry
-        return None
-    for meta in cases:
-        needles: list[str] = [meta.case_id]
-        if meta.display_name:
-            needles.append(meta.display_name)
-        aliases = meta.extra.get("aliases") if isinstance(meta.extra, dict) else None
-        if isinstance(aliases, list):
-            needles.extend(str(a) for a in aliases if isinstance(a, str))
-        for needle in needles:
-            if needle and needle.lower() in lowered_prompt:
-                return meta.case_id
-    return None
+    return _impl(lowered_prompt)
 
 
 def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
-    index = date_dir / "_sessions.jsonl"
-    with index.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
+    """Append a JSON record to ``date_dir/_sessions.jsonl``.
+
+    Re-exported facade over ``session_bootstrap._append_session_index``.
+    """
+    from agentic_swmm.agent.session_bootstrap import _append_session_index as _impl
+
+    _impl(date_dir, event)
 
 
 def _write_chat_note_for_session(session_dir: Path) -> Path | None:
@@ -441,12 +440,11 @@ def _looks_like_run_continuation(prompt: str) -> bool:
     return classify_intent(prompt).looks_like_run_continuation
 
 
-# Issue #59 (UX-4): first-message warm intro classifier + hook.
+# Issue #59 (UX-4) / PRD-02:
 #
-# PRD #121: the task-verb and open-greeting vocabularies live in
-# ``agentic_swmm.agent.intent_classifier``. ``is_open_shaped_prompt``
-# is now a thin adapter so the warm-intro gate shares one source of
-# truth with the planner's intent classification.
+# ``is_open_shaped_prompt`` and ``maybe_warm_intro`` are re-exported
+# here so the warm-intro public API stays the same. The deep
+# implementation lives in :mod:`agentic_swmm.agent.warm_intro`.
 
 
 def is_open_shaped_prompt(prompt: str) -> bool:
@@ -457,44 +455,33 @@ def is_open_shaped_prompt(prompt: str) -> bool:
     1. Greetings (``hi`` / ``hello`` / ``你好`` / ...).
     2. Identity questions (``what can you do`` / ``who are you`` / ...).
     3. Short or verbless prompts (< 5 words AND no task verb).
-
-    A prompt is *task-shaped* (returns False) the moment it contains
-    one of the EN/ZH task verbs in the intent_classifier vocabulary.
-    This keeps "run the tecnopolo demo" from triggering the intro
-    even though it is short.
     """
     return classify_intent(prompt).is_open_shaped
 
 
 def maybe_warm_intro(prompt: str, *, turn: int) -> str | None:
-    """Return the warm-intro text for the first message, or None.
+    """Legacy facade — return the warm-intro template on the first turn, or None.
 
-    Returns ``None`` (so the runtime falls through to the normal
-    planner dispatch) when:
+    PRD-02 superseded this with the explicit :class:`WarmIntroState`
+    state machine in :mod:`agentic_swmm.agent.warm_intro`. Callers
+    that still use the ``turn`` integer can keep doing so: ``turn != 1``
+    short-circuits to None; ``turn == 1`` delegates to the new
+    state-machine emit (with a fresh, throwaway state — the per-call
+    semantics match the old function).
 
-    - ``turn`` is not 1 (intro only ever fires on the first message),
-    - ``AISWMM_DISABLE_WELCOME=1`` is set (consistent with UX-2 #57),
-    - or the prompt is task-shaped (``is_open_shaped_prompt`` is False).
+    Returns ``None`` when:
 
-    The template itself lives in ``agentic_swmm.agent.prompts`` so the
-    string and the runtime hook can be tested in isolation.
+    - ``turn`` is not 1,
+    - ``AISWMM_DISABLE_WELCOME=1`` is set,
+    - or the prompt is task-shaped.
     """
     if turn != 1:
         return None
-    if _welcome_disabled():
-        return None
-    if not is_open_shaped_prompt(prompt):
-        return None
-    return WARM_INTRO_TEMPLATE
+    return maybe_emit_warm_intro(WarmIntroState(), prompt)
 
 
 def _welcome_disabled() -> bool:
-    """Mirror ``welcome._is_disabled`` so the same env var controls both.
-
-    Kept as a tiny local helper instead of importing ``welcome._is_disabled``
-    directly because that one is module-private — referring to a private
-    name across modules would couple us to its location.
-    """
+    """Mirror ``welcome._is_disabled`` so the same env var controls both."""
     value = os.environ.get("AISWMM_DISABLE_WELCOME")
     if value is None:
         return False

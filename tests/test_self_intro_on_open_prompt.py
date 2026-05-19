@@ -129,15 +129,21 @@ class WarmIntroFiresOncePerSessionRegression(unittest.TestCase):
     next ``turn += 1`` brought the counter back to ``1`` and
     ``maybe_warm_intro`` happily returned the same template again.
 
-    Catching this at the unit level requires either (a) substantial
-    mocking of ``run_interactive_shell``'s many collaborators or (b) a
-    structural guard on the function source. We take (b) — fewer
-    moving parts, fails loudly if the reset sneaks back in via copy-
-    paste or a misguided "fix".
+    **PRD-02 follow-up.** The warm-intro state machine moved into
+    :mod:`agentic_swmm.agent.warm_intro`. The new design replaces the
+    integer turn counter with a one-way ``WarmIntroState.intro_emitted``
+    flag, so the structural shape of the ``turn = 0`` regression class
+    cannot recur (the only way to reset the flag is to construct a new
+    ``WarmIntroState``, which is what ``/new-session`` does).
+
+    The strict assertion below stays — it now greps
+    ``warm_intro.py`` for any direct reset of ``intro_emitted = False``
+    on a non-construction site. A behavioural reset would loosen the
+    one-shot guarantee just as surely as the original ``turn = 0`` bug.
     """
 
-    def _extract_warm_intro_block(self) -> str:
-        """Return the warm-intro emit block with ``#``-comments stripped.
+    def _read_warm_intro_source(self) -> str:
+        """Return the full source of ``warm_intro.py`` with ``#``-comments stripped.
 
         Comments are removed so the assertion below tests *code*, not
         prose. Otherwise a comment quoting the removed reset (for
@@ -146,40 +152,50 @@ class WarmIntroFiresOncePerSessionRegression(unittest.TestCase):
         import inspect
         import re
 
-        from agentic_swmm.agent import runtime_loop
+        from agentic_swmm.agent import warm_intro
 
-        source = inspect.getsource(runtime_loop.run_interactive_shell)
-        lines = source.splitlines()
-        captured: list[str] = []
-        inside = False
-        for line in lines:
-            if "maybe_warm_intro(" in line:
-                inside = True
-            if inside:
-                # Drop everything from ``#`` to end-of-line. The block
-                # has no string literals containing ``#`` so this is
-                # safe; if that ever changes, switch to ``tokenize``.
-                code_only = re.sub(r"#.*$", "", line)
-                captured.append(code_only)
-                if code_only.strip() == "continue":
-                    break
-        return "\n".join(captured)
+        source = inspect.getsource(warm_intro)
+        code_only_lines: list[str] = []
+        for line in source.splitlines():
+            # Drop everything from ``#`` to end-of-line. ``warm_intro``
+            # has no string literals containing ``#`` so this is
+            # safe; if that ever changes, switch to ``tokenize``.
+            code_only_lines.append(re.sub(r"#.*$", "", line))
+        return "\n".join(code_only_lines)
 
-    def test_warm_intro_emit_block_does_not_reset_turn_counter(self) -> None:
-        block = self._extract_warm_intro_block()
+    def test_warm_intro_module_never_unsets_intro_emitted_flag(self) -> None:
+        """``warm_intro.py`` may flip ``intro_emitted`` True; never False.
+
+        The one-shot lock is the structural replacement for the
+        ``turn = 0`` reset bug — re-arming the template mid-session
+        re-introduces the same bug class. Constructing a *new*
+        ``WarmIntroState`` (e.g. on ``/new-session``) is the only
+        sanctioned reset, and that happens in ``repl.py``, not here.
+        """
+        source = self._read_warm_intro_source()
         self.assertTrue(
-            block,
-            "could not locate the warm-intro emit block in "
-            "run_interactive_shell — refactor likely renamed the hook; "
-            "update this regression guard.",
+            source,
+            "could not locate warm_intro.py source — refactor likely "
+            "moved the warm-intro state machine; update this regression "
+            "guard.",
         )
+        # The module is allowed to set the flag True (the one-shot emit).
+        self.assertIn(
+            "intro_emitted = True",
+            source,
+            "warm_intro.py must contain a one-shot emit that flips the "
+            "flag — without it the gating is purely advisory and the "
+            "original bug recurs.",
+        )
+        # The module must NOT re-arm the flag mid-life. Any False
+        # assignment outside the dataclass default is a regression.
         self.assertNotIn(
-            "turn = 0",
-            block,
-            "warm-intro emit block resets ``turn = 0``; this re-arms the "
-            "canned template for every subsequent open-shaped prompt. "
-            "``maybe_warm_intro`` already enforces the ``turn == 1`` "
-            "guard — let the counter advance naturally.",
+            "intro_emitted = False",
+            source,
+            "warm_intro.py contains an explicit ``intro_emitted = False`` "
+            "reset; this re-arms the canned template for the rest of "
+            "the session. Construct a new WarmIntroState instead "
+            "(``/new-session`` is the only sanctioned reset path).",
         )
 
 
