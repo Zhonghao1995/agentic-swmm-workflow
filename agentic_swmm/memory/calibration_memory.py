@@ -141,6 +141,8 @@ def recall_calibration(
     Missing files yield ``[]`` (not an error) so first-time callers
     do not need to special-case a fresh project.
     """
+    from agentic_swmm.memory.version_compat import migrate_record
+
     store_path = Path(store_path)
     if not store_path.is_file():
         return []
@@ -157,6 +159,7 @@ def recall_calibration(
             except json.JSONDecodeError:
                 # Torn final line during a concurrent write — skip.
                 continue
+            row = migrate_record("calibration_memory", row)
             if _matches(row, filters):
                 matches.append(row)
     return matches
