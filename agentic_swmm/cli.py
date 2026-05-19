@@ -5,6 +5,11 @@ import os
 import sys
 
 from agentic_swmm import __version__
+from agentic_swmm.agent.help_router import (
+    GroupedHelpFormatter,
+    render_top_level_help,
+    route_help_verb,
+)
 from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
@@ -70,6 +75,10 @@ COMMANDS = {
     # (``aiswmm list cases``) per the PRD's CLI surface table.
     "case",
     "list",
+    # PRD-08 A.2: ``aiswmm help`` routes to verb-level --help via
+    # ``help_router.route_help_verb``. Listed top-level so the default
+    # router does not punt help requests to the LLM planner.
+    "help",
 }
 
 
@@ -97,11 +106,36 @@ def _add_case_id_flag(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    # PRD-08 A.2: use GroupedHelpFormatter so the description (which
+    # carries the grouped verb block) is rendered verbatim instead of
+    # word-wrapped by argparse's default formatter. The description
+    # itself is built lazily — we want the registered set to land in
+    # ``subparsers.choices`` before we ask the formatter for the
+    # filtered block, but for the top-level help text the union from
+    # VERB_GROUPS is sufficient because every grouped verb is also
+    # registered below.
     parser = argparse.ArgumentParser(
         prog="agentic-swmm",
-        description="Unified CLI for reproducible and auditable Agentic SWMM workflows.",
+        formatter_class=GroupedHelpFormatter,
+        description=render_top_level_help(),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    # PRD-08 A.2 (audit #7): ``--ignore-memory`` was historically only
+    # consumed by the pre-parse strip in :func:`_strip_ignore_memory`,
+    # so ``aiswmm --help`` did not document it. Add it to the top-level
+    # parser as a real argument (action="store_true") so it shows up in
+    # the help block. The strip step still owns the cross-position
+    # parsing semantics; this declaration is purely documentation.
+    parser.add_argument(
+        "--ignore-memory",
+        dest="_ignore_memory_documented",
+        action="store_true",
+        help=(
+            "One-shot escape hatch: disable the memory-informed runtime "
+            "for this invocation. Works regardless of where on the "
+            "command line it appears."
+        ),
+    )
 
     subparsers = parser.add_subparsers(dest="command")
     agent.register(subparsers)
@@ -150,7 +184,41 @@ def build_parser() -> argparse.ArgumentParser:
         sub = subparsers.choices.get(name)
         if sub is not None:
             _add_case_id_flag(sub)
+    # PRD-08 A.2: ``aiswmm help`` subcommand. It receives the rest of
+    # the argv as ``help_args`` and forwards to ``aiswmm <verb> --help``
+    # via :func:`route_help_verb`. Listed last so help registration
+    # cannot perturb the verb registration order.
+    _register_help_subcommand(subparsers)
     return parser
+
+
+def _register_help_subcommand(
+    subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    """Register ``aiswmm help [<verb> ...]``.
+
+    The subparser takes any trailing tokens verbatim (``nargs="*"``)
+    so the router decides whether they name a known verb or warrant a
+    "unknown verb" stderr. The ``func`` defaults to
+    :func:`_help_main`, which calls
+    :func:`agentic_swmm.agent.help_router.route_help_verb` with the
+    tokens.
+    """
+    help_parser = subparsers.add_parser(
+        "help",
+        help=(
+            "Show help for a verb. ``aiswmm help`` prints the top-level "
+            "grouped help; ``aiswmm help <verb>`` shows that verb's "
+            "--help block."
+        ),
+    )
+    help_parser.add_argument("help_args", nargs="*", help=argparse.SUPPRESS)
+    help_parser.set_defaults(func=_help_main)
+
+
+def _help_main(args: argparse.Namespace) -> int:
+    """``aiswmm help`` entry point — forward to the help router."""
+    return route_help_verb(list(getattr(args, "help_args", []) or []))
 
 
 # CONCURRENCY-OWNER: PRD-CASE-ID

@@ -20,8 +20,17 @@ import argparse
 import json
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.memory.citations import cite_parameter_choice
 from agentic_swmm.utils.paths import repo_root
+
+
+_CITE_PARAM_EXAMPLE = (
+    "aiswmm cite-param --name manning_n_overland.asphalt --value 0.013 --json"
+)
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -70,6 +79,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Emit ParameterCitation as JSON on stdout.",
     )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_CITE_PARAM_EXAMPLE)
     parser.set_defaults(func=main)
 
 

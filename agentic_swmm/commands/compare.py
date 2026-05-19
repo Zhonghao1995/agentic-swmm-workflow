@@ -12,10 +12,20 @@ import argparse
 import json
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_path_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.agent.honesty import fail_fast_if_path_missing
 from agentic_swmm.agent.swmm_runtime.compare import (
     compare_runs,
     render_comparison_table,
+)
+
+
+_COMPARE_EXAMPLE = (
+    "aiswmm compare --run-a runs/baseline --run-b runs/with-lid --json"
 )
 
 
@@ -82,16 +92,20 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "deltas for parameter-change deltas."
         ),
     )
-    parser.add_argument(
-        "--parametric-store",
-        type=Path,
-        default=None,
-        help=(
+    register_path_flag(
+        parser,
+        noun="parametric-memory",
+        help_text=(
             "Optional path to parametric_memory.jsonl used as a fallback "
             "lookup when experiment_provenance.json lacks a swmm_version "
             "field. Default: no fallback."
         ),
+        default=None,
+        legacy_aliases=("--parametric-store",),
+        dest="parametric_store",
     )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_COMPARE_EXAMPLE)
     parser.set_defaults(func=main)
 
 

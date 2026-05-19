@@ -11,8 +11,15 @@ import argparse
 import json
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.memory.citations import recall_citation
 from agentic_swmm.utils.paths import repo_root
+
+
+_CITE_EXAMPLE = "aiswmm cite huber_dickinson_1988"
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -38,6 +45,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Emit the citation entry as JSON on stdout instead of plain text.",
     )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_CITE_EXAMPLE)
     parser.set_defaults(func=main)
 
 

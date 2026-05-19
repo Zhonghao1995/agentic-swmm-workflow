@@ -19,10 +19,19 @@ import json
 import sys
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_inp_flag,
+    register_path_flag,
+    register_quiet_flag,
+)
 from agentic_swmm.memory.cross_watershed_transfer import (
     TransferRecommendation,
     recommend_parameters_for_new_case,
 )
+
+
+_TRANSFER_EXAMPLE = "aiswmm transfer --inp examples/saanich/saanich.inp --top-k 3"
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -33,11 +42,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "calibrated prior cases by watershed similarity (PRD-07 Phase 5)."
         ),
     )
-    parser.add_argument(
-        "--inp",
-        type=Path,
+    register_inp_flag(
+        parser,
         required=True,
-        help="Path to the new case's INP file (read-only).",
+        help_text="Path to the new case's INP file (read-only).",
     )
     parser.add_argument(
         "--top-k",
@@ -49,14 +57,18 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "all alternatives the agent considered."
         ),
     )
-    parser.add_argument(
-        "--calibration-store",
-        type=Path,
-        default=Path("memory/modeling-memory/calibration_memory.jsonl"),
-        help=(
+    # PRD-08 A.2: ``--calibration-memory-path`` is the canonical name;
+    # ``--calibration-store`` continues to work as a deprecated alias.
+    register_path_flag(
+        parser,
+        noun="calibration-memory",
+        help_text=(
             "Path to calibration_memory.jsonl. Defaults to the project's "
             "canonical store under memory/modeling-memory/."
         ),
+        default=Path("memory/modeling-memory/calibration_memory.jsonl"),
+        legacy_aliases=("--calibration-store",),
+        dest="calibration_store",
     )
     parser.add_argument(
         "--repo-root",
@@ -72,25 +84,29 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help="Emit a machine-readable JSON list instead of a table.",
     )
-    parser.add_argument(
-        "--storm-library",
-        type=Path,
-        default=None,
-        help=(
+    register_path_flag(
+        parser,
+        noun="storm-library",
+        help_text=(
             "Path to storm_library.yaml. Defaults to "
             "memory/modeling-memory/storm_library.yaml under the "
             "repo root."
         ),
-    )
-    parser.add_argument(
-        "--negative-lessons",
-        type=Path,
         default=None,
-        help=(
+        legacy_aliases=("--storm-library",),
+        dest="storm_library",
+    )
+    register_path_flag(
+        parser,
+        noun="negative-lessons",
+        help_text=(
             "Path to negative_lessons.jsonl. Defaults to "
             "memory/modeling-memory/negative_lessons.jsonl under the "
             "repo root."
         ),
+        default=None,
+        legacy_aliases=("--negative-lessons",),
+        dest="negative_lessons",
     )
     parser.add_argument(
         "--benchmarks-path",
@@ -102,6 +118,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "the repo root."
         ),
     )
+    register_quiet_flag(parser)
+    register_example_flag(parser, example_text=_TRANSFER_EXAMPLE)
     parser.set_defaults(func=main)
 
 

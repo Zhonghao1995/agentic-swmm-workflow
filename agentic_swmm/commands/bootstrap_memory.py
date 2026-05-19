@@ -27,8 +27,18 @@ step.
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from agentic_swmm.agent.flag_naming import (
+    register_example_flag,
+    register_json_flag,
+    register_quiet_flag,
+)
+
+
+_BOOTSTRAP_EXAMPLE = "aiswmm bootstrap memory --dir memory/modeling-memory"
 
 
 # Default target directory. Matches the layout the rest of the package
@@ -180,6 +190,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "relative to the current working directory."
         ),
     )
+    # PRD-08 A.2 (audit #20): the description above intentionally does
+    # NOT promise that citations.yaml or reference_benchmarks.yaml will
+    # be seeded — those files are project-shipped artifacts the user
+    # is expected to maintain by hand.
+    register_json_flag(
+        memory_parser,
+        help_text=(
+            "Emit the BootstrapResult as JSON so CI can compare "
+            "created/skipped lists without parsing prose."
+        ),
+    )
+    register_quiet_flag(memory_parser)
+    register_example_flag(memory_parser, example_text=_BOOTSTRAP_EXAMPLE)
     memory_parser.set_defaults(func=memory_main)
 
 
@@ -191,6 +214,31 @@ def memory_main(args: argparse.Namespace) -> int:
     zero code would break the CI "ensure-present" use case.
     """
     result = bootstrap_memory_dir(getattr(args, "target_dir", None))
+    quiet = bool(getattr(args, "quiet", False))
+    if getattr(args, "json", False):
+        payload = {
+            "target_dir": str(result.target_dir),
+            "created": [str(p) for p in result.created],
+            "skipped": [str(p) for p in result.skipped],
+            # PRD-08 A.2 (audit #20): be explicit that the bootstrap
+            # command does NOT seed citations.yaml or
+            # reference_benchmarks.yaml; those are user-maintained.
+            "not_seeded": [
+                "citations.yaml",
+                "reference_benchmarks.yaml",
+            ],
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    if quiet:
+        # ``--quiet`` collapses to a single-line summary so callers
+        # in CI can grep for "ensure-present" success without
+        # parsing the multi-line block.
+        print(
+            f"bootstrap memory: target_dir={result.target_dir} "
+            f"created={len(result.created)} skipped={len(result.skipped)}"
+        )
+        return 0
     print(f"target_dir: {result.target_dir}")
     if result.created:
         print(f"created ({len(result.created)}):")
@@ -204,6 +252,12 @@ def memory_main(args: argparse.Namespace) -> int:
             print(f"  = {path.name}")
     else:
         print("skipped: (none)")
+    # PRD-08 A.2 (audit #20): clarify scope so the user does not
+    # expect bootstrap to seed the project-shipped citation library.
+    print(
+        "note: citations.yaml and reference_benchmarks.yaml are "
+        "separately maintained and not seeded by this command."
+    )
     return 0
 
 
