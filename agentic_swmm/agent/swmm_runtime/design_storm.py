@@ -714,6 +714,15 @@ def to_swmm_dat(
         f"{storm.duration_min} min, shape={storm.shape}, "
         f"interval={storm.interval_min} min"
     )
+    # PRD-08 Phase B (audit #29): the "Value" column was ambiguous
+    # between intensity (mm/h) and per-step depth. SWMM's TIMESERIES
+    # default for RAINFALL series is INTENSITY, so spell that out in
+    # the header so a modeler reading the DAT block immediately knows
+    # how to interpret the column.
+    lines.append(
+        ";; values are intensity in mm/h "
+        "(SWMM TIMESERIES default with RAINFALL kind = INTENSITY)"
+    )
     lines.append(";;Name           Date       Time      Value")
     lines.append(";;-------------- ---------- --------- -------")
     for stamp, intensity in zip(storm.times, storm.intensities_mm_per_hr):

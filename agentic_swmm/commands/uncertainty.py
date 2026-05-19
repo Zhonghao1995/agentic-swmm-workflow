@@ -36,6 +36,7 @@ from agentic_swmm.agent.flag_naming import (
     register_path_flag,
     register_quiet_flag,
 )
+from agentic_swmm.agent.help_router import WidthSafeRawDescriptionFormatter
 
 
 _UNCERTAINTY_PLAN_EXAMPLE = (
@@ -70,6 +71,20 @@ def _load_source_decomposition():
     return module
 
 
+_UNCERTAINTY_SOURCE_EXAMPLE = "aiswmm uncertainty source runs/2026-05-19/calib-001"
+
+
+# PRD-08 Phase B (audit #23): ``aiswmm uncertainty --help`` historically
+# showed only ``{source,plan}`` with no example. Surface one copy-
+# pasteable invocation per subcommand in the parent parser's epilog so
+# a new user does not need to drill down to discover the spelling.
+_UNCERTAINTY_EPILOG = (
+    "Examples:\n"
+    f"  {_UNCERTAINTY_PLAN_EXAMPLE}\n"
+    f"  {_UNCERTAINTY_SOURCE_EXAMPLE}\n"
+)
+
+
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "uncertainty",
@@ -78,6 +93,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "for an existing run (issue #55); 'plan' produces a sample plan "
             "for a parameter scan without running SWMM (PRD-06 B.4)."
         ),
+        epilog=_UNCERTAINTY_EPILOG,
+        formatter_class=WidthSafeRawDescriptionFormatter,
     )
     inner = parser.add_subparsers(dest="uncertainty_command", required=True)
     source_parser = inner.add_parser(
@@ -86,6 +103,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Rebuild uncertainty_source_summary.md + "
             "uncertainty_source_decomposition.json for <run_dir>."
         ),
+        epilog=f"Example:\n  {_UNCERTAINTY_SOURCE_EXAMPLE}\n",
+        formatter_class=WidthSafeRawDescriptionFormatter,
     )
     source_parser.add_argument(
         "run_dir",
@@ -100,6 +119,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Plan an uncertainty scan over a parameter set. Returns a "
             "sample list; does NOT execute SWMM."
         ),
+        epilog=f"Example:\n  {_UNCERTAINTY_PLAN_EXAMPLE}\n",
+        formatter_class=WidthSafeRawDescriptionFormatter,
     )
     # PRD-08 A.2: ``--inp`` is canonical; ``--base-inp`` is the
     # deprecated alias. Both populate ``args.inp``.

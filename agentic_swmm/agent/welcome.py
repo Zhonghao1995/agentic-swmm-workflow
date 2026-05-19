@@ -234,6 +234,41 @@ def _tip_line() -> str:
     return "(/help  /exit  /new-session  --safe)"
 
 
+def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
+    """Return a "run aiswmm doctor" hint when the user looks un-onboarded.
+
+    The hint fires when *both* are true:
+
+    * No ``OPENAI_API_KEY`` is set (the planner has no provider, so
+      the interactive shell is going to be limited until they pick
+      one), AND
+    * The default ``memory/modeling-memory/`` directory is missing or
+      empty (so transfer / cite-param / cite will all fail with
+      empty-store errors).
+
+    A user in that state typed ``aiswmm`` and is about to discover
+    the limitations the hard way. Surfacing one proactive line —
+    "Tip: run `aiswmm doctor` to see what's set up." — costs nothing
+    and points at the single command that names every gap.
+
+    Returns ``None`` when at least one signal is healthy.
+    """
+    if os.environ.get("OPENAI_API_KEY"):
+        return None
+    target = memory_dir or (Path.cwd() / "memory" / "modeling-memory")
+    try:
+        if target.is_dir():
+            # Any populated subdir / non-empty file means the user has
+            # at least started onboarding. Skip the tip in that case.
+            for child in target.iterdir():
+                if child.is_file() and child.stat().st_size > 0:
+                    return None
+    except OSError:
+        # Filesystem error: do not pester the user with the tip.
+        return None
+    return "Tip: run `aiswmm doctor` to see what's set up."
+
+
 def render_returning_banner(
     *,
     session_label: str,
@@ -333,32 +368,49 @@ def render_extended_welcome() -> str:
     demo_line = (
         f'  - "Run the {first_case} demo"' if first_case else '  - "Run a SWMM demo"'
     )
+    # PRD-08 Phase B (audit #36): "Things to try" now surfaces at least
+    # two memory-verb-based examples so a returning modeler discovers
+    # ``compare`` / ``transfer`` from the warm-intro alone. The first-
+    # case display name (when present) feeds the transfer suggestion
+    # so the example is grounded in the user's own data.
+    transfer_line = (
+        f'  - "aiswmm transfer --inp examples/{first_case.lower()}/scenario.inp"'
+        if first_case
+        else '  - "aiswmm transfer --inp <case>.inp"'
+    )
     things = [
         demo_line,
         '  - "Show me what skills you have"',
         '  - "Help me build an INP for my project"',
+        '  - "aiswmm compare --run-a <run-dir> --run-b <run-dir>"',
+        transfer_line,
     ]
     trust = "I'll always tell you what I've actually verified vs. what's still uncertain."
     closing = "Type /help anytime. Let's get started -- what would you like to do?"
-    return "\n".join(
-        [
-            logo,
-            "",
-            tagline,
-            "",
-            greeting,
-            "",
-            intro,
-            *capabilities,
-            "",
-            things_header,
-            *things,
-            "",
-            trust,
-            "",
-            closing,
-        ]
-    )
+    # PRD-08 Phase B (cross-cutting): when the user looks un-onboarded
+    # (no OPENAI_API_KEY + empty memory stores), append a single proactive
+    # ``aiswmm doctor`` hint so the next step is obvious.
+    setup_tip = _missing_setup_tip()
+    sections: list[str] = [
+        logo,
+        "",
+        tagline,
+        "",
+        greeting,
+        "",
+        intro,
+        *capabilities,
+        "",
+        things_header,
+        *things,
+        "",
+        trust,
+        "",
+        closing,
+    ]
+    if setup_tip:
+        sections.extend(["", setup_tip])
+    return "\n".join(sections)
 
 
 # ---------------------------------------------------------------------------

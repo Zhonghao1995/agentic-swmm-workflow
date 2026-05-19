@@ -258,6 +258,20 @@ def memory_main(args: argparse.Namespace) -> int:
         "note: citations.yaml and reference_benchmarks.yaml are "
         "separately maintained and not seeded by this command."
     )
+    # PRD-08 Phase B (audit #22): point the user at follow-up commands
+    # so they know what to do after the skeleton lands. Doctor confirms
+    # the stores are visible, ``cite --help`` is where the citation
+    # library workflow begins.
+    print("")
+    print("Next:")
+    print(
+        "  - aiswmm doctor                 "
+        "- confirm the new memory stores are visible"
+    )
+    print(
+        "  - aiswmm cite --help            "
+        "- populate citations.yaml when you're ready"
+    )
     return 0
 
 

@@ -10,7 +10,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -61,6 +61,9 @@ COMMANDS = {
     "uncertainty",
     # PRD-06 Phase C.5 verb. Checkpoint-aware calibration loop.
     "calibrate",
+    # PRD-08 Phase B (#31): pretty-print a run's JSONL trace files
+    # (agent_trace.jsonl + memory_trace.jsonl) from the CLI.
+    "trace",
     # Expert-only commands (PRD-Z). Listed here so the default-router
     # does not punt them to the agent; the agent itself has no
     # ToolSpec entries for these names.
@@ -166,6 +169,8 @@ def build_parser() -> argparse.ArgumentParser:
     uncertainty.register(subparsers)
     # PRD-06 Phase C.5 — checkpoint-aware calibration runner facade.
     calibrate.register(subparsers)
+    # PRD-08 Phase B (#31) — trace pretty-printer for a run directory.
+    trace.register(subparsers)
     # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
     # so the help renders an "expert-only" grouping naturally; none of
     # them is registered as an agent ToolSpec or as an MCP tool.
@@ -289,8 +294,20 @@ def _register_case_commands(
 def _list_main(args: argparse.Namespace) -> int:
     target = getattr(args, "list_target", None)
     if target is None:
+        # PRD-08 Phase B (audit #41): the legacy 2-line message did not
+        # tell the user that ``--help`` shows the same content, and there
+        # was no banner to surface the list verb's role in the wider CLI.
+        # Print a fuller banner here so a user who typed ``aiswmm list``
+        # by mistake learns how to discover targets.
         print(
-            "usage: aiswmm list <target>\n  targets: cases",
+            "usage: aiswmm list <target>\n"
+            "\n"
+            "List repository-level entities (cases, ...).\n"
+            "\n"
+            "Targets:\n"
+            "  cases     List known cases under cases/<id>/.\n"
+            "\n"
+            "Run ``aiswmm list --help`` for argparse-style flag help.",
             file=sys.stderr,
         )
         return 2
@@ -456,7 +473,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:
-        print("Interrupted.", file=sys.stderr)
+        # PRD-08 Phase B (audit #42): when SIGINT lands during a long
+        # calibration we historically dropped a bare ``Interrupted.``
+        # line and exited. The user had no idea whether progress had
+        # been checkpointed, where to look, or how to resume. Scan the
+        # ``--run-dir`` (if any) for partial state files and surface a
+        # resume hint when we find one.
+        run_dir = _resolve_run_dir(args)
+        partial = _list_partial_state_files(run_dir)
+        if partial:
+            print("Interrupted.", file=sys.stderr)
+            print("Partial state saved to:", file=sys.stderr)
+            for entry in partial:
+                print(f"  - {entry}", file=sys.stderr)
+            run_id = getattr(args, "run_id", None)
+            if run_id:
+                print(
+                    f"Resume with: aiswmm calibrate --run-id {run_id} ... "
+                    "(same args; checkpoint will be picked up)",
+                    file=sys.stderr,
+                )
+        else:
+            print("Interrupted.", file=sys.stderr)
         return 130
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -469,6 +507,84 @@ def main(argv: list[str] | None = None) -> int:
                 os.environ.pop(MEMORY_INFORMED_ENV, None)
             else:
                 os.environ[MEMORY_INFORMED_ENV] = prior_env
+
+
+def _resolve_run_dir(args: argparse.Namespace) -> "Path | None":
+    """Best-effort extraction of the ``--run-dir`` argument from ``args``.
+
+    Returns the resolved Path when the user passed ``--run-dir`` (or
+    ``--run_dir``, the argparse-normalised attribute name). Returns
+    ``None`` when there is no run-dir on the current command.
+    """
+    from pathlib import Path
+
+    value = getattr(args, "run_dir", None)
+    if value is None:
+        return None
+    try:
+        return Path(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _list_partial_state_files(run_dir: "Path | None") -> list[str]:
+    """Return the partial-state files present under ``run_dir``.
+
+    Inspects ``progress.json``, ``agent_trace.jsonl``, and
+    ``chat_note.md``. Returns a list of human-friendly entries
+    (path + a one-line summary when known) in the order the user
+    most often cares about. Empty list when the run_dir is missing
+    or no partial state is found.
+    """
+    if run_dir is None:
+        return []
+    try:
+        if not run_dir.is_dir():
+            return []
+    except OSError:
+        return []
+    entries: list[str] = []
+    progress = run_dir / "progress.json"
+    if progress.is_file():
+        summary = _summarise_progress_json(progress)
+        if summary:
+            entries.append(f"{progress} ({summary})")
+        else:
+            entries.append(str(progress))
+    trace = run_dir / "agent_trace.jsonl"
+    if trace.is_file() and trace.stat().st_size > 0:
+        entries.append(str(trace))
+    chat_note = run_dir / "chat_note.md"
+    if chat_note.is_file() and chat_note.stat().st_size > 0:
+        entries.append(str(chat_note))
+    return entries
+
+
+def _summarise_progress_json(path: "Path") -> str | None:
+    """Return a one-line summary of a progress.json checkpoint.
+
+    Pulls ``iter_index`` / ``total_iters`` / ``best_objective_so_far``
+    (when present) to give the user immediate context. Returns
+    ``None`` on any read / parse failure so the caller falls back
+    to the bare path.
+    """
+    import json as _json
+
+    try:
+        payload = _json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    iter_index = payload.get("iter_index")
+    total_iters = payload.get("total_iters")
+    best = payload.get("best_objective_so_far")
+    bits: list[str] = []
+    if iter_index is not None and total_iters is not None:
+        bits.append(f"iter {iter_index}/{total_iters}")
+    if isinstance(best, (int, float)):
+        bits.append(f"best obj {best:.3g}")
+    return ", ".join(bits) if bits else None
 
 
 def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
@@ -543,12 +659,15 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
             and "--inp" not in argv
             and "--help" not in argv
             and "-h" not in argv
+            # PRD-08 Phase B: ``--example`` is a help-shaped flag that
+            # short-circuits to a printed invocation and exits 0; it
+            # should never be routed to the LLM planner.
+            and "--example" not in argv
         ):
             # ``aiswmm run`` without ``--inp`` falls through to the
             # natural-language planner so the user can describe the
-            # model in prose. ``--help``/``-h`` short-circuit this so
-            # ``aiswmm run --help`` actually shows the run subparser's
-            # usage.
+            # model in prose. ``--help``/``-h``/``--example`` short-
+            # circuit this so each lands in the run subparser.
             return ["agent", "--planner", "openai", *argv]
         return argv
     if argv[0] in {"-h", "--help", "--version"}:
