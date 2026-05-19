@@ -175,14 +175,16 @@ class CiteCliSmokeTests(unittest.TestCase):
         self.assertIn("is_verified", payload)
 
     def test_cite_miss_returns_nonzero(self) -> None:
+        # PRD-08 A.3 (audit #14): text-mode citation-not-found goes
+        # to stderr so shell pipelines stay clean.
         with TemporaryDirectory() as tmp:
             path = Path(tmp) / "citations.yaml"
             path.write_text(_CITATIONS_YAML, encoding="utf-8")
-            rc, out, _ = _dispatch(
+            rc, _, err = _dispatch(
                 ["cite", "no_such_key", "--citations-path", str(path)]
             )
         self.assertEqual(rc, 1)
-        self.assertIn("no_such_key", out)
+        self.assertIn("no_such_key", err)
 
 
 if __name__ == "__main__":

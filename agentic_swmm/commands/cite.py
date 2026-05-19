@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import (
@@ -65,10 +66,15 @@ def main(args: argparse.Namespace) -> int:
             "citations_path": str(path),
         }
         if getattr(args, "json", False):
+            # JSON mode: ``ok=false`` payload still goes to stdout so a
+            # downstream pipeline can parse it regardless of exit code.
             print(json.dumps(message, indent=2, sort_keys=True))
         else:
-            print(
-                f"citation '{args.citation_key}' not found in {path}"
+            # PRD-08 A.3 (audit #14): text-mode errors must go to
+            # stderr so shell pipelines can grep stderr cleanly and
+            # stdout stays empty when the lookup fails.
+            sys.stderr.write(
+                f"error: citation '{args.citation_key}' not found in {path}\n"
             )
         return 1
     if getattr(args, "json", False):

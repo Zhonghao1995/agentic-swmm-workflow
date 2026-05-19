@@ -252,6 +252,12 @@ def format_onboarding_chat_block(
     "Recommended design storm" and "Known pitfall" lines only appear
     when the underlying enrichment is non-empty so we never surface
     the placeholder ``None`` text.
+
+    PRD-08 A.3 (audit #17): the previous renderer told the user
+    *that* there were lessons but not *what* they were. We now inline
+    up to three proposed parameter values and the headline of the top
+    lesson so the user can decide to accept without scrolling through
+    sub-tools.
     """
     if not recs:
         # Defensive: the caller should not reach here, but if it does
@@ -274,6 +280,9 @@ def format_onboarding_chat_block(
     lines.append(
         f"Recommended starter calibration: parameters from {top.source_case}."
     )
+    proposed = _format_top_proposed_parameters(top.proposed_parameters)
+    if proposed:
+        lines.append(f"  Proposed: {proposed}")
 
     storm = top.recommended_design_storm
     if isinstance(storm, dict):
@@ -282,13 +291,12 @@ def format_onboarding_chat_block(
 
     failure_patterns = top.known_failure_patterns or []
     if failure_patterns:
-        lines.append(
-            f"Known pitfall in similar cases: {len(failure_patterns)} "
-            f"lesson(s) from {top.source_case}."
-        )
+        lines.append("Known pitfall in similar cases:")
+        headline = _format_lesson_headline(top.source_case, failure_patterns[0])
+        lines.append(f"  • {headline}")
 
     lines.append("")
-    lines.append("Proceed with these defaults? [Y/n/customize]")
+    lines.append("Proceed with these defaults? [Y / n / customize]")
     return "\n".join(lines)
 
 
@@ -371,6 +379,49 @@ def _format_recommendation_line(rec: TransferRecommendation) -> str:
             parts[-1] += f", calibrated {record.objective_name}={value:.3f}"
     parts[-1] += ")"
     return "".join(parts)
+
+
+def _format_top_proposed_parameters(
+    proposed: dict[str, float], *, max_items: int = 3
+) -> str:
+    """Render up to ``max_items`` parameter values as ``k=v, k=v``.
+
+    Returns an empty string when ``proposed`` is empty so the caller
+    can omit the "Proposed:" line. Numeric values render with up to
+    six significant decimals; non-numeric values use ``repr``-free
+    ``str()``. Keys are sorted so the output is stable across runs.
+    """
+    if not proposed:
+        return ""
+    items = sorted(proposed.items())[:max_items]
+    rendered: list[str] = []
+    for key, value in items:
+        try:
+            f = float(value)
+            text = f"{f:g}"
+        except (TypeError, ValueError):
+            text = str(value)
+        rendered.append(f"{key}={text}")
+    return ", ".join(rendered)
+
+
+def _format_lesson_headline(
+    source_case: str, lesson: dict[str, Any], *, max_chars: int = 80
+) -> str:
+    """Return a one-line "from <case>: \"<note>\"" headline.
+
+    The lesson ``note`` is truncated to ``max_chars`` (with an ellipsis)
+    so even a long lesson does not push the prompt across multiple
+    screen widths. When the note is missing we surface the lesson
+    type so the user still gets something descriptive.
+    """
+    note = (lesson or {}).get("note") or ""
+    note_str = str(note).strip()
+    if not note_str:
+        note_str = str((lesson or {}).get("lesson_type") or "(no note)")
+    if len(note_str) > max_chars:
+        note_str = note_str[: max(0, max_chars - 3)].rstrip() + "..."
+    return f'from {source_case}: "{note_str}"'
 
 
 __all__ = [

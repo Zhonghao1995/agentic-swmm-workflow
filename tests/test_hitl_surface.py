@@ -52,7 +52,7 @@ class FormatHitlPromptTests(unittest.TestCase):
         self.assertIsInstance(prompt, str)
         self.assertGreater(len(prompt), 0)
         # The closing question must be present even on an empty context.
-        self.assertIn("Please confirm or override.", prompt)
+        self.assertIn("Please respond:", prompt)
 
     def test_escalation_message_appears_verbatim(self) -> None:
         message = "high-stakes action requested but memory has zero matching records"
@@ -151,7 +151,7 @@ class FormatHitlPromptTests(unittest.TestCase):
     def test_blank_escalation_renders_placeholder(self) -> None:
         prompt = format_hitl_prompt("", MemoryContext())
         self.assertIn("(no escalation message provided)", prompt)
-        self.assertIn("Please confirm or override.", prompt)
+        self.assertIn("Please respond:", prompt)
 
     def test_never_raises_on_hostile_context(self) -> None:
         # A MemoryContext-shaped object whose summary attribute is
@@ -165,7 +165,7 @@ class FormatHitlPromptTests(unittest.TestCase):
                 raise RuntimeError("hostile summary")
 
         prompt = format_hitl_prompt("msg", _Hostile())  # type: ignore[arg-type]
-        self.assertIn("Please confirm or override.", prompt)
+        self.assertIn("Please respond:", prompt)
         self.assertIsInstance(prompt, str)
 
     def test_unknown_decision_point_defaults_to_unknown(self) -> None:
@@ -185,6 +185,26 @@ class FormatHitlPromptTests(unittest.TestCase):
             5,
             "HITL prompt should always be multi-line for readability",
         )
+
+    # ------------------------------------------------------------------
+    # PRD-08 A.3 (audit #19): action vocabulary + onboarding suppression.
+
+    def test_action_vocabulary_lists_accept_cancel_json(self) -> None:
+        prompt = format_hitl_prompt("test", MemoryContext())
+        self.assertIn("accept", prompt)
+        self.assertIn("cancel", prompt)
+        self.assertIn("JSON", prompt)
+
+    def test_action_vocabulary_omitted_for_new_case_onboarding(self) -> None:
+        # The onboarding chat block has its own [Y / n / customize]
+        # prompt; the generic HITL block should not double-prompt.
+        prompt = format_hitl_prompt(
+            "new case detected",
+            MemoryContext(),
+            decision_point="new_case_onboarding",
+        )
+        self.assertNotIn("Please respond:", prompt)
+        self.assertNotIn("Paste a JSON", prompt)
 
 
 if __name__ == "__main__":

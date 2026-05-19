@@ -343,9 +343,11 @@ class CiteParamCliTests(unittest.TestCase):
             self.assertTrue(payload["in_range"])
 
     def test_cite_param_unknown_returns_nonzero(self) -> None:
+        # PRD-08 A.3 (audit #13/#40): unknown-parameter errors go to
+        # stderr with a structured cause/hint stanza.
         with TemporaryDirectory() as tmp:
             b, c = self._write_fixtures(Path(tmp))
-            rc, out, _ = _dispatch(
+            rc, _, err = _dispatch(
                 [
                     "cite-param",
                     "--name",
@@ -359,12 +361,16 @@ class CiteParamCliTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(rc, 1)
-            self.assertIn("no_such.parameter", out)
+            self.assertIn("no_such.parameter", err)
 
     def test_cite_param_missing_citation_partial_renders(self) -> None:
+        # PRD-08 A.3 (audit #13): when the leaf has a citation key but
+        # that key is not registered in citations.yaml, the partial
+        # range still renders on stdout while the cite-not-registered
+        # cause/hint stanza goes to stderr.
         with TemporaryDirectory() as tmp:
             b, c = self._write_fixtures(Path(tmp))
-            rc, out, _ = _dispatch(
+            rc, out, err = _dispatch(
                 [
                     "cite-param",
                     "--name",
@@ -378,8 +384,8 @@ class CiteParamCliTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(rc, 0)
-            self.assertIn("missing_citation_token", out)
-            self.assertIn("missing", out.lower())
+            self.assertIn("missing_citation_token", err)
+            self.assertIn("not registered", err.lower())
 
 
 if __name__ == "__main__":
