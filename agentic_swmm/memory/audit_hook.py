@@ -355,6 +355,109 @@ def _record_parametric_from_provenance(
     return str(store_path)
 
 
+def _record_calibration_from_provenance(
+    *, run_dir: Path, memory_dir: Path
+) -> str | None:
+    """Append a calibration_memory row when provenance has a ``calibration`` block.
+
+    PRD-06 Phase B.3 bridge: SCE-UA / DREAM-ZS runs land a structured
+    block in ``experiment_provenance.json``. When present, mirror it
+    into the JSONL store so the agent can answer "best Manning's *n*
+    for case X in the last 6 months" without rescanning run dirs.
+
+    Returns the path to the written JSONL, or ``None`` when nothing
+    was written (no provenance, no calibration block, missing required
+    fields, write error). Soft-fail: a broken write must not block the
+    rest of the memory pipeline — same contract as the parametric
+    bridge above.
+    """
+    from agentic_swmm.memory.calibration_memory import (
+        CalibrationRecord,
+        record_calibration_run,
+    )
+
+    provenance = _read_provenance(run_dir)
+    if not provenance:
+        return None
+
+    calibration = provenance.get("calibration")
+    if not isinstance(calibration, dict) or not calibration:
+        # No calibration block — silently skip (matches the PRD spec
+        # for non-calibration runs).
+        return None
+
+    run_id = str(provenance.get("run_id") or "").strip()
+    case_name = str(provenance.get("case_name") or "").strip()
+    if not run_id or not case_name:
+        return None
+
+    tools = provenance.get("tools") or {}
+    swmm5_version = tools.get("swmm5_version") or tools.get("swmm_version")
+
+    parameters_raw = calibration.get("parameters") or {}
+    parameters: dict[str, float] = {}
+    if isinstance(parameters_raw, dict):
+        for name, value in parameters_raw.items():
+            try:
+                parameters[str(name)] = float(value)
+            except (TypeError, ValueError):
+                continue
+
+    secondary_raw = calibration.get("secondary_metrics") or {}
+    secondary: dict[str, float] = {}
+    if isinstance(secondary_raw, dict):
+        for name, value in secondary_raw.items():
+            try:
+                secondary[str(name)] = float(value)
+            except (TypeError, ValueError):
+                continue
+
+    objective_value: float | None = None
+    raw_obj = calibration.get("objective_value")
+    if raw_obj is not None:
+        try:
+            objective_value = float(raw_obj)
+        except (TypeError, ValueError):
+            objective_value = None
+
+    n_evaluations: int | None = None
+    raw_n = calibration.get("n_evaluations")
+    if raw_n is not None:
+        try:
+            n_evaluations = int(raw_n)
+        except (TypeError, ValueError):
+            n_evaluations = None
+
+    wall_time_s: float | None = None
+    raw_wall = calibration.get("wall_time_s")
+    if raw_wall is not None:
+        try:
+            wall_time_s = float(raw_wall)
+        except (TypeError, ValueError):
+            wall_time_s = None
+
+    record = CalibrationRecord(
+        run_id=run_id,
+        case_name=case_name,
+        use_case=calibration.get("use_case"),
+        algorithm=calibration.get("algorithm"),
+        parameters=parameters,
+        objective_name=calibration.get("objective_name"),
+        objective_value=objective_value,
+        secondary_metrics=secondary,
+        swmm5_version=str(swmm5_version) if swmm5_version else None,
+        n_evaluations=n_evaluations,
+        wall_time_s=wall_time_s,
+    )
+
+    store_path = memory_dir / "calibration_memory.jsonl"
+    try:
+        record_calibration_run(store_path, record)
+    except (ValueError, OSError):
+        return None
+    return str(store_path)
+
+
 def _emit_audit_memory_trace(
     *, run_dir: Path, memory_dir: Path, parametric_path: Path
 ) -> Path | None:
@@ -510,6 +613,18 @@ def trigger_memory_refresh(
                 result["errors"].append(f"memory trace write failed: {exc}")
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"parametric memory write failed: {exc}")
+
+    # PRD-06 Phase B.3: bridge audit -> calibration_memory. Only fires
+    # when provenance carries a ``calibration`` block; non-calibration
+    # runs are silently skipped. Soft failures.
+    try:
+        calibration_path = _record_calibration_from_provenance(
+            run_dir=run_dir, memory_dir=memory_dir
+        )
+        if calibration_path:
+            result["calibration_memory"] = calibration_path
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        result["errors"].append(f"calibration memory write failed: {exc}")
 
     # ME-2 (issue #62): apply confidence decay + status transitions
     # AFTER the metadata bump. Retired patterns are moved into

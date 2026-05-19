@@ -60,10 +60,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "uncertainty",
         help=(
-            "Integrated uncertainty source decomposition (issue #55). "
-            "Subcommand 'source' regenerates uncertainty_source_summary.md "
-            "+ uncertainty_source_decomposition.json from the raw outputs "
-            "in <run_dir>/09_audit/."
+            "Uncertainty verbs. 'source' rebuilds the source decomposition "
+            "for an existing run (issue #55); 'plan' produces a sample plan "
+            "for a parameter scan without running SWMM (PRD-06 B.4)."
         ),
     )
     inner = parser.add_subparsers(dest="uncertainty_command", required=True)
@@ -80,6 +79,58 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Path to the run directory.",
     )
     source_parser.set_defaults(func=source_main)
+
+    plan_parser = inner.add_parser(
+        "plan",
+        help=(
+            "Plan an uncertainty scan over a parameter set. Returns a "
+            "sample list; does NOT execute SWMM."
+        ),
+    )
+    plan_parser.add_argument(
+        "--base-inp",
+        type=Path,
+        required=True,
+        help="Base INP whose hash gets stamped into the plan provenance.",
+    )
+    plan_parser.add_argument(
+        "--param",
+        action="append",
+        required=True,
+        metavar="NAME=LOW,HIGH",
+        help=(
+            "Parameter to perturb with its [low,high] bounds. Repeatable. "
+            "Example: --param manning_n=0.01,0.03"
+        ),
+    )
+    plan_parser.add_argument(
+        "--method",
+        choices=("morris", "sobol"),
+        default="morris",
+        help="SALib sampler to use (default morris).",
+    )
+    plan_parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=50,
+        help="Sample budget (SALib may round up) (default 50).",
+    )
+    plan_parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help="Seed forwarded to the sampler for reproducibility (default 0).",
+    )
+    plan_parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help=(
+            "Write the plan JSON here. When omitted, the plan is printed "
+            "to stdout so a shell redirect still works."
+        ),
+    )
+    plan_parser.set_defaults(func=plan_main)
 
 
 def _print_error(message: str) -> None:
@@ -141,4 +192,84 @@ def source_main(args: argparse.Namespace) -> int:
             + ", ".join(methods_absent)
         )
 
+    return 0
+
+
+def _parse_param_specs(specs: list[str]) -> dict[str, tuple[float, float]]:
+    """Parse ``NAME=LOW,HIGH`` strings into ``{name: (low, high)}``.
+
+    Raises :class:`ValueError` with a human-readable message on a
+    malformed spec so the CLI shows a clean error rather than a stack
+    trace.
+    """
+    parameters: dict[str, tuple[float, float]] = {}
+    for spec in specs:
+        if "=" not in spec:
+            raise ValueError(
+                f"--param spec must be NAME=LOW,HIGH; got {spec!r}"
+            )
+        name, bounds_text = spec.split("=", 1)
+        name = name.strip()
+        if not name:
+            raise ValueError(f"--param spec has empty NAME: {spec!r}")
+        if "," not in bounds_text:
+            raise ValueError(
+                f"--param bounds must be LOW,HIGH; got {bounds_text!r}"
+            )
+        low_text, high_text = bounds_text.split(",", 1)
+        try:
+            low = float(low_text)
+            high = float(high_text)
+        except ValueError as exc:
+            raise ValueError(
+                f"--param {name}: bounds must be numeric ({exc})"
+            ) from exc
+        if high < low:
+            raise ValueError(
+                f"--param {name}: LOW ({low}) must be <= HIGH ({high})"
+            )
+        parameters[name] = (low, high)
+    return parameters
+
+
+def plan_main(args: argparse.Namespace) -> int:
+    """Produce a sample plan and write it as JSON.
+
+    Exit codes:
+    - 0 — plan produced (samples may be empty when SALib is missing,
+      in which case ``provenance.error`` explains it).
+    - 1 — malformed ``--param`` spec or other input error.
+    """
+    from agentic_swmm.agent.swmm_runtime.uncertainty_plan import (
+        plan_uncertainty_run,
+    )
+
+    try:
+        parameters = _parse_param_specs(args.param)
+    except ValueError as exc:
+        _print_error(str(exc))
+        return 1
+
+    try:
+        plan = plan_uncertainty_run(
+            base_inp=args.base_inp,
+            parameters=parameters,
+            method=args.method,
+            n_samples=args.n_samples,
+            seed=args.seed,
+        )
+    except ValueError as exc:
+        _print_error(str(exc))
+        return 1
+
+    payload = plan.to_dict()
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    if args.out is None:
+        print(text)
+    else:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(text, encoding="utf-8")
+        print(
+            f"wrote {plan.n_samples_actual}-sample plan to {args.out}"
+        )
     return 0
