@@ -77,11 +77,27 @@ def _default_preflight_inp(inp_path: Path) -> Any:
     return preflight_inp(inp_path)
 
 
-def _default_postflight_qa(run_dir: Path) -> Any:
-    """Real-runtime postflight, lazy-imported."""
+def _default_postflight_qa(
+    run_dir: Path,
+    *,
+    parametric_store: Path | None = None,
+    case_name: str | None = None,
+    use_case: str | None = None,
+) -> Any:
+    """Real-runtime postflight, lazy-imported.
+
+    Accepts the Round 6 / PRD-07 Phase 4 user-baseline kwargs. When
+    callers don't supply them the behaviour is byte-identical to the
+    pre-Round-6 single-arg version.
+    """
     from agentic_swmm.agent.swmm_runtime.postflight import postflight_qa
 
-    return postflight_qa(run_dir)
+    return postflight_qa(
+        run_dir,
+        parametric_store=parametric_store,
+        case_name=case_name,
+        use_case=use_case,
+    )
 
 
 def _resolve_default_memory_dir() -> Path:
@@ -131,7 +147,7 @@ class MemoryIntegration:
         _default_gather_memory_context
     )
     preflight_inp: Callable[[Path], Any] = _default_preflight_inp
-    postflight_qa: Callable[[Path], Any] = _default_postflight_qa
+    postflight_qa: Callable[..., Any] = _default_postflight_qa
     memory_dir: Path = field(default_factory=_resolve_default_memory_dir)
     gates_disabled: Callable[[], bool] = swmm_gates_disabled
 
@@ -178,12 +194,40 @@ class MemoryIntegration:
         except Exception:  # pragma: no cover - defensive
             return None
 
-    def run_postflight(self, run_dir: Path) -> Any | None:
-        """Run the postflight QA gate or return ``None`` when disabled."""
+    def run_postflight(
+        self,
+        run_dir: Path,
+        *,
+        case_name: str | None = None,
+        use_case: str | None = None,
+    ) -> Any | None:
+        """Run the postflight QA gate or return ``None`` when disabled.
+
+        Round 6 extension: when ``case_name`` and ``use_case`` are
+        non-empty, the gate consults the parametric_memory user
+        baseline via :func:`postflight_qa`'s new kwargs. The
+        ``parametric_store`` path is derived from ``self.memory_dir``
+        so workflow adapters get the conventional location for free.
+        Legacy callers that omit the kwargs see no behaviour change.
+        """
         if self.gates_disabled():
             return None
         try:
-            return self.postflight_qa(run_dir)
+            store: Path | None = None
+            if case_name and use_case:
+                store = Path(self.memory_dir) / "parametric_memory.jsonl"
+            try:
+                return self.postflight_qa(
+                    run_dir,
+                    parametric_store=store,
+                    case_name=case_name if case_name else None,
+                    use_case=use_case if use_case else None,
+                )
+            except TypeError:
+                # Older test mocks may not accept the kwargs. Fall
+                # back to the one-arg form so adapter-mode tests stay
+                # green.
+                return self.postflight_qa(run_dir)
         except Exception:  # pragma: no cover - defensive
             return None
 

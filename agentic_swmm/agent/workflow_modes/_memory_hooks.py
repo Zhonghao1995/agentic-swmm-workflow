@@ -123,12 +123,34 @@ def run_postflight_gate(ctx: Any, run_dir: str) -> PostflightGateResult:
     is meant to feed through ``hitl_surface.format_hitl_prompt``
     because postflight failures are *runtime* failures the user may
     want to override.
+
+    Round 6 extension: ``ctx.case_name`` and ``ctx.use_case`` (when
+    set) are forwarded to the integration's ``run_postflight`` so the
+    underlying QA call can opt into user-baseline classification. The
+    adapter does not have to do anything extra — populating those two
+    fields on the context is sufficient.
     """
     integration = getattr(ctx, "memory_integration", None)
     if integration is None:
         return PostflightGateResult(ran=False, ok=True)
 
-    report = integration.run_postflight(Path(run_dir))
+    case_name = _resolve_case_name(ctx)
+    use_case = getattr(ctx, "use_case", None)
+    if not (isinstance(use_case, str) and use_case.strip()):
+        use_case = None
+
+    try:
+        report = integration.run_postflight(
+            Path(run_dir),
+            case_name=case_name,
+            use_case=use_case,
+        )
+    except TypeError:
+        # Pre-Round-6 integration instances (mocks, test doubles)
+        # may not accept the new kwargs. Fall back to the
+        # legacy single-arg form so adapters built around the
+        # old MemoryIntegration shape keep working.
+        report = integration.run_postflight(Path(run_dir))
     if report is None:
         return PostflightGateResult(ran=False, ok=True)
     status = getattr(report, "status", "FAIL")

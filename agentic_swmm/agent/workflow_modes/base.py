@@ -75,6 +75,10 @@ class WorkflowContext:
     memory_integration: Any | None = None
     case_name: str | None = None
     memory_context: Any | None = None
+    # Round 6 / PRD-07 Phase 4: optional use_case anchor for the
+    # postflight user-baseline path. ``None`` keeps the legacy
+    # library-threshold behaviour (byte-identical).
+    use_case: str | None = None
 
     def step(self, call: "ToolCall") -> dict[str, Any]:
         """Append ``call`` to the plan, emit the standard progress line, execute it."""

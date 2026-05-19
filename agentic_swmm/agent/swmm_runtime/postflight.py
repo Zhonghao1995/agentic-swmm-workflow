@@ -20,8 +20,10 @@ classification arrive in Phase B with the comparison verb.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +58,13 @@ class QAReport:
 
     Mirrors :class:`PreflightReport` shape so callers can render the
     pre- and post-flight checklists with the same UI primitives.
+
+    Round 6 / PRD-07 Phase 4 extension: ``thresholds_source`` records
+    which classification source actually decided each metric — one of
+    ``"library"`` (the shipped reference benchmarks + project overlay)
+    or ``"user_baseline"`` (the caller's own historical p95 / p99
+    boundaries). Callers can render this in the chat note so the user
+    sees *why* a given run was flagged.
     """
 
     status: str = "PASS"
@@ -63,6 +72,7 @@ class QAReport:
     warnings: list[dict[str, Any]] = field(default_factory=list)
     metrics: dict[str, float] = field(default_factory=dict)
     classifications: dict[str, str] = field(default_factory=dict)
+    thresholds_source: dict[str, str] = field(default_factory=dict)
 
     def _bump(self, severity: str) -> None:
         order = {"PASS": 0, "WARN": 1, "FAIL": 2, "UNKNOWN": 0}
@@ -145,11 +155,69 @@ def _find_rpt(run_dir: Path) -> Path | None:
     return None
 
 
+def _classify_against_user_baseline(value: float, baseline: Any) -> str:
+    """Three-tier classification against a :class:`UserBaseline`.
+
+    Magnitude comparison: ``abs(value) > p99`` → FAIL,
+    ``abs(value) > p95`` → WARN, else → PASS. Mirrors the library
+    convention so the chat-note column reads uniformly regardless of
+    which source classified the run.
+    """
+    magnitude = abs(float(value))
+    p99 = float(getattr(baseline, "p99", 0.0))
+    p95 = float(getattr(baseline, "p95", 0.0))
+    if magnitude > p99:
+        return "FAIL"
+    if magnitude > p95:
+        return "WARN"
+    return "PASS"
+
+
+def _write_postflight_memory_trace(
+    run_dir: Path,
+    *,
+    thresholds_source: dict[str, str],
+    user_baseline_percentile_used: dict[str, str],
+) -> None:
+    """Append one ``memory_trace.jsonl`` line describing the postflight gate.
+
+    Best-effort: a failed write must not bubble up — the gate's
+    primary obligation is to return a :class:`QAReport`, not to
+    guarantee a log line. ``run_dir`` already exists at this point so
+    the only failure mode is a read-only filesystem.
+    """
+    try:
+        line = {
+            "timestamp": (
+                datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            ),
+            "decision_point": "postflight_qa",
+            "kind": "postflight_thresholds",
+            "thresholds_source": dict(thresholds_source),
+            "user_baseline_percentile_used": dict(
+                user_baseline_percentile_used
+            ),
+            "schema_version": "1.0",
+        }
+        trace_path = run_dir / "memory_trace.jsonl"
+        with trace_path.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n"
+            )
+    except OSError:  # pragma: no cover - audit must never break dispatch
+        return
+
+
 def postflight_qa(
     run_dir: Path,
     *,
     benchmarks_path: Path | None = None,
     project_overrides_path: Path | None = None,
+    parametric_store: Path | None = None,
+    case_name: str | None = None,
+    use_case: str | None = None,
 ) -> QAReport:
     """Parse ``run_dir``'s .rpt, classify continuity, return a :class:`QAReport`.
 
@@ -198,10 +266,64 @@ def postflight_qa(
         "runoff_continuity_pct": "continuity_thresholds_pct.runoff",
         "flow_continuity_pct": "continuity_thresholds_pct.flow",
     }
+    # User-baseline metric paths — dotted JSON paths into the parametric
+    # row. Mirrors classification_map's order so the lookup is one-shot
+    # per metric.
+    user_baseline_metric_path = {
+        "runoff_continuity_pct": "qa_metrics.runoff_continuity_pct",
+        "flow_continuity_pct": "qa_metrics.flow_continuity_pct",
+    }
+
+    user_baseline_enabled = (
+        parametric_store is not None
+        and case_name is not None
+        and use_case is not None
+    )
+    # Lazy import so legacy callers do not pay the user_baseline cost.
+    compute_user_baseline: Any = None
+    if user_baseline_enabled:
+        try:
+            from agentic_swmm.memory.user_baseline import (
+                compute_user_baseline as _cub,
+            )
+
+            compute_user_baseline = _cub
+        except Exception:  # pragma: no cover - defensive
+            compute_user_baseline = None
+
+    percentile_used: dict[str, str] = {}
 
     for metric_name, value in metrics.items():
         dotted = classification_map.get(metric_name)
         fallback = _FALLBACK_CONTINUITY_THRESHOLDS.get(metric_name, {})
+
+        baseline = None
+        if user_baseline_enabled and compute_user_baseline is not None:
+            metric_path = user_baseline_metric_path.get(metric_name)
+            if metric_path is not None:
+                try:
+                    baseline = compute_user_baseline(
+                        Path(parametric_store),
+                        case_name=str(case_name),
+                        use_case=str(use_case),
+                        metric_path=metric_path,
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    baseline = None
+
+        if baseline is not None:
+            classification = _classify_against_user_baseline(value, baseline)
+            magnitude = abs(float(value))
+            if magnitude > float(getattr(baseline, "p99", 0.0)):
+                percentile_used[metric_name] = "p99"
+            elif magnitude > float(getattr(baseline, "p95", 0.0)):
+                percentile_used[metric_name] = "p95"
+            else:
+                percentile_used[metric_name] = "<=p95"
+            report.thresholds_source[metric_name] = "user_baseline"
+            report.add_metric(metric_name, value, classification)
+            continue
+
         thresholds = (
             resolve_threshold(
                 dotted,
@@ -226,6 +348,17 @@ def postflight_qa(
         classification = (
             classify_metric(value, thresholds) if thresholds else "UNKNOWN"
         )
+        report.thresholds_source[metric_name] = "library"
         report.add_metric(metric_name, value, classification)
+
+    # Emit a memory_trace line documenting which source decided each
+    # metric. We only write when user-baseline kwargs were supplied so
+    # legacy callers see no new side-effects.
+    if user_baseline_enabled and report.thresholds_source:
+        _write_postflight_memory_trace(
+            run_dir,
+            thresholds_source=report.thresholds_source,
+            user_baseline_percentile_used=percentile_used,
+        )
 
     return report
