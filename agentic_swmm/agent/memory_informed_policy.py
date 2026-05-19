@@ -48,8 +48,11 @@ fresh project) and yields ``confidence="llm"`` for low stakes or
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
@@ -271,12 +274,45 @@ def _rank_candidates_by_recency(
     return [*with_ts, *without_ts]
 
 
+def _write_session_history_trace_row(
+    trace_dir: Path,
+    *,
+    payload: dict[str, Any],
+) -> None:
+    """Best-effort append of one session-history row to ``agent_trace.jsonl``.
+
+    Centralised here so both the consult and decision lines share a
+    single failure boundary — the policy must never raise on a
+    full / read-only trace directory. The schema mirrors
+    ``reporting.write_event`` (``timestamp_utc`` first key).
+    """
+    try:
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        out = {
+            "timestamp_utc": (
+                datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            ),
+            **payload,
+        }
+        with (trace_dir / "agent_trace.jsonl").open(
+            "a", encoding="utf-8"
+        ) as handle:
+            handle.write(json.dumps(out, sort_keys=True) + "\n")
+    except Exception:  # pragma: no cover - audit must never break dispatch
+        return
+
+
 def decide_with_memory(
     utterance: str,
     memory_context: MemoryContext,
     *,
     stakes: str = "low",
     transfer_lookup: Callable[[], list[Any]] | None = None,
+    decision_point: str | None = None,
+    trace_dir: Path | None = None,
+    session_history_threshold: float = 0.66,
 ) -> PolicyDecision:
     """Return a :class:`PolicyDecision` for the given utterance + memory.
 
@@ -327,6 +363,91 @@ def decide_with_memory(
         raise ValueError(
             f"stakes must be one of {VALID_STAKES}; got {stakes!r}"
         )
+
+    # PRD-07 Phase 3 (Round 6): session-history-based recall. When the
+    # caller exposes a trace dir we consult the agent_trace.jsonl for
+    # prior decisions on similar utterances. A strong consensus there
+    # short-circuits the whole policy *before* the parametric_memory
+    # rules run — saving an LLM round-trip on prompts the user has
+    # historically meant the same thing for.
+    if trace_dir is not None:
+        try:
+            # Lazy import keeps the planner's hot import graph from
+            # always pulling session_history (the legacy callers that
+            # never set trace_dir should not pay the cost).
+            from agentic_swmm.agent.session_history import (
+                recall_session_history,
+            )
+
+            recall = recall_session_history(
+                utterance=utterance,
+                decision_point=decision_point,
+                trace_dir=Path(trace_dir),
+                consensus_threshold=float(session_history_threshold),
+            )
+        except Exception:  # pragma: no cover - defensive
+            recall = None
+
+        if recall is not None:
+            # Always log the consultation, even when it didn't decide,
+            # so the audit trail records that we asked.
+            _write_session_history_trace_row(
+                Path(trace_dir),
+                payload={
+                    "event": "memory_consultation",
+                    "kind": "session_history",
+                    "decision_point": decision_point or "intent_disambiguate",
+                    "evidence_count": int(recall.evidence_count),
+                    "consensus_value": recall.consensus_value,
+                    "consensus_field": recall.consensus_field,
+                    "consensus_confidence": float(
+                        recall.consensus_confidence
+                    ),
+                },
+            )
+
+            # Short-circuit on strong consensus.
+            if (
+                recall.consensus_value is not None
+                and recall.consensus_confidence
+                >= float(session_history_threshold)
+            ):
+                resolved_case = (
+                    str(recall.consensus_value)
+                    if recall.consensus_field == "case_name"
+                    and isinstance(recall.consensus_value, str)
+                    else None
+                )
+                candidates = (
+                    [resolved_case] if resolved_case else []
+                )
+                reasoning = (
+                    "session history: "
+                    f"{recall.evidence_count} recent matches, "
+                    f"{recall.consensus_confidence:.2f} share agreed on "
+                    f"{recall.consensus_field}="
+                    f"{recall.consensus_value!r}"
+                )
+                _write_session_history_trace_row(
+                    Path(trace_dir),
+                    payload={
+                        "event": "memory_informed_decision",
+                        "source": "session_history",
+                        "decision_point": (
+                            decision_point or "intent_disambiguate"
+                        ),
+                        "field": recall.consensus_field,
+                        "value_chosen": recall.consensus_value,
+                        "rationale": reasoning,
+                    },
+                )
+                return PolicyDecision(
+                    confidence="auto_complete",
+                    resolved_case=resolved_case,
+                    candidates=candidates,
+                    reasoning=reasoning,
+                    escalation=None,
+                )
 
     hits = list(memory_context.parametric_hits)
 
