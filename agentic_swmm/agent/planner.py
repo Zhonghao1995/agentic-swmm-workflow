@@ -12,6 +12,13 @@ from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
 from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
+from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context
+from agentic_swmm.agent.memory_informed_policy import (
+    MemoryHITLRequired,
+    PolicyDecision,
+    decide_with_memory,
+)
+from agentic_swmm.agent.memory_trace import log_memory_decision
 from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
@@ -82,6 +89,84 @@ def rule_plan(goal: str) -> list[ToolCall]:
     if not calls:
         calls.append(ToolCall("doctor", {}))
     return calls
+
+
+def _resolve_memory_dir_for_planner() -> Path:
+    """Mirror ``audit_hook._resolve_memory_dir`` without importing it.
+
+    The planner is the consumer; the audit hook is the writer.
+    Importing the audit module would entangle two layers that have
+    no other shared API, so the planner has its own tiny resolver
+    that follows the same env var contract.
+    """
+    override = os.environ.get("AISWMM_MEMORY_DIR")
+    if override:
+        return Path(override)
+    return Path("memory/modeling-memory")
+
+
+_HIGH_STAKES_TOKENS: tuple[str, ...] = (
+    # Verbs that mutate ``memory/`` or accept a calibration. The
+    # list is short on purpose: the policy already escalates to
+    # ``hitl`` only when *evidence* is zero, so a few false
+    # positives here just gate an irreversible action behind an
+    # extra confirm. False negatives are the real failure mode.
+    "accept-calibration",
+    "accept_calibration",
+    "accept calibration",
+    "promote-fact",
+    "promote_fact",
+    "promote fact",
+    "reflect-apply",
+    "reflect_apply",
+    "reflect apply",
+)
+
+
+def _looks_high_stakes(goal: str) -> bool:
+    """Return True when the goal text reads like a memory-mutating verb."""
+    lowered = (goal or "").lower()
+    return any(token in lowered for token in _HIGH_STAKES_TOKENS)
+
+
+def _resolve_case_name_for_memory(
+    goal: str, prior_session_state: dict[str, Any]
+) -> str | None:
+    """Return the best-effort case anchor for memory consultation.
+
+    Order of precedence:
+        1. ``active_case_id`` carried over from the previous session
+           (the most recently-touched case is usually the right one).
+        2. ``recent_cases[0].case_id`` from prior state.
+        3. Bare-token extraction from the goal that survives the
+           policy's verb blocklist (a token like "saanich-b8" or
+           "Todcreek"). We only return *one* candidate here — if the
+           prompt mentions several names the policy's own match
+           logic will refuse to auto-resolve and we fall to ``llm``.
+
+    Returns ``None`` when no anchor can be derived. The policy still
+    runs against an empty MemoryContext in that case so the audit
+    log records the deferral.
+    """
+    if isinstance(prior_session_state, dict):
+        candidate = prior_session_state.get("active_case_id")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+        recent = prior_session_state.get("recent_cases")
+        if isinstance(recent, list) and recent:
+            first = recent[0]
+            if isinstance(first, dict):
+                rid = first.get("case_id")
+                if isinstance(rid, str) and rid.strip():
+                    return rid.strip()
+    # Fall back to a token sniff. We deliberately import the policy's
+    # token helper lazily so the import cycle stays shallow.
+    from agentic_swmm.agent.memory_informed_policy import _utterance_tokens
+
+    tokens = _utterance_tokens(goal)
+    if len(tokens) == 1:
+        return tokens[0]
+    return None
 
 
 class OpenAIPlanner:
@@ -157,6 +242,20 @@ class OpenAIPlanner:
                 prior_session_state=prior_state,
             )
             route_args = _workflow_route_args(goal)
+            # PRD-07 Phase 3: consult memory before the LLM
+            # disambiguator. Empty memory yields a ``llm`` decision and
+            # we fall through unchanged (paper-grade reproducibility
+            # on fresh projects). A populated store can short-circuit
+            # to ``auto_complete`` and skip the LLM call entirely, or
+            # raise ``MemoryHITLRequired`` on high-stakes + zero
+            # evidence — the runtime catches the exception and surfaces
+            # the escalation prompt to the user.
+            self._consult_memory_informed_policy(
+                goal=goal,
+                trace_path=trace_path,
+                session_dir=session_dir,
+                prior_session_state=prior_state,
+            )
             # PRD #111: LLM disambiguation for compound plot-conflict
             # goals. Returns ``None`` for unambiguous prompts so the
             # deterministic SOP fast-path runs unchanged (paper-grade
@@ -430,6 +529,98 @@ class OpenAIPlanner:
             },
         )
         return picked
+
+    def _consult_memory_informed_policy(
+        self,
+        *,
+        goal: str,
+        trace_path: Path,
+        session_dir: Path,
+        prior_session_state: dict[str, Any],
+    ) -> PolicyDecision | None:
+        """Run the Phase 3 memory-informed disambiguation policy.
+
+        The hook is **additive** — when memory is empty or the case
+        cannot be resolved from the goal/state, the policy returns
+        ``confidence="llm"`` and we fall through to existing behaviour
+        unchanged. The hook never crashes the planner: any I/O or
+        store-shape exception is swallowed so a corrupt memory dir
+        cannot block dispatch.
+
+        Side effects:
+            * On every successful decision (including ``llm``) a
+              :func:`log_memory_decision` line lands in
+              ``<session_dir>/memory_trace.jsonl``.
+            * On ``confidence="hitl"`` the hook raises
+              :class:`MemoryHITLRequired` so the runtime can surface
+              the blocking escalation prompt.
+
+        Stakes detection is intentionally simple here: any goal whose
+        text suggests calibration-accept or memory mutation is
+        treated as ``high``. The policy itself handles the matrix of
+        evidence vs. stakes; the planner just classifies the verb.
+        """
+        case_name = _resolve_case_name_for_memory(goal, prior_session_state)
+        if not case_name:
+            # Without a case-name anchor we cannot consult the
+            # parametric store meaningfully. The Phase 3 policy still
+            # runs against an empty MemoryContext so the audit trail
+            # records *that* we consulted memory and decided to defer.
+            context: MemoryContext = MemoryContext()
+        else:
+            try:
+                memory_dir = _resolve_memory_dir_for_planner()
+                context = gather_memory_context(
+                    memory_dir=memory_dir,
+                    case_name=case_name,
+                )
+            except Exception:  # pragma: no cover - defensive: memory must never break dispatch
+                context = MemoryContext()
+
+        stakes = "high" if _looks_high_stakes(goal) else "low"
+
+        try:
+            decision = decide_with_memory(goal, context, stakes=stakes)
+        except Exception:  # pragma: no cover - defensive: policy is pure-function but stay safe
+            return None
+
+        # Best-effort transparency log. A failed log call must not
+        # abort planning; the agent_trace.jsonl event below is a
+        # separate, also-best-effort record.
+        try:
+            log_memory_decision(
+                run_dir=session_dir,
+                decision_point="planner_intent_disambiguation",
+                context=context,
+                decision=decision.resolved_case or "(none)",
+                confidence=decision.confidence,
+            )
+        except Exception:  # pragma: no cover - audit must never break dispatch
+            pass
+
+        try:
+            write_event(
+                trace_path,
+                {
+                    "event": "memory_informed_policy",
+                    "goal": goal,
+                    "confidence": decision.confidence,
+                    "resolved_case": decision.resolved_case,
+                    "candidate_count": len(decision.candidates),
+                    "stakes": stakes,
+                    "reasoning": decision.reasoning,
+                },
+            )
+        except Exception:  # pragma: no cover - audit must never break dispatch
+            pass
+
+        if decision.confidence == "hitl":
+            raise MemoryHITLRequired(
+                decision.escalation
+                or "Memory-informed policy requires human confirmation."
+            )
+
+        return decision
 
     def _classify_plot_continuation(
         self,
