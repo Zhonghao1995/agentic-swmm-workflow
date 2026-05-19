@@ -33,6 +33,7 @@ from agentic_swmm.agent.flag_naming import (
     register_example_flag,
     register_inp_flag,
 )
+from agentic_swmm.agent.help_router import WidthSafeFormatter
 from agentic_swmm.agent.honesty import STUB_BANNER, fail_fast_if_path_missing
 from agentic_swmm.agent.swmm_runtime.calibration_runner import (
     CalibrationRunConfig,
@@ -59,6 +60,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "progress.json every N iterations and (with --progress) "
             "prints one-line summaries."
         ),
+        # PRD-08 Phase B (audit #26): width-safe usage formatter so
+        # ``--total-iters TOTAL_ITERS`` (and the other required flags
+        # below) never wrap mid-flag.
+        formatter_class=WidthSafeFormatter,
     )
     parser.add_argument(
         "--run-id",
@@ -128,7 +133,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         action="store_true",
         help=(
             "Print one summarize_progress line per --print-every "
-            "iterations (TTY) or append a JSONL record otherwise."
+            "iterations. Full checkpoints written to "
+            "<run-dir>/progress.json; tracing also lands in "
+            "<run-dir>/agent_trace.jsonl."
         ),
     )
     parser.add_argument(

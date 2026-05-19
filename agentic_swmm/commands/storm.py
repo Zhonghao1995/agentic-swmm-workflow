@@ -30,6 +30,7 @@ from agentic_swmm.agent.flag_naming import (
     register_path_flag,
     register_quiet_flag,
 )
+from agentic_swmm.agent.help_router import WidthSafeFormatter
 from agentic_swmm.agent.honesty import (
     emit_silent_default_warning,
     emit_silent_override_warning,
@@ -69,6 +70,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser(
         "storm",
         help="Generate an algorithmic design storm in SWMM DAT format (PRD-06 B.4).",
+        # PRD-08 Phase B (audit #26): keep ``--from-library KEY`` and
+        # similar flag/metavar pairs together when the usage wraps.
+        formatter_class=WidthSafeFormatter,
     )
     parser.add_argument(
         "--depth-mm",

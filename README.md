@@ -177,6 +177,8 @@ The flag convention is shared across verbs: `--inp` for the model input, `--<nou
 - [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
 - [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
+- [Memory runtime](docs/memory_runtime.md) - on-disk substrate, four confidence quadrants, and runtime opt-out flags
+- [Memory runtime CLI examples](docs/memory_runtime_cli.md) - one worked example per memory verb
 - [Codex runtime path](docs/codex-runtime.md) - local development, audit, Obsidian, and evidence-review workflow
 - [OpenClaw execution path](docs/openclaw-execution-path.md) - MCP tool-call sequence for agent runtimes
 - [Repository map](docs/repo-map.md) - folder-level walkthrough

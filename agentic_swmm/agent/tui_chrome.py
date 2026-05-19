@@ -49,6 +49,19 @@ CORNER_TR = "╮"  # top-right
 CORNER_BL = "╰"  # bottom-left
 CORNER_BR = "╯"  # bottom-right
 
+# PRD-08 Phase B (audit #37): when the terminal cannot render UTF-8
+# (LANG / LC_ALL does not advertise utf-8, or the user opts into
+# ``AISWMM_TUI=plain``), fall back to ASCII box-drawing characters.
+# These are the universally-portable substitutes and keep the visual
+# shape of a rectangle even when the rounded glyphs would render as
+# ``???`` on a non-UTF-8 tty.
+H_ASCII = "-"
+V_ASCII = "|"
+CORNER_TL_ASCII = "+"
+CORNER_TR_ASCII = "+"
+CORNER_BL_ASCII = "+"
+CORNER_BR_ASCII = "+"
+
 
 # ---------------------------------------------------------------------------
 # Mode detection
@@ -94,6 +107,51 @@ def use_chrome() -> bool:
     every visual scaffold.
     """
     return not is_plain()
+
+
+def _locale_is_utf8() -> bool:
+    """Return True iff the active locale advertises UTF-8.
+
+    Checks ``LC_ALL`` first (POSIX precedence), then ``LANG``. We
+    look for the substring ``utf-8`` / ``UTF-8`` anywhere in the
+    value, ignoring case. Empty / unset env vars mean "we cannot
+    confirm UTF-8 support" — fall back to ASCII glyphs in that case.
+    """
+    for var in ("LC_ALL", "LANG"):
+        value = os.environ.get(var, "")
+        if not value:
+            continue
+        lowered = value.lower()
+        if "utf-8" in lowered or "utf8" in lowered:
+            return True
+        # Any non-empty LC_ALL / LANG that does NOT mention utf-8
+        # short-circuits the search: ``LC_ALL=C`` is the canonical
+        # signal that the user has a non-UTF-8 locale.
+        return False
+    # No LANG / LC_ALL set: assume the terminal is permissive enough
+    # to render UTF-8 (matches macOS / modern Linux behaviour).
+    return True
+
+
+def use_unicode_box_drawing() -> bool:
+    """Return True iff the frame should use Unicode box-drawing glyphs.
+
+    Two ways to opt out of Unicode:
+
+    1. ``AISWMM_TUI=plain`` — full plain-mode opt-out (already
+       implemented; the entire frame collapses to ``== title ==``).
+    2. ``LANG`` / ``LC_ALL`` does NOT advertise utf-8 — terminal
+       cannot render the rounded glyphs. Fall back to ASCII
+       (``+ - | + + +``) so the frame stays visually intact.
+
+    PRD-08 Phase B (audit #37) adds case (2). When plain mode is on,
+    callers strip the frame entirely so this function returns False
+    for them too — but the ``frame()`` helper checks ``use_chrome()``
+    first, so plain-mode never reaches the Unicode-vs-ASCII branch.
+    """
+    if is_plain():
+        return False
+    return _locale_is_utf8()
 
 
 # ---------------------------------------------------------------------------
@@ -221,29 +279,48 @@ def frame(title: str, lines: Iterable[str], *, width: int | None = None) -> str:
         body = [f"== {plain_title} ==", *line_list, ""]
         return "\n".join(body)
 
+    # PRD-08 Phase B (audit #37): pick the glyph set based on locale
+    # support. When LANG / LC_ALL does not advertise utf-8 we use
+    # ASCII so the frame stays visually intact on a non-UTF-8 tty.
+    if use_unicode_box_drawing():
+        h_char = H_LIGHT
+        v_char = V_LIGHT
+        tl_char = CORNER_TL
+        tr_char = CORNER_TR
+        bl_char = CORNER_BL
+        br_char = CORNER_BR
+    else:
+        h_char = H_ASCII
+        v_char = V_ASCII
+        tl_char = CORNER_TL_ASCII
+        tr_char = CORNER_TR_ASCII
+        bl_char = CORNER_BL_ASCII
+        br_char = CORNER_BR_ASCII
+
     # Total row width. Three constraints, take the max:
-    #   - Title row: "╭─ TITLE ─╮" needs len(title) + 6 chars minimum.
-    #   - Body row:  "│ line │"   needs len(line) + 4 chars minimum.
+    #   - Title row: "+- TITLE -+" needs len(title) + 6 chars minimum.
+    #   - Body row:  "| line |"   needs len(line) + 4 chars minimum.
     #   - Caller's explicit ``width`` (if any).
     longest_line = max((len(line) for line in line_list), default=0)
     total_width = max(len(title) + 6, longest_line + 4, width or 0)
 
-    # title_padding is the run of ``─`` after ``╭─ TITLE `` and before
-    # the closing ``╮``. Total row = ╭(1) + ─(1) + space(1) + title +
-    # space(1) + ─*pad + ╮(1) = title + 5 + pad.
+    # title_padding is the run of horizontal glyphs after the title
+    # marker and before the closing corner. Total row = corner(1) +
+    # h(1) + space(1) + title + space(1) + h*pad + corner(1) =
+    # title + 5 + pad.
     title_padding = total_width - len(title) - 5
     if title_padding < 1:
         title_padding = 1
         total_width = len(title) + 5 + title_padding
-    top = f"{CORNER_TL}{H_LIGHT} {title} {H_LIGHT * title_padding}{CORNER_TR}"
-    # Body row: │(1) + space(1) + content + space(1) + │(1) = total.
+    top = f"{tl_char}{h_char} {title} {h_char * title_padding}{tr_char}"
+    # Body row: v(1) + space(1) + content + space(1) + v(1) = total.
     # Content width = total - 4.
     content_width = total_width - 4
     body_lines = [
-        f"{V_LIGHT} {line.ljust(content_width)} {V_LIGHT}" for line in line_list
+        f"{v_char} {line.ljust(content_width)} {v_char}" for line in line_list
     ]
-    # Bottom row: ╰ + ─*(total-2) + ╯ = total.
-    bottom = f"{CORNER_BL}{H_LIGHT * (total_width - 2)}{CORNER_BR}"
+    # Bottom row: bl + h*(total-2) + br = total.
+    bottom = f"{bl_char}{h_char * (total_width - 2)}{br_char}"
     return phosphor_green("\n".join([top, *body_lines, bottom]))
 
 
@@ -259,9 +336,16 @@ __all__ = [
     "CORNER_TR",
     "CORNER_BL",
     "CORNER_BR",
+    "H_ASCII",
+    "V_ASCII",
+    "CORNER_TL_ASCII",
+    "CORNER_TR_ASCII",
+    "CORNER_BL_ASCII",
+    "CORNER_BR_ASCII",
     "is_plain",
     "use_colour",
     "use_chrome",
+    "use_unicode_box_drawing",
     "phosphor_green",
     "phosphor_dim",
     "warn_amber",

@@ -728,18 +728,106 @@ def render_runtime_knobs_section(
     return "\n".join(lines)
 
 
-def render_grouped_warns_section(rows: list[Any]) -> str:
+def _terminal_width(default: int = 80) -> int:
+    """Best-effort terminal width detection for WARN wrapping.
+
+    Reads ``shutil.get_terminal_size()`` (which itself respects
+    ``COLUMNS``). Falls back to ``default`` on any failure — wrapping
+    at 80 columns is the right answer for the vast majority of
+    terminals.
+    """
+    import shutil
+
+    try:
+        size = shutil.get_terminal_size(fallback=(default, 24))
+    except (OSError, ValueError):
+        return default
+    width = int(size.columns or default)
+    return width if width > 20 else default
+
+
+def _wrap_warn_detail(
+    severity: str,
+    name: str,
+    detail: str,
+    *,
+    width: int | None = None,
+) -> list[str]:
+    """Wrap a long WARN detail under a 2-space hanging indent.
+
+    Returns one-or-more output lines. The first line is
+    ``  {severity:7} {name} - <first chunk>`` when ``name`` is non-
+    empty; otherwise the format collapses to
+    ``  {severity:7} <first chunk>`` to match the existing
+    grouped-WARN render (which carries the summary directly with no
+    "name - " prefix). Continuation lines start with the column where
+    the detail began (so they line up visually under the message
+    rather than under the severity).
+
+    The wrap only fires when the full text exceeds the available
+    width; short rows are emitted verbatim.
+    """
+    if width is None:
+        width = _terminal_width()
+    if name:
+        head = f"  {severity:7} {name} - "
+    else:
+        head = f"  {severity:7} "
+    body_width = max(width - len(head), 20)
+    full = head + detail
+    if len(full) <= width:
+        return [full]
+    # Tokenise on whitespace; greedy-pack tokens onto each line. The
+    # continuation indent is the column where the detail begins so
+    # the wrapped lines visually nest under the first detail chunk.
+    indent = " " * len(head)
+    tokens = detail.split()
+    if not tokens:
+        return [full]
+    lines: list[str] = []
+    current = ""
+    for token in tokens:
+        candidate = f"{current} {token}".strip() if current else token
+        if len(candidate) <= body_width:
+            current = candidate
+        else:
+            if current:
+                lines.append(current)
+            # Token longer than body_width: emit it on its own
+            # (never split inside a token).
+            if len(token) > body_width:
+                lines.append(token)
+                current = ""
+            else:
+                current = token
+    if current:
+        lines.append(current)
+    out: list[str] = [head + lines[0]]
+    for line in lines[1:]:
+        out.append(indent + line)
+    return out
+
+
+def render_grouped_warns_section(
+    rows: list[Any], *, width: int | None = None
+) -> str:
     """Render grouped WARN rows under an "Issues" header.
 
     Returns empty string when ``rows`` is empty so the caller can skip
     the header.
+
+    ``width`` controls the wrap point for long WARN details (PRD-08
+    Phase B / audit #28). When ``None`` we honour the active
+    terminal's reported width via ``shutil.get_terminal_size``.
     """
     if not rows:
         return ""
     lines = ["Issues:"]
     for row in rows:
         if isinstance(row, GroupedWarnRow):
-            lines.append(f"  WARN    {row.summary}")
+            lines.extend(
+                _wrap_warn_detail("WARN", "", row.summary, width=width)
+            )
             if row.member_names:
                 lines.append(
                     f"          members: {', '.join(row.member_names)}"
@@ -750,7 +838,7 @@ def render_grouped_warns_section(rows: list[Any]) -> str:
             detail = row.get("detail", "")
             required = row.get("required", False)
             severity = "MISSING" if required and not row.get("passed") else "WARN"
-            lines.append(f"  {severity:7} {name} - {detail}")
+            lines.extend(_wrap_warn_detail(severity, name, detail, width=width))
     return "\n".join(lines)
 
 
