@@ -130,6 +130,62 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "to stdout so a shell redirect still works."
         ),
     )
+    # PRD-06 Phase B §8 — ResourceEstimate gating.
+    plan_parser.add_argument(
+        "--no-estimate",
+        action="store_true",
+        help="Skip the resource estimate (legacy behavior).",
+    )
+    plan_parser.add_argument(
+        "--abort-on-estimate",
+        action="store_true",
+        help=(
+            "Print the resource estimate and exit 0 without launching. "
+            "Useful for budget review and dry-run workflows."
+        ),
+    )
+    plan_parser.add_argument(
+        "--llm-in-loop",
+        action="store_true",
+        help="Include LLM token cost in the resource estimate.",
+    )
+    plan_parser.add_argument(
+        "--avg-llm-tokens-per-run",
+        type=int,
+        default=0,
+        help=(
+            "Avg LLM tokens per run, used when --llm-in-loop is set "
+            "(default 0)."
+        ),
+    )
+    plan_parser.add_argument(
+        "--base-run-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Manual per-run wall-time override (highest precedence; "
+            "skips parametric_memory lookup)."
+        ),
+    )
+    plan_parser.add_argument(
+        "--case-name",
+        default=None,
+        help=(
+            "Case name used to look up parametric_memory median for "
+            "per-run estimate."
+        ),
+    )
+    plan_parser.add_argument(
+        "--parametric-store",
+        type=Path,
+        default=None,
+        help="Optional path to parametric_memory.jsonl (case_name lookup).",
+    )
+    plan_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Skip the launch prompt (non-interactive callers / CI).",
+    )
     plan_parser.set_defaults(func=plan_main)
 
 
@@ -237,10 +293,14 @@ def plan_main(args: argparse.Namespace) -> int:
 
     Exit codes:
     - 0 — plan produced (samples may be empty when SALib is missing,
-      in which case ``provenance.error`` explains it).
+      in which case ``provenance.error`` explains it). Also 0 when the
+      user aborts via the prompt — that is a valid no-launch outcome,
+      not an error.
     - 1 — malformed ``--param`` spec or other input error.
     """
     from agentic_swmm.agent.swmm_runtime.uncertainty_plan import (
+        estimate_resources,
+        format_estimate_block,
         plan_uncertainty_run,
     )
 
@@ -264,6 +324,46 @@ def plan_main(args: argparse.Namespace) -> int:
 
     payload = plan.to_dict()
     text = json.dumps(payload, indent=2, sort_keys=True)
+
+    # ----- Resource estimate (PRD-06 Phase B §8) -----------------------------
+    # The estimate runs by default. ``--no-estimate`` restores legacy
+    # behavior (print the plan, exit). ``--abort-on-estimate`` prints
+    # the estimate and exits before any launch action. Otherwise:
+    # - TTY -> prompt y/N (default N).
+    # - non-TTY -> print estimate to stdout, exit 0 (machine consumers
+    #   parse the JSON and decide).
+    if not args.no_estimate:
+        try:
+            estimate = estimate_resources(
+                plan,
+                base_run_seconds=args.base_run_seconds,
+                parametric_store=args.parametric_store,
+                case_name=args.case_name,
+                llm_in_loop=args.llm_in_loop,
+                avg_llm_tokens_per_run=args.avg_llm_tokens_per_run,
+            )
+        except ValueError as exc:
+            _print_error(str(exc))
+            return 1
+
+        print(format_estimate_block(estimate))
+        payload["resource_estimate"] = estimate.to_dict()
+        text = json.dumps(payload, indent=2, sort_keys=True)
+
+        if args.abort_on_estimate:
+            return 0
+
+        if not args.yes and _stdin_is_tty():
+            answer = _prompt_proceed()
+            if not answer:
+                print("aborted by user; plan not written.")
+                return 0
+        elif not args.yes:
+            # Non-TTY (CI, pipe) — print estimate already done.
+            # The machine consumer parses the JSON below; we keep
+            # writing the plan to --out if asked.
+            pass
+
     if args.out is None:
         print(text)
     else:
@@ -273,3 +373,16 @@ def plan_main(args: argparse.Namespace) -> int:
             f"wrote {plan.n_samples_actual}-sample plan to {args.out}"
         )
     return 0
+
+
+def _stdin_is_tty() -> bool:
+    return sys.stdin.isatty()
+
+
+def _prompt_proceed() -> bool:
+    """Render the y/N prompt with safe default N (no launch)."""
+    try:
+        reply = input("Proceed with launch? [y/N] ")
+    except EOFError:
+        return False
+    return reply.strip().lower() in {"y", "yes"}
