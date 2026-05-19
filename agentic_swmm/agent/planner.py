@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import time
 from dataclasses import dataclass
@@ -16,13 +15,32 @@ from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disam
 from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
-from agentic_swmm.agent import intent_classifier
 from agentic_swmm.agent.tool_registry import AgentToolRegistry, compute_intent_signals
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
+from agentic_swmm.agent.workflow_modes import WorkflowContext, get_mode
+# PRD-04: re-export workflow-mode helpers under their legacy planner-module
+# names so downstream callers (tests and intent-classifier migration
+# parity) keep working without an import-path update.
+from agentic_swmm.agent.workflow_modes._helpers import (  # noqa: F401
+    _asks_for_plot_options,
+    _default_rain_kind,
+    _is_negated,
+)
+from agentic_swmm.agent.workflow_modes._helpers import (  # noqa: F401
+    existing_run_plot_done_text as _existing_run_plot_done_text,
+    extract_after_label as _extract_after_label,
+    extract_example_inp_path as _extract_example_inp_path,
+    extract_inp_path as _extract_inp_path,
+    extract_plot_choice as _extract_plot_choice,
+    extract_run_dir as _extract_run_dir,
+    plot_choice_prompt as _plot_choice_prompt,
+    plot_output_path as _plot_output_path,
+    prepared_inp_done_text as _prepared_inp_done_text,
+    workflow_route_args as _workflow_route_args,
+)
 from agentic_swmm.audit.llm_calls import extract_usage_tokens, record_llm_call
 from agentic_swmm.providers.openai_api import OpenAIProvider
-from agentic_swmm.utils.paths import repo_root
 
 
 # Number of consecutive failures of the *same* tool name that the
@@ -122,7 +140,8 @@ class OpenAIPlanner:
         # cluster — go straight to inspect_plot_options + plot_run.
         early_route = self._classify_plot_continuation(goal, prior_state)
         if early_route is not None and auto_router_enabled:
-            return self._run_existing_run_plot_workflow(
+            return self._dispatch_workflow_mode(
+                mode_name="existing_run_plot",
                 goal=goal,
                 session_dir=session_dir,
                 plan=plan,
@@ -156,29 +175,19 @@ class OpenAIPlanner:
             if route.get("missing_inputs"):
                 final_text = str(route.get("user_prompt") or "Please provide the missing SWMM workflow inputs.")
                 return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=final_text)
-            if route.get("mode") == "prepared_inp_cli":
-                return self._run_prepared_inp_workflow(
-                    goal=goal,
-                    session_dir=session_dir,
-                    plan=plan,
-                    route=route,
-                    executor=executor,
-                )
-            if route.get("mode") == "existing_run_plot":
-                return self._run_existing_run_plot_workflow(
-                    goal=goal,
-                    session_dir=session_dir,
-                    plan=plan,
-                    route=route,
-                    executor=executor,
-                )
-            if route.get("mode") == "audit_only_or_comparison":
-                return self._run_audit_followup_workflow(
-                    goal=goal,
-                    plan=plan,
-                    route=route,
-                    executor=executor,
-                )
+            # PRD-04: workflow-mode dispatch reads from the
+            # ``agent/workflow_modes`` registry. Adding a mode means
+            # adding one adapter file; the planner does not change.
+            dispatched = self._dispatch_workflow_mode(
+                mode_name=str(route.get("mode") or ""),
+                goal=goal,
+                session_dir=session_dir,
+                plan=plan,
+                route=route,
+                executor=executor,
+            )
+            if dispatched is not None:
+                return dispatched
 
         input_items: list[dict[str, Any]] = [
             {
@@ -484,133 +493,37 @@ class OpenAIPlanner:
             status = "OK" if result.get("ok") else "FAILED"
             self.emit(f"{status}: {result.get('summary') or 'completed'}")
 
-    def _run_prepared_inp_workflow(
+    def _dispatch_workflow_mode(
         self,
         *,
+        mode_name: str,
         goal: str,
         session_dir: Path,
         plan: list[ToolCall],
         route: dict[str, Any],
         executor: AgentExecutor,
-    ) -> PlannerRun:
-        inp_path = str(route.get("provided_values", {}).get("inp_path") or _workflow_route_args(goal).get("inp_path") or "")
-        if not inp_path:
-            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text="Please provide a SWMM INP path before running.")
+    ) -> PlannerRun | None:
+        """Dispatch to a registered workflow-mode adapter, or ``None``.
 
-        def execute(call: ToolCall) -> dict[str, Any]:
-            plan.append(call)
-            self.emit(f"[{len(plan)}] {call.name}")
-            result = executor.execute(call, index=len(plan))
-            status = "OK" if result.get("ok") else "FAILED"
-            self.emit(f"{status}: {result.get('summary') or 'completed'}")
-            return result
-
-        node = _extract_after_label(goal, ("node", "outfall", "节点", "出口"))
-        run_args = {"inp_path": inp_path, "run_id": session_dir.name, "run_dir": str(session_dir)}
-        if node:
-            run_args["node"] = node
-        run_result = execute(ToolCall("run_swmm_inp", run_args))
-        if not run_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM run failed; inspect the saved stderr/stdout artifacts.")
-
-        audit_result = execute(
-            ToolCall(
-                "audit_run",
-                {
-                    "run_dir": str(session_dir),
-                    "workflow_mode": "prepared_inp_cli",
-                    "objective": goal,
-                },
-            )
-        )
-        if not audit_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran, but audit generation failed; inspect the saved audit tool artifacts.")
-
-        options_result = execute(ToolCall("inspect_plot_options", {"run_dir": str(session_dir)}))
-        if not options_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran and audit passed, but plot option inspection failed.")
-
-        options = options_result.get("results") if isinstance(options_result.get("results"), dict) else {}
-        plot_choice = _extract_plot_choice(goal, options)
-        if plot_choice is None:
-            return PlannerRun(
-                ok=True,
-                plan=plan,
-                results=executor.results,
-                final_text=_plot_choice_prompt(session_dir, options),
-            )
-
-        plot_path = _plot_output_path(session_dir, plot_choice)
-        plot_args = {"run_dir": str(session_dir), **plot_choice, "out_png": str(plot_path)}
-        plot_result = execute(ToolCall("plot_run", plot_args))
-        if not plot_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="SWMM ran and audit passed, but plot generation failed.")
-        return PlannerRun(
-            ok=True,
+        PRD-04. Replaces the hardcoded ``if route.get("mode") == "X"``
+        chain. Returns ``None`` when ``mode_name`` is empty, unregistered,
+        or registered as a spec-only stub (no ``run`` method) — in
+        which case the planner falls through to its LLM main loop.
+        """
+        if not mode_name:
+            return None
+        adapter = get_mode(mode_name)
+        if adapter is None or not hasattr(adapter, "run"):
+            return None
+        ctx = WorkflowContext(
+            goal=goal,
+            session_dir=session_dir,
             plan=plan,
-            results=executor.results,
-            final_text=_prepared_inp_done_text(session_dir, plot_path=plot_path),
+            route=route,
+            executor=executor,
+            emit=self.emit,
         )
-
-    def _run_existing_run_plot_workflow(
-        self,
-        *,
-        goal: str,
-        session_dir: Path,
-        plan: list[ToolCall],
-        route: dict[str, Any],
-        executor: AgentExecutor,
-    ) -> PlannerRun:
-        run_dir = str(route.get("provided_values", {}).get("run_dir") or session_dir)
-
-        def execute(call: ToolCall) -> dict[str, Any]:
-            plan.append(call)
-            self.emit(f"[{len(plan)}] {call.name}")
-            result = executor.execute(call, index=len(plan))
-            status = "OK" if result.get("ok") else "FAILED"
-            self.emit(f"{status}: {result.get('summary') or 'completed'}")
-            return result
-
-        options_result = execute(ToolCall("inspect_plot_options", {"run_dir": run_dir}))
-        if not options_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Plot option inspection failed for the previous run directory.")
-
-        options = options_result.get("results") if isinstance(options_result.get("results"), dict) else {}
-        plot_choice = _extract_plot_choice(goal, options)
-        if plot_choice is None:
-            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=_plot_choice_prompt(Path(run_dir), options))
-
-        plot_path = _plot_output_path(Path(run_dir), plot_choice)
-        plot_result = execute(ToolCall("plot_run", {"run_dir": run_dir, **plot_choice, "out_png": str(plot_path)}))
-        if not plot_result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Plot generation failed for the previous run directory.")
-        return PlannerRun(
-            ok=True,
-            plan=plan,
-            results=executor.results,
-            final_text=_existing_run_plot_done_text(Path(run_dir), plot_choice, plot_path=plot_path),
-        )
-
-    def _run_audit_followup_workflow(
-        self,
-        *,
-        goal: str,
-        plan: list[ToolCall],
-        route: dict[str, Any],
-        executor: AgentExecutor,
-    ) -> PlannerRun:
-        run_dir = str(route.get("provided_values", {}).get("run_dir") or "")
-        if not run_dir:
-            return PlannerRun(ok=True, plan=plan, results=executor.results, final_text="Please provide a run directory to audit.")
-        call = ToolCall("audit_run", {"run_dir": run_dir, "workflow_mode": "audit_only_or_comparison", "objective": goal})
-        plan.append(call)
-        self.emit(f"[{len(plan)}] {call.name}")
-        result = executor.execute(call, index=len(plan))
-        status = "OK" if result.get("ok") else "FAILED"
-        self.emit(f"{status}: {result.get('summary') or 'completed'}")
-        if not result.get("ok"):
-            return PlannerRun(ok=False, plan=plan, results=executor.results, final_text="Audit failed; inspect the saved audit tool artifacts.")
-        return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=f"Audit completed for {run_dir}.")
+        return adapter.run(ctx)
 
 
 def _looks_like_swmm_request(goal: str) -> bool:
@@ -627,194 +540,6 @@ def _select_relevant_skills(goal: str) -> list[str]:
 
 def _select_relevant_mcp_servers(skill_names: list[str]) -> list[str]:
     return select_relevant_mcp_servers(skill_names)
-
-
-def _workflow_route_args(goal: str) -> dict[str, Any]:
-    args: dict[str, Any] = {"goal": goal}
-    run_dir = _extract_run_dir(goal)
-    if run_dir:
-        args["run_dir"] = run_dir
-    inp = _extract_inp_path(goal) or _extract_example_inp_path(goal)
-    if inp:
-        args["inp_path"] = inp
-    node = _extract_after_label(goal, ("node", "outfall", "节点", "出口"))
-    if node:
-        args["node"] = node
-    return args
-
-
-def _extract_inp_path(text: str) -> str | None:
-    quoted = re.search(r"[\"']([^\"']+\.inp)[\"']", text, flags=re.I)
-    if quoted:
-        return quoted.group(1)
-    match = re.search(r"([A-Za-z]:\\[^\n\r]+?\.inp|(?:\.{0,2}/)?[^\s\"']+\.inp)", text, flags=re.I)
-    return match.group(1).rstrip(".,;)]}") if match else None
-
-
-def _extract_run_dir(text: str) -> str | None:
-    labelled = re.search(r"(?:run_dir|run folder|run directory|previous run directory|上一轮运行目录|运行目录)\s*[:=]\s*([^\n\r]+)", text, flags=re.I)
-    if labelled:
-        return labelled.group(1).strip().rstrip(".,;)]}。")
-    match = re.search(r"(runs/[^\s，。；;,)]+)", text, flags=re.I)
-    return match.group(1).rstrip(".,;)]}。") if match else None
-
-
-def _extract_example_inp_path(text: str) -> str | None:
-    match = re.search(r"(examples/[^\s，。；;,)]+)", text, flags=re.I)
-    if not match:
-        return None
-    raw = match.group(1).rstrip("/.,;)]}。")
-    candidate = (repo_root() / raw).resolve()
-    if candidate.is_file() and candidate.suffix.lower() == ".inp":
-        return raw
-    if candidate.is_dir():
-        matches = sorted(path for path in candidate.glob("*.inp") if path.is_file())
-        if len(matches) == 1:
-            return matches[0].resolve().relative_to(repo_root().resolve()).as_posix()
-    return raw
-
-
-def _extract_after_label(text: str, labels: tuple[str, ...]) -> str | None:
-    for label in labels:
-        match = re.search(rf"{re.escape(label)}\s*[:=]\s*([A-Za-z0-9_.-]+)", text, flags=re.I)
-        if match:
-            return match.group(1)
-    return None
-
-
-def _extract_plot_choice(goal: str, options: dict[str, Any]) -> dict[str, str] | None:
-    lowered = goal.lower()
-    explicit_plot = any(word in lowered for word in ("plot", "figure", "图", "画"))
-    attrs = [str(item.get("name")) for item in options.get("node_attribute_options", []) if isinstance(item, dict)]
-    nodes = [str(item) for item in options.get("node_options", [])]
-    rains = [str(item.get("name")) for item in options.get("rainfall_options", []) if isinstance(item, dict)]
-
-    node_attr = next((attr for attr in attrs if attr.lower() in lowered and not _is_negated(lowered, attr.lower())), None)
-    if node_attr is None:
-        aliases = {
-            "depth": "Depth_above_invert",
-            "水深": "Depth_above_invert",
-            "volume": "Volume_stored_ponded",
-            "体积": "Volume_stored_ponded",
-            "flood": "Flow_lost_flooding",
-            "flooding": "Flow_lost_flooding",
-            "淹没": "Flow_lost_flooding",
-            "溢流": "Flow_lost_flooding",
-            "head": "Hydraulic_head",
-            "水头": "Hydraulic_head",
-            "flow": "Total_inflow",
-            "peak": "Total_inflow",
-            "流量": "Total_inflow",
-            "峰值": "Total_inflow",
-        }
-        node_attr = next((value for key, value in aliases.items() if key in lowered and not _is_negated(lowered, key) and value in attrs), None)
-    node = next((candidate for candidate in nodes if candidate.lower() in lowered), None)
-    rain_ts = next((candidate for candidate in rains if candidate.lower() in lowered), None)
-
-    if _asks_for_plot_options(lowered) and node_attr is None:
-        return None
-    if not explicit_plot and node_attr is None:
-        return None
-    defaults = options.get("defaults") if isinstance(options.get("defaults"), dict) else {}
-    choice = {
-        "node": node or str(defaults.get("node") or (nodes[0] if nodes else "O1")),
-        "node_attr": node_attr or str(defaults.get("node_attr") or "Total_inflow"),
-    }
-    if rain_ts or defaults.get("rain_ts"):
-        choice["rain_ts"] = rain_ts or str(defaults["rain_ts"])
-    rain_kind = _default_rain_kind(options, choice.get("rain_ts"))
-    if rain_kind:
-        choice["rain_kind"] = rain_kind
-    return choice
-
-
-def _asks_for_plot_options(lowered: str) -> bool:
-    return any(
-        phrase in lowered
-        for phrase in (
-            "作图选项",
-            "绘图选项",
-            "别的图",
-            "其他图",
-            "换个图",
-            "自己选",
-            "我自己选",
-            "有哪些图",
-            "能画别的",
-            "不想要",
-            "不要 peak",
-            "不要peak",
-            "not peak",
-            "not total_inflow",
-        )
-    )
-
-
-def _is_negated(lowered: str, term: str) -> bool:
-    """Return True iff ``term`` is preceded by a negation marker.
-
-    PRD #121: delegates to ``agentic_swmm.agent.intent_classifier.is_negated``
-    so the negation vocabulary has a single source of truth.
-    """
-    return intent_classifier.is_negated(lowered, term)
-
-
-def _default_rain_kind(options: dict[str, Any], rain_ts: str | None) -> str | None:
-    for item in options.get("rainfall_options", []):
-        if isinstance(item, dict) and item.get("name") == rain_ts and item.get("rain_kind"):
-            return str(item["rain_kind"])
-    return None
-
-
-def _plot_choice_prompt(session_dir: Path, options: dict[str, Any]) -> str:
-    defaults = options.get("defaults") if isinstance(options.get("defaults"), dict) else {}
-    nodes = [str(item) for item in options.get("node_options", [])]
-    attrs = [str(item.get("name")) for item in options.get("node_attribute_options", []) if isinstance(item, dict)]
-    rains = [str(item.get("name")) for item in options.get("rainfall_options", []) if isinstance(item, dict)]
-    node_preview = ", ".join(nodes[:8]) + (" ..." if len(nodes) > 8 else "")
-    attr_preview = ", ".join(attrs[:8])
-    rain_preview = ", ".join(rains) if rains else "auto"
-    return (
-        "SWMM run and audit completed successfully.\n\n"
-        f"Run folder: {session_dir}\n"
-        f"Audit note: {session_dir / 'experiment_note.md'}\n\n"
-        "Before plotting, choose what you want to see:\n"
-        f"- rainfall series: {rain_preview}\n"
-        f"- node/outfall options: {node_preview}\n"
-        f"- plot variable options: {attr_preview}\n\n"
-        "Common choices are `Total_inflow` for flow/peak hydrograph, `Depth_above_invert` for node water depth, "
-        "`Volume_stored_ponded` for stored volume, and `Flow_lost_flooding` for flooding loss.\n\n"
-        f"Default suggestion: node `{defaults.get('node')}`, variable `{defaults.get('node_attr')}`, rainfall `{defaults.get('rain_ts')}`. "
-        "Reply with the node and variable you want to plot."
-    )
-
-
-def _plot_output_path(run_dir: Path, choice: dict[str, str]) -> Path:
-    node = re.sub(r"[^A-Za-z0-9_.-]+", "_", choice.get("node", "node")).strip("_") or "node"
-    attr = re.sub(r"[^A-Za-z0-9_.-]+", "_", choice.get("node_attr", "series")).strip("_") or "series"
-    return run_dir / "07_plots" / f"fig_{node}_{attr}.png"
-
-
-def _prepared_inp_done_text(session_dir: Path, *, plot_path: Path | None = None) -> str:
-    plot_line = f"Plot: {plot_path}" if plot_path else "Plot: not generated"
-    return (
-        "SWMM run, audit, and plotting completed successfully.\n\n"
-        f"Run folder: {session_dir}\n"
-        f"Audit note: {session_dir / 'experiment_note.md'}\n"
-        f"{plot_line}\n\n"
-        "Evidence boundary: this is runnable/auditable SWMM evidence, not calibration or validation unless observed-data checks are added."
-    )
-
-
-def _existing_run_plot_done_text(run_dir: Path, choice: dict[str, str], *, plot_path: Path) -> str:
-    details = ", ".join(f"{key}={value}" for key, value in choice.items())
-    return (
-        "Plot completed from the previous SWMM run.\n\n"
-        f"Run folder: {run_dir}\n"
-        f"Plot: {plot_path}\n"
-        f"Selection: {details}\n\n"
-        "Evidence boundary: the plot was generated from the existing run artifacts."
-    )
 
 
 # CONCURRENCY-OWNER: PRD-GF-L5

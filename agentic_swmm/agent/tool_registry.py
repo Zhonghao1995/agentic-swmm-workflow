@@ -1092,18 +1092,16 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 
 
 # Valid workflow modes the LLM may pass via the ``mode`` argument.
-# Kept in sync with the ToolSpec input_schema enum above.
-_VALID_MODE_ENUM = frozenset(
-    {
-        "calibration",
-        "uncertainty",
-        "prepared_inp_cli",
-        "full_modular_build",
-        "existing_run_plot",
-        "audit_only_or_comparison",
-        "prepared_demo",
-    }
-)
+# PRD-04: derived from the workflow-mode adapter registry — adding an
+# adapter file is enough to make a new mode acceptable here. The
+# ToolSpec input_schema enum above still has to be updated for the
+# LLM-visible schema (that surface stays in this module per PRD-04
+# scope). Computed once at import time because
+# ``intent_disambiguator`` imports this name directly and uses it in
+# module-level response-schema construction.
+from agentic_swmm.agent.workflow_modes import all_modes as _all_modes  # noqa: E402
+
+_VALID_MODE_ENUM = frozenset(_all_modes())
 
 
 def _build_response_for_mode(
@@ -1115,47 +1113,37 @@ def _build_response_for_mode(
     ``mode``) and the legacy keyword-fallback path. The ``provided`` dict
     is read-only here; auto-infer of ``run_dir`` from global state is the
     caller's responsibility and runs only in the keyword-fallback path.
+
+    PRD-04. The per-mode ``required_inputs`` / ``recommended_next_tools``
+    / ``evidence_boundary`` triples live on adapter classes in
+    ``agentic_swmm.agent.workflow_modes``. The registry is the single
+    source of truth; this function only adds rules that depend on the
+    caller's state (the goal-text-driven baseline_run_dir addendum for
+    comparison audits) or on the ``needs_user_inputs`` sentinel that
+    the keyword fallback emits when no registered mode applies.
     """
 
-    full_build_inputs = [
-        "network_json",
-        "subcatchments_csv",
-        "rainfall_input",
-        "landuse_input",
-        "soil_input",
-    ]
+    # Late import keeps the registry an optional dependency of this
+    # module (avoiding an import cycle with the planner package).
+    from agentic_swmm.agent.workflow_modes import get_mode_spec
 
-    if mode == "existing_run_plot":
-        required = ["run_dir"]
-        next_tools = ["inspect_plot_options", "plot_run"]
-        boundary = "Plots generated from an existing run directory are visualization evidence from recorded SWMM artifacts."
-    elif mode == "calibration":
-        required = ["inp_path", "observed_flow", "node"]
-        next_tools = ["run_swmm_inp", "audit_run"]
-        boundary = "Calibration requires observed flow evidence and recorded parameter-selection artifacts; a successful run alone is not calibration."
-    elif mode == "uncertainty":
-        required = ["inp_path", "fuzzy_config", "node"]
-        next_tools = ["run_swmm_inp", "audit_run"]
-        boundary = "Uncertainty runs produce scenario evidence, not calibrated predictive uncertainty unless supported by observed-data validation."
-    elif mode == "prepared_inp_cli":
-        required = ["inp_path"]
-        next_tools = ["run_swmm_inp", "audit_run", "inspect_plot_options", "plot_run"]
-        boundary = "Prepared INP execution is runnable/checkable/auditable evidence, not calibration or validation by itself."
-    elif mode == "prepared_demo":
-        required = []
-        next_tools = ["demo_acceptance", "audit_run"]
-        boundary = "Prepared demos are smoke or benchmark evidence, not proof of arbitrary greenfield modeling."
-    elif mode == "audit_only_or_comparison":
-        required = ["run_dir"]
-        if "compare" in goal or "comparison" in goal or "比较" in goal:
+    spec = get_mode_spec(mode)
+    if spec is not None:
+        required = list(spec.required_inputs)
+        next_tools = list(spec.recommended_next_tools)
+        boundary = spec.evidence_boundary
+        # Goal-text-dependent rule: audit-comparison appends a second
+        # run dir to required inputs. Lives at the call site because
+        # it depends on the goal string, not on declarative spec state.
+        if mode == "audit_only_or_comparison" and (
+            "compare" in goal or "comparison" in goal or "比较" in goal
+        ):
             required.append("baseline_run_dir")
-        next_tools = ["audit_run"]
-        boundary = "Audit records existing artifacts; it does not create missing SWMM execution evidence."
-    elif mode == "full_modular_build":
-        required = full_build_inputs
-        next_tools = ["format_rainfall", "network_qa", "build_inp", "run_swmm_inp", "audit_run"]
-        boundary = "Full modular build requires explicit GIS/network/rainfall/parameter inputs; the agent must not invent missing model inputs."
-    else:  # mode == "needs_user_inputs" (keyword-fallback only)
+    else:
+        # ``needs_user_inputs`` is a sentinel the keyword fallback emits
+        # when no registered mode applies. It is not a workflow the
+        # agent dispatches; it is a prompt asking the user to provide
+        # either a prepared INP or the full-build input set.
         required = ["inp_path or full modular build inputs"]
         next_tools = []
         boundary = "No SWMM execution should start until a prepared INP or complete build inputs are provided."
