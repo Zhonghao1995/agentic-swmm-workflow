@@ -72,8 +72,8 @@ def _rag_index_dir() -> Path:
 
 
 def _recall_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    from agentic_swmm.memory import recall_memory as _recall
     from agentic_swmm.memory.context_fence import wrap as _wrap_fence
-    from agentic_swmm.memory.recall import recall as _recall
 
     pattern = str(call.args.get("pattern") or "").strip()
     if not pattern:
@@ -114,7 +114,7 @@ def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     top_k = int(call.args.get("top_k") or 3)
 
     try:
-        from agentic_swmm.memory.recall_search import recall_search as _recall_search
+        from agentic_swmm.memory import recall_memory_search as _recall_search
     except Exception as exc:
         return _failure(call, f"recall_memory_search backend unavailable: {exc}")
 
@@ -209,7 +209,7 @@ def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     ``aiswmm memory promote-facts`` CLI. Marking the tool ``is_read_only=False``
     keeps it out of ``Profile.QUICK`` auto-approve.
     """
-    from agentic_swmm.memory import facts as _facts_mod
+    from agentic_swmm.memory import append_fact
 
     text = str(call.args.get("text") or "").strip()
     if not text:
@@ -217,9 +217,7 @@ def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     source_id = call.args.get("source_session_id")
     source_id = str(source_id).strip() if isinstance(source_id, str) and source_id.strip() else None
     try:
-        staging_path = _facts_mod.record_fact_to_staging(
-            text, source_session_id=source_id
-        )
+        staging_path = append_fact(text, source_session_id=source_id)
     except Exception as exc:
         return _failure(call, f"record_fact failed: {exc}")
     return {
