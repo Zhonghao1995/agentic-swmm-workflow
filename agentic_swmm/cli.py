@@ -5,7 +5,7 @@ import os
 import sys
 
 from agentic_swmm import __version__
-from agentic_swmm.commands import agent, audit, capabilities, cite, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, capabilities, cite, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -27,6 +27,10 @@ COMMANDS = {
     "plot",
     "memory",
     "demo",
+    # PRD-06 Phase D.4: bootstrap memory scaffold. Top-level so the
+    # default-router does not punt it to the agent — the command
+    # creates only the on-disk skeleton.
+    "bootstrap",
     # PRD-06 Phase B verbs. Registered top-level so the default-router
     # does not punt them to the agent — both are deterministic surfaces
     # over pure functions in agentic_swmm/agent/swmm_runtime/ and
@@ -107,6 +111,8 @@ def build_parser() -> argparse.ArgumentParser:
     plot.register(subparsers)
     memory.register(subparsers)
     demo.register(subparsers)
+    # PRD-06 Phase D.4 — bootstrap the memory skeleton.
+    bootstrap_memory.register(subparsers)
     # PRD-06 Phase B verbs.
     compare.register(subparsers)
     cite.register(subparsers)

@@ -262,3 +262,5 @@ aiswmm memory --runs-dir runs --out-dir memory/modeling-memory
 ```
 
 The CLI currently wraps the existing validated scripts. Lower-level scripts and MCP tools remain the right interface for module development, debugging, GIS preprocessing, parameter mapping, network import, calibration, and uncertainty workflows that are not yet exposed through the CLI.
+
+The CLI also exposes a cluster of memory-facing verbs (`compare`, `cite`, `storm`, `transfer`, `uncertainty plan`, `bootstrap memory`); see [docs/memory_runtime_cli.md](memory_runtime_cli.md) for one worked example of each.

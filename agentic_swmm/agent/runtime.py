@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.hitl_surface import format_hitl_prompt
+from agentic_swmm.agent.memory_context import MemoryContext
 from agentic_swmm.agent.memory_informed_policy import MemoryHITLRequired
 from agentic_swmm.agent.planner import OpenAIPlanner, PlannerRun, rule_plan
 from agentic_swmm.agent.reporting import write_event
@@ -77,23 +79,39 @@ def run_openai_plan(
         except MemoryHITLRequired as escalation:
             # PRD-07 Phase 3: the memory-informed policy refuses to
             # auto-dispatch a high-stakes action without evidence.
-            # We surface the escalation prompt as the run's
-            # ``final_text`` and stop without invoking the LLM. The
-            # planner has already written ``memory_trace.jsonl`` and
-            # ``memory_informed_policy`` trace events; the user sees
-            # exactly what was flagged and why.
+            # PRD-06 Phase D.2: we render a structured HITL prompt
+            # via :func:`format_hitl_prompt` so the user sees the
+            # escalation message, the proposed action, and what
+            # memory had to say — not just the bare exception
+            # string. The planner has already written
+            # ``memory_trace.jsonl`` and ``memory_informed_policy``
+            # trace events; the formatted prompt is the human-facing
+            # surface.
+            ctx = getattr(escalation, "memory_context", None) or MemoryContext()
+            final_text = format_hitl_prompt(
+                getattr(escalation, "message", "") or str(escalation),
+                ctx,
+                decision_point=getattr(
+                    escalation, "decision_point", "unknown"
+                ),
+                proposed_action=getattr(escalation, "proposed_action", None),
+            )
             write_event(
                 trace_path,
                 {
                     "event": "memory_hitl_required",
-                    "escalation": str(escalation),
+                    "escalation": getattr(escalation, "message", "")
+                    or str(escalation),
+                    "decision_point": getattr(
+                        escalation, "decision_point", "unknown"
+                    ),
                 },
             )
             outcome = PlannerRun(
                 ok=False,
                 plan=[],
                 results=executor.results,
-                final_text=str(escalation),
+                final_text=final_text,
             )
     finally:
         # Always tear down the per-executor spinner so the next print
