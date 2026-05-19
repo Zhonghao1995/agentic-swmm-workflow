@@ -1,41 +1,60 @@
-# SWMM-expert reference benchmarks (PRD-06 Phase A.2)
+# ===========================================================================
+# WARNING — UN-CITED PLACEHOLDERS
+# ---------------------------------------------------------------------------
+# Most numeric leaves in this file are deliberately ``null`` until the Phase B
+# citation library (``citations.yaml``) lands. Earlier drafts of this file
+# carried specific numbers; those numbers were illustrative and had NOT been
+# verified against a citation library. They were removed to prevent a public
+# release artifact from quoting un-cited "expert" thresholds.
 #
-# Curated thresholds and parameter ranges the agent uses to classify
-# .rpt outputs as PASS / WARN / FAIL and to surface citations for
-# parameter choices. This file is hand-editable — values come from
-# the literature (citation key at the leaf where relevant) or from
-# the modeler's own project history.
+# Two consequences for runtime:
+#  * ``classify_metric`` returns ``"UNKNOWN"`` for any metric whose threshold
+#    leaf is ``null`` (see agentic_swmm/memory/reference_benchmarks.py).
+#  * ``recall_reference_benchmark(path, dotted_key, default)`` always returns
+#    the caller's ``default`` for a ``null`` leaf — callers must pass a
+#    safe-conservative numeric default.
 #
-# Schema is hierarchical / dotted. Look up via
-# ``recall_reference_benchmark(path, "continuity_thresholds_pct.runoff.warn")``.
-#
-# Empty leaves are allowed; the loader is tolerant of missing keys
-# and consumers pass a numeric default to ``recall_reference_benchmark``.
+# The only block that ships with concrete numbers is
+# ``continuity_thresholds_pct`` — those are the SWMM User Manual's own
+# magnitude bands for the runoff / flow / mass-balance continuity printout,
+# not a literature recall. Phase B will move them under a citation key too,
+# for consistency.
+# ===========================================================================
 
 schema_version: "1.0"
 
 # ---------------------------------------------------------------------------
 # Goodness-of-fit thresholds for calibrated runs. NSE = Nash-Sutcliffe.
 # Use case keys match ``model_structure.use_case`` in parametric_memory.
+#
+# Leaves are intentionally ``null`` — populate from the project's
+# citation library in Phase B (Moriasi-class watershed-modeling guidance
+# for streamflow; stormwater-event guidance is separate literature).
 # ---------------------------------------------------------------------------
 nse_acceptable_thresholds:
   stormwater_event:
-    acceptable: 0.5
-    good: 0.65
-    excellent: 0.75
+    acceptable: null
+    good: null
+    excellent: null
   stormwater_continuous:
-    acceptable: 0.5
-    good: 0.7
-    excellent: 0.8
+    acceptable: null
+    good: null
+    excellent: null
   baseflow_low_flow:
-    acceptable: 0.4
-    good: 0.6
-    excellent: 0.75
+    acceptable: null
+    good: null
+    excellent: null
 
 # ---------------------------------------------------------------------------
 # Continuity error thresholds read from the .rpt by postflight_qa.
-# WARN bumps the run to a manual-review state; FAIL gates downstream
-# acceptance entirely. Magnitudes — see classify_metric() semantics.
+# WARN bumps the run to manual review; FAIL gates downstream acceptance.
+# Magnitudes — see classify_metric() semantics.
+#
+# These bands track the SWMM User Manual's own continuity-error printout
+# convention (small percentages indicate a numerically sound run; double-digit
+# percentages indicate the simulation has gone off the rails). Treat them as
+# the project's *default* gate; project-local overrides should pass an
+# explicit ``benchmarks_path`` to ``postflight_qa``.
 # ---------------------------------------------------------------------------
 continuity_thresholds_pct:
   runoff:
@@ -50,36 +69,40 @@ continuity_thresholds_pct:
 
 # ---------------------------------------------------------------------------
 # Manning's n for overland flow (SWMM SUBCATCHMENT N-IMPERV / N-PERV).
-# All ranges per Huber & Dickinson (1988) Table 4-5 — see citations.yaml
-# (Phase B). Phase A ships the citation key inline so the leaf is
-# self-describing pending the dedicated citations module.
+#
+# Leaves are intentionally ``null`` pending Phase B citations.yaml.
+# Citation keys are kept inline so the Phase B migration is a value-only
+# fill, not a schema change.
 # ---------------------------------------------------------------------------
 manning_n_overland:
   asphalt:
-    min: 0.010
-    typical: 0.012
-    max: 0.014
-    citation: "huber_dickinson_1988_t4-5"
+    min: null
+    typical: null
+    max: null
+    citation: null  # populate together with values in Phase B
   concrete:
-    min: 0.011
-    typical: 0.013
-    max: 0.015
-    citation: "huber_dickinson_1988_t4-5"
+    min: null
+    typical: null
+    max: null
+    citation: null
   grass_short:
-    min: 0.10
-    typical: 0.15
-    max: 0.20
-    citation: "huber_dickinson_1988_t4-5"
+    min: null
+    typical: null
+    max: null
+    citation: null
 
 # ---------------------------------------------------------------------------
 # Manning's n for closed-conduit roughness (SWMM CONDUIT ROUGHNESS).
+# Leaves intentionally ``null`` pending Phase B citations.yaml.
 # ---------------------------------------------------------------------------
 manning_n_pipes:
   concrete_smooth:
-    min: 0.011
-    typical: 0.013
-    max: 0.015
+    min: null
+    typical: null
+    max: null
+    citation: null
   hdpe:
-    min: 0.009
-    typical: 0.011
-    max: 0.013
+    min: null
+    typical: null
+    max: null
+    citation: null
