@@ -22,7 +22,7 @@ def test_preflight_swaps_planner_to_rule_when_no_key(monkeypatch, tmp_path):
             ["agent", "--planner", "openai", "--interactive"]
         )
     assert argv == ["agent", "--planner", "rule", "--interactive"]
-    assert "OpenAI API key not configured" in err.getvalue()
+    assert "No LLM provider configured" in err.getvalue()
 
 
 def test_preflight_passes_through_when_key_present(monkeypatch, tmp_path):

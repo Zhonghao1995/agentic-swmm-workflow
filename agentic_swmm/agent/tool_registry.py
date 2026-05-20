@@ -515,16 +515,23 @@ def _request_expert_review_tool(call: ToolCall, session_dir: Path) -> dict[str, 
 def _build_default_llm_provider() -> Any:
     """Construct the LLM provider used by the L5 enumerator.
 
-    Late import so this file stays free of the ``OpenAIProvider`` import
-    in environments where the openai SDK is not installed. The provider
-    seam matches what the planner uses (``respond_with_tools``).
+    Late import so this file stays free of the provider import in
+    environments where the optional LLM extras are not installed. The
+    provider seam matches what the planner uses (``respond_with_tools``).
+
+    PRD-09: construction is routed through ``make_provider`` so the L5
+    enumerator honours ``provider.default`` (``openai`` or
+    ``claude_sdk``) instead of hard-coding the OpenAI backend.
     """
     from agentic_swmm.config import load_config
-    from agentic_swmm.providers.openai_api import OpenAIProvider
+    from agentic_swmm.providers.factory import make_provider
 
     config = load_config()
-    model = config.get("openai.model") or "gpt-5.5-2026-04-23"
-    return OpenAIProvider(model=model)
+    provider_name = config.get("provider.default", "openai")
+    model = config.get(f"{provider_name}.model")
+    if not model and provider_name == "openai":
+        model = "gpt-5.5-2026-04-23"
+    return make_provider(provider_name, model=model)
 
 
 def _is_tty_for_l5() -> bool:

@@ -37,6 +37,7 @@ from agentic_swmm.commands.doctor_extension import (
 
 
 _OPTOUT_ENV_NAMES = (
+    "ANTHROPIC_API_KEY",
     "AISWMM_DISABLE_MEMORY_INFORMED",
     "AISWMM_DISABLE_SWMM_GATES",
     "AISWMM_DISABLE_HONESTY_LAYER",
@@ -233,10 +234,11 @@ class CollectMemoryStoreStatusPopulatedTests(unittest.TestCase):
 class CollectOptOutStatusTests(_OptOutEnvCleaner):
     def test_unset_flags_report_none(self) -> None:
         statuses = collect_optout_status()
-        self.assertEqual(len(statuses), 5)
+        self.assertEqual(len(statuses), 6)
         self.assertEqual(
             [s.env_name for s in statuses],
             [
+                "ANTHROPIC_API_KEY",
                 "AISWMM_DISABLE_MEMORY_INFORMED",
                 "AISWMM_DISABLE_SWMM_GATES",
                 "AISWMM_DISABLE_HONESTY_LAYER",

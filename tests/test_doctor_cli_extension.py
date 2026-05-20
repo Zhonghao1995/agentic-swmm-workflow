@@ -31,12 +31,20 @@ class DoctorJsonFlagTests(unittest.TestCase):
                 os.environ.pop("AISWMM_MEMORY_DIR", None)
         # The whole stdout is a single JSON document.
         payload = json.loads(stdout.getvalue())
-        for key in ("checks", "memory_stores", "optout_status", "grouped_warns"):
+        for key in (
+            "checks",
+            "memory_stores",
+            "optout_status",
+            "llm_provider",
+            "grouped_warns",
+        ):
             self.assertIn(key, payload)
         # 7 memory stores reported.
         self.assertEqual(len(payload["memory_stores"]), 7)
-        # 5 opt-out flags reported.
-        self.assertEqual(len(payload["optout_status"]), 5)
+        # 6 opt-out flags reported (PRD-09 adds ANTHROPIC_API_KEY).
+        self.assertEqual(len(payload["optout_status"]), 6)
+        # PRD-09: the LLM-provider block carries the Claude OAuth flag.
+        self.assertIn("claude_oauth_present", payload["llm_provider"])
 
 
 class DoctorTextOutputTests(unittest.TestCase):

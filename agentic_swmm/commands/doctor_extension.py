@@ -505,6 +505,73 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
 
 
 # ---------------------------------------------------------------------------
+# LLM provider (PRD-09)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LLMProviderStatus:
+    """Snapshot of the configured LLM backends for the doctor report.
+
+    ``openai_key_present`` reflects only the ``OPENAI_API_KEY`` env var
+    (the env-file / config-file tiers are a preflight concern, not a
+    doctor row). ``claude_oauth_present`` is ``True`` when a parseable
+    Claude Code OAuth credentials file exists — the same signal the
+    provider preflight uses. ``default_provider`` is the configured
+    ``provider.default``.
+    """
+
+    default_provider: str
+    openai_key_present: bool
+    claude_oauth_present: bool
+
+
+def collect_llm_provider_status() -> LLMProviderStatus:
+    """Return a :class:`LLMProviderStatus` for the doctor report.
+
+    Read-only: probes the ``OPENAI_API_KEY`` env var, the Claude Code
+    OAuth credentials file, and ``provider.default`` from config. Any
+    failure resolving the config falls back to ``"openai"`` so the
+    doctor row always renders.
+    """
+    from agentic_swmm.agent.provider_preflight import detect_claude_oauth
+
+    try:
+        from agentic_swmm.config import load_config
+
+        default_provider = str(load_config().get("provider.default", "openai"))
+    except Exception:  # pragma: no cover - defensive; config is shallow
+        default_provider = "openai"
+    return LLMProviderStatus(
+        default_provider=default_provider,
+        openai_key_present=bool(os.environ.get("OPENAI_API_KEY")),
+        claude_oauth_present=detect_claude_oauth(),
+    )
+
+
+def render_llm_provider_section(status: LLMProviderStatus) -> str:
+    """Produce the printable "LLM provider" doctor section.
+
+    Output shape::
+
+        LLM provider (default: openai):
+          OpenAI API key      OPENAI_API_KEY    - present
+          Claude Code OAuth   ~/.claude         - absent (run `claude login` to enable claude_sdk)
+    """
+    openai_state = "present" if status.openai_key_present else "absent"
+    if status.claude_oauth_present:
+        oauth_state = "present"
+    else:
+        oauth_state = "absent (run `claude login` to enable claude_sdk)"
+    lines = [
+        f"LLM provider (default: {status.default_provider}):",
+        f"  {'OpenAI API key':19} {'OPENAI_API_KEY':17} - {openai_state}",
+        f"  {'Claude Code OAuth':19} {'~/.claude':17} - {oauth_state}",
+    ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Opt-out flags
 # ---------------------------------------------------------------------------
 
@@ -519,6 +586,10 @@ class OptOutFlagStatus:
 
 
 _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
+    (
+        "ANTHROPIC_API_KEY",
+        "raw Anthropic API key the claude_sdk provider falls back to when no OAuth subscription is present",
+    ),
     (
         "AISWMM_DISABLE_MEMORY_INFORMED",
         "disable memory-informed policy decisions (LLM-only planner)",
@@ -1012,6 +1083,14 @@ def optout_status_to_dict(s: OptOutFlagStatus) -> dict:
         "env_name": s.env_name,
         "current_value": s.current_value,
         "description": s.description,
+    }
+
+
+def llm_provider_status_to_dict(s: LLMProviderStatus) -> dict:
+    return {
+        "default_provider": s.default_provider,
+        "openai_key_present": s.openai_key_present,
+        "claude_oauth_present": s.claude_oauth_present,
     }
 
 
