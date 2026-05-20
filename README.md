@@ -63,11 +63,9 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.4](docs/releases/v0.6.4.md) · [v0.6.3-alpha](docs/releases/v0.6.3-alpha.md) · [v0.6.2-alpha](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
+After installation, launch the runtime with `aiswmm`. Docker, Python-package, and pinned-version install paths are documented in [runtime install options](docs/runtime-install-options.md).
 
-Stable users: `pip install aiswmm` now installs v0.6.4 (which ships a fully pinned `requirements.lock` for byte-reproducible builds). Earlier alphas remain available via `pip install aiswmm==0.6.3a1`.
-
-Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+One-line installers run a remote script — review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
 
 ## Why this project exists
 
@@ -130,24 +128,11 @@ The downstream modelling-memory layer can summarize audited run histories into r
 
 More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
 
-## Codex / OpenClaw / Hermes ready
+## Codex / Claude / OpenClaw / Hermes ready
 
-Codex can serve as the primary local development runtime for this repository: it can inspect the checkout, run scripts, edit skills, generate audit records, update the local Obsidian vault, and review evidence before claims are accepted.
+Beyond its own runtime, aiswmm can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
 
-OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-centered agent runs outside the Codex development environment.
-
-For agent-orchestrated runs, preload the Agentic AI memory package and then use the top-level end-to-end skill:
-
-```text
-agent/memory/
-skills/swmm-end-to-end/SKILL.md
-```
-
-The top-level skill defines when to use the full modular path, when to use the prepared-input path, which QA gates must pass, and when to stop instead of inventing missing inputs.
-
-For common prepared-input execution, audit, plotting, and memory summarization, the skill should prefer the unified `agentic-swmm` CLI. MCP tools remain available for the modular stages and for agent runtimes that need fine-grained tool calls.
-
-More details: [Codex runtime path](docs/codex-runtime.md), [OpenClaw execution path](docs/openclaw-execution-path.md), [Skill installation](integrations/skills/README.md), and [MCP runtime integration](integrations/mcp/README.md).
+More details: [Codex runtime path](docs/codex-runtime.md) · [OpenClaw execution path](docs/openclaw-execution-path.md) · [Skill installation](integrations/skills/README.md) · [MCP runtime integration](integrations/mcp/README.md).
 
 ## Documentation map
 
