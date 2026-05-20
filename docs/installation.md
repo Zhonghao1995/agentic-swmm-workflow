@@ -38,7 +38,7 @@ Install the Python package:
 pip install aiswmm
 ```
 
-As of v0.6.4 this resolves to a stable release (no `--pre` required). To install a **pre-release** (e.g. an alpha or release-candidate) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
+As of v0.6.4 this resolves to a regular, non-prerelease version, so `pip install aiswmm` selects it directly — no `--pre` required. (Packaging note: v0.6.4 is the current point release, not an `a`/`b`/`rc` pre-release. The project itself is still alpha-stage software — see the README status note.) To install a **pre-release** (e.g. an alpha or release-candidate) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
 
 ```bash
 pip install aiswmm==0.6.3a1   # pin a specific pre-release
@@ -265,4 +265,27 @@ aiswmm memory --runs-dir runs --out-dir memory/modeling-memory
 
 The CLI currently wraps the existing validated scripts. Lower-level scripts and MCP tools remain the right interface for module development, debugging, GIS preprocessing, parameter mapping, network import, calibration, and uncertainty workflows that are not yet exposed through the CLI.
 
-The CLI also exposes a cluster of memory-facing verbs (`compare`, `cite`, `storm`, `transfer`, `uncertainty plan`, `bootstrap memory`); see [docs/memory_runtime_cli.md](memory_runtime_cli.md) for one worked example of each.
+## CLI verbs
+
+The `aiswmm` CLI groups verbs by purpose. Run `aiswmm --help` for the full grouped block, or `aiswmm help <verb>` for any verb's options. Every verb listed below accepts `--example` (prints a copy-pasteable invocation) and most accept `--json` and `--quiet`.
+
+| Verb | Description | Example |
+| --- | --- | --- |
+| `aiswmm run` | Execute SWMM on an INP, write audit + plots. | `aiswmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo --node OUT_0` |
+| `aiswmm audit` | Re-write audit notes for an existing run. | `aiswmm audit --run-dir runs/tecnopolo` |
+| `aiswmm plot` | Render rain/runoff/depth plots from a run directory. | `aiswmm plot --run-dir runs/tecnopolo` |
+| `aiswmm compare` | Diff continuity/peak/runoff between two runs. | `aiswmm compare --run-a runs/baseline --run-b runs/with-lid --json` |
+| `aiswmm cite` | Look up an entry in the citations library by key. | `aiswmm cite huber_dickinson_1988` |
+| `aiswmm cite-param` | Reverse-lookup a citation by parameter name + value. | `aiswmm cite-param --name manning_n_overland.asphalt --value 0.013 --json` |
+| `aiswmm storm` | Generate a design hyetograph (uniform/triangular/chicago/huff/scs). | `aiswmm storm --shape chicago --depth-mm 25 --duration-min 60 --peak-position 0.4 --out storm.dat` |
+| `aiswmm transfer` | Suggest starter parameters for a new case from similar past cases. | `aiswmm transfer --inp examples/saanich/saanich.inp --top-k 3` |
+| `aiswmm uncertainty plan` | Plan a SALib uncertainty scan (does not execute SWMM). | `aiswmm uncertainty plan --inp model.inp --param manning_n=0.010,0.018 --method morris --n-samples 50` |
+| `aiswmm calibrate` | Calibration loop with checkpoint-aware progress (stub today). | `aiswmm calibrate --inp model.inp --run-id calib_001 --total-iters 100 --param manning_n=0.010,0.018 --run-dir runs/calib_001` |
+| `aiswmm bootstrap memory` | Scaffold an empty `memory/modeling-memory/` skeleton. | `aiswmm bootstrap memory --dir memory/modeling-memory` |
+| `aiswmm doctor` | Diagnose install, memory stores, and opt-out knobs; optional `--fix`. | `aiswmm doctor --fix --yes` |
+
+The flag convention is shared across verbs: `--inp` for the model input, `--<noun>-path` for path overrides (`--calibration-memory-path`, `--storm-library-path`, ...), `--<noun>-entry` for keys inside a library, `--json` for machine-readable output, and `--quiet` to suppress chrome. Legacy flag spellings (for example `--base-inp`, `--calibration-store`, `--from-library`) still work, but emit a `[deprecated]:` warning to stderr.
+
+`aiswmm bootstrap memory` only creates the empty memory skeleton (`parametric_memory.jsonl`, `calibration_memory.jsonl`, `negative_lessons.jsonl`, `project_overrides.yaml`, `README.md`). The project's `citations.yaml` and `reference_benchmarks.yaml` are separately maintained and are not seeded by this command — they ship with the repository and are user-edited.
+
+For one worked example of each memory-facing verb, see [memory_runtime_cli.md](memory_runtime_cli.md).

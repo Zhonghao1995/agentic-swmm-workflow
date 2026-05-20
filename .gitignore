@@ -117,5 +117,14 @@ tests/test_swmm_rag_memory.py
 memory/modeling-memory/projects/
 memory/modeling-memory/run_memory_summaries.json
 
+# Memory data stores — accumulate real per-run / calibration / failure
+# records once SWMM is actually run. Private by default; never commit
+# real modelling data to the public repository.
+memory/modeling-memory/parametric_memory.jsonl
+memory/modeling-memory/calibration_memory.jsonl
+memory/modeling-memory/negative_lessons.jsonl
+memory/modeling-memory/negative_lessons.md
+memory/modeling-memory/parametric_memory.sqlite3
+
 # Contract test for entropy MCP tools (entropy paper, kept private)
 tests/test_qgis_mcp_contracts.py
