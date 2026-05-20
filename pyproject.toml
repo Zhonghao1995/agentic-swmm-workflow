@@ -33,6 +33,13 @@ dependencies = [
   "swmmtoolbox",
 ]
 
+[project.optional-dependencies]
+# PRD-09: the Claude Agent SDK provider routes the LLM planner through a
+# Claude Pro/Max subscription via the local `claude` CLI. It is an
+# OPTIONAL extra — the default OpenAI path stays pure-Python and pulls
+# none of this. Install with: pip install aiswmm[claude]
+claude = ["claude-agent-sdk>=0.2,<1.0"]
+
 [project.urls]
 Homepage = "https://github.com/Zhonghao1995/agentic-swmm-workflow"
 Repository = "https://github.com/Zhonghao1995/agentic-swmm-workflow"

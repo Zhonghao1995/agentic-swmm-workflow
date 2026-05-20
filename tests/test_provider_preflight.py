@@ -38,7 +38,7 @@ class TestCheckInteractiveProvider:
         assert result.has_configured_provider is False
         assert result.provider_name is None
         assert result.fallback_planner == "rule"
-        assert "OpenAI API key not configured" in result.guidance_message
+        assert "No LLM provider configured" in result.guidance_message
         assert "export OPENAI_API_KEY" in result.guidance_message
         assert "aiswmm setup --provider openai" in result.guidance_message
         assert "rule-planner mode" in result.guidance_message
@@ -73,9 +73,86 @@ class TestCheckInteractiveProvider:
 
     def test_guidance_message_format(self, isolated_home):
         result = provider_preflight.check_interactive_provider()
-        # 5 distinct blocks: header, blank, fix header, fix commands, blank, footer.
-        # The format_for_stderr-like contract: stable multi-line text.
+        # Stable multi-line text listing both provider options (PRD-09).
         msg = result.guidance_message
-        assert msg.startswith("OpenAI API key not configured.")
-        assert "Quick fix:" in msg
+        assert msg.startswith("No LLM provider configured.")
+        assert "Quick fix (option 1)" in msg
+        assert "Quick fix (option 2)" in msg
+        assert "claude login" in msg
         assert msg.endswith(".")
+
+
+def _write_oauth(home: Path, body: str = '{"token": "x"}') -> None:
+    """Drop a Claude Code OAuth credentials file under ``home``."""
+    claude_dir = home / ".claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+    (claude_dir / ".credentials.json").write_text(body, encoding="utf-8")
+
+
+def _write_config_default(home: Path, provider: str) -> None:
+    """Write a ``provider.default`` opt-in into ``~/.aiswmm/config.toml``."""
+    cfg_dir = home / ".aiswmm"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (cfg_dir / "config.toml").write_text(
+        f'[provider]\ndefault = "{provider}"\n', encoding="utf-8"
+    )
+
+
+class TestClaudeOAuthDetection:
+    """PRD-09 §5.3 — the fourth (Claude subscription) preflight tier."""
+
+    def test_oauth_file_present_and_optin_selects_claude_sdk(self, isolated_home):
+        _write_oauth(isolated_home)
+        _write_config_default(isolated_home, "claude_sdk")
+        result = provider_preflight.check_interactive_provider()
+        assert result.has_configured_provider is True
+        assert result.provider_name == "claude_sdk"
+
+    def test_oauth_present_no_optin_still_openai_when_key_set(
+        self, isolated_home, monkeypatch
+    ):
+        # OAuth file exists but the user never opted in; an OpenAI key
+        # is set, so the OpenAI tier still wins.
+        _write_oauth(isolated_home)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        result = provider_preflight.check_interactive_provider()
+        assert result.provider_name == "openai"
+
+    def test_openai_key_plus_oauth_plus_explicit_optin_picks_claude_sdk(
+        self, isolated_home, monkeypatch
+    ):
+        # Explicit ``provider.default = claude_sdk`` wins even when an
+        # OpenAI key is also present.
+        _write_oauth(isolated_home)
+        _write_config_default(isolated_home, "claude_sdk")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        result = provider_preflight.check_interactive_provider()
+        assert result.provider_name == "claude_sdk"
+
+    def test_oauth_present_no_optin_no_openai_surfaces_claude_sdk(
+        self, isolated_home
+    ):
+        # A bare OAuth file with no OpenAI key: surface claude_sdk as
+        # available so the runtime does not drop to the rule planner.
+        _write_oauth(isolated_home)
+        result = provider_preflight.check_interactive_provider()
+        assert result.has_configured_provider is True
+        assert result.provider_name == "claude_sdk"
+
+    def test_neither_provider_lists_both_options(self, isolated_home):
+        result = provider_preflight.check_interactive_provider()
+        assert result.has_configured_provider is False
+        assert "OPENAI_API_KEY" in result.guidance_message
+        assert "claude login" in result.guidance_message
+
+    def test_malformed_oauth_file_treated_as_absent(self, isolated_home):
+        # An empty / non-JSON credentials file must not crash the
+        # preflight and must not count as a configured provider.
+        _write_oauth(isolated_home, body="")
+        assert provider_preflight.detect_claude_oauth() is False
+        result = provider_preflight.check_interactive_provider()
+        assert result.has_configured_provider is False
+
+    def test_non_json_oauth_file_treated_as_absent(self, isolated_home):
+        _write_oauth(isolated_home, body="not json at all {{{")
+        assert provider_preflight.detect_claude_oauth() is False

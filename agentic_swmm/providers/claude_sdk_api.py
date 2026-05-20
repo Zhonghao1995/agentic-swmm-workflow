@@ -101,7 +101,12 @@ class ClaudeSDKProvider:
         )
         messages = self._run_sync(sdk.query, prompt=prompt, options=options)
         text = _collect_text(messages, sdk)
+        rate_limit = _rate_limit_note(messages, sdk)
+        if not text and rate_limit:
+            text = rate_limit
         raw = {"messages": _summarize_messages(messages, sdk)}
+        if rate_limit:
+            raw["rate_limited"] = True
         return ProviderResult(text=text, model=self.model or "", raw=raw)
 
     def respond_with_tools(
@@ -131,10 +136,15 @@ class ClaudeSDKProvider:
         text = _collect_text(messages, sdk)
         tool_calls = _collect_tool_calls(messages, sdk)
         response_id = _extract_session_id(messages, sdk)
+        rate_limit = _rate_limit_note(messages, sdk)
+        if not text and not tool_calls and rate_limit:
+            text = rate_limit
         raw = {
             "messages": _summarize_messages(messages, sdk),
             "allowed_tools": allowed,
         }
+        if rate_limit:
+            raw["rate_limited"] = True
         return ProviderToolResponse(
             text=text,
             model=self.model or "",
@@ -351,6 +361,7 @@ def _summarize_messages(messages: list[Any], sdk) -> list[dict[str, Any]]:
     TextBlock = sdk.TextBlock
     ToolUseBlock = sdk.ToolUseBlock
     ResultMessage = sdk.ResultMessage
+    RateLimitEvent = getattr(sdk, "RateLimitEvent", None)
     for msg in messages:
         if isinstance(msg, AssistantMessage):
             blocks: list[dict[str, Any]] = []
@@ -386,9 +397,60 @@ def _summarize_messages(messages: list[Any], sdk) -> list[dict[str, Any]]:
                     "session_id": getattr(msg, "session_id", None),
                 }
             )
+        elif RateLimitEvent is not None and isinstance(msg, RateLimitEvent):
+            out.append(
+                {
+                    "type": "rate_limit",
+                    "rate_limit_info": _rate_limit_info_repr(
+                        getattr(msg, "rate_limit_info", None)
+                    ),
+                }
+            )
         else:
             out.append({"type": type(msg).__name__})
     return out
+
+
+def _rate_limit_info_repr(info: Any) -> Any:
+    """Best-effort flatten of a ``RateLimitInfo`` into JSON-safe data.
+
+    The SDK's ``RateLimitInfo`` carries an opaque ``raw`` mapping plus
+    typed fields. We keep the simple string/number fields and drop
+    anything non-serialisable so the audit ``raw`` block stays clean.
+    """
+    if info is None:
+        return None
+    fields = ("status", "resets_at", "rate_limit_type", "utilization")
+    out: dict[str, Any] = {}
+    for name in fields:
+        value = getattr(info, name, None)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            out[name] = value
+        else:
+            out[name] = str(value)
+    return out
+
+
+def _rate_limit_note(messages: list[Any], sdk) -> str | None:
+    """Return a user-facing hint when the turn hit a subscription limit.
+
+    The Claude Agent SDK yields a ``RateLimitEvent`` when the
+    subscription tier limit is reached. aiswmm does not retry; instead
+    we surface a short note telling the modeler to switch backends for
+    this turn. Returns ``None`` when no rate-limit event was seen.
+    """
+    RateLimitEvent = getattr(sdk, "RateLimitEvent", None)
+    if RateLimitEvent is None:
+        return None
+    for msg in messages:
+        if isinstance(msg, RateLimitEvent):
+            return (
+                "Claude subscription rate limit reached for this turn. "
+                "Subscription tier rate limits apply — see the Anthropic "
+                "Claude documentation. Switch to `--provider openai` to "
+                "continue immediately."
+            )
+    return None
 
 
 def _wrap_error(exc: BaseException, sdk) -> BaseException:

@@ -35,7 +35,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     parser.add_argument("--planner", choices=["rule", "openai"], default="rule", help="Planner backend. Defaults to the deterministic rule planner.")
-    parser.add_argument("--provider", choices=["openai"], help="Provider to use with --planner openai. Defaults to config provider.default.")
+    parser.add_argument("--provider", choices=["openai", "claude_sdk"], help="Provider to use with --planner openai. 'claude_sdk' routes through a Claude Pro/Max subscription. Defaults to config provider.default.")
     parser.add_argument("--model", help="Model override for --planner openai.")
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")

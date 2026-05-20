@@ -10,7 +10,8 @@ implements the slice of the SDK surface the provider actually uses:
 * ``ClaudeAgentOptions`` — dataclass-shaped container with the
   attributes the provider reads.
 * ``AssistantMessage`` / ``TextBlock`` / ``ToolUseBlock`` /
-  ``ResultMessage`` — dataclasses matching the real SDK fields.
+  ``ResultMessage`` / ``RateLimitEvent`` — dataclasses matching the
+  real SDK fields.
 * ``ClaudeSDKError`` and the four CLI/process error subclasses for
   exception-mapping tests.
 
@@ -55,6 +56,25 @@ class _StubAssistantMessage:
     stop_reason: str | None = None
     session_id: str | None = None
     uuid: str | None = None
+
+
+@dataclass
+class _StubRateLimitInfo:
+    status: str = "rate_limited"
+    resets_at: str | None = None
+    rate_limit_type: str | None = None
+    utilization: float | None = None
+    overage_status: str | None = None
+    overage_resets_at: str | None = None
+    overage_disabled_reason: str | None = None
+    raw: dict | None = None
+
+
+@dataclass
+class _StubRateLimitEvent:
+    rate_limit_info: Any = None
+    uuid: str | None = None
+    session_id: str | None = None
 
 
 @dataclass
@@ -166,6 +186,8 @@ def _build_stub_module() -> types.ModuleType:
     mod.ToolUseBlock = _StubToolUseBlock
     mod.ThinkingBlock = _StubThinkingBlock
     mod.ResultMessage = _StubResultMessage
+    mod.RateLimitEvent = _StubRateLimitEvent
+    mod.RateLimitInfo = _StubRateLimitInfo
     mod.ClaudeSDKError = _StubSDKError
     mod.CLIConnectionError = _StubCLIConnectionError
     mod.CLINotFoundError = _StubCLINotFoundError

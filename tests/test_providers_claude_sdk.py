@@ -346,6 +346,79 @@ class TestRespondWithTools:
         assert result_msgs[0]["total_cost_usd"] == 0.0042
 
 
+class TestRateLimitHandling:
+    """PRD-09 S8 — a rate-limited turn degrades visibly, not silently."""
+
+    def test_rate_limit_event_surfaces_hint_in_text(self, mock_claude_sdk_module):
+        sdk = sys.modules["claude_agent_sdk"]
+        mock_claude_sdk_module.script(
+            [
+                sdk.RateLimitEvent(
+                    rate_limit_info=sdk.RateLimitInfo(status="rate_limited")
+                ),
+            ]
+        )
+
+        response = _provider().respond_with_tools(
+            system_prompt="x",
+            input_items=[{"role": "user", "content": "hi"}],
+            tools=[],
+        )
+
+        assert "rate limit" in response.text.lower()
+        assert "--provider openai" in response.text
+        assert response.raw.get("rate_limited") is True
+
+    def test_rate_limit_event_captured_in_raw_messages(self, mock_claude_sdk_module):
+        sdk = sys.modules["claude_agent_sdk"]
+        mock_claude_sdk_module.script(
+            [
+                sdk.RateLimitEvent(
+                    rate_limit_info=sdk.RateLimitInfo(status="rate_limited")
+                ),
+            ]
+        )
+
+        response = _provider().respond_with_tools(
+            system_prompt="x",
+            input_items=[{"role": "user", "content": "hi"}],
+            tools=[],
+        )
+
+        rate_rows = [m for m in response.raw["messages"] if m["type"] == "rate_limit"]
+        assert len(rate_rows) == 1
+
+    def test_complete_surfaces_rate_limit_hint(self, mock_claude_sdk_module):
+        sdk = sys.modules["claude_agent_sdk"]
+        mock_claude_sdk_module.script(
+            [
+                sdk.RateLimitEvent(
+                    rate_limit_info=sdk.RateLimitInfo(status="rate_limited")
+                ),
+            ]
+        )
+
+        result = _provider().complete(system_prompt="x", prompt="y")
+
+        assert "rate limit" in result.text.lower()
+        assert result.raw.get("rate_limited") is True
+
+    def test_text_response_unaffected_by_absent_rate_limit(self, mock_claude_sdk_module):
+        sdk = sys.modules["claude_agent_sdk"]
+        mock_claude_sdk_module.script(
+            [sdk.AssistantMessage(content=[sdk.TextBlock(text="normal answer")])]
+        )
+
+        response = _provider().respond_with_tools(
+            system_prompt="x",
+            input_items=[{"role": "user", "content": "hi"}],
+            tools=[],
+        )
+
+        assert response.text == "normal answer"
+        assert "rate_limited" not in response.raw
+
+
 class TestImportHygiene:
     def test_provider_module_does_not_import_sdk_eagerly(self, monkeypatch):
         """Importing the provider module must not pull

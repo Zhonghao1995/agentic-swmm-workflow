@@ -30,3 +30,13 @@ class ProviderToolResponse:
 class ChatProvider(Protocol):
     def complete(self, *, system_prompt: str, prompt: str) -> ProviderResult:
         ...
+
+    def respond_with_tools(
+        self,
+        *,
+        system_prompt: str,
+        input_items: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        previous_response_id: str | None = None,
+    ) -> ProviderToolResponse:
+        ...

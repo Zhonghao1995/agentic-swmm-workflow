@@ -15,14 +15,17 @@ from agentic_swmm.agent.flag_naming import (
 from agentic_swmm.commands.doctor_extension import (
     apply_fix_actions,
     collect_fix_actions,
+    collect_llm_provider_status,
     collect_memory_store_status,
     collect_optout_status,
     fix_action_to_dict,
     group_identical_warns,
     grouped_warn_to_dict,
+    llm_provider_status_to_dict,
     memory_store_status_to_dict,
     optout_status_to_dict,
     render_grouped_warns_section,
+    render_llm_provider_section,
     render_memory_stores_section,
     render_runtime_knobs_section,
 )
@@ -310,6 +313,7 @@ def main(args: argparse.Namespace) -> int:
     memory_dir = _memory_dir(root)
     memory_stores = collect_memory_store_status(memory_dir)
     optout_flags = collect_optout_status()
+    llm_provider = collect_llm_provider_status()
 
     # Pull the non-passing rows into a WARN/MISSING bucket so the
     # grouping can collapse identical-cause WARNs (PRD-08 audit #28).
@@ -322,6 +326,7 @@ def main(args: argparse.Namespace) -> int:
         "checks": install_check_dicts,
         "memory_stores": memory_stores,
         "optout_status": optout_flags,
+        "llm_provider": llm_provider,
         "grouped_warns": grouped,
     }
 
@@ -334,6 +339,7 @@ def main(args: argparse.Namespace) -> int:
             "optout_status": [
                 optout_status_to_dict(s) for s in optout_flags
             ],
+            "llm_provider": llm_provider_status_to_dict(llm_provider),
             "grouped_warns": [grouped_warn_to_dict(r) for r in grouped],
         }
         # When --fix is set we still print the fix-action candidates
@@ -359,6 +365,9 @@ def main(args: argparse.Namespace) -> int:
         # Section 3 — Runtime knobs.
         print()
         print(render_runtime_knobs_section(optout_flags))
+        # Section 3b — LLM provider (PRD-09).
+        print()
+        print(render_llm_provider_section(llm_provider))
         # Section 4 — Issues (grouped).
         body = render_grouped_warns_section(grouped)
         if body:

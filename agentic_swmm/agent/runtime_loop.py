@@ -62,6 +62,7 @@ from agentic_swmm.memory import facts as _facts_mod
 from agentic_swmm.memory import session_db
 from agentic_swmm.memory.case_inference import infer_case_name
 from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
+from agentic_swmm.providers.factory import make_provider
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
@@ -313,9 +314,14 @@ def run_openai_planner(
     config = load_config()
     provider_name = args.provider or config.get("provider.default", "openai")
     model = args.model or config.get(f"{provider_name}.model")
-    if provider_name != "openai":
+    if provider_name not in ("openai", "claude_sdk"):
         raise ValueError(f"unsupported planner provider: {provider_name}")
     if not model:
+        if provider_name == "claude_sdk":
+            raise ValueError(
+                "claude_sdk model is not configured. Run "
+                "`aiswmm model --provider claude_sdk --model claude-sonnet-4-5-20250929`."
+            )
         raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5-2026-04-23`.")
 
     # PRD-X: bind a per-process MCP pool so list_tools / call_tool against
@@ -323,11 +329,18 @@ def run_openai_planner(
     # spawning on every call. Lazy — pool only spawns servers on first use.
     ensure_session_pool()
 
-    provider = OpenAIProvider(model=model)
+    # PRD-09: route construction through the provider factory. The
+    # ``openai`` path still goes through the module-level
+    # ``OpenAIProvider`` symbol so existing ``mock.patch`` targets keep
+    # working; only the ``claude_sdk`` path takes the factory branch.
+    if provider_name == "openai":
+        provider = OpenAIProvider(model=model)
+    else:
+        provider = make_provider(provider_name, model=model)
 
     _agent_say("aiswmm executor")
     _agent_say(f"Goal: {goal}")
-    _agent_say(f"Planner: openai ({model})")
+    _agent_say(f"Planner: {provider_name} ({model})")
     _agent_say(f"Evidence folder: {_display_path(session_dir)}")
     if args.verbose:
         _agent_say(f"Allowed tools: {', '.join(registry.sorted_names())}")

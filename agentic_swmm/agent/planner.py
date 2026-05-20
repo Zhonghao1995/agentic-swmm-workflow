@@ -47,7 +47,7 @@ from agentic_swmm.agent.workflow_modes._helpers import (  # noqa: F401
     workflow_route_args as _workflow_route_args,
 )
 from agentic_swmm.audit.llm_calls import extract_usage_tokens, record_llm_call
-from agentic_swmm.providers.openai_api import OpenAIProvider
+from agentic_swmm.providers.base import ChatProvider
 
 
 # Number of consecutive failures of the *same* tool name that the
@@ -185,7 +185,7 @@ def _resolve_case_name_for_memory(
 class OpenAIPlanner:
     def __init__(
         self,
-        provider: OpenAIProvider,
+        provider: ChatProvider,
         registry: AgentToolRegistry,
         *,
         max_steps: int,

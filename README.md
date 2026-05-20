@@ -175,6 +175,7 @@ The flag convention is shared across verbs: `--inp` for the model input, `--<nou
 
 - [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
 - [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
+- [LLM providers](docs/llm_providers.md) - OpenAI vs Claude subscription backends, auth, and how to switch
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
 - [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
 - [Memory runtime](docs/memory_runtime.md) - on-disk substrate, four confidence quadrants, and runtime opt-out flags

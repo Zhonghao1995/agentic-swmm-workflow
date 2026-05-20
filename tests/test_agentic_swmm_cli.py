@@ -269,22 +269,28 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("mocked natural language agent", proc.stdout)
 
     def test_default_router_preserves_explicit_low_level_run(self) -> None:
-        self.assertEqual(_route_default_to_agent([]), ["agent", "--planner", "openai", "--interactive"])
-        self.assertEqual(_route_default_to_agent(["chat"]), ["agent", "--planner", "openai", "--interactive"])
-        self.assertEqual(
-            _route_default_to_agent(["--model", "gpt-test"]),
-            ["agent", "--planner", "openai", "--interactive", "--model", "gpt-test"],
-        )
-        self.assertEqual(_route_default_to_agent(["run", "--inp", "model.inp"]), ["run", "--inp", "model.inp"])
-        self.assertEqual(_route_default_to_agent(["capabilities"]), ["capabilities"])
-        self.assertEqual(
-            _route_default_to_agent(["--verbose", "--model", "gpt-test"]),
-            ["agent", "--planner", "openai", "--interactive", "--verbose", "--model", "gpt-test"],
-        )
-        self.assertEqual(
-            _route_default_to_agent(["run", "tecnopolo_r1_199401.inp"]),
-            ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
-        )
+        # PRD-08 A.3's provider preflight downgrades the interactive
+        # ``--planner openai`` dispatch to ``--planner rule`` when no
+        # LLM provider is configured. Pin ``OPENAI_API_KEY`` so this
+        # test exercises the with-provider routing; the no-provider
+        # fallback is covered by tests/test_cli_provider_preflight.py.
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
+            self.assertEqual(_route_default_to_agent([]), ["agent", "--planner", "openai", "--interactive"])
+            self.assertEqual(_route_default_to_agent(["chat"]), ["agent", "--planner", "openai", "--interactive"])
+            self.assertEqual(
+                _route_default_to_agent(["--model", "gpt-test"]),
+                ["agent", "--planner", "openai", "--interactive", "--model", "gpt-test"],
+            )
+            self.assertEqual(_route_default_to_agent(["run", "--inp", "model.inp"]), ["run", "--inp", "model.inp"])
+            self.assertEqual(_route_default_to_agent(["capabilities"]), ["capabilities"])
+            self.assertEqual(
+                _route_default_to_agent(["--verbose", "--model", "gpt-test"]),
+                ["agent", "--planner", "openai", "--interactive", "--verbose", "--model", "gpt-test"],
+            )
+            self.assertEqual(
+                _route_default_to_agent(["run", "tecnopolo_r1_199401.inp"]),
+                ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
+            )
 
     def test_default_router_preserves_run_help_flags(self) -> None:
         # Regression: ``aiswmm run --help`` must reach the run subparser,
