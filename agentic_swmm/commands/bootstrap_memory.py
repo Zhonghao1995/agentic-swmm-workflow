@@ -172,6 +172,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "bootstrap",
         help="Scaffold project-local memory and other onboarding files.",
     )
+    # Also expose ``--example`` on the ``bootstrap`` verb itself so
+    # ``aiswmm bootstrap --example`` works without naming a sub-target.
+    register_example_flag(parser, example_text=_BOOTSTRAP_EXAMPLE)
     inner = parser.add_subparsers(dest="bootstrap_target", required=True)
     memory_parser = inner.add_parser(
         "memory",

@@ -18,6 +18,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.agent.permissions_profile import Profile, profile_from_string
 from agentic_swmm.agent.runtime_loop import run_interactive_shell
 from agentic_swmm.agent.single_shot import _find_repo_inp, run_single_shot
@@ -59,6 +60,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--quick",
         action="store_true",
         help=argparse.SUPPRESS,
+    )
+    register_example_flag(
+        parser,
+        example_text='aiswmm agent "run the SWMM model at examples/<case>/model.inp"',
     )
     parser.set_defaults(func=main)
 

@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.utils.paths import repo_root, require_dir, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
@@ -32,6 +33,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--obsidian-dir",
         type=Path,
         help="Optional Obsidian export directory.",
+    )
+    register_example_flag(
+        parser, example_text="aiswmm memory --runs-dir runs"
     )
     parser.set_defaults(func=_dispatch)
 

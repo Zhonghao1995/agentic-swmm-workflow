@@ -3,11 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.config import config_path, load_config, set_config_value
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("config", help="View or update local aiswmm runtime config.")
+    register_example_flag(parser, example_text="aiswmm config show")
     child = parser.add_subparsers(dest="config_command", required=True)
 
     show = child.add_parser("show", help="Print the effective runtime config.")

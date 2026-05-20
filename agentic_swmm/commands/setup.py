@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.config import load_config, mcp_registry_path, setup_state_path, write_config
 from agentic_swmm.commands.doctor import _which_swmm5
 from agentic_swmm.runtime.registry import (
@@ -37,6 +38,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "install and exit. Does not touch any other ~/.aiswmm/ file."
         ),
     )
+    register_example_flag(parser, example_text="aiswmm setup --provider openai")
     parser.set_defaults(func=main)
 
 

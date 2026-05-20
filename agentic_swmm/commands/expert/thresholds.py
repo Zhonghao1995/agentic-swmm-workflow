@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.commands.expert._shared import (
     evidence_ref_for,
     record_and_print,
@@ -26,6 +27,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Subcommand 'override' records the override as a "
             "human_decisions entry."
         ),
+    )
+    register_example_flag(
+        parser,
+        example_text="aiswmm thresholds override runs/<case> <name> <value>",
     )
     inner = parser.add_subparsers(dest="thresholds_command", required=True)
     override = inner.add_parser(

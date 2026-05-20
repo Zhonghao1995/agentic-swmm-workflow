@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.utils.paths import require_dir, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
@@ -180,6 +181,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "any 09_audit/ directory. AISWMM_RUNS_ROOT overrides the "
         "auto-resolved runs root.",
     )
+    register_example_flag(parser, example_text="aiswmm audit --run-dir runs/<case>")
     parser.set_defaults(func=main)
 
 

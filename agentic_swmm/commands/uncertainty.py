@@ -96,6 +96,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         epilog=_UNCERTAINTY_EPILOG,
         formatter_class=WidthSafeRawDescriptionFormatter,
     )
+    # Also expose ``--example`` on the ``uncertainty`` verb itself so
+    # ``aiswmm uncertainty --example`` works without naming a subcommand.
+    register_example_flag(parser, example_text=_UNCERTAINTY_SOURCE_EXAMPLE)
     inner = parser.add_subparsers(dest="uncertainty_command", required=True)
     source_parser = inner.add_parser(
         "source",

@@ -4,6 +4,7 @@ import argparse
 import os
 import time
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.utils.paths import script_path
 from agentic_swmm.utils.subprocess_runner import python_command, run_command
 
@@ -20,6 +21,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("name", choices=sorted(DEMO_SCRIPTS), help="Demo workflow to run.")
     parser.add_argument("--run-id", help="Run id for demos that support it. Defaults to a timestamped id.")
     parser.add_argument("--keep-existing", action="store_true", help="Keep an existing acceptance run directory.")
+    register_example_flag(parser, example_text="aiswmm demo tecnopolo")
     parser.set_defaults(func=main)
 
 
