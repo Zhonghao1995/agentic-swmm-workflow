@@ -37,9 +37,9 @@
 
 Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
-The project is designed to work with agent runtimes such as Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
+The project is designed to work with agent runtimes such as *aiswmm*, Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
 
-This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
+This is not a simple chat-to-SWMM wrapper. The agentic runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
@@ -130,7 +130,7 @@ More details: [Experiment audit framework](docs/experiment-audit-framework.md) a
 
 ## Codex / Claude / OpenClaw / Hermes ready
 
-Beyond its own runtime, aiswmm can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
+Beyond its own aiswmm runtime, the Agentic SWMM workflow can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
 
 More details: [Codex runtime path](docs/codex-runtime.md) · [OpenClaw execution path](docs/openclaw-execution-path.md) · [Skill installation](integrations/skills/README.md) · [MCP runtime integration](integrations/mcp/README.md).
 
