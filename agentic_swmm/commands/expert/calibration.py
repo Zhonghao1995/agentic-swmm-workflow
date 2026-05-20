@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.commands.expert._shared import (
     record_and_print,
     resolve_provenance_path,
@@ -73,6 +74,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Subcommand 'accept' verifies the candidate handover, applies "
             "the recorded INP patch, and records the human decision."
         ),
+    )
+    register_example_flag(
+        parser, example_text="aiswmm calibration accept runs/<case>"
     )
     inner = parser.add_subparsers(dest="calibration_command", required=True)
     accept = inner.add_parser(

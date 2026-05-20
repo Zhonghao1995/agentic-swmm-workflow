@@ -65,6 +65,7 @@ from agentic_swmm.case.case_id import (
     CaseIdValidationError,
     resolve_case_id,
 )
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.commands.expert._shared import (
     record_and_print,
     resolve_provenance_path,
@@ -218,6 +219,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Expert-only: gap-fill case-level promotion. Subcommands "
             "'promote-to-case' and 'list-case-defaults'."
         ),
+    )
+    register_example_flag(
+        parser,
+        example_text="aiswmm gap list-case-defaults <case-id>",
     )
     inner = parser.add_subparsers(dest="gap_command", required=True)
 

@@ -239,10 +239,13 @@ def _register_case_commands(
     (``agentic_swmm.case.case_registry``), so the dispatch here is
     thin glue.
     """
+    from agentic_swmm.agent.flag_naming import register_example_flag
+
     # ``aiswmm list cases``
     list_parser = subparsers.add_parser(
         "list", help="List repository-level entities (cases, ...)."
     )
+    register_example_flag(list_parser, example_text="aiswmm list cases")
     list_sub = list_parser.add_subparsers(dest="list_target")
     list_cases_parser = list_sub.add_parser(
         "cases", help="List known cases under cases/<id>/."
@@ -256,6 +259,7 @@ def _register_case_commands(
     case_parser = subparsers.add_parser(
         "case", help="Case-level namespace operations (init, show)."
     )
+    register_example_flag(case_parser, example_text="aiswmm case show <case-id>")
     case_sub = case_parser.add_subparsers(dest="case_command")
 
     show = case_sub.add_parser("show", help="Print case_meta.yaml for a case.")

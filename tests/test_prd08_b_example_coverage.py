@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import io
 import unittest
@@ -27,10 +28,9 @@ def _capture(argv: list[str]) -> tuple[str, str, int]:
     return out.getvalue(), err.getvalue(), code
 
 
-# Every verb (or subcommand) that has been wired with ``register_example_flag``.
-# The list is hand-maintained so we notice when a new verb is added without
-# the example flag. The smoke test asserts each invocation exits 0 with
-# non-empty stdout, which is the user-visible contract.
+# Subcommand-scoped ``--example`` forms that PRD-08 A.2 shipped. These
+# stay covered so the parent-level flag added in the residual audit-#38
+# pass does not silently shadow them.
 EXAMPLE_FLAG_VERBS = [
     ["bootstrap", "memory", "--example"],
     ["calibrate", "--example"],
@@ -47,10 +47,27 @@ EXAMPLE_FLAG_VERBS = [
 ]
 
 
-class ExampleFlagCoverageTests(unittest.TestCase):
-    """Audit #38: every verb that registered ``--example`` honours it."""
+def _registered_top_level_verbs() -> list[str]:
+    """Return every verb name registered on the top-level CLI parser.
 
-    def test_every_registered_verb_emits_non_empty_example(self) -> None:
+    Derived from the live ``argparse`` subparser registry so the test
+    fails the moment a new verb lands without an ``--example`` flag.
+    ``help`` is excluded — it is the help router, not a workflow verb,
+    and ``--example`` is not meaningful for it.
+    """
+    from agentic_swmm.cli import build_parser
+
+    parser = build_parser()
+    for action in parser._actions:  # noqa: SLF001 - argparse has no public API
+        if isinstance(action, argparse._SubParsersAction):
+            return sorted(name for name in action.choices if name != "help")
+    return []
+
+
+class ExampleFlagCoverageTests(unittest.TestCase):
+    """Audit #38: every registered verb honours ``--example``."""
+
+    def test_subcommand_scoped_example_forms_still_work(self) -> None:
         for argv in EXAMPLE_FLAG_VERBS:
             with self.subTest(argv=argv):
                 stdout, _, code = _capture(argv)
@@ -62,6 +79,31 @@ class ExampleFlagCoverageTests(unittest.TestCase):
                 # The example must look like a runnable aiswmm
                 # invocation (starts with ``aiswmm `` so paste-in-shell
                 # works).
+                self.assertTrue(
+                    stdout.strip().startswith("aiswmm "),
+                    f"{argv} stdout does not start with 'aiswmm ': "
+                    f"{stdout!r}",
+                )
+
+    def test_every_registered_verb_emits_non_empty_example(self) -> None:
+        """``aiswmm <verb> --example`` works for *every* registered verb.
+
+        Audit #38 residual: PRD-08 A.2 only wired the new memory verbs
+        plus run/audit/plot. Legacy and expert verbs lacked the flag and
+        exited 2. Every verb in ``cli.py`` must now answer ``--example``
+        with a copy-pasteable invocation on stdout and exit 0.
+        """
+        verbs = _registered_top_level_verbs()
+        self.assertTrue(verbs, "no verbs discovered on the CLI parser")
+        for verb in verbs:
+            argv = [verb, "--example"]
+            with self.subTest(verb=verb):
+                stdout, _, code = _capture(argv)
+                self.assertEqual(code, 0, f"{argv} exit={code}")
+                self.assertTrue(
+                    stdout.strip(),
+                    f"{argv} produced empty stdout",
+                )
                 self.assertTrue(
                     stdout.strip().startswith("aiswmm "),
                     f"{argv} stdout does not start with 'aiswmm ': "

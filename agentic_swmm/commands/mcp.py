@@ -5,6 +5,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.agent.mcp_coverage import build_coverage_matrix, format_coverage_table
 from agentic_swmm.config import mcp_registry_path
 from agentic_swmm.runtime.registry import discover_mcp_servers, load_mcp_registry
@@ -12,6 +13,7 @@ from agentic_swmm.runtime.registry import discover_mcp_servers, load_mcp_registr
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("mcp", help="Inspect local Agentic SWMM MCP servers.")
+    register_example_flag(parser, example_text="aiswmm mcp list")
     child = parser.add_subparsers(dest="mcp_command", required=True)
     list_parser = child.add_parser("list", help="List repository MCP servers.")
     list_parser.add_argument("--json", action="store_true", help="Print machine-readable server records.")

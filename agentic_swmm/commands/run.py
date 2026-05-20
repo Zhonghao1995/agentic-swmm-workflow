@@ -246,9 +246,17 @@ def main(args: argparse.Namespace) -> int:
         },
     }
     (run_dir / "manifest.json").write_text(json.dumps(top_manifest, indent=2), encoding="utf-8")
+    # Audit #1 residual: ``stdout`` must carry *only* the JSON manifest so
+    # ``aiswmm run > result.json`` yields a clean, parseable document.
+    # The human-readable chrome (run directory + standard layout) goes to
+    # ``stderr`` alongside any SWMM-error text surfaced below.
     print(result.stdout.strip())
-    print(f"run directory: {run_dir}")
-    print("standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, manifest.json, command_trace.json")
+    print(f"run directory: {run_dir}", file=sys.stderr)
+    print(
+        "standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, "
+        "manifest.json, command_trace.json",
+        file=sys.stderr,
+    )
 
     # PRD-08 A.1 (audit #1): the runner historically returned 0 even
     # when SWMM wrote ``ERROR \d+:`` lines into the .rpt. The manifest

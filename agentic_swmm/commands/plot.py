@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.utils.paths import repo_root, require_dir, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
@@ -184,6 +185,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # them but the target script never accepted them, causing every plot_run
     # invocation to fail with argparse exit code 2.
     parser.add_argument("--pad-hours", type=float, default=2.0, help="Padding for rain auto-window mode.")
+    register_example_flag(
+        parser,
+        example_text="aiswmm plot --run-dir runs/<case> --node O1",
+    )
     parser.set_defaults(func=main)
 
 
