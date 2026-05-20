@@ -44,9 +44,10 @@ This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the wor
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
 
-Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://aiswmm.com/)
-
-Paper: [*Agentic SWMM: Auditable and Reproducible Stormwater Modelling Management System with Skills and Model Context Protocol*](https://doi.org/10.31223/X5F47G)
+<p>
+  <a href="https://aiswmm.com/"><img src="https://img.shields.io/badge/Video-introduction-EA4335" alt="Introduction video" /></a>
+  <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
+</p>
 
 ## Try it in one command
 
