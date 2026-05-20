@@ -28,61 +28,44 @@
   </a>
 </p>
 
-> **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`.
+> **Alpha — pre-1.0, actively developed.** The CLI / Skill / MCP surface still evolves between minor versions; pin a version for reproducibility. See [Installation](docs/installation.md).
 
-**Agentic SWMM for reproducible stormwater modeling**<br>
-*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
+**Describe a stormwater modeling goal in plain language; get a reproducible, fully-audited EPA SWMM run.**
 
-**A five-minute EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+Agentic SWMM Workflow is an open-source, verification-first runtime for EPA SWMM. **aiswmm is the orchestrator**: you hand it a modeling goal in plain language, and it drives the full SWMM workflow — GIS preprocessing, INP assembly, solver runs, QA gates, plots, provenance, and modeling memory — calling its skills and MCP tools stage by stage. The SWMM solver itself is never modified and stays bit-for-bit deterministic; every artifact it produces lands on disk, inspectable and reusable. This is not a chat-to-SWMM black box — the modeller reviews each step and signs off on the result.
 
-Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
+Authors: **Zhonghao Zhang** & **Caterina Valeo** · MIT · [Paper](https://doi.org/10.31223/X5F47G) · [Video](https://aiswmm.com/)
 
-The project is designed to work with agent runtimes such as Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
-
-This is not a simple chat-to-SWMM wrapper. The agent can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
-
-Authors: **Zhonghao Zhang** & **Caterina Valeo**  
-License: **MIT**
-
-Video: [*Agentic SWMM workflow: introduction and workflow explanation*](https://aiswmm.com/)
-
-Paper: [*Agentic SWMM: Auditable and Reproducible Stormwater Modelling Management System with Skills and Model Context Protocol*](https://doi.org/10.31223/X5F47G)
-
-## Try it in one command
-
-macOS and Linux:
+## Install
 
 ```bash
-curl -fsSL https://aiswmm.com/install.sh | bash
+curl -fsSL https://aiswmm.com/install.sh | bash      # macOS / Linux
 ```
-
-Windows PowerShell:
 
 ```powershell
-irm https://aiswmm.com/install.ps1 | iex
+irm https://aiswmm.com/install.ps1 | iex             # Windows PowerShell
 ```
 
-After installation, launch the runtime with `aiswmm`. Docker and Python package paths are documented in [runtime install options](docs/runtime-install-options.md). Release notes: [v0.6.4](docs/releases/v0.6.4.md) · [v0.6.3-alpha](docs/releases/v0.6.3-alpha.md) · [v0.6.2-alpha](docs/releases/v0.6.2-alpha.md) · [v0.6.1](docs/releases/v0.6.1.md).
+Launch with `aiswmm`. Docker, Python-package, pinned-version paths, the full CLI reference, and how to review the install script first: [Installation & CLI guide](docs/installation.md). Keep API keys out of the `aiswmm` conversation — see [API key configuration](docs/api-key-configuration.md).
 
-Stable users: `pip install aiswmm` now installs v0.6.4 (which ships a fully pinned `requirements.lock` for byte-reproducible builds). Earlier alphas remain available via `pip install aiswmm==0.6.3a1`.
+## What a run looks like
 
-Before running a one-line installer, inspect the repository install scripts if you need to review what will be executed. The installer can prompt for an OpenAI API key, or you can configure one later with environment variables; see [API key configuration](docs/api-key-configuration.md). Do not paste API keys into the `aiswmm` conversation.
+```
+$ aiswmm "run tecnopolo_r1_199401.inp, audit it, and plot node OU2"
 
-## Why this project exists
+runs/2026-05-19/HHMMSS_tecnopolo_run/
+├── model.rpt, model.out          SWMM native outputs
+├── experiment_provenance.json    who / what / when + SHA-256
+├── qa_summary.json               continuity checks
+├── plots/OU2.png
+└── final_report.md
+```
 
-Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
+Every run produces inspectable, reusable artifacts — not a chat transcript.
 
-Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
+## Why
 
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.**
-
-## What makes it different
-
-- **Quick onboarding:** start from one-line macOS/Linux or Windows installers, with Docker and Python package paths documented separately.
-- **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
-- **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
-- **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
-- **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
+A real SWMM project is rarely one command: GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, execution, QA, plots, calibration, uncertainty, reporting. Agentic SWMM gives a middle path — natural-language orchestration with deterministic SWMM execution, explicit provenance, and project memory. The goal is not to replace SWMM or the modeller, but to make SWMM modelling easier to **reproduce, audit, remember, and trust**.
 
 ## Workflow
 
@@ -92,113 +75,41 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
   </a>
 </p>
 
-The workflow has three connected layers: execution, modeling memory, and controlled skill evolution. Natural-language requests can trigger reproducible SWMM actions; audited artifacts update human-readable and machine-readable memory; repeated patterns can produce skill-refinement proposals that still require human review and benchmark verification.
+Three connected layers — execution, modeling memory, and controlled skill evolution. Audited runs update human- and machine-readable memory; recurring patterns become skill-refinement proposals that still require human review and benchmark verification.
 
-## What a run can produce
-
-- generated or supplied SWMM input files such as `model.inp`
-- SWMM report and binary outputs such as `.rpt` and `.out`
-- manifests, command traces, QA summaries, and parsed peak-flow metrics
-- rainfall-runoff figures, calibration summaries, and fuzzy uncertainty summaries
-- audit records: `experiment_provenance.json`, `comparison.json`, and `experiment_note.md`
-- Obsidian-ready modelling notes and modelling-memory summaries
-
-## Validation snapshot
-
-The repository includes runnable benchmarks and research previews with different evidence boundaries. The README keeps only the index; figures, commands, and boundary notes live in [Validation evidence](docs/validation-evidence.md).
-
-| Path | What it shows | Evidence boundary |
-| --- | --- | --- |
-| [Information-loss-guided subcatchment partition](docs/validation-evidence.md#information-loss-guided-subcatchment-partition) | QGIS-to-Agentic SWMM preprocessing using entropy and fuzzy-similarity concepts from Zhang & Valeo's [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447) | GIS preprocessing concept, not a calibrated SWMM performance claim |
-| [Raw GeoPackage-to-INP benchmark](docs/validation-evidence.md#raw-geopackage-to-inp-benchmark) | Public TUFLOW GeoPackage layers converted into SWMM-ready artifacts, QA, and audit | Structured raw GIS path, not arbitrary CAD/GIS recognition |
-| [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
-| [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
-| [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
-
-Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
-
-## Audit and research memory
-
-The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible experiment note. This example catches a recorded peak-flow value that does not match the value re-parsed from the SWMM report source section.
+## Audit
 
 <p align="center">
   <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
 </p>
 
-The downstream modelling-memory layer can summarize audited run histories into recurring failure patterns, assumptions, missing evidence, QA issues, lessons learned, and controlled proposals for updating existing skills or creating new skills. Because skills drive the workflow, these proposals stay coupled to the current Agentic SWMM framework and still require human review and benchmark verification before acceptance.
+The audit layer consolidates artifacts, QA checks, and metric provenance into an Obsidian-compatible note — here catching a recorded peak-flow value that disagrees with the value re-parsed from the SWMM report source.
 
-More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
+## Use with Codex / Claude / OpenClaw / Hermes
 
-## Codex / OpenClaw / Hermes ready
+aiswmm's SWMM capability is packaged as two portable folders — `skills/` and `mcp/`. To drive the workflow from an external agent runtime (Codex, Claude Code, OpenClaw, Hermes, …) you do **not** need to install the `aiswmm` package or its CLI — point the runtime at these two folders, with `skills/swmm-end-to-end/SKILL.md` as the entry skill.
 
-Codex can serve as the primary local development runtime for this repository: it can inspect the checkout, run scripts, edit skills, generate audit records, update the local Obsidian vault, and review evidence before claims are accepted.
+Prerequisites still apply: each MCP server needs its Node dependencies (`npm install`), and the skill scripts need Python and the SWMM solver. Setup: [Skill installation](integrations/skills/README.md) · [MCP integration](integrations/mcp/README.md).
 
-OpenClaw and Hermes remain compatible orchestration targets, especially for MCP-centered agent runs outside the Codex development environment.
+## Documentation
 
-For agent-orchestrated runs, preload the Agentic AI memory package and then use the top-level end-to-end skill:
+- [Installation & CLI guide](docs/installation.md) — Docker, local, Windows, and the full CLI verb reference
+- [Validation evidence](docs/validation-evidence.md) — runnable benchmarks, commands, and evidence boundaries
+- [LLM providers](docs/llm_providers.md) — OpenAI vs Claude subscription backends, auth, and switching
+- [Memory runtime](docs/memory_runtime.md) — on-disk substrate, confidence quadrants, and opt-out flags
+- [Experiment audit framework](docs/experiment-audit-framework.md) — provenance, comparison, and Obsidian note contracts
+- [Modeling memory & skill evolution](docs/modeling-memory-and-skill-evolution.md) — the controlled memory-to-skill loop
+- [Agent runtimes](docs/codex-runtime.md) — Codex / Claude / OpenClaw / Hermes orchestration paths
+- [Repository map](docs/repo-map.md) — folder-level walkthrough
 
-```text
-agent/memory/
-skills/swmm-end-to-end/SKILL.md
-```
+## Contributing
 
-The top-level skill defines when to use the full modular path, when to use the prepared-input path, which QA gates must pass, and when to stop instead of inventing missing inputs.
+Contributions welcome: SWMM case studies, calibration and validation workflows, DEM / land-use / soil / drainage-asset workflows, new MCP tools, QA testing, tutorials, and interoperability with GIS, ML, and hydrologic toolchains.
 
-For common prepared-input execution, audit, plotting, and memory summarization, the skill should prefer the unified `agentic-swmm` CLI. MCP tools remain available for the modular stages and for agent runtimes that need fine-grained tool calls.
-
-More details: [Codex runtime path](docs/codex-runtime.md), [OpenClaw execution path](docs/openclaw-execution-path.md), [Skill installation](integrations/skills/README.md), and [MCP runtime integration](integrations/mcp/README.md).
-
-## CLI verbs at a glance
-
-The `aiswmm` CLI groups verbs by purpose. Run `aiswmm --help` for the full grouped block, or `aiswmm help <verb>` for any verb's options. Every verb listed below accepts `--example` (prints a copy-pasteable invocation) and most accept `--json` and `--quiet`.
-
-| Verb | Description | Example |
-| --- | --- | --- |
-| `aiswmm run` | Execute SWMM on an INP, write audit + plots. | `aiswmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo --node OUT_0` |
-| `aiswmm audit` | Re-write audit notes for an existing run. | `aiswmm audit --run-dir runs/tecnopolo` |
-| `aiswmm plot` | Render rain/runoff/depth plots from a run directory. | `aiswmm plot --run-dir runs/tecnopolo` |
-| `aiswmm compare` | Diff continuity/peak/runoff between two runs. | `aiswmm compare --run-a runs/baseline --run-b runs/with-lid --json` |
-| `aiswmm cite` | Look up an entry in the citations library by key. | `aiswmm cite huber_dickinson_1988` |
-| `aiswmm cite-param` | Reverse-lookup a citation by parameter name + value. | `aiswmm cite-param --name manning_n_overland.asphalt --value 0.013 --json` |
-| `aiswmm storm` | Generate a design hyetograph (uniform/triangular/chicago/huff/scs). | `aiswmm storm --shape chicago --depth-mm 25 --duration-min 60 --peak-position 0.4 --out storm.dat` |
-| `aiswmm transfer` | Suggest starter parameters for a new case from similar past cases. | `aiswmm transfer --inp examples/saanich/saanich.inp --top-k 3` |
-| `aiswmm uncertainty plan` | Plan a SALib uncertainty scan (does not execute SWMM). | `aiswmm uncertainty plan --inp model.inp --param manning_n=0.010,0.018 --method morris --n-samples 50` |
-| `aiswmm calibrate` | Calibration loop with checkpoint-aware progress (stub today). | `aiswmm calibrate --inp model.inp --run-id calib_001 --total-iters 100 --param manning_n=0.010,0.018 --run-dir runs/calib_001` |
-| `aiswmm bootstrap memory` | Scaffold an empty `memory/modeling-memory/` skeleton. | `aiswmm bootstrap memory --dir memory/modeling-memory` |
-| `aiswmm doctor` | Diagnose install, memory stores, and opt-out knobs; optional `--fix`. | `aiswmm doctor --fix --yes` |
-
-The flag convention is shared across verbs: `--inp` for the model input, `--<noun>-path` for path overrides (`--calibration-memory-path`, `--storm-library-path`, ...), `--<noun>-entry` for keys inside a library, `--json` for machine-readable output, and `--quiet` to suppress chrome. Legacy flag spellings (for example `--base-inp`, `--calibration-store`, `--from-library`) still work, but emit a `[deprecated]:` warning to stderr.
-
-`aiswmm bootstrap memory` only creates the empty memory skeleton (`parametric_memory.jsonl`, `calibration_memory.jsonl`, `negative_lessons.jsonl`, `project_overrides.yaml`, `README.md`). The project's `citations.yaml` and `reference_benchmarks.yaml` are separately maintained and are not seeded by this command — they ship with the repository and are user-edited.
-
-## Documentation map
-
-- [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
-- [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
-- [LLM providers](docs/llm_providers.md) - OpenAI vs Claude subscription backends, auth, and how to switch
-- [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
-- [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md) - controlled memory-to-skill refinement loop
-- [Memory runtime](docs/memory_runtime.md) - on-disk substrate, four confidence quadrants, and runtime opt-out flags
-- [Memory runtime CLI examples](docs/memory_runtime_cli.md) - one worked example per memory verb
-- [Codex runtime path](docs/codex-runtime.md) - local development, audit, Obsidian, and evidence-review workflow
-- [OpenClaw execution path](docs/openclaw-execution-path.md) - MCP tool-call sequence for agent runtimes
-- [Repository map](docs/repo-map.md) - folder-level walkthrough
-- [Calibration example](examples/calibration/README.md) - compact calibration support example
-
-## Where collaborators can help
-
-Contributions are welcome in additional SWMM case studies, stronger calibration and validation workflows, DEM / land-use / soil / drainage-asset workflows, new MCP tools, QA testing, tutorials, and interoperability with GIS, ML, and hydrologic toolchains.
-
-Contact:
-- zhonghaoz@uvic.ca
-- valeo@uvic.ca
+Contact: zhonghaoz@uvic.ca · valeo@uvic.ca
 
 ## Citation
 
-GitHub citation metadata is provided in `CITATION.cff`.
-
-### APA repository
-Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
-
-### APA manuscript / preprint
 Zhang, Z., & Valeo, C. (2026). *Agentic SWMM: Auditable and Reproducible Stormwater Modelling Management System with Skills and Model Context Protocol*. https://doi.org/10.31223/X5F47G
+
+GitHub citation metadata is in `CITATION.cff`. For the repository as software: Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. https://github.com/Zhonghao1995/agentic-swmm-workflow
