@@ -35,7 +35,7 @@
 
 Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.** Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based. This workflow also adapts to other agent runtimes, including Codex, OpenClaw, and Hermes.
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.** Agentic SWMM comes with *aiswmm* as its built-in runtime. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based. The repository's MCP servers and Skills can also be used with other agent runtimes, including Codex, OpenClaw, and Hermes.
 
 This is not a simple chat-to-SWMM wrapper. The aiswmm runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose Skill refinements, but accepted changes still require human review and benchmark verification.
 
