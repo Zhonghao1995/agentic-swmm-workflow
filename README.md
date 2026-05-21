@@ -62,7 +62,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
 - **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
 
-## Meet your agent in about five minutes, then run an auditable, reproducible Agentic SWMM workflow
+## Meet your agent in about five minutes
 
 > **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.6.4`) is the recommended path** — see [runtime install options](docs/runtime-install-options.md).
 
