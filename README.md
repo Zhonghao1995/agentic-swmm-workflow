@@ -33,9 +33,11 @@
 **Agentic SWMM for reproducible stormwater modeling**<br>
 *[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
-**A five-minute EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+**Run a prepared, auditable EPA SWMM workflow in about five minutes.**
 
 Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
+
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.**
 
 The project is designed to work with agent runtimes such as *aiswmm*, Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
 
@@ -50,6 +52,8 @@ License: **MIT**
 </p>
 
 ## Try it in one command
+
+> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.6.4`) is the recommended path** — see [runtime install options](docs/runtime-install-options.md).
 
 macOS and Linux:
 
@@ -72,8 +76,6 @@ One-line installers run a remote script — review it first if you want to see w
 Stormwater modelling is rarely one command. A typical SWMM project can involve GIS preprocessing, rainfall formatting, parameter assignment, network assembly, INP construction, model execution, QA checks, plots, calibration, uncertainty analysis, and reporting.
 
 Agentic SWMM provides a middle path: natural-language orchestration with deterministic SWMM execution, explicit provenance, project memory, and verification-first modelling.
-
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.**
 
 ## What makes it different
 
