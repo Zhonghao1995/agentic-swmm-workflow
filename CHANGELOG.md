@@ -4,6 +4,28 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+## v0.7.0a1 - Modeling memory, Claude Agent SDK provider, CLI/UX overhaul (2026-05-21)
+
+Pre-release (alpha) on top of v0.6.4. Install with `pip install aiswmm==0.7.0a1` or `pip install --pre aiswmm`; the default `pip install aiswmm` still ships v0.6.4. v0.6.4 reproducibility is unaffected — every pinned channel (PyPI, Git tag, Docker image) is immutable.
+
+### Added
+
+- **Modeling-memory substrate.** An on-disk memory layer under `memory/modeling-memory/`: `parametric_memory` (run-level parameters and QA metrics), `calibration_memory` (accepted calibrations and goodness-of-fit), `reference_benchmarks` (library defaults) with a per-project `project_overrides.yaml` overlay, a citation library, and `negative_lessons` (known-bad parameter regions). Includes watershed-similarity matching and SQLite indexing for large stores. Scaffold it with `aiswmm bootstrap memory`.
+- **Memory-informed runtime.** The planner can read modeling memory to disambiguate ambiguous requests, adapt QA thresholds to project history, and carry parameter priors across watersheds, with a transparency log of which memory entries were used. Opt out per run with `--ignore-memory`.
+- **Claude Agent SDK provider (optional).** A second LLM backend that routes the planner through a Claude Pro/Max subscription via the local `claude` CLI. Install the optional extra with `pip install aiswmm[claude]`. The default OpenAI provider is unchanged and pulls none of this.
+- **New CLI verbs:** `aiswmm compare` (per-node / per-subcatchment run diffs), `aiswmm storm` (Chicago / Huff / SCS design hyetographs), `aiswmm trace` (inspect the agent trace), `aiswmm uncertainty plan`, and `aiswmm bootstrap memory`.
+
+### Changed
+
+- **CLI/UX overhaul.** A unified flag convention across every verb (`--inp` / `--json` / `--quiet` / `--example`), grouped `--help` output, differentiated `error: / cause: / hint:` messages, and an honesty layer that detects SWMM `ERROR` output and stub modes instead of reporting false success. SWMM error text is now routed to stderr.
+- Calibration workflow closure: batch-aware planning, run-progress reporting, and resource estimation.
+- A SWMM solver-version mismatch between a model and the resolved `swmm5` binary is now refused rather than run silently.
+
+### Notes
+
+- This is an alpha. The Claude Agent SDK provider is new and not yet exercised at scale — feedback via GitHub Issues is welcome.
+- v0.6.4 remains the latest **stable** release; nothing about it changes.
+
 ## v0.6.4 - Byte-reproducibility hardening: pinned `requirements.lock` + auto-built Docker images (2026-05-18)
 
 First stable release on the 0.6.x line since v0.6.1. Closes the three gaps that previously prevented v0.6.x from supporting end-to-end byte-level reproducibility for the companion Agentic SWMM paper.
