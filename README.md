@@ -30,18 +30,14 @@
 
 > **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`. A **v0.7.0a1** preview is available via `pip install --pre aiswmm` ([changelog](CHANGELOG.md)).
 
-**Agentic SWMM for reproducible stormwater modeling**<br>
-*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
-**Run a prepared, auditable EPA SWMM workflow in about five minutes.**
+## Project Overview
 
 Agentic SWMM Workflow is an open-source, verification-first framework for reproducible stormwater modeling with EPA SWMM. It supports automated execution, QA checks, provenance tracking, calibration support, documentation, and modeling memory, while keeping human modelers in control.
 
-**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.**
+**The goal is not to replace SWMM or the modeller, but to make SWMM-based modelling easier to reproduce, audit, remember, and trust.** Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based. This workflow also adapts to other agent runtimes, including Codex, OpenClaw, and Hermes.
 
-The project is designed to work with agent runtimes such as *aiswmm*, Codex, OpenClaw, or Hermes. Users can describe a modeling goal in natural language, while SWMM execution remains deterministic, inspectable, and artifact-based.
-
-This is not a simple chat-to-SWMM wrapper. The agentic runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose skill refinements, but accepted changes still require human review and benchmark verification.
+This is not a simple chat-to-SWMM wrapper. The aiswmm runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose Skill refinements, but accepted changes still require human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
@@ -51,25 +47,6 @@ License: **MIT**
   <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
 </p>
 
-## Try it in one command
-
-> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.6.4`) is the recommended path** — see [runtime install options](docs/runtime-install-options.md).
-
-macOS and Linux:
-
-```bash
-curl -fsSL https://aiswmm.com/install.sh | bash
-```
-
-Windows PowerShell:
-
-```powershell
-irm https://aiswmm.com/install.ps1 | iex
-```
-
-After installation, launch the runtime with `aiswmm`. Docker, Python-package, and pinned-version install paths are documented in [runtime install options](docs/runtime-install-options.md).
-
-One-line installers run a remote script — review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
 
 ## Why this project exists
 
@@ -85,6 +62,26 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
 - **Supervised skill evolution:** audited runs can surface recurring workflow patterns and propose updates to existing skills or new skills, while staying coupled to the current skill-driven framework.
 
+## Meet your agent in about five minutes, then run an auditable, reproducible Agentic SWMM workflow
+
+> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.6.4`) is the recommended path** — see [runtime install options](docs/runtime-install-options.md).
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://aiswmm.com/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://aiswmm.com/install.ps1 | iex
+```
+
+After installation, launch the runtime with `aiswmm`.
+
+One-line installers run a remote script — review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
+
 ## Workflow
 
 <p align="center">
@@ -92,6 +89,8 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
     <img src="docs/figs/modeling_memory_skill_evolution.png" alt="Agentic SWMM modeling memory and controlled skill evolution loop" style="background:#ffffff; padding:12px; border-radius:8px;" width="900" />
   </a>
 </p>
+**Agentic SWMM for reproducible stormwater modeling**<br>
+*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
 The workflow has three connected layers: execution, modeling memory, and controlled skill evolution. Natural-language requests can trigger reproducible SWMM actions; audited artifacts update human-readable and machine-readable memory; repeated patterns can produce skill-refinement proposals that still require human review and benchmark verification.
 
