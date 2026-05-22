@@ -23,6 +23,9 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" />
   </a>
+  <a href="https://doi.org/10.5281/zenodo.20337281">
+    <img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20337281.svg" alt="Zenodo DOI" />
+  </a>
   <a href="https://zhonghaoz.ca">
     <img src="https://img.shields.io/badge/built%20by-Zhonghao-7C3AED" alt="Built by Zhonghao" />
   </a>

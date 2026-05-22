@@ -8,11 +8,12 @@ authors:
     given-names: Caterina
 year: 2026
 version: "0.6.4"
+doi: "10.5281/zenodo.20337281"
 license: MIT
 repository-code: "https://github.com/Zhonghao1995/agentic-swmm-workflow"
 preferred-citation:
   type: article
-  title: "Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw"
+  title: "Agentic SWMM: Auditable and Reproducible Stormwater Modelling Workflow with Skills and Model Context Protocol"
   authors:
     - family-names: Zhang
       given-names: Zhonghao
