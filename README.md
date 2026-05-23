@@ -30,6 +30,8 @@
 
 > **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`. A **v0.7.0a1** preview is available via `pip install --pre aiswmm` ([changelog](CHANGELOG.md)).
 
+**Agentic SWMM for reproducible stormwater modeling**<br>
+*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
 ## Project Overview
 
@@ -91,8 +93,6 @@ One-line installers run a remote script — review it first if you want to see w
   </a>
 </p>
 
-**Agentic SWMM for reproducible stormwater modeling**<br>
-*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
 The workflow has three connected layers: execution, modeling memory, and controlled skill evolution. Natural-language requests can trigger reproducible SWMM actions; audited artifacts update human-readable and machine-readable memory; repeated patterns can produce skill-refinement proposals that still require human review and benchmark verification.
 
