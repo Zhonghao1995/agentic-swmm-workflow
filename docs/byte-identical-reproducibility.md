@@ -1,12 +1,12 @@
 # Byte-identical SWMM reproducibility across environments (Tecnopolo)
 
-The Tecnopolo INP (`examples/tecnopolo/tecnopolo_r1_199401.inp`) was executed through three independent stacks — the full aiswmm chain on macOS (LLM agent → MCP server → swmm-runner skill → SWMM), the aiswmm skill inside a Docker container, and bare `swmm5` invoked directly inside the same container. All three produced a byte-identical SWMM binary output.
+The Tecnopolo INP (`examples/tecnopolo/tecnopolo_r1_199401.inp`) was executed through three independent stacks — the full aiswmm chain on macOS driven by a natural-language prompt (`Run the Tecnopolo (Rome 1994) demo`), the aiswmm skill inside a Docker container, and bare `swmm5` invoked directly inside the same container. All three produced a byte-identical SWMM binary output.
 
 ## What was compared
 
 | Path | Stack | Invocation |
 | --- | --- | --- |
-| macOS, full aiswmm chain | aiswmm 0.7.0a1 (editable) · SWMM 5.2.4 (Homebrew) | `aiswmm interactive` → LLM agent → MCP server → swmm-runner skill → `swmm5` |
+| macOS, full aiswmm chain | aiswmm 0.7.0a1 (editable) · SWMM 5.2.4 (Homebrew) | Natural-language prompt `Run the Tecnopolo (Rome 1994) demo` in `aiswmm interactive` → LLM agent → MCP server → swmm-runner skill → `swmm5` |
 | Docker, aiswmm runner | aiswmm 0.6.4 · SWMM 5.2.4 (compiled from `USEPA/Stormwater-Management-Model@v5.2.4`) | `tecnopolo` entrypoint → swmm-runner skill → `swmm5` |
 | Docker, direct | Same container build | `tecnopolo` entrypoint → `swmm5` invoked directly |
 
@@ -24,7 +24,7 @@ Continuity errors agree exactly: runoff quantity `-0.13 %`, flow routing `-0.004
 
 Across **operating system** (macOS native vs Linux container), **SWMM provenance** (Homebrew binary vs source build), **aiswmm version** (0.6.4 vs 0.7.0a1), and **invocation path** (full LLM-agent chain vs bare `swmm5`):
 
-1. **The full aiswmm chain reproduces the bare-`swmm5` result byte-for-byte.** Direct `swmm5` invocation on this INP and the LLM-agent-mediated pipeline (LLM agent → MCP → swmm-runner skill → SWMM) produce the same `model.out`, the same continuity errors, and the same hydrograph.
+1. **The full aiswmm chain reproduces the bare-`swmm5` result byte-for-byte from a natural-language prompt.** Issuing `Run the Tecnopolo (Rome 1994) demo` to `aiswmm interactive` drives the LLM-agent-mediated pipeline (LLM agent → MCP → swmm-runner skill → SWMM) to the same `model.out`, the same continuity errors, and the same hydrograph that bare `swmm5` produces on this INP.
 2. **The swmm-runner skill is a transparent pass-through.** The Docker-runner vs Docker-direct comparison isolates the skill layer in a single environment; both produce identical output.
 3. **The MCP layer is a transparent pass-through.** The macOS path goes through the MCP server; the Docker paths do not — and all three results match.
 4. **SWMM 5.2.4 itself is numerically deterministic for this INP** across the Homebrew binary and the in-container source build.
@@ -36,9 +36,12 @@ This evidence covers the SWMM execution layer — for a given INP and goal, ever
 ## How to reproduce locally
 
 ```bash
-# Path A: macOS native (requires Homebrew SWMM and a local aiswmm install)
-aiswmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo-macos
-shasum -a 256 runs/tecnopolo-macos/model.out
+# Path A: macOS, natural-language driven (requires Homebrew SWMM, a local
+# aiswmm install, and an LLM provider configured for `aiswmm interactive`)
+aiswmm interactive
+#   you> Run the Tecnopolo (Rome 1994) demo
+# Locate the resulting run directory under runs/<date>/<id>_tecnopolo_run/
+shasum -a 256 "runs/<date>/<id>_tecnopolo_run/model.out"
 
 # Paths B + C: Docker (the tecnopolo entrypoint runs both the runner-mediated and direct invocations)
 docker run --rm -v "$PWD/docker-runs:/app/runs" \
