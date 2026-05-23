@@ -116,7 +116,7 @@ The repository includes runnable benchmarks and research previews with different
 | [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
 | [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
 | [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
-| [Cross-environment byte-identical reproducibility](docs/byte-identical-reproducibility.md) | The full aiswmm chain (LLM agent → MCP → swmm-runner skill) and bare `swmm5` produce a byte-identical `model.out` on the Tecnopolo INP across macOS and Docker | SWMM execution-layer reproducibility, not agentic workflow reproducibility |
+| [Cross-environment byte-identical reproducibility](docs/byte-identical-reproducibility.md) | A natural-language prompt (`Run the Tecnopolo (Rome 1994) demo`) drives the aiswmm chain (LLM agent → MCP → swmm-runner skill) to the same byte-identical `model.out` as bare `swmm5`, across macOS and Docker | SWMM execution-layer reproducibility, not agentic workflow reproducibility |
 
 Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
