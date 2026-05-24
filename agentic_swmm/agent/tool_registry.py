@@ -6,8 +6,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.parse
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -19,17 +17,13 @@ from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_pa
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
-    _process_text,
     _repo_output_path,
     _repo_path,
     _run_cli_tool,
     _run_process_tool,
     _run_script_tool,
     _safe_name,
-    _strip_html,
-    _summarize_cli_result,
     _tail,
-    _try_json,
 )
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR, NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, _find_inp, _find_out, _read_manifest, rainfall_timeseries_options
