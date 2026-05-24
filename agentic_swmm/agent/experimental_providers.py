@@ -31,6 +31,7 @@ from __future__ import annotations
 import os
 
 from agentic_swmm.agent import feature_flags
+from agentic_swmm.providers import factory
 
 
 _ENV_VAR = "AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS"
@@ -53,12 +54,20 @@ def claude_sdk_enabled() -> bool:
 def available_provider_choices() -> list[str]:
     """Return the argparse ``--provider`` choices for the current gate state.
 
-    Gate OFF → ``["openai"]``; gate ON → ``["openai", "claude_sdk"]``.
-    The order is stable so help text rendering is deterministic.
+    Derived from :data:`agentic_swmm.providers.factory.SUPPORTED_PROVIDERS`
+    so the gate stays a filter over a single source of truth — adding
+    a third provider lands in ``factory.SUPPORTED_PROVIDERS`` only.
+
+    Gate OFF filters ``claude_sdk`` out; gate ON returns the full
+    tuple. The order matches ``SUPPORTED_PROVIDERS`` so help text
+    rendering is deterministic. We read the tuple off the module
+    rather than importing the name directly so tests can patch the
+    attribute and observe the change here.
     """
+    supported = factory.SUPPORTED_PROVIDERS
     if claude_sdk_enabled():
-        return ["openai", "claude_sdk"]
-    return ["openai"]
+        return list(supported)
+    return [name for name in supported if name != "claude_sdk"]
 
 
 def gate_notice_for_legacy_config() -> str:

@@ -25,6 +25,11 @@ from agentic_swmm.providers.base import ChatProvider
 
 
 _SUPPORTED = ("openai", "claude_sdk")
+# Public alias of :data:`_SUPPORTED` — the single source of truth for
+# the set of provider names this factory accepts. Surfaces here so the
+# experimental-providers env gate (and any future caller) can derive
+# its argparse choices from one tuple instead of restating the literal.
+SUPPORTED_PROVIDERS = _SUPPORTED
 
 
 def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvider:
@@ -58,4 +63,4 @@ def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvid
     )
 
 
-__all__ = ["make_provider"]
+__all__ = ["SUPPORTED_PROVIDERS", "make_provider"]
