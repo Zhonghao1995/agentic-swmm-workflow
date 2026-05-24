@@ -136,16 +136,16 @@ class RepairSessionsHelperTests(unittest.TestCase):
 
             result = repair_sessions_db(runs_dir, db_path=db_path)
 
-        self.assertEqual(result["ok"], True)
-        backup = Path(result["backup"])
-        self.assertTrue(backup.exists())
-        # Filename pattern: sessions.sqlite.corrupt-YYYYMMDDTHHMMSSZ
-        self.assertRegex(
-            backup.name,
-            r"^sessions\.sqlite\.corrupt-\d{8}T\d{6}Z$",
-        )
-        # The backup carries the exact bytes of the corrupt original.
-        self.assertEqual(backup.read_bytes(), corrupt_bytes)
+            self.assertEqual(result["ok"], True)
+            backup = Path(result["backup"])
+            self.assertTrue(backup.exists())
+            # Filename pattern: sessions.sqlite.corrupt-YYYYMMDDTHHMMSSZ
+            self.assertRegex(
+                backup.name,
+                r"^sessions\.sqlite\.corrupt-\d{8}T\d{6}Z$",
+            )
+            # The backup carries the exact bytes of the corrupt original.
+            self.assertEqual(backup.read_bytes(), corrupt_bytes)
 
     def test_repair_rebuilds_db_from_session_trace(self) -> None:
         from agentic_swmm.commands.memory import repair_sessions_db
@@ -176,16 +176,16 @@ class RepairSessionsHelperTests(unittest.TestCase):
 
             result = repair_sessions_db(runs_dir, db_path=db_path)
 
-        self.assertEqual(result["ok"], True)
-        # The rebuilt DB must pass integrity_check.
-        session_db.clear_integrity_cache()
-        report = session_db.integrity_check(db_path)
-        self.assertEqual(report.state, "ok")
-        # Both session traces were ingested.
-        with session_db.connect(db_path) as conn:
-            ids = session_db.list_session_ids(conn)
-        self.assertEqual(len(ids), 2)
-        self.assertIn(result["sessions_rebuilt"], (2,))
+            self.assertEqual(result["ok"], True)
+            # The rebuilt DB must pass integrity_check.
+            session_db.clear_integrity_cache()
+            report = session_db.integrity_check(db_path)
+            self.assertEqual(report.state, "ok")
+            # Both session traces were ingested.
+            with session_db.connect(db_path) as conn:
+                ids = session_db.list_session_ids(conn)
+            self.assertEqual(len(ids), 2)
+            self.assertEqual(result["sessions_rebuilt"], 2)
 
     def test_repair_when_db_absent_just_rebuilds(self) -> None:
         """Calling repair on a runs/ directory with no sessions.sqlite
@@ -211,12 +211,12 @@ class RepairSessionsHelperTests(unittest.TestCase):
 
             result = repair_sessions_db(runs_dir, db_path=db_path)
 
-        self.assertEqual(result["ok"], True)
-        self.assertIsNone(result.get("backup"))
-        self.assertTrue(db_path.exists())
-        session_db.clear_integrity_cache()
-        report = session_db.integrity_check(db_path)
-        self.assertEqual(report.state, "ok")
+            self.assertEqual(result["ok"], True)
+            self.assertIsNone(result.get("backup"))
+            self.assertTrue(db_path.exists())
+            session_db.clear_integrity_cache()
+            report = session_db.integrity_check(db_path)
+            self.assertEqual(report.state, "ok")
 
     def test_repair_does_not_overwrite_corrupt_without_backup(self) -> None:
         """Hard constraint from the issue: the verb must always back
@@ -237,12 +237,12 @@ class RepairSessionsHelperTests(unittest.TestCase):
 
             result = repair_sessions_db(runs_dir, db_path=db_path)
 
-        backup = Path(result["backup"])
-        self.assertTrue(backup.exists())
-        self.assertEqual(backup.read_bytes(), corrupt_bytes)
-        # The original path is replaced by a freshly-initialised DB,
-        # never deleted.
-        self.assertTrue(db_path.exists())
+            backup = Path(result["backup"])
+            self.assertTrue(backup.exists())
+            self.assertEqual(backup.read_bytes(), corrupt_bytes)
+            # The original path is replaced by a freshly-initialised DB,
+            # never deleted.
+            self.assertTrue(db_path.exists())
 
 
 # ---------------------------------------------------------------------------
