@@ -266,11 +266,21 @@ class OpenAIPlanner:
         brief = brief_result(call.name, result)
         error_detail: str | None = None
         if not ok:
-            tail = result.get("stderr_tail") or result.get("stdout_tail") or ""
-            if isinstance(tail, str) and tail.strip():
-                # Trim any trailing blank lines so the expansion stays
-                # tight beneath the step row.
-                error_detail = tail.rstrip("\n")
+            # PRD-185 / issue #193 item 1: try each known failure-detail
+            # field in priority order. Subprocess-shaped tools populate
+            # ``stderr_tail`` / ``stdout_tail``; in-process handlers
+            # carry detail under ``error`` (e.g. caught exception
+            # strings), ``message`` (gap-decision-shaped failures), or
+            # ``traceback`` (multi-line stacks from background workers).
+            # First non-empty string wins so the user always sees *some*
+            # diagnostic beneath a failure row without ``--verbose``.
+            for key in ("stderr_tail", "stdout_tail", "error", "message", "traceback"):
+                candidate = result.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    # Trim any trailing blank lines so the expansion
+                    # stays tight beneath the step row.
+                    error_detail = candidate.rstrip("\n")
+                    break
         self.emit(
             render_step(
                 step=index,
