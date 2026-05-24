@@ -27,9 +27,17 @@ from typing import Any
 
 
 def _brief_list_dir(result: dict[str, Any]) -> str:
-    entries = (result.get("results") or {}).get("entries")
-    if isinstance(entries, list):
-        return f"{len(entries)} entries"
+    # ``list_dir`` returns ``results`` as a flat list of entry dicts;
+    # older callers tucked the list under a ``{"entries": [...]}``
+    # wrapper. Support both shapes so the digest is resilient to
+    # future tool-shape tweaks.
+    results = result.get("results")
+    if isinstance(results, list):
+        return f"{len(results)} entries"
+    if isinstance(results, dict):
+        entries = results.get("entries")
+        if isinstance(entries, list):
+            return f"{len(entries)} entries"
     return ""
 
 
@@ -41,7 +49,9 @@ def _brief_select_skill(result: dict[str, Any]) -> str:
 
 
 def _brief_run_swmm_inp(result: dict[str, Any]) -> str:
-    results = result.get("results") or {}
+    results = result.get("results")
+    if not isinstance(results, dict):
+        return ""
     run_dir = results.get("runDir") or results.get("run_dir")
     if isinstance(run_dir, str) and run_dir.strip():
         leaf = Path(run_dir).name
@@ -51,7 +61,9 @@ def _brief_run_swmm_inp(result: dict[str, Any]) -> str:
 
 
 def _brief_audit_run(result: dict[str, Any]) -> str:
-    results = result.get("results") or {}
+    results = result.get("results")
+    if not isinstance(results, dict):
+        return ""
     status = results.get("status")
     if isinstance(status, str) and status.strip():
         return status.strip()
@@ -68,10 +80,16 @@ def _brief_inspect_plot_options(result: dict[str, Any]) -> str:
 
 
 def _brief_recall_session_history(result: dict[str, Any]) -> str:
-    results = result.get("results") or {}
-    sessions = results.get("sessions")
-    if isinstance(sessions, list):
-        return f"{len(sessions)} sessions"
+    # ``recall_session_history`` returns its hits as a flat list under
+    # ``results``; tolerate the ``{"sessions": [...]}`` wrapper too in
+    # case a future variant lands.
+    results = result.get("results")
+    if isinstance(results, list):
+        return f"{len(results)} sessions"
+    if isinstance(results, dict):
+        sessions = results.get("sessions")
+        if isinstance(sessions, list):
+            return f"{len(sessions)} sessions"
     return ""
 
 

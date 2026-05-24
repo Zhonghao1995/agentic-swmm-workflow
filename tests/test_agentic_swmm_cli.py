@@ -1103,7 +1103,10 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertIn("run_tests", proc.stdout)
-            self.assertIn("OK:", proc.stdout)
+            # PRD-185: the default digest renderer collapses the
+            # legacy '[N] tool' + 'OK: <summary>' pair onto a single
+            # line that carries the ✓ marker after a Y/n stamp.
+            self.assertIn("✓", proc.stdout)
 
     def test_openai_agent_writes_session_state_and_context_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

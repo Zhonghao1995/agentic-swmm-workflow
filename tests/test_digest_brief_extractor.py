@@ -52,6 +52,36 @@ class BriefResultExtractorTests(unittest.TestCase):
         result = {"tool": "list_dir", "ok": True, "results": {"entries": []}}
         self.assertEqual(brief_result("list_dir", result), "0 entries")
 
+    def test_list_dir_results_as_flat_list_is_supported(self) -> None:
+        # Regression: the live ``_list_dir_tool`` returns ``results``
+        # as a flat list (not the ``{"entries": [...]}`` wrapper).
+        # The extractor must accept both shapes so digest mode does
+        # not crash on the real tool output.
+        result = {
+            "tool": "list_dir",
+            "ok": True,
+            "results": [
+                {"name": "a.py", "type": "file"},
+                {"name": "b.py", "type": "file"},
+                {"name": "c.py", "type": "file"},
+            ],
+            "summary": "3 entries",
+        }
+        self.assertEqual(brief_result("list_dir", result), "3 entries")
+
+    def test_recall_session_history_flat_list_is_supported(self) -> None:
+        # Same shape contract as list_dir — the live tool returns
+        # ``results`` as a flat list of session records.
+        result = {
+            "tool": "recall_session_history",
+            "ok": True,
+            "results": [{"id": 1}, {"id": 2}],
+        }
+        self.assertEqual(
+            brief_result("recall_session_history", result),
+            "2 sessions",
+        )
+
     def test_select_skill_returns_skill_name(self) -> None:
         result = {
             "tool": "select_skill",
