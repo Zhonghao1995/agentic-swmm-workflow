@@ -228,38 +228,6 @@ def format_startup_banner(
     )
 
 
-def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
-    """Facade over :func:`session_bootstrap.bootstrap_session_dir`.
-
-    Kept so any external caller / ``mock.patch`` target that still
-    points at this name keeps working. New call sites should import
-    ``bootstrap_session_dir`` directly.
-    """
-    return _bootstrap_session_dir(date_dir, prompt, kind=kind)
-
-
-def _match_registered_case(lowered_prompt: str) -> str | None:
-    """Return the first ``case_id`` whose id / display_name / alias appears in the prompt.
-
-    Re-exported facade over
-    ``session_bootstrap._match_registered_case`` so existing imports
-    continue to work.
-    """
-    from agentic_swmm.agent.session_bootstrap import _match_registered_case as _impl
-
-    return _impl(lowered_prompt)
-
-
-def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
-    """Append a JSON record to ``date_dir/_sessions.jsonl``.
-
-    Re-exported facade over ``session_bootstrap._append_session_index``.
-    """
-    from agentic_swmm.agent.session_bootstrap import _append_session_index as _impl
-
-    _impl(date_dir, event)
-
-
 def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     """Write ``chat_note.md`` for a chat-only session.
 
@@ -523,26 +491,6 @@ def _welcome_disabled() -> bool:
     return value.strip() not in {"", "0", "false", "False", "no", "No"}
 
 
-def _is_swmm_run_dir(path: Path) -> bool:
-    """Facade over :func:`session_bootstrap.is_swmm_run_dir`.
-
-    Kept so any external caller / ``mock.patch`` target that still
-    points at this name keeps working. New call sites should import
-    ``is_swmm_run_dir`` from ``session_bootstrap`` directly.
-    """
-    return _bootstrap_is_swmm_run_dir(path)
-
-
-def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | None:
-    """Facade over :func:`session_bootstrap.bootstrap_prior_state`.
-
-    Kept so any external caller / ``mock.patch`` target that still
-    points at this name keeps working. New call sites should import
-    ``bootstrap_prior_state`` directly.
-    """
-    return _bootstrap_prior_state(active_run_dir)
-
-
 # --- PRD session-db-facts: startup injection + end-of-session sync -----------
 
 
@@ -586,16 +534,6 @@ def _sync_session_end(session_dir: Path) -> None:
         return
     finally:
         _SYNCED_SESSION_DIRS.add(key)
-
-
-def _resolve_runs_root_for(session_dir: Path) -> Path:
-    """Facade over :func:`session_bootstrap.bootstrap_runs_root`.
-
-    Kept so any external caller / ``mock.patch`` target that still
-    points at this name keeps working. New call sites should import
-    ``bootstrap_runs_root`` directly.
-    """
-    return _bootstrap_runs_root(session_dir)
 
 
 def _refresh_moc_after_session(session_dir: Path) -> None:
