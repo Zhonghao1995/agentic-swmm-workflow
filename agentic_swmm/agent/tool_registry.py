@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -20,7 +19,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _safe_name,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR, NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, _find_inp, _find_out, _read_manifest, rainfall_timeseries_options
+from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, rainfall_timeseries_options
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import load_mcp_registry
 from agentic_swmm.utils.paths import repo_root
@@ -612,87 +611,12 @@ from agentic_swmm.agent.tool_handlers.swmm_memory import (  # noqa: E402,F401
 # file / skill introspection family). Re-exported above via runtime_ops.
 
 
-def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``run_swmm_inp`` args to ``swmm-runner.swmm_run`` MCP schema.
-
-    Path validation (in-repo + suffix) and default ``run_dir`` / ``node``
-    selection mirror the historical in-process handler so behaviour is
-    identical for the caller.
-    """
-
-    inp = _resolve_inp_for_run(call)
-    if isinstance(inp, dict):
-        return inp
-    run_dir = _optional_repo_output_dir(call, "run_dir")
-    if isinstance(run_dir, dict):
-        return run_dir
-    if run_dir is None:
-        run_id = str(call.args.get("run_id") or f"{_safe_name(inp.stem)}-{int(time.time())}")
-        run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
-    default_node = _node_suggestions(str(inp), limit=1)
-    node = str(call.args.get("node") or (default_node[0] if default_node else "O1"))
-    return {"inp": str(inp), "runDir": str(run_dir), "node": node}
-
-
-_run_swmm_inp_tool = _make_mcp_routed_handler(
-    "swmm-runner", "swmm_run", args_mapper=_run_swmm_inp_args
-)
-
-
-def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    run_dir: Path | None = None
-    if call.args.get("run_dir"):
-        resolved_run_dir = _required_repo_dir(call, "run_dir")
-        if isinstance(resolved_run_dir, dict):
-            return resolved_run_dir
-        run_dir = resolved_run_dir
-
-    inp: Path | None = None
-    if call.args.get("inp_path"):
-        inp = _resolve_existing_inp(str(call.args["inp_path"]))
-    elif run_dir is not None:
-        manifest = _read_manifest(run_dir)
-        inp = _find_inp(run_dir, manifest)
-
-    out_file: Path | None = None
-    if call.args.get("out_file"):
-        out_file = _repo_path(str(call.args["out_file"]))
-        if out_file is None or not out_file.exists() or not out_file.is_file():
-            return _failure(call, f"out_file must be an existing repository file: {call.args['out_file']}")
-    elif run_dir is not None:
-        manifest = _read_manifest(run_dir)
-        out_file = _find_out(run_dir, manifest)
-
-    rainfall_options = rainfall_timeseries_options(inp) if inp is not None else []
-    node_options = _node_suggestions(str(inp), limit=100) if inp is not None else []
-    node_attribute_options = _node_attribute_options(out_file, node_options)
-    default_rain = next((option["name"] for option in rainfall_options if option.get("used_by_raingage")), None)
-    if default_rain is None and rainfall_options:
-        default_rain = rainfall_options[0]["name"]
-    default_node = node_options[0] if node_options else None
-
-    selections_needed: list[str] = []
-    if len(rainfall_options) > 1:
-        selections_needed.append("rain_ts")
-    if len(node_options) > 1:
-        selections_needed.append("node")
-    if len(node_attribute_options) > 1:
-        selections_needed.append("node_attr")
-    user_prompt = ""
-    if selections_needed:
-        user_prompt = "Please choose " + ", ".join(selections_needed) + " before plotting."
-
-    result = {
-        "inp": str(inp) if inp is not None else None,
-        "out_file": str(out_file) if out_file is not None else None,
-        "rainfall_options": rainfall_options,
-        "node_options": node_options,
-        "node_attribute_options": node_attribute_options,
-        "defaults": {"rain_ts": default_rain, "node": default_node, "node_attr": DEFAULT_NODE_ATTR},
-        "selections_needed": selections_needed,
-        "user_prompt": user_prompt,
-    }
-    return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"rain={len(rainfall_options)} nodes={len(node_options)} attrs={len(node_attribute_options)}"}
+# PRD #128 Phase 2 Group A: ``_run_swmm_inp_args`` /
+# ``_run_swmm_inp_tool`` moved to ``tool_handlers/swmm_runner.py``;
+# ``_inspect_plot_options_tool`` moved to
+# ``tool_handlers/swmm_plot.py``. Re-exported at the bottom of this
+# file (after all helpers are defined) so the cycling import chain
+# resolves cleanly.
 
 
 def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -792,59 +716,9 @@ from agentic_swmm.agent.tool_handlers.workflow_mode import (  # noqa: E402,F401
 )
 
 
-def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``plot_run`` args to ``swmm-plot.plot_rain_runoff_si`` MCP schema.
-
-    The MCP server requires ``inp``/``out``/``outPng`` explicitly; the
-    legacy CLI handler resolved the first two from the run-dir manifest
-    internally. We do the same resolution here so the planner can keep
-    passing just ``run_dir``.
-    """
-
-    run_dir = _required_repo_dir(call, "run_dir")
-    if isinstance(run_dir, dict):
-        return run_dir
-    manifest = _read_manifest(run_dir)
-    inp_path = _find_inp(run_dir, manifest)
-    out_path = _find_out(run_dir, manifest)
-    if inp_path is None or not inp_path.is_file():
-        return _failure(call, f"could not resolve .inp from {run_dir}")
-    if out_path is None or not out_path.is_file():
-        return _failure(call, f"could not resolve .out from {run_dir}")
-    if call.args.get("out_png"):
-        out_png = _repo_output_path(str(call.args["out_png"]))
-        if out_png is None or out_png.suffix.lower() != ".png":
-            return _failure(call, "out_png must be a repository-relative .png path")
-    else:
-        # The MCP server requires outPng. Match the historical CLI default
-        # (``07_plots/fig_<node>_<attr>.png`` under the run dir).
-        node_for_default = re.sub(
-            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node") or "node")
-        ).strip("_") or "node"
-        attr_for_default = re.sub(
-            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node_attr") or "series")
-        ).strip("_") or "series"
-        out_png = run_dir / "07_plots" / f"fig_{node_for_default}_{attr_for_default}.png"
-        out_png.parent.mkdir(parents=True, exist_ok=True)
-    args: dict[str, Any] = {
-        "inp": str(inp_path),
-        "out": str(out_path),
-        "outPng": str(out_png),
-    }
-    if call.args.get("node"):
-        args["node"] = str(call.args["node"])
-    if call.args.get("node_attr"):
-        args["nodeAttr"] = str(call.args["node_attr"])
-    if call.args.get("rain_ts"):
-        args["rainTs"] = str(call.args["rain_ts"])
-    if call.args.get("rain_kind"):
-        args["rainKind"] = str(call.args["rain_kind"])
-    return args
-
-
-_plot_run_tool = _make_mcp_routed_handler(
-    "swmm-plot", "plot_rain_runoff_si", args_mapper=_plot_run_args
-)
+# PRD #128 Phase 2 Group A: ``_plot_run_args`` / ``_plot_run_tool``
+# moved to ``tool_handlers/swmm_plot.py``. Re-exported at the bottom
+# of this file (after all helpers are defined).
 
 
 # PRD #128 Phase 2 Group B: ``_network_qa_args`` / ``_network_qa_tool``
@@ -868,48 +742,9 @@ from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
 )
 
 
-def _build_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``build_inp`` args to ``swmm-builder.build_inp`` MCP schema."""
-
-    resolved: dict[str, Path] = {}
-    for key, suffix in {"subcatchments_csv": ".csv", "params_json": ".json", "network_json": ".json"}.items():
-        path = _required_repo_file(call, key, suffix=suffix)
-        if isinstance(path, dict):
-            return path
-        resolved[key] = path
-    out_inp = _repo_output_path(str(call.args["out_inp"]))
-    out_manifest = _repo_output_path(str(call.args["out_manifest"]))
-    if out_inp is None or out_inp.suffix.lower() != ".inp":
-        return _failure(call, "out_inp must be a repository-relative .inp path")
-    if out_manifest is None or out_manifest.suffix.lower() != ".json":
-        return _failure(call, "out_manifest must be a repository-relative .json path")
-    args: dict[str, Any] = {
-        "subcatchmentsCsvPath": str(resolved["subcatchments_csv"]),
-        "paramsJsonPath": str(resolved["params_json"]),
-        "networkJsonPath": str(resolved["network_json"]),
-        "outInpPath": str(out_inp),
-        "outManifestPath": str(out_manifest),
-    }
-    optional_paths = {
-        "rainfall_json": ("rainfallJsonPath", ".json"),
-        "raingage_json": ("raingageJsonPath", ".json"),
-        "timeseries_text": ("timeseriesTextPath", None),
-        "config_json": ("configJsonPath", ".json"),
-    }
-    for snake, (camel, suffix) in optional_paths.items():
-        if call.args.get(snake):
-            path = _required_repo_file(call, snake, suffix=suffix)
-            if isinstance(path, dict):
-                return path
-            args[camel] = str(path)
-    if call.args.get("default_gage_id"):
-        args["defaultGageId"] = str(call.args["default_gage_id"])
-    return args
-
-
-_build_inp_tool = _make_mcp_routed_handler(
-    "swmm-builder", "build_inp", args_mapper=_build_inp_args
-)
+# PRD #128 Phase 2 Group A: ``_build_inp_args`` / ``_build_inp_tool``
+# moved to ``tool_handlers/swmm_builder.py``. Re-exported at the
+# bottom of this file (after all helpers are defined).
 
 
 # PRD #128 Phase 2 Group C: ``_list_dir_tool``, ``_search_files_tool``,
@@ -1232,5 +1067,33 @@ def _mcp_server(name: str) -> dict[str, Any] | None:
         if str(server.get("name")) == name:
             return server
     return None
+
+
+# PRD #128 Phase 2 Group A: family-module re-exports.
+#
+# These imports sit at the very end of this file so every helper the
+# family modules pull back in (``_make_mcp_routed_handler``,
+# ``_resolve_inp_for_run``, ``_node_suggestions``,
+# ``_node_attribute_options``, ``_resolve_existing_inp``,
+# ``_required_repo_file``, ``_required_repo_dir``,
+# ``_optional_repo_output_dir``) is already bound on the partial
+# ``tool_registry`` module by the time the family submodules execute
+# their ``from agentic_swmm.agent.tool_registry import ...`` statements.
+# Re-exporting the handler symbols here keeps ``_build_tools()`` and
+# any existing ``from agentic_swmm.agent.tool_registry import _*_args``
+# call sites working byte-for-byte after the move.
+from agentic_swmm.agent.tool_handlers.swmm_runner import (  # noqa: E402,F401
+    _run_swmm_inp_args,
+    _run_swmm_inp_tool,
+)
+from agentic_swmm.agent.tool_handlers.swmm_plot import (  # noqa: E402,F401
+    _inspect_plot_options_tool,
+    _plot_run_args,
+    _plot_run_tool,
+)
+from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
+    _build_inp_args,
+    _build_inp_tool,
+)
 
 
