@@ -9,36 +9,22 @@ makes the two paths drift over time.
 
 This file pins the new seam:
 
-* ``AgentExecutor.execute()`` attaches ``_permission`` to every result
+* ``AgentExecutor.execute()`` attaches ``permission`` to every result
   dict with ``{"prompted": bool, "approved": bool}``.
 * The denial summary is a module-level constant ``DENIED_SUMMARY`` so
   the magic string lives in one place.
 """
 from __future__ import annotations
 
-import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any
+from unittest import mock
 
 from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-
-
-class _NoPromptStdin:
-    """Force ``permissions.prompt_user`` to deny by simulating EOF."""
-
-    @staticmethod
-    def isatty() -> bool:
-        return True
-
-    @staticmethod
-    def readline() -> str:
-        # Empty string == EOF; ``prompt_user`` reads this as a denial.
-        return ""
 
 
 class ExecutorPublishesPermissionTests(unittest.TestCase):
@@ -56,9 +42,9 @@ class ExecutorPublishesPermissionTests(unittest.TestCase):
                 profile=Profile.SAFE,
             )
             result = executor.execute(ToolCall(name="list_skills", args={}))
-        self.assertIn("_permission", result)
+        self.assertIn("permission", result)
         self.assertEqual(
-            result["_permission"],
+            result["permission"],
             {"prompted": False, "approved": True},
         )
 
@@ -76,7 +62,7 @@ class ExecutorPublishesPermissionTests(unittest.TestCase):
             )
             result = executor.execute(ToolCall(name="list_skills", args={}))
         self.assertEqual(
-            result["_permission"],
+            result["permission"],
             {"prompted": False, "approved": True},
         )
         self.assertTrue(result["ok"])
@@ -88,10 +74,11 @@ class ExecutorPublishesPermissionTests(unittest.TestCase):
         self.assertEqual(DENIED_SUMMARY, "tool not approved by user")
 
     def test_denied_prompt_records_prompted_and_denied(self) -> None:
-        # SAFE profile + a write tool + stdin that returns "n" / EOF
-        # exercises the denial branch end-to-end. The permission
-        # record must say prompted=True, approved=False so the planner
-        # can render the (skipped) tail without sniffing the summary.
+        # SAFE profile + a write tool + a permissions.prompt_user that
+        # returns False exercises the denial branch end-to-end. The
+        # permission record must say prompted=True, approved=False so
+        # the planner can render the (skipped) tail without sniffing
+        # the summary.
         registry = AgentToolRegistry()
         with TemporaryDirectory() as tmp:
             executor = AgentExecutor(
@@ -103,21 +90,18 @@ class ExecutorPublishesPermissionTests(unittest.TestCase):
             )
             # Steer permissions.prompt_user toward denial. ``write_file``
             # is registered as a write tool that SAFE always prompts on.
-            from agentic_swmm.agent import permissions
-
-            real_prompt = permissions.prompt_user
-            permissions.prompt_user = lambda name: False  # type: ignore[assignment]
-            try:
+            with mock.patch(
+                "agentic_swmm.agent.permissions.prompt_user",
+                return_value=False,
+            ):
                 result = executor.execute(
                     ToolCall(
                         name="write_file",
                         args={"path": "x.txt", "content": "y"},
                     )
                 )
-            finally:
-                permissions.prompt_user = real_prompt
         self.assertEqual(
-            result["_permission"],
+            result["permission"],
             {"prompted": True, "approved": False},
         )
         self.assertFalse(result["ok"])

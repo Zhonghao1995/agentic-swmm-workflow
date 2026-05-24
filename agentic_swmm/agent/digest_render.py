@@ -14,7 +14,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tui_chrome import use_unicode_box_drawing
+from agentic_swmm.agent.tui_chrome import (
+    H_ASCII,
+    H_LIGHT,
+    use_unicode_box_drawing,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -197,18 +201,16 @@ def render_step(
 # (PRD-183 ``Run Results`` section). If a session produced no SWMM
 # run, the block is omitted entirely.
 
-_SUMMARY_SEPARATOR_UNICODE = "─" * 25
-_SUMMARY_SEPARATOR_ASCII = "-" * 25
+_SUMMARY_SEPARATOR_WIDTH = 25
 
 
 def _summary_separator() -> str:
-    # Issue #193 item 3: the section divider on the session-end block
-    # follows the same locale gate as the step-row glyphs.
-    return (
-        _SUMMARY_SEPARATOR_UNICODE
-        if use_unicode_box_drawing()
-        else _SUMMARY_SEPARATOR_ASCII
-    )
+    # Issue #193 item 3 + #201 item 1: the section divider on the
+    # session-end block follows the same locale gate as the step-row
+    # glyphs and uses the shared ``tui_chrome.H_LIGHT`` / ``H_ASCII``
+    # glyphs (so the chrome and digest agree on the horizontal rule).
+    glyph = H_LIGHT if use_unicode_box_drawing() else H_ASCII
+    return glyph * _SUMMARY_SEPARATOR_WIDTH
 
 
 def _format_peak(payload: dict[str, Any]) -> str | None:

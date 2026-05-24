@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import io
-import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +20,7 @@ from unittest import mock
 
 from agentic_swmm.agent import tui_chrome
 from agentic_swmm.cli import main as cli_main
+from tests.conftest import env_overrides as _env_overrides
 
 
 # ---------------------------------------------------------------------
@@ -100,25 +100,9 @@ class StormIntensityAnnotationTests(unittest.TestCase):
 # ---------------------------------------------------------------------
 
 
-@contextlib.contextmanager
-def _env_overrides(**overrides):
-    """Snapshot + restore os.environ for the duration of the block."""
-
-    snapshot: dict[str, str | None] = {}
-    for k, v in overrides.items():
-        snapshot[k] = os.environ.get(k)
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    try:
-        yield
-    finally:
-        for k, original in snapshot.items():
-            if original is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = original
+# ``_env_overrides`` is the shared ctx-manager from
+# ``tests/conftest.py`` (re-exported above as a local alias so the
+# existing call sites stay byte-for-byte unchanged).
 
 
 class UnicodeBoxDrawingFallbackTests(unittest.TestCase):

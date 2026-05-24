@@ -3,22 +3,17 @@
 PRD-185 promised "the user never has to re-run with ``--verbose`` to
 see why a tool failed". The original digest-mode wiring only checked
 ``result['stderr_tail']`` / ``result['stdout_tail']`` when populating
-the auto-expanded ``Detail:`` block, but most tool handlers carry
-failure detail in different keys:
-
-* ``error``       — exception strings from in-process tool handlers
-                    (e.g. ``swmm_runtime/uncertainty_plan.py`` writes
-                    ``{"error": str(exc)}`` into the failure result)
-* ``message``     — handler-shaped failure notes
-* ``traceback``   — multi-line stack traces from background workers
-
-For those tools the digest path previously printed the
-``[NN] tool ✗ <summary>`` row with **no Detail block**, defeating the
-headline UX promise of PR #192 for most tools.
+the auto-expanded ``Detail:`` block.
 
 These tests pin the priority order used by ``_emit_step``:
 
     stderr_tail > stdout_tail > error > message > traceback
+
+``stderr_tail`` / ``stdout_tail`` are populated today by every
+subprocess-shaped handler. ``error`` / ``message`` / ``traceback`` are
+*reserved* slots — no production handler emits them at the moment, but
+the priority order is pinned here so the digest UX is forward-compatible
+as handlers adopt those keys later.
 
 The first non-empty key wins. Tests drive the planner the same way
 ``tests/test_planner_digest_emit.py`` does so the contract is
@@ -27,11 +22,8 @@ verified end-to-end through the production code path.
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any
 
-from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.planner import OpenAIPlanner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry

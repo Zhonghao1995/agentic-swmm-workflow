@@ -20,9 +20,11 @@ Tests that exercise the *real* SDK gate behind the
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import types
 from dataclasses import dataclass, field
@@ -30,6 +32,38 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+@contextlib.contextmanager
+def env_overrides(**overrides: str | None):
+    """Snapshot + restore ``os.environ`` for the duration of the block.
+
+    Promoted to ``conftest.py`` per issue #201 — both
+    ``tests/test_digest_locale_glyphs.py`` and
+    ``tests/test_prd08_b_storm_and_chrome.py`` previously rolled the
+    same context-manager (under the names ``_EnvOverride`` and
+    ``_env_overrides``). A single definition keeps the env-restore
+    contract aligned across the test suite.
+
+    Pass ``key=None`` to *unset* a variable for the duration of the
+    block (so a test that needs ``LC_ALL`` unset can ``LC_ALL=None``
+    rather than ``monkeypatch.delenv``).
+    """
+    snapshot: dict[str, str | None] = {}
+    for key, value in overrides.items():
+        snapshot[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    try:
+        yield
+    finally:
+        for key, original in snapshot.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
