@@ -4,6 +4,12 @@ The ``--provider`` argparse choice list widens from ``["openai"]`` to
 ``["openai", "claude_sdk"]`` across the ``agent`` / ``chat`` / ``model``
 / ``setup`` subcommands, and the config schema accepts a
 ``claude_sdk.model`` section.
+
+Issue #182 hides ``claude_sdk`` behind the
+``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` env gate — so the
+acceptance tests below set that gate explicitly to keep exercising
+the wider-choice contract while the default user surface stays
+narrow.
 """
 from __future__ import annotations
 
@@ -27,6 +33,16 @@ def _register_one(register_fn) -> argparse.ArgumentParser:
 
 
 class ProviderChoiceParsingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # Issue #182: argparse choice tests cover the gate-ON surface;
+        # the gate-OFF surface is covered separately in
+        # ``test_cli_provider_gate_off.py``.
+        self._env_patch = mock.patch.dict(
+            os.environ, {"AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS": "1"}
+        )
+        self._env_patch.start()
+        self.addCleanup(self._env_patch.stop)
+
     def test_agent_subcommand_accepts_claude_sdk(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["agent", "--provider", "claude_sdk", "hi"])
