@@ -79,7 +79,7 @@ from agentic_swmm.agent.session_bootstrap import (
     bootstrap_session_dir as _bootstrap_session_dir,
     bootstrap_system_prompt as _bootstrap_system_prompt,
     infer_case_slug as _case_slug,
-    is_swmm_run_dir as _bootstrap_is_swmm_run_dir,
+    is_swmm_run_dir as _is_swmm_run_dir,
     new_interactive_session as _new_interactive_session,
 )
 from agentic_swmm.agent.warm_intro import (
@@ -198,7 +198,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             chat_session=is_chat_turn,
             prior_session_state=prior_state,
         )
-        if rc == 0 and _bootstrap_is_swmm_run_dir(session_dir):
+        if rc == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
         print()
         return rc
@@ -245,7 +245,7 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     """
     if not session_dir.exists() or not session_dir.is_dir():
         return None
-    if _bootstrap_is_swmm_run_dir(session_dir):
+    if _is_swmm_run_dir(session_dir):
         return None
 
     state_path = session_dir / "session_state.json"
