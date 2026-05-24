@@ -34,7 +34,6 @@ import atexit
 import json
 import logging
 import os
-import re
 import sys as _sys
 import time
 from datetime import datetime, timezone
@@ -59,10 +58,7 @@ from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.config import load_config
-from agentic_swmm.memory import facts as _facts_mod
-from agentic_swmm.memory import session_db
-from agentic_swmm.memory.case_inference import infer_case_name
-from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
+from agentic_swmm.memory.session_sync import sync_session_to_db
 from agentic_swmm.providers.factory import make_provider
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
@@ -377,7 +373,7 @@ def run_openai_planner(
         profile=profile,
         verbose=bool(getattr(args, "verbose", False)),
     )
-    extras = _build_system_prompt_extras(
+    extras = _bootstrap_system_prompt(
         session_dir=session_dir,
         prior_session_state=prior_session_state,
     )
@@ -559,85 +555,17 @@ def _build_system_prompt_extras(
     session_dir: Path,
     prior_session_state: dict[str, Any] | None,
 ) -> list[str]:
-    """Assemble the per-session system-prompt injections.
+    """Facade over :func:`session_bootstrap.bootstrap_system_prompt`.
 
-    Order: project facts first (durable user-curated context), then the
-    previous-session banner (volatile recall). Both are gated on the
-    relevant input being non-empty so the system prompt stays tight
-    when there is nothing to inject.
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working — including
+    ``tests/test_runtime_loop_previous_session_injection.py``. New
+    call sites should import ``bootstrap_system_prompt`` directly.
     """
-    extras: list[str] = []
-    facts_block = _safe_facts_block()
-    if facts_block:
-        extras.append(facts_block)
-    prev_block = _safe_previous_session_block(
+    return _bootstrap_system_prompt(
         session_dir=session_dir,
         prior_session_state=prior_session_state,
     )
-    if prev_block:
-        extras.append(prev_block)
-    return extras
-
-
-def _safe_facts_block() -> str:
-    """Read ``facts.md`` and wrap it for system-prompt injection.
-
-    Wrapped in a try/except because a corrupt facts file should never
-    block the user's turn — the worst case is a slightly less
-    informed planner.
-    """
-    try:
-        return _facts_mod.read_facts_for_injection()
-    except Exception:
-        return ""
-
-
-def _safe_previous_session_block(
-    *,
-    session_dir: Path,
-    prior_session_state: dict[str, Any] | None,
-) -> str:
-    """Return a ``<previous-session>`` fence for ``session_dir``, if any.
-
-    The lookup is keyed on ``case_name`` inferred from either the
-    prior session state or the current session directory's name.
-    Returns the empty string when no prior session exists or any IO
-    fails — never raises in front of the user.
-    """
-    try:
-        case_name: str | None = None
-        if prior_session_state:
-            case_name = infer_case_name(prior_session_state)
-        if not case_name:
-            case_name = _infer_case_name_from_dir(session_dir)
-        if not case_name:
-            return ""
-        db_path = default_db_path()
-        if not db_path.exists():
-            return ""
-        with session_db.connect(db_path) as conn:
-            row = session_db.latest_session_for_case(conn, case_name)
-        if not row:
-            return ""
-        current_id = session_db.session_id_from_dir(session_dir)
-        if row.get("session_id") == current_id:
-            return ""
-        return session_db.previous_session_block(row)
-    except Exception:
-        return ""
-
-
-def _infer_case_name_from_dir(session_dir: Path) -> str | None:
-    """Derive the case slug straight from ``session_dir``'s leaf name.
-
-    Mirrors ``case_inference.infer_case_name`` for the case where we
-    only have the session directory in hand (no session_state yet).
-    """
-    leaf = session_dir.name
-    match = re.match(r"^\d+_(?P<case>.+?)_(?:run|chat)(?:_\d+)?$", leaf)
-    if match:
-        return match.group("case")
-    return None
 
 
 def _sync_session_end(session_dir: Path) -> None:
