@@ -284,6 +284,58 @@ class TestProviderHelpAcrossCommands:
         )
 
 
+class TestProviderHelpAcrossCommandsGateOff:
+    """Issue #200: gate-OFF symmetric coverage for the same four commands.
+
+    With the env gate UNSET, every command's ``--provider`` help string
+    must reduce to the role-specific base sentence — no ``claude_sdk``
+    leakage, no ``Claude Pro/Max`` mention. This pins the omission
+    contract so a regression to a static help string that always names
+    claude_sdk would be caught here, symmetric to ``TestProviderHelp
+    AcrossCommands`` for the gate-ON path.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _gate_off(self, monkeypatch):
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+
+    @pytest.mark.parametrize(
+        "command_name",
+        ["setup", "chat", "model", "agent"],
+    )
+    def test_each_command_help_string_omits_claude_sdk_when_gate_off(
+        self, command_name
+    ):
+        import argparse
+        from agentic_swmm.commands import agent as agent_cmd
+        from agentic_swmm.commands import chat as chat_cmd
+        from agentic_swmm.commands import model as model_cmd
+        from agentic_swmm.commands import setup as setup_cmd
+
+        modules = {
+            "setup": setup_cmd,
+            "chat": chat_cmd,
+            "model": model_cmd,
+            "agent": agent_cmd,
+        }
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        modules[command_name].register(sub)
+        subparser = sub.choices[command_name]
+        provider_action = next(
+            a for a in subparser._actions if "--provider" in a.option_strings
+        )
+        help_text = provider_action.help or ""
+        assert "claude_sdk" not in help_text, (
+            f"{command_name} --provider help string leaked claude_sdk "
+            "when gate OFF"
+        )
+        assert "Claude Pro/Max" not in help_text, (
+            f"{command_name} --provider help string leaked Claude Pro/Max "
+            "hint when gate OFF"
+        )
+
+
 class TestNoIssue182CommentsAtArgparseSites:
     """Issue #191: ``# Issue #182:`` narrative comments at argparse
     sites in commands/*.py were just restating the helper name. Drop
