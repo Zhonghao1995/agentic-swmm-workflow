@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import IO, Any, Callable
 
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
+from agentic_swmm.agent.digest_render import brief_result, render_step
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
 from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
@@ -209,6 +210,80 @@ class OpenAIPlanner:
         # extra wiring; tests can pass a captured stream.
         self._progress_stream: IO[str] = progress_stream if progress_stream is not None else sys.stdout
 
+    # ------------------------------------------------------------------
+    # Per-step output (PRD-185)
+    # ------------------------------------------------------------------
+    #
+    # ``_emit_step`` is the single seam that renders one tool step to
+    # the user. In ``verbose=True`` mode we keep the legacy two-line
+    # shape (`[N] tool {args}` then `OK|FAILED: <summary>`) so the
+    # debugging path is untouched. In digest mode (the new default)
+    # we route through ``render_step`` which collapses the same
+    # information onto a single line per the PRD table — plus an
+    # auto-expanded ``Detail:`` block beneath every failure so the
+    # operator never has to re-run with ``--verbose`` to see why a
+    # tool failed.
+    def _emit_step(
+        self,
+        *,
+        index: int,
+        call: ToolCall,
+        result: dict[str, Any],
+        executor: AgentExecutor,
+    ) -> None:
+        if self.verbose:
+            self.emit(
+                f"[{index}] {call.name} {json.dumps(call.args, sort_keys=True)}"
+            )
+            status = "OK" if result.get("ok") else "FAILED"
+            self.emit(f"{status}: {result.get('summary') or 'completed'}")
+            return
+        # Digest path. Reconstruct the permission decision from the
+        # executor's profile + the result's summary string. The
+        # ``"tool not approved by user"`` summary is the only signal
+        # the executor publishes for a user-denied prompted call. We
+        # defensively fall back to "prompted, approved" when an
+        # executor stub (some unit tests) omits the profile attribute
+        # — that yields the same digest shape the legacy emit would
+        # have rendered for a successful write tool.
+        is_read_only = self.registry.is_read_only(call.name)
+        dry_run = bool(getattr(executor, "dry_run", False))
+        profile = getattr(executor, "profile", None)
+        if dry_run:
+            auto_approved = True
+        elif profile is not None and hasattr(profile, "auto_approve"):
+            auto_approved = bool(profile.auto_approve(call.name, self.registry))
+        else:
+            # Stub executor (no profile) — treat read-only tools as
+            # auto-approved (matches QUICK in real runs) and write
+            # tools as prompted-and-approved.
+            auto_approved = is_read_only
+        prompted = (not dry_run) and (not auto_approved)
+        summary = result.get("summary") or ""
+        denied = prompted and summary == "tool not approved by user"
+        approved = not denied
+        ok = bool(result.get("ok"))
+        brief = brief_result(call.name, result)
+        error_detail: str | None = None
+        if not ok:
+            tail = result.get("stderr_tail") or result.get("stdout_tail") or ""
+            if isinstance(tail, str) and tail.strip():
+                # Trim any trailing blank lines so the expansion stays
+                # tight beneath the step row.
+                error_detail = tail.rstrip("\n")
+        self.emit(
+            render_step(
+                step=index,
+                tool=call.name,
+                is_read_only=is_read_only,
+                prompted=prompted,
+                approved=approved,
+                ok=ok,
+                brief=brief,
+                error_detail=error_detail,
+            )
+        )
+
     def run(
         self,
         *,
@@ -281,9 +356,13 @@ class OpenAIPlanner:
                 route_args = {**route_args, "mode": mode_hint}
             route_call = ToolCall("select_workflow_mode", route_args)
             plan.append(route_call)
-            self.emit(f"[{len(plan)}] select_workflow_mode")
             route_result = executor.execute(route_call, index=len(plan))
-            self.emit(f"OK: {route_result.get('summary') or 'completed'}")
+            self._emit_step(
+                index=len(plan),
+                call=route_call,
+                result=route_result,
+                executor=executor,
+            )
             route = route_result.get("results") if isinstance(route_result.get("results"), dict) else {}
             if route.get("missing_inputs"):
                 final_text = str(route.get("user_prompt") or "Please provide the missing SWMM workflow inputs.")
@@ -381,13 +460,13 @@ class OpenAIPlanner:
             for provider_call in response.tool_calls:
                 call = self.registry.validate(provider_call)
                 plan.append(call)
-                if self.verbose:
-                    self.emit(f"[{len(plan)}] {call.name} {json.dumps(call.args, sort_keys=True)}")
-                else:
-                    self.emit(f"[{len(plan)}] {call.name}")
                 result = executor.execute(call, index=len(plan))
-                status = "OK" if result.get("ok") else "FAILED"
-                self.emit(f"{status}: {result.get('summary') or 'completed'}")
+                self._emit_step(
+                    index=len(plan),
+                    call=call,
+                    result=result,
+                    executor=executor,
+                )
                 # PRD-Y: ``skill_selected`` trace event. Sits between
                 # ``session_start`` and the first concrete ``tool_call``
                 # so audit notes can show which skill the agent
@@ -699,10 +778,13 @@ class OpenAIPlanner:
             )
         for call in calls:
             plan.append(call)
-            self.emit(f"[{len(plan)}] {call.name}")
             result = executor.execute(call, index=len(plan))
-            status = "OK" if result.get("ok") else "FAILED"
-            self.emit(f"{status}: {result.get('summary') or 'completed'}")
+            self._emit_step(
+                index=len(plan),
+                call=call,
+                result=result,
+                executor=executor,
+            )
 
     def _dispatch_workflow_mode(
         self,
