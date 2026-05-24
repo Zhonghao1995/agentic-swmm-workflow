@@ -11,7 +11,7 @@ from typing import IO, Any, Callable
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.digest_render import brief_result, render_step
 from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
-from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
+from agentic_swmm.agent.intent_classifier import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
 from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
 from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context
 from agentic_swmm.agent.memory_informed_policy import (
