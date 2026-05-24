@@ -1143,7 +1143,115 @@ def md_table(headers: list[str], rows: list[list[Any]]) -> str:
     return "\n".join(out)
 
 
-def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_root: Path) -> str:
+def render_run_results_section(runner_manifest: dict[str, Any] | None) -> str:
+    """Render the always-on ``## Run Results`` markdown block (PRD-183).
+
+    The section surfaces a small handful of headline numbers from the
+    runner ``manifest.json`` so a reader does not have to open the
+    JSON to see peak / continuity / runoff. Numbers are rendered
+    *verbatim* — whatever the runner wrote, the audit note shows.
+
+    Defensive rendering:
+
+    - ``runner_manifest`` is ``None`` (file missing or unreadable) ->
+      a single ``unavailable`` line, no table; the rest of the note
+      still renders.
+    - Individual fields missing -> that row reads ``unavailable``.
+    - ``metrics.internal_node_peak`` is rendered only when present;
+      omitting it must not produce an ``unavailable`` row.
+    """
+    header_lines = ["## Run Results", ""]
+    if not isinstance(runner_manifest, dict):
+        return "\n".join(
+            header_lines
+            + [
+                "Run Results unavailable: manifest.json could not be read.",
+                "",
+            ]
+        )
+
+    metrics = runner_manifest.get("metrics") or {}
+    if not isinstance(metrics, dict):
+        metrics = {}
+    peak = metrics.get("peak") or {}
+    if not isinstance(peak, dict):
+        peak = {}
+    continuity = metrics.get("continuity") or {}
+    if not isinstance(continuity, dict):
+        continuity = {}
+    runoff = continuity.get("runoff_quantity") or {}
+    if not isinstance(runoff, dict):
+        runoff = {}
+    flow_routing = continuity.get("flow_routing") or {}
+    if not isinstance(flow_routing, dict):
+        flow_routing = {}
+    internal = metrics.get("internal_node_peak")
+    if internal is not None and not isinstance(internal, dict):
+        internal = {}
+
+    # Status: PASS iff return_code == 0 and there are no error stanzas.
+    # The runner manifest does not carry a uniform "error stanzas"
+    # convention beyond return_code, so a non-zero (or missing) return
+    # code is the only signal we trust here. Anything else is FAIL so
+    # the reader is nudged to open the rest of the audit note.
+    return_code = runner_manifest.get("return_code")
+    if return_code == 0:
+        status_cell = "PASS"
+    elif return_code is None:
+        status_cell = "unavailable"
+    else:
+        status_cell = "FAIL"
+
+    def _peak_cell(payload: dict[str, Any]) -> str:
+        node = payload.get("node")
+        value = payload.get("peak")
+        time = payload.get("time_hhmm")
+        if value is None or node is None:
+            return "unavailable"
+        time_part = f" at `{time}`" if time is not None else ""
+        return f"`{value}` CMS at node `{node}`{time_part}"
+
+    def _continuity_cell(table: dict[str, Any]) -> str:
+        value = table.get("Continuity Error (%)") if table else None
+        if value is None:
+            return "unavailable"
+        return f"`{value}` %"
+
+    def _surface_runoff_cell(table: dict[str, Any]) -> str:
+        entry = table.get("Surface Runoff") if table else None
+        if not isinstance(entry, dict):
+            return "unavailable"
+        col1 = entry.get("col1")
+        col2 = entry.get("col2")
+        if col1 is None or col2 is None:
+            return "unavailable"
+        return f"`{col1}` hectare-m (`{col2}` mm)"
+
+    rows: list[list[str]] = [
+        ["Status", status_cell],
+        ["Peak flow at outfall", _peak_cell(peak)],
+        ["Continuity error — runoff quantity", _continuity_cell(runoff)],
+        ["Continuity error — flow routing", _continuity_cell(flow_routing)],
+        ["Total surface runoff", _surface_runoff_cell(runoff)],
+    ]
+    if isinstance(internal, dict) and internal:
+        rows.append(["Internal node peak", _peak_cell(internal)])
+
+    return "\n".join(
+        header_lines
+        + [
+            md_table(["Field", "Value"], rows),
+            "",
+        ]
+    )
+
+
+def render_note(
+    provenance: dict[str, Any],
+    comparison: dict[str, Any],
+    repo_root: Path,
+    runner_manifest: dict[str, Any] | None = None,
+) -> str:
     run_id = provenance.get("run_id")
     status = provenance.get("status")
     peak = ((provenance.get("metrics") or {}).get("peak_flow") or {})
@@ -1246,6 +1354,14 @@ def render_note(provenance: dict[str, Any], comparison: dict[str, Any], repo_roo
                 "",
             ]
         )
+
+    # PRD-183: always-on ``## Run Results`` block. Lands between QA
+    # Gates and Artifact Index so the reader sees the headline numbers
+    # without opening manifest.json. The renderer is defensive — a
+    # missing or partial manifest yields an ``unavailable`` line/cell
+    # rather than aborting the note.
+    sections.extend(render_run_results_section(runner_manifest).splitlines())
+    sections.append("")
 
     metric_rows = []
     if peak:
@@ -1807,7 +1923,20 @@ def main() -> None:
     )
     write_json(out_provenance, provenance)
     write_json(out_comparison, comparison)
-    note_text = render_note(provenance, comparison, repo_root)
+    # PRD-183: ``## Run Results`` is rendered straight from the runner
+    # manifest so numbers appear exactly as the runner wrote them. The
+    # renderer is defensive — passing ``None`` here yields an
+    # ``unavailable`` line rather than aborting the whole note.
+    runner_manifest_for_note: dict[str, Any] | None = None
+    runner_manifest_path = find_stage_manifest(
+        run_dir, ["05_runner", "06_runner", "runner"]
+    )
+    if runner_manifest_path is not None:
+        loaded = read_json(runner_manifest_path)
+        runner_manifest_for_note = loaded if loaded else None
+    note_text = render_note(
+        provenance, comparison, repo_root, runner_manifest_for_note
+    )
     write_text(out_note, note_text)
     if obsidian_note:
         write_text(obsidian_note, note_text)
