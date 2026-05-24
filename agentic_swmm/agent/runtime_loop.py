@@ -536,24 +536,13 @@ def _is_swmm_run_dir(path: Path) -> bool:
 
 
 def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | None:
-    """Load the previous turn's ``aiswmm_state.json`` if it exists.
+    """Facade over :func:`session_bootstrap.bootstrap_prior_state`.
 
-    The planner consumes this through ``should_introspect`` to skip
-    re-emitting ``list_skills`` / ``list_mcp_*`` calls that the prior
-    turn already made. Returns ``None`` when nothing is available so
-    the planner falls back to its full introspection on the first turn
-    of a fresh case.
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working. New call sites should import
+    ``bootstrap_prior_state`` directly.
     """
-    if active_run_dir is None:
-        return None
-    state_file = active_run_dir / "aiswmm_state.json"
-    if not state_file.exists():
-        return None
-    try:
-        payload = json.loads(state_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    return payload if isinstance(payload, dict) else None
+    return _bootstrap_prior_state(active_run_dir)
 
 
 # --- PRD session-db-facts: startup injection + end-of-session sync -----------
