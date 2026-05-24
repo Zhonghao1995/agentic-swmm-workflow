@@ -228,6 +228,43 @@ def isolated_home(tmp_path, monkeypatch, request):
     return home
 
 
+@pytest.fixture
+def isolated_config_dir(tmp_path, monkeypatch):
+    """Point ``config_dir()`` at a fresh tmp dir so anything written
+    under it (e.g. ``mcp.json``, ``silent_fallbacks.jsonl``) stays
+    local to the test.
+
+    Three test files previously rolled their own byte-identical copy
+    of this fixture (issue #220 reuse-review finding). Centralised
+    here next to ``isolated_home`` so the next consumer reuses it
+    instead of copying it a fourth time.
+    """
+    monkeypatch.setenv("AISWMM_CONFIG_DIR", str(tmp_path))
+    yield tmp_path
+
+
+def read_silent_fallback_events(jsonl_path):
+    """Read every JSON object from ``silent_fallbacks.jsonl`` in line order.
+
+    Helper shared by the error_boundary unit and regression tests so
+    both consume the same parsing convention (one JSON object per
+    non-empty line, UTF-8). Returns ``[]`` when the file does not
+    exist — a healthy session that triggered no boundary catches
+    leaves the jsonl absent.
+    """
+    import json
+    from pathlib import Path
+
+    path = Path(jsonl_path)
+    if not path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",

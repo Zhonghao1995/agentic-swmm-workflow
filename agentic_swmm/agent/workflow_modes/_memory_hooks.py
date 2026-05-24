@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.memory_context import MemoryContext
 
 
@@ -290,31 +291,36 @@ _SESSION_DIR_CASE_RE = re.compile(
 )
 
 
+@on_exception_return_default(
+    default=None, scope="workflow_consultation_event"
+)
 def _emit_consultation_event(
     ctx: Any, *, case_name: str | None, context: MemoryContext
 ) -> None:
-    """Best-effort write of the ``memory_consultation`` mirror event."""
+    """Best-effort write of the ``memory_consultation`` mirror event.
+
+    The ``@on_exception_return_default`` boundary (issue #207) preserves
+    the never-raise contract for this audit-hook callback and surfaces
+    failures under ``scope="workflow_consultation_event"``.
+    """
     trace_path = getattr(ctx, "trace_path", None)
     if trace_path is None:
         return
-    try:
-        from agentic_swmm.agent.reporting import write_memory_consultation
+    from agentic_swmm.agent.reporting import write_memory_consultation
 
-        write_memory_consultation(
-            Path(trace_path),
-            kind="workflow_defaults",
-            case_meta={"case_name": case_name} if case_name else {},
-            evidence_count=context.parametric_hit_count,
-            consensus_fields=[],
-            ambiguous_fields=[],
-            queried_at_utc=(
-                context.provenance.get("gathered_at_utc")
-                if isinstance(context.provenance, dict)
-                else None
-            ),
-        )
-    except Exception:  # pragma: no cover - defensive
-        return
+    write_memory_consultation(
+        Path(trace_path),
+        kind="workflow_defaults",
+        case_meta={"case_name": case_name} if case_name else {},
+        evidence_count=context.parametric_hit_count,
+        consensus_fields=[],
+        ambiguous_fields=[],
+        queried_at_utc=(
+            context.provenance.get("gathered_at_utc")
+            if isinstance(context.provenance, dict)
+            else None
+        ),
+    )
 
 
 def maybe_offer_onboarding_for_ctx(
@@ -399,25 +405,30 @@ def _resolve_memory_dir(ctx: Any) -> Path:
     return Path.cwd() / "memory" / "modeling-memory"
 
 
+@on_exception_return_default(
+    default=None, scope="onboarding_consultation_event"
+)
 def _emit_onboarding_event(ctx: Any, decision: Any) -> None:
-    """Best-effort ``memory_consultation`` event for the onboarding gate."""
+    """Best-effort ``memory_consultation`` event for the onboarding gate.
+
+    The ``@on_exception_return_default`` boundary (issue #207) preserves
+    the never-raise contract for this audit-hook callback and surfaces
+    failures under ``scope="onboarding_consultation_event"``.
+    """
     trace_path = getattr(ctx, "trace_path", None)
     if trace_path is None:
         return
-    try:
-        from agentic_swmm.agent.reporting import write_memory_consultation
+    from agentic_swmm.agent.reporting import write_memory_consultation
 
-        write_memory_consultation(
-            Path(trace_path),
-            kind="new_case_onboarding",
-            case_meta={"case_name": decision.target_case},
-            evidence_count=len(decision.recommendations),
-            consensus_fields=[],
-            ambiguous_fields=[],
-            queried_at_utc=None,
-        )
-    except Exception:  # pragma: no cover - defensive
-        return
+    write_memory_consultation(
+        Path(trace_path),
+        kind="new_case_onboarding",
+        case_meta={"case_name": decision.target_case},
+        evidence_count=len(decision.recommendations),
+        consensus_fields=[],
+        ambiguous_fields=[],
+        queried_at_utc=None,
+    )
 
 
 __all__ = [

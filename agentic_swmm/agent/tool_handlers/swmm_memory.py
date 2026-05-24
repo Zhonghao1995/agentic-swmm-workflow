@@ -111,6 +111,11 @@ def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     try:
         from agentic_swmm.memory import recall_memory_search as _recall_search
     except Exception as exc:
+        # TODO(#207): boundary-migrate — default depends on ``call`` and
+        # the per-site message, so a constant default does not fit.
+        # Migration would need a refactor to extract the recall into a
+        # helper that the decorator wraps and the caller maps to
+        # ``_failure(call, ...)`` on None.
         return _failure(call, f"recall_memory_search backend unavailable: {exc}")
 
     index_dir = _rag_index_dir()

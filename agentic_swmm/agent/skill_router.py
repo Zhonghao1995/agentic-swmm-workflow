@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 
 
@@ -137,21 +138,22 @@ class SkillRouter:
             self._by_skill.setdefault(name, [])
 
 
+@on_exception_return_default(
+    default_factory=list, scope="skill_discovery"
+)
 def _on_disk_skill_names() -> list[str]:
     """Return every skill name from ``skills/<name>/SKILL.md`` on disk.
 
     Lazy-imports ``runtime.registry`` so this module's import graph
     stays small. Returns an empty list (rather than raising) when the
     skills directory is absent, so unit tests with a stripped-down
-    resource root continue to work.
+    resource root continue to work. The ``@on_exception_return_default``
+    boundary (issue #207) keeps that contract while surfacing the
+    failure in ``silent_fallbacks.jsonl`` under ``scope="skill_discovery"``.
     """
+    from agentic_swmm.runtime.registry import discover_skills
 
-    try:
-        from agentic_swmm.runtime.registry import discover_skills
-
-        return [record["name"] for record in discover_skills()]
-    except Exception:  # pragma: no cover - defensive
-        return []
+    return [record["name"] for record in discover_skills()]
 
 
 __all__ = [

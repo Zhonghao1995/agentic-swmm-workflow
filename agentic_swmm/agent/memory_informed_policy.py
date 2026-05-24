@@ -55,6 +55,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
 
 
@@ -274,6 +275,7 @@ def _rank_candidates_by_recency(
     return [*with_ts, *without_ts]
 
 
+@on_exception_return_default(default=None, scope="audit_trace_write")
 def _write_session_history_trace_row(
     trace_dir: Path,
     *,
@@ -284,24 +286,24 @@ def _write_session_history_trace_row(
     Centralised here so both the consult and decision lines share a
     single failure boundary — the policy must never raise on a
     full / read-only trace directory. The schema mirrors
-    ``reporting.write_event`` (``timestamp_utc`` first key).
+    ``reporting.write_event`` (``timestamp_utc`` first key). The
+    ``@on_exception_return_default`` boundary (issue #207) preserves
+    the never-raise contract and surfaces failures under
+    ``scope="audit_trace_write"`` in ``silent_fallbacks.jsonl``.
     """
-    try:
-        trace_dir.mkdir(parents=True, exist_ok=True)
-        out = {
-            "timestamp_utc": (
-                datetime.now(timezone.utc)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z")
-            ),
-            **payload,
-        }
-        with (trace_dir / "agent_trace.jsonl").open(
-            "a", encoding="utf-8"
-        ) as handle:
-            handle.write(json.dumps(out, sort_keys=True) + "\n")
-    except Exception:  # pragma: no cover - audit must never break dispatch
-        return
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    out = {
+        "timestamp_utc": (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        ),
+        **payload,
+    }
+    with (trace_dir / "agent_trace.jsonl").open(
+        "a", encoding="utf-8"
+    ) as handle:
+        handle.write(json.dumps(out, sort_keys=True) + "\n")
 
 
 def decide_with_memory(
