@@ -25,6 +25,18 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
+    # Issue #191: symmetric reset of the once-per-process legacy-notice
+    # flag, matching ``tests/test_provider_preflight_gate.py``. The
+    # tests in this file run with the gate ON, so the notice path is
+    # dormant today — but a future gate-OFF test added here would
+    # silently swallow the notice if the flag leaked across tests.
+    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
+        monkeypatch.setattr(
+            provider_preflight,
+            "_legacy_claude_sdk_notice_emitted",
+            False,
+            raising=False,
+        )
     return home
 
 
