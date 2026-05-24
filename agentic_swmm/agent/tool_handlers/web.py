@@ -1,9 +1,9 @@
 """Web fetch / web search handlers (PRD #128).
 
 Two small, well-isolated handlers that share only HTTP / HTML
-stdlib usage. ``_failure`` and ``_strip_html`` are imported from
-``tool_registry`` during the migration; they will move to
-``tool_handlers/_shared.py`` once the package is fully populated.
+stdlib usage. ``_failure`` and ``_strip_html`` come from
+``tool_handlers/_shared`` — the cross-cutting helpers that every
+family imports.
 """
 
 from __future__ import annotations
@@ -15,19 +15,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.tool_handlers._shared import _failure, _strip_html
 from agentic_swmm.agent.types import ToolCall
-
-
-def _failure(call: ToolCall, summary: str) -> dict[str, Any]:
-    """Standard failure payload shape; mirrored from ``tool_registry``."""
-    return {"tool": call.name, "args": call.args, "ok": False, "summary": summary}
-
-
-def _strip_html(text: str) -> str:
-    """Strip HTML tags / scripts / styles; mirrored from ``tool_registry``."""
-    text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", text)
-    text = re.sub(r"(?s)<[^>]+>", " ", text)
-    return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
 def _web_fetch_url_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

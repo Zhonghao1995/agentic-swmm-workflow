@@ -11,9 +11,8 @@ RAG-index path resolvers. They are grouped here because:
   triad,
 - they share token-budget bookkeeping.
 
-``_failure`` is imported from ``tool_registry`` via a late import to
-avoid a circular dependency until the cross-cutting helpers settle in
-``tool_handlers/_shared.py`` (a follow-up cleanup PR).
+``_failure`` comes from ``tool_handlers/_shared`` — the cross-cutting
+helpers every family imports.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.tool_handlers._shared import _failure
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 
@@ -30,11 +30,6 @@ from agentic_swmm.utils.paths import repo_root
 _RECALL_PATTERN_TOKEN_BUDGET = 500
 _RECALL_SEARCH_TOKEN_BUDGET = 1000
 _RECALL_SESSION_HISTORY_TOKEN_BUDGET = 1000
-
-
-def _failure(call: ToolCall, summary: str) -> dict[str, Any]:
-    """Standard failure payload shape; mirrored from ``tool_registry``."""
-    return {"tool": call.name, "args": call.args, "ok": False, "summary": summary}
 
 
 def _estimated_tokens(text: str) -> int:
