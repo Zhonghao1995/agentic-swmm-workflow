@@ -5,10 +5,12 @@ or non-tty.
 """
 from __future__ import annotations
 
+import inspect
 import os
 import unittest
 from unittest import mock
 
+from agentic_swmm.agent import ui as ui_module
 from agentic_swmm.agent import ui_colors
 
 
@@ -32,6 +34,37 @@ class SupportsColorTests(unittest.TestCase):
             with mock.patch("sys.stdout") as fake_stdout:
                 fake_stdout.isatty.return_value = True
                 self.assertTrue(ui_colors.supports_color())
+
+
+class ClearLineConstantTests(unittest.TestCase):
+    """Issue #190: the CR + erase-in-line escape sequence used by the
+    spinner to wipe its residual frame must live in ``ui_colors`` so
+    every ANSI escape funnels through the central module — same
+    convention as ``RESET`` / ``DIM`` / ``BOLD``.
+    """
+
+    def test_clear_line_constant_value(self) -> None:
+        # CR + CSI 2 K = move cursor to column 0, erase entire line.
+        self.assertEqual(ui_colors.CLEAR_LINE, "\r\033[2K")
+
+    def test_ui_module_has_no_inline_ansi_escape(self) -> None:
+        """``agentic_swmm/agent/ui.py`` must not concatenate raw ANSI
+        escapes by hand — every escape funnels through ``ui_colors``
+        / ``tui_chrome`` per project convention.
+        """
+        source = inspect.getsource(ui_module)
+        self.assertNotIn(
+            "\\x1b",
+            source,
+            "ui.py must reference ANSI escapes via ui_colors constants, "
+            "not inline \\x1b literals",
+        )
+        self.assertNotIn(
+            "\\033",
+            source,
+            "ui.py must reference ANSI escapes via ui_colors constants, "
+            "not inline \\033 literals",
+        )
 
 
 class ColorizeTests(unittest.TestCase):
