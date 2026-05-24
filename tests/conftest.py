@@ -20,13 +20,119 @@ Tests that exercise the *real* SDK gate behind the
 """
 from __future__ import annotations
 
+import importlib.util
 import io
+import json
 import sys
 import types
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_AUDIT_SCRIPT = (
+    _REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
+)
+
+
+def load_audit_module():
+    """Load ``audit_run.py`` as an importable module.
+
+    The audit script is run as a subprocess by ``aiswmm audit`` and
+    therefore does not live inside the ``agentic_swmm`` package. Tests
+    that want to exercise its helpers reach for ``importlib.util`` —
+    previously each test file hand-rolled the spec/loader dance. Lifted
+    here per issue #196 so both audit-test files share one definition.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "_audit_run_under_test", _AUDIT_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_audit_run_under_test"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def seed_minimal_run_dir(
+    tmp_path: Path,
+    *,
+    case_name: str = "case-dedup",
+    with_internal_node: bool = False,
+) -> Path:
+    """Build the minimal SWMM run-dir layout the audit pipeline accepts.
+
+    The two audit-pipeline test files (``test_audit_run_results_section``
+    and ``test_audit_runner_manifest_dedup``) previously hand-rolled the
+    same ~50-line builder; consolidated here per issue #196 so the
+    fixture has a single source of truth.
+
+    ``with_internal_node=True`` adds the ``metrics.internal_node_peak``
+    payload that the Tecnopolo fixture in
+    ``test_audit_run_results_section`` requires.
+    """
+    run_dir = tmp_path / "runs" / case_name
+    runner = run_dir / "05_runner"
+    runner.mkdir(parents=True)
+    (runner / "model.rpt").write_text(
+        """
+        ***** Node Inflow Summary *****
+        ------------------------------------------------
+          OU2             OUTFALL       0.001       0.061      2    03:15
+
+        ***** Runoff Quantity Continuity *****
+        Continuity Error (%) ............. -0.13
+
+        ***** Flow Routing Continuity *****
+        Continuity Error (%) ............. -0.004
+        """,
+        encoding="utf-8",
+    )
+    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
+    (runner / "stdout.txt").write_text("", encoding="utf-8")
+    (runner / "stderr.txt").write_text("", encoding="utf-8")
+    metrics: dict[str, Any] = {
+        "peak": {
+            "node": "OU2",
+            "peak": 0.061,
+            "time_hhmm": "03:15",
+            "source": "Node Inflow Summary",
+        },
+        "continuity": {
+            "runoff_quantity": {
+                "Surface Runoff": {"col1": 0.097, "col2": 44.483},
+                "Continuity Error (%)": -0.13,
+            },
+            "flow_routing": {
+                "Continuity Error (%)": -0.004,
+            },
+        },
+    }
+    if with_internal_node:
+        metrics["internal_node_peak"] = {
+            "node": "J22",
+            "peak": 0.007,
+            "time_hhmm": "03:15",
+        }
+    (runner / "manifest.json").write_text(
+        json.dumps(
+            {
+                "files": {
+                    "rpt": str(runner / "model.rpt"),
+                    "out": str(runner / "model.out"),
+                    "stdout": str(runner / "stdout.txt"),
+                    "stderr": str(runner / "stderr.txt"),
+                },
+                "metrics": metrics,
+                "return_code": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return run_dir
 
 
 class _FakeTTYStream(io.StringIO):

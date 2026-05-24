@@ -10,8 +10,6 @@ Section ordering is contractual: the new block lives between
 """
 from __future__ import annotations
 
-import importlib.util
-import json
 import subprocess
 import sys
 import tempfile
@@ -22,22 +20,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
 
-
-def _load_audit_module():
-    """Load ``audit_run.py`` as an importable module for unit-testing helpers."""
-    spec = importlib.util.spec_from_file_location("_audit_run_under_test", AUDIT_SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["_audit_run_under_test"] = module
-    spec.loader.exec_module(module)
-    return module
+from tests.conftest import load_audit_module, seed_minimal_run_dir  # noqa: E402
 
 
 class RenderRunResultsSectionTests(unittest.TestCase):
     """Unit-test the pure renderer against the 4 PRD-mandated fixtures."""
 
     def setUp(self) -> None:
-        self.audit_run = _load_audit_module()
+        self.audit_run = load_audit_module()
 
     # Fixture 1: peak + both continuity errors, no internal_node_peak.
     def test_fixture_basic_renders_five_rows_without_internal_node(self) -> None:
@@ -156,57 +146,7 @@ class RunResultsSectionPlacementTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.repo_root = Path(self.tmp.name)
-        self.run_dir = self.repo_root / "runs" / "case-a"
-        runner = self.run_dir / "05_runner"
-        runner.mkdir(parents=True)
-        (runner / "model.rpt").write_text(
-            """
-            ***** Node Inflow Summary *****
-            ------------------------------------------------
-              OU2             OUTFALL       0.001       0.061      2    03:15
-
-            ***** Runoff Quantity Continuity *****
-            Continuity Error (%) ............. -0.13
-
-            ***** Flow Routing Continuity *****
-            Continuity Error (%) ............. -0.004
-            """,
-            encoding="utf-8",
-        )
-        (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-        (runner / "stdout.txt").write_text("", encoding="utf-8")
-        (runner / "stderr.txt").write_text("", encoding="utf-8")
-        (runner / "manifest.json").write_text(
-            json.dumps(
-                {
-                    "files": {
-                        "rpt": str(runner / "model.rpt"),
-                        "out": str(runner / "model.out"),
-                        "stdout": str(runner / "stdout.txt"),
-                        "stderr": str(runner / "stderr.txt"),
-                    },
-                    "metrics": {
-                        "peak": {
-                            "node": "OU2",
-                            "peak": 0.061,
-                            "time_hhmm": "03:15",
-                            "source": "Node Inflow Summary",
-                        },
-                        "continuity": {
-                            "runoff_quantity": {
-                                "Surface Runoff": {"col1": 0.097, "col2": 44.483},
-                                "Continuity Error (%)": -0.13,
-                            },
-                            "flow_routing": {
-                                "Continuity Error (%)": -0.004,
-                            },
-                        },
-                    },
-                    "return_code": 0,
-                }
-            ),
-            encoding="utf-8",
-        )
+        self.run_dir = seed_minimal_run_dir(self.repo_root, case_name="case-a")
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
