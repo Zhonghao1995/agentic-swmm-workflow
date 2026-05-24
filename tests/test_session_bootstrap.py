@@ -17,10 +17,12 @@ import yaml
 
 from agentic_swmm.agent.session_bootstrap import (
     bootstrap_prior_state,
+    bootstrap_runs_root,
     bootstrap_session_dir,
     bootstrap_system_prompt,
     display_path,
     infer_case_slug,
+    is_swmm_run_dir,
     new_interactive_session,
     safe_name,
 )
@@ -379,6 +381,100 @@ class BootstrapSystemPromptTests(unittest.TestCase):
             any("<previous-session" in e for e in extras),
             extras,
         )
+
+
+class IsSwmmRunDirTests(unittest.TestCase):
+    """Issue #205 / Phase ``bootstrap_runs_root`` (helper).
+
+    ``is_swmm_run_dir`` is the canonical "did this turn produce a real
+    SWMM run?" test, used by both the active-run pinning logic and the
+    chat-note writer. Formerly ``runtime_loop._is_swmm_run_dir``.
+    """
+
+    def test_missing_dir_is_false(self) -> None:
+        with TemporaryDirectory() as tmp:
+            self.assertFalse(is_swmm_run_dir(Path(tmp) / "does-not-exist"))
+
+    def test_empty_dir_is_false(self) -> None:
+        with TemporaryDirectory() as tmp:
+            self.assertFalse(is_swmm_run_dir(Path(tmp)))
+
+    def test_manifest_plus_runner_is_true(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "manifest.json").write_text("{}", encoding="utf-8")
+            (run_dir / "05_runner").mkdir()
+            self.assertTrue(is_swmm_run_dir(run_dir))
+
+    def test_out_plus_rpt_is_true(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "results.out").write_text("", encoding="utf-8")
+            (run_dir / "results.rpt").write_text("", encoding="utf-8")
+            self.assertTrue(is_swmm_run_dir(run_dir))
+
+    def test_only_out_is_false(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "results.out").write_text("", encoding="utf-8")
+            self.assertFalse(is_swmm_run_dir(run_dir))
+
+
+class BootstrapRunsRootTests(unittest.TestCase):
+    """Issue #205 / Phase ``bootstrap_runs_root``.
+
+    Resolves the ``runs/`` directory the MOC should describe.
+    Formerly ``runtime_loop._resolve_runs_root_for``. Order:
+
+    1. ``AISWMM_RUNS_ROOT`` env var (lets tests point at a tmp tree).
+    2. First ancestor of ``session_dir`` named ``runs``.
+    3. ``repo_root() / "runs"`` fallback.
+    """
+
+    def test_env_override_wins(self) -> None:
+        with TemporaryDirectory() as tmp:
+            override = Path(tmp) / "custom_runs"
+            override.mkdir()
+            session_dir = Path(tmp) / "something" / "100000_x_run"
+            with mock.patch.dict(
+                "os.environ",
+                {"AISWMM_RUNS_ROOT": str(override)},
+            ):
+                root = bootstrap_runs_root(session_dir)
+        self.assertEqual(root.resolve(), override.resolve())
+
+    def test_walks_to_ancestor_named_runs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            runs_root = Path(tmp) / "runs"
+            date_dir = runs_root / "2026-05-19"
+            session_dir = date_dir / "100000_case_run"
+            session_dir.mkdir(parents=True)
+            # Clear override so ancestor walk happens.
+            with mock.patch.dict("os.environ", {}, clear=False):
+                import os as _os
+
+                _os.environ.pop("AISWMM_RUNS_ROOT", None)
+                root = bootstrap_runs_root(session_dir)
+            self.assertEqual(root.resolve(), runs_root.resolve())
+
+    def test_falls_back_to_repo_root_runs_when_no_ancestor(self) -> None:
+        # When neither override is set nor ancestor exists, fall back
+        # to ``repo_root() / "runs"`` — patch ``repo_root`` to stay
+        # away from the real filesystem.
+        with TemporaryDirectory() as tmp:
+            fake_repo = Path(tmp)
+            session_dir = fake_repo / "nowhere" / "100000_x_run"
+            session_dir.mkdir(parents=True)
+            with mock.patch.dict("os.environ", {}, clear=False):
+                import os as _os
+
+                _os.environ.pop("AISWMM_RUNS_ROOT", None)
+                with mock.patch(
+                    "agentic_swmm.utils.paths.repo_root",
+                    return_value=fake_repo,
+                ):
+                    root = bootstrap_runs_root(session_dir)
+            self.assertEqual(root.resolve(), (fake_repo / "runs").resolve())
 
 
 if __name__ == "__main__":
