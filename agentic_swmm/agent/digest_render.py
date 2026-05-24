@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.tui_chrome import use_unicode_box_drawing
+
 
 # ---------------------------------------------------------------------------
 # Per-tool brief-result extractors
@@ -137,9 +139,23 @@ def brief_result(tool_name: str, result: dict[str, Any]) -> str:
 # indented continuation lines so the user sees the full stacktrace
 # beneath the step row WITHOUT having to re-run with --verbose.
 
-_OK_MARK = "✓"  # ✓
-_FAIL_MARK = "✗"  # ✗
+# PRD-08 Phase B / issue #193 item 3: glyphs fall back to ASCII when
+# the active locale does not advertise UTF-8 (LC_ALL=C / LANG=C) or
+# when AISWMM_TUI=plain. ``tui_chrome.use_unicode_box_drawing()`` owns
+# the decision so every chrome surface in the project agrees.
+_OK_MARK_UNICODE = "✓"
+_FAIL_MARK_UNICODE = "✗"
+_OK_MARK_ASCII = "v"
+_FAIL_MARK_ASCII = "x"
 _DETAIL_INDENT = " " * 4
+
+
+def _ok_mark() -> str:
+    return _OK_MARK_UNICODE if use_unicode_box_drawing() else _OK_MARK_ASCII
+
+
+def _fail_mark() -> str:
+    return _FAIL_MARK_UNICODE if use_unicode_box_drawing() else _FAIL_MARK_ASCII
 
 
 def render_step(
@@ -172,7 +188,7 @@ def render_step(
     elif is_read_only:
         head = f"{head} (read-only, auto)"
     # Outcome marker + brief
-    marker = _OK_MARK if ok else _FAIL_MARK
+    marker = _ok_mark() if ok else _fail_mark()
     if brief:
         row = f"{head}  {marker} {brief}"
     else:
@@ -200,7 +216,18 @@ def render_step(
 # (PRD-183 ``Run Results`` section). If a session produced no SWMM
 # run, the block is omitted entirely.
 
-_SUMMARY_SEPARATOR = "─" * 25
+_SUMMARY_SEPARATOR_UNICODE = "─" * 25
+_SUMMARY_SEPARATOR_ASCII = "-" * 25
+
+
+def _summary_separator() -> str:
+    # Issue #193 item 3: the section divider on the session-end block
+    # follows the same locale gate as the step-row glyphs.
+    return (
+        _SUMMARY_SEPARATOR_UNICODE
+        if use_unicode_box_drawing()
+        else _SUMMARY_SEPARATOR_ASCII
+    )
 
 
 def _format_peak(payload: dict[str, Any]) -> str | None:
@@ -298,7 +325,8 @@ def render_final_summary(run_dirs: list[Path]) -> str:
             rendered.append(block)
     if not rendered:
         return ""
-    return _SUMMARY_SEPARATOR + "\n" + ("\n" + _SUMMARY_SEPARATOR + "\n").join(rendered)
+    separator = _summary_separator()
+    return separator + "\n" + ("\n" + separator + "\n").join(rendered)
 
 
 __all__ = ["brief_result", "render_step", "render_final_summary"]
