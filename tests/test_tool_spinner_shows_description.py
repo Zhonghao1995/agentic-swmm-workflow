@@ -13,21 +13,17 @@ under the ``--verbose`` umbrella by constructing the executor with
 """
 from __future__ import annotations
 
-import io
 import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
 
+from conftest import _FakeTTYStream
+
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-
-
-class _FakeTTYStream(io.StringIO):
-    def isatty(self) -> bool:  # type: ignore[override]
-        return True
 
 
 class _CannedRegistry(AgentToolRegistry):

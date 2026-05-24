@@ -24,14 +24,9 @@ import io
 import re
 import unittest
 
+from conftest import _FakeTTYStream
+
 from agentic_swmm.agent.ui import Spinner, SpinnerState
-
-
-class _FakeTTYStream(io.StringIO):
-    """StringIO that claims to be a TTY so Spinner picks the CR path."""
-
-    def isatty(self) -> bool:  # type: ignore[override]
-        return True
 
 
 _ANSI_CSI_RE = re.compile(r"\x1b\[(\d*)([A-Za-z])")
