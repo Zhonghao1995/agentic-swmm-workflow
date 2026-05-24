@@ -27,21 +27,6 @@ from agentic_swmm.agent.tui_chrome import use_unicode_box_drawing
 # back to ``result['summary']`` truncated to one line.
 
 
-def _brief_list_dir(result: dict[str, Any]) -> str:
-    # ``list_dir`` returns ``results`` as a flat list of entry dicts;
-    # older callers tucked the list under a ``{"entries": [...]}``
-    # wrapper. Support both shapes so the digest is resilient to
-    # future tool-shape tweaks.
-    results = result.get("results")
-    if isinstance(results, list):
-        return f"{len(results)} entries"
-    if isinstance(results, dict):
-        entries = results.get("entries")
-        if isinstance(entries, list):
-            return f"{len(entries)} entries"
-    return ""
-
-
 def _brief_select_skill(result: dict[str, Any]) -> str:
     name = result.get("skill_name")
     if isinstance(name, str) and name.strip():
@@ -71,15 +56,6 @@ def _brief_audit_run(result: dict[str, Any]) -> str:
     return ""
 
 
-def _brief_inspect_plot_options(result: dict[str, Any]) -> str:
-    # ``inspect_plot_options`` already shapes its summary as
-    # "rain=2 nodes=4 attrs=6", which is exactly the brief we want.
-    summary = result.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        return summary.strip().splitlines()[0]
-    return ""
-
-
 def _brief_recall_session_history(result: dict[str, Any]) -> str:
     # ``recall_session_history`` returns its hits as a flat list under
     # ``results``; tolerate the ``{"sessions": [...]}`` wrapper too in
@@ -94,12 +70,17 @@ def _brief_recall_session_history(result: dict[str, Any]) -> str:
     return ""
 
 
+# Issue #193 item 4: ``list_dir`` and ``inspect_plot_options`` are
+# omitted on purpose. Both produce a brief that the generic
+# ``result['summary']`` fallback already returns byte-for-byte (the
+# live ``_list_dir_tool`` sets ``summary="<N> entries"`` and
+# ``inspect_plot_options`` already shapes its summary as
+# ``"rain=2 nodes=4 attrs=6"``). A custom extractor here would be
+# dead code.
 _BRIEF_EXTRACTORS = {
-    "list_dir": _brief_list_dir,
     "select_skill": _brief_select_skill,
     "run_swmm_inp": _brief_run_swmm_inp,
     "audit_run": _brief_audit_run,
-    "inspect_plot_options": _brief_inspect_plot_options,
     "recall_session_history": _brief_recall_session_history,
 }
 

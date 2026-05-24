@@ -29,6 +29,10 @@ from agentic_swmm.agent.digest_render import brief_result
 
 class BriefResultExtractorTests(unittest.TestCase):
     def test_list_dir_returns_entry_count(self) -> None:
+        # Mirrors the real ``_list_dir_tool`` output: ``summary`` is
+        # set to ``"<N> entries"`` so the generic fallback yields the
+        # correct brief without needing a per-tool extractor (#193
+        # item 4).
         result = {
             "tool": "list_dir",
             "ok": True,
@@ -44,12 +48,20 @@ class BriefResultExtractorTests(unittest.TestCase):
                     "h.py",
                 ],
             },
-            "summary": "listed 8 entries",
+            "summary": "8 entries",
         }
         self.assertEqual(brief_result("list_dir", result), "8 entries")
 
     def test_list_dir_zero_entries_is_explicit(self) -> None:
-        result = {"tool": "list_dir", "ok": True, "results": {"entries": []}}
+        # The live tool always sets ``summary`` to ``"<N> entries"``;
+        # the digest brief falls through to that string via the
+        # generic ``summary`` fallback.
+        result = {
+            "tool": "list_dir",
+            "ok": True,
+            "results": {"entries": []},
+            "summary": "0 entries",
+        }
         self.assertEqual(brief_result("list_dir", result), "0 entries")
 
     def test_list_dir_results_as_flat_list_is_supported(self) -> None:
