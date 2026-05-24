@@ -414,6 +414,16 @@ def _load_known_failure_patterns(
     ``@on_exception_return_default`` boundary (issue #207) preserves
     the empty-list contract and surfaces failures under
     ``scope="negative_lessons_recall"``.
+
+    Boundary widening: the decorator widens the exception scope to
+    cover the entire body, including the ``for lesson in lessons:``
+    loop that materialises the dicts and the ``out.sort(...)`` lambda
+    that orders by ``recorded_at``. A malformed lesson row or a
+    ``TypeError`` from the sort key now collapses to the empty list
+    (was: propagated). This matches the fail-soft contract — the
+    recommender must never fail because the negative-lesson store had
+    a single bad entry — and mirrors the precedent set by
+    :func:`_resolve_design_storm`'s docstring.
     """
     from agentic_swmm.memory.negative_lessons import recall_negative_lessons
 
