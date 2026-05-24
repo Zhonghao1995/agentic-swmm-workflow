@@ -71,7 +71,12 @@ from agentic_swmm.utils.paths import repo_root
 # names below are re-exported so legacy imports continue to resolve.
 from agentic_swmm.agent.repl import run_repl
 from agentic_swmm.agent.session_bootstrap import (
+    bootstrap_prior_state as _bootstrap_prior_state,
+    bootstrap_runs_root as _bootstrap_runs_root,
+    bootstrap_session_dir as _bootstrap_session_dir,
+    bootstrap_system_prompt as _bootstrap_system_prompt,
     infer_case_slug as _case_slug,
+    is_swmm_run_dir as _bootstrap_is_swmm_run_dir,
     new_interactive_session as _new_interactive_session,
 )
 from agentic_swmm.agent.warm_intro import (
@@ -173,13 +178,13 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             assert session_dir is not None  # mypy
             goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
         elif _looks_like_swmm_request(prompt):
-            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="run")
+            session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="run")
         else:
-            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="chat")
+            session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="chat")
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
-        prior_state = _load_prior_session_state(active_run_dir[0])
+        prior_state = _bootstrap_prior_state(active_run_dir[0])
         print()
         rc = run_openai_planner(
             run_args,
@@ -190,7 +195,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             chat_session=is_chat_turn,
             prior_session_state=prior_state,
         )
-        if rc == 0 and _is_swmm_run_dir(session_dir):
+        if rc == 0 and _bootstrap_is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
         print()
         return rc
@@ -228,14 +233,13 @@ def format_startup_banner(
 
 
 def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
-    now = datetime.now()
-    case = _case_slug(prompt)
-    folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}"
-    counter = 2
-    while folder.exists():
-        folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}_{counter}"
-        counter += 1
-    return folder
+    """Facade over :func:`session_bootstrap.bootstrap_session_dir`.
+
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working. New call sites should import
+    ``bootstrap_session_dir`` directly.
+    """
+    return _bootstrap_session_dir(date_dir, prompt, kind=kind)
 
 
 def _match_registered_case(lowered_prompt: str) -> str | None:
