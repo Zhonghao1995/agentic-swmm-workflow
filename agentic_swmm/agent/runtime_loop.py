@@ -1,11 +1,17 @@
 """Interactive shell facade + OpenAI planner turn driver for ``aiswmm``.
 
-PRD-02 split this file into deeper modules:
+PRD-02 and Issue #205 split this file into deeper modules:
 
 - :mod:`agentic_swmm.agent.repl` — REPL input/dispatch loop.
 - :mod:`agentic_swmm.agent.warm_intro` — warm-intro state machine.
-- :mod:`agentic_swmm.agent.session_bootstrap` — date-dir + slug + naming
-  helpers.
+- :mod:`agentic_swmm.agent.session_bootstrap` — session-lifecycle
+  bootstrap phases (``bootstrap_session_dir`` /
+  ``bootstrap_prior_state`` / ``bootstrap_system_prompt`` /
+  ``bootstrap_runs_root``) and the path-naming primitives that PRD-02
+  carved out (``safe_name``, ``infer_case_slug``,
+  ``new_interactive_session``).
+- :mod:`agentic_swmm.agent.gap_fill_runtime` — gap-fill state machine
+  (``invoke_tool_with_gap_fill``, ``is_tty``, ``gap_fill_disabled``).
 
 This module is now the facade that boots the REPL with real
 collaborators (real ``input``, real planner) and continues to host the
@@ -34,7 +40,6 @@ import atexit
 import json
 import logging
 import os
-import re
 import sys as _sys
 import time
 from datetime import datetime, timezone
@@ -59,10 +64,7 @@ from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.config import load_config
-from agentic_swmm.memory import facts as _facts_mod
-from agentic_swmm.memory import session_db
-from agentic_swmm.memory.case_inference import infer_case_name
-from agentic_swmm.memory.session_sync import default_db_path, sync_session_to_db
+from agentic_swmm.memory.session_sync import sync_session_to_db
 from agentic_swmm.providers.factory import make_provider
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
@@ -71,7 +73,12 @@ from agentic_swmm.utils.paths import repo_root
 # names below are re-exported so legacy imports continue to resolve.
 from agentic_swmm.agent.repl import run_repl
 from agentic_swmm.agent.session_bootstrap import (
+    bootstrap_prior_state as _bootstrap_prior_state,
+    bootstrap_runs_root as _bootstrap_runs_root,
+    bootstrap_session_dir as _bootstrap_session_dir,
+    bootstrap_system_prompt as _bootstrap_system_prompt,
     infer_case_slug as _case_slug,
+    is_swmm_run_dir as _bootstrap_is_swmm_run_dir,
     new_interactive_session as _new_interactive_session,
 )
 from agentic_swmm.agent.warm_intro import (
@@ -173,13 +180,13 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             assert session_dir is not None  # mypy
             goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
         elif _looks_like_swmm_request(prompt):
-            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="run")
+            session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="run")
         else:
-            session_dir = _new_turn_dir(date_dir_box[0], prompt, kind="chat")
+            session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="chat")
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
-        prior_state = _load_prior_session_state(active_run_dir[0])
+        prior_state = _bootstrap_prior_state(active_run_dir[0])
         print()
         rc = run_openai_planner(
             run_args,
@@ -190,7 +197,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             chat_session=is_chat_turn,
             prior_session_state=prior_state,
         )
-        if rc == 0 and _is_swmm_run_dir(session_dir):
+        if rc == 0 and _bootstrap_is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
         print()
         return rc
@@ -227,39 +234,6 @@ def format_startup_banner(
     )
 
 
-def _new_turn_dir(date_dir: Path, prompt: str, *, kind: str) -> Path:
-    now = datetime.now()
-    case = _case_slug(prompt)
-    folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}"
-    counter = 2
-    while folder.exists():
-        folder = date_dir / f"{now.strftime('%H%M%S')}_{case}_{kind}_{counter}"
-        counter += 1
-    return folder
-
-
-def _match_registered_case(lowered_prompt: str) -> str | None:
-    """Return the first ``case_id`` whose id / display_name / alias appears in the prompt.
-
-    Re-exported facade over
-    ``session_bootstrap._match_registered_case`` so existing imports
-    continue to work.
-    """
-    from agentic_swmm.agent.session_bootstrap import _match_registered_case as _impl
-
-    return _impl(lowered_prompt)
-
-
-def _append_session_index(date_dir: Path, event: dict[str, Any]) -> None:
-    """Append a JSON record to ``date_dir/_sessions.jsonl``.
-
-    Re-exported facade over ``session_bootstrap._append_session_index``.
-    """
-    from agentic_swmm.agent.session_bootstrap import _append_session_index as _impl
-
-    _impl(date_dir, event)
-
-
 def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     """Write ``chat_note.md`` for a chat-only session.
 
@@ -270,7 +244,7 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     """
     if not session_dir.exists() or not session_dir.is_dir():
         return None
-    if _is_swmm_run_dir(session_dir):
+    if _bootstrap_is_swmm_run_dir(session_dir):
         return None
 
     state_path = session_dir / "session_state.json"
@@ -373,7 +347,7 @@ def run_openai_planner(
         profile=profile,
         verbose=bool(getattr(args, "verbose", False)),
     )
-    extras = _build_system_prompt_extras(
+    extras = _bootstrap_system_prompt(
         session_dir=session_dir,
         prior_session_state=prior_session_state,
     )
@@ -523,35 +497,6 @@ def _welcome_disabled() -> bool:
     return value.strip() not in {"", "0", "false", "False", "no", "No"}
 
 
-def _is_swmm_run_dir(path: Path) -> bool:
-    if not path.exists() or not path.is_dir():
-        return False
-    if (path / "manifest.json").exists() and ((path / "05_runner").exists() or (path / "01_runner").exists()):
-        return True
-    return any(path.glob("**/*.out")) and any(path.glob("**/*.rpt"))
-
-
-def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | None:
-    """Load the previous turn's ``aiswmm_state.json`` if it exists.
-
-    The planner consumes this through ``should_introspect`` to skip
-    re-emitting ``list_skills`` / ``list_mcp_*`` calls that the prior
-    turn already made. Returns ``None`` when nothing is available so
-    the planner falls back to its full introspection on the first turn
-    of a fresh case.
-    """
-    if active_run_dir is None:
-        return None
-    state_file = active_run_dir / "aiswmm_state.json"
-    if not state_file.exists():
-        return None
-    try:
-        payload = json.loads(state_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
 # --- PRD session-db-facts: startup injection + end-of-session sync -----------
 
 
@@ -566,85 +511,17 @@ def _build_system_prompt_extras(
     session_dir: Path,
     prior_session_state: dict[str, Any] | None,
 ) -> list[str]:
-    """Assemble the per-session system-prompt injections.
+    """Facade over :func:`session_bootstrap.bootstrap_system_prompt`.
 
-    Order: project facts first (durable user-curated context), then the
-    previous-session banner (volatile recall). Both are gated on the
-    relevant input being non-empty so the system prompt stays tight
-    when there is nothing to inject.
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working — including
+    ``tests/test_runtime_loop_previous_session_injection.py``. New
+    call sites should import ``bootstrap_system_prompt`` directly.
     """
-    extras: list[str] = []
-    facts_block = _safe_facts_block()
-    if facts_block:
-        extras.append(facts_block)
-    prev_block = _safe_previous_session_block(
+    return _bootstrap_system_prompt(
         session_dir=session_dir,
         prior_session_state=prior_session_state,
     )
-    if prev_block:
-        extras.append(prev_block)
-    return extras
-
-
-def _safe_facts_block() -> str:
-    """Read ``facts.md`` and wrap it for system-prompt injection.
-
-    Wrapped in a try/except because a corrupt facts file should never
-    block the user's turn — the worst case is a slightly less
-    informed planner.
-    """
-    try:
-        return _facts_mod.read_facts_for_injection()
-    except Exception:
-        return ""
-
-
-def _safe_previous_session_block(
-    *,
-    session_dir: Path,
-    prior_session_state: dict[str, Any] | None,
-) -> str:
-    """Return a ``<previous-session>`` fence for ``session_dir``, if any.
-
-    The lookup is keyed on ``case_name`` inferred from either the
-    prior session state or the current session directory's name.
-    Returns the empty string when no prior session exists or any IO
-    fails — never raises in front of the user.
-    """
-    try:
-        case_name: str | None = None
-        if prior_session_state:
-            case_name = infer_case_name(prior_session_state)
-        if not case_name:
-            case_name = _infer_case_name_from_dir(session_dir)
-        if not case_name:
-            return ""
-        db_path = default_db_path()
-        if not db_path.exists():
-            return ""
-        with session_db.connect(db_path) as conn:
-            row = session_db.latest_session_for_case(conn, case_name)
-        if not row:
-            return ""
-        current_id = session_db.session_id_from_dir(session_dir)
-        if row.get("session_id") == current_id:
-            return ""
-        return session_db.previous_session_block(row)
-    except Exception:
-        return ""
-
-
-def _infer_case_name_from_dir(session_dir: Path) -> str | None:
-    """Derive the case slug straight from ``session_dir``'s leaf name.
-
-    Mirrors ``case_inference.infer_case_name`` for the case where we
-    only have the session directory in hand (no session_state yet).
-    """
-    leaf = session_dir.name
-    match = re.match(r"^\d+_(?P<case>.+?)_(?:run|chat)(?:_\d+)?$", leaf)
-    if match:
-        return match.group("case")
-    return None
 
 
 def _sync_session_end(session_dir: Path) -> None:
@@ -665,30 +542,6 @@ def _sync_session_end(session_dir: Path) -> None:
         _SYNCED_SESSION_DIRS.add(key)
 
 
-def _resolve_runs_root_for(session_dir: Path) -> Path:
-    """Return the ``runs/`` root that the MOC should describe.
-
-    Order:
-      1. ``AISWMM_RUNS_ROOT`` env var (lets tests point at a tmp tree).
-      2. The first ancestor of ``session_dir`` named ``runs``.
-      3. ``repo_root() / "runs"`` as a last-resort fallback.
-
-    Mirrors the resolution used by ``commands/audit._runs_root_for`` so
-    the session-end and force-refresh paths agree.
-    """
-    override = os.environ.get("AISWMM_RUNS_ROOT")
-    if override:
-        return Path(override).expanduser().resolve()
-    try:
-        resolved = session_dir.resolve()
-    except OSError:
-        resolved = session_dir
-    for parent in resolved.parents:
-        if parent.name == "runs":
-            return parent
-    return repo_root() / "runs"
-
-
 def _refresh_moc_after_session(session_dir: Path) -> None:
     """Regenerate ``runs/INDEX.md`` after a session ends.
 
@@ -699,7 +552,7 @@ def _refresh_moc_after_session(session_dir: Path) -> None:
     block the user's turn from exiting cleanly.
     """
     try:
-        runs_root = _resolve_runs_root_for(session_dir)
+        runs_root = _bootstrap_runs_root(session_dir)
         if not runs_root.exists():
             return
         text = generate_moc(runs_root)
@@ -798,263 +651,15 @@ def execute_with_chrome(
 
 
 # ---------------------------------------------------------------------------
-# Gap-fill interception (PRD-GF-CORE).
+# Gap-fill interception (PRD-GF-CORE) — extracted to
+# :mod:`agentic_swmm.agent.gap_fill_runtime` (Issue #205).
 # CONCURRENCY-OWNER: PRD-GF-CORE
 # ---------------------------------------------------------------------------
-#
-# The functions below own the runtime-side state machine for L1 (missing
-# file paths) and L3 (missing parameter values) gaps. The contract:
-#
-#   invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke)
-#       └── pre-flight L1 scan over `spec.required_file_args`
-#       └── call `base_invoke(call, session_dir)` to run the tool
-#       └── if result.gap_signal: collect, propose, ui-review, record,
-#           re-invoke the tool with merged args
-#       └── attach `gap_filled: [...]` to the final success result so
-#           the LLM sees what was filled in
-#
-# The wrapper is invoked from `tool_registry.AgentToolRegistry.execute`
-# (also marked CONCURRENCY-OWNER: PRD-GF-CORE). The split keeps the
-# orchestration logic out of `tool_registry.py` while the registry
-# stays the actual dispatch seam.
-#
-# Bug class to watch: if the wrapper raises (proposer registry-only
-# miss, UI rejection), the runtime returns a fail-soft result dict
-# rather than propagating — the planner's contract is "execute()
-# returns a dict, never raises". The error is folded into `summary`
-# and `ok=False`.
-
-
-def _gap_fill_disabled() -> bool:
-    """Return True iff the operator has set ``AISWMM_GAP_DISABLE=1``.
-
-    PRD-GF-CORE ships a per-tool ``supports_gap_fill`` flag *and* a
-    global kill-switch so a regression can be rolled back without a
-    code revert.
-    """
-    value = os.environ.get("AISWMM_GAP_DISABLE")
-    if value is None:
-        return False
-    return value.strip().lower() not in {"", "0", "false", "no"}
-
-
-def _is_tty() -> bool:
-    """Return True iff both stdin and stdout look like a real TTY.
-
-    The UI uses this to decide whether to render the batched form or
-    fall through to the env-var matrix. Tests can drive the matrix
-    by setting the matching env vars; production CI hits the non-TTY
-    branch automatically.
-    """
-    try:
-        import sys as _sys
-
-        return bool(_sys.stdin.isatty() and _sys.stdout.isatty())
-    except Exception:
-        return False
-
-
-def invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke):
-    """Run ``spec.handler`` through the L1+L3 gap-fill state machine.
-
-    The wrapper is no-op (just calls ``base_invoke``) when:
-
-    - ``spec.supports_gap_fill`` is False, or
-    - ``AISWMM_GAP_DISABLE=1`` is set, or
-    - the spec has no declared ``required_file_args`` AND the first
-      result has no ``gap_signal`` (i.e. no gaps to fill).
-
-    Otherwise the wrapper runs the full detect → propose → review →
-    record → retry loop and returns the resumed tool's result with a
-    ``gap_filled: [...]`` field appended.
-
-    Parameters:
-
-    - ``spec``: the :class:`agentic_swmm.agent.tool_registry.ToolSpec`.
-    - ``call``: the :class:`agentic_swmm.agent.types.ToolCall`.
-    - ``session_dir``: the per-session run directory (used for
-      audit writes).
-    - ``base_invoke``: a callable ``(call, session_dir) -> dict``
-      that actually runs the handler. Decoupled so the registry's
-      pre-call permission/profile checks stay in one place.
-    """
-    if _gap_fill_disabled() or not getattr(spec, "supports_gap_fill", False):
-        return base_invoke(call, session_dir)
-
-    # Imports kept local — gap-fill modules are only needed when the
-    # wrapper actually fires, and a missing pyyaml on a minimal venv
-    # should not break tool_registry import-time.
-    from agentic_swmm.gap_fill.preflight import scan_required_files
-    from agentic_swmm.gap_fill.proposer import GapFillRegistryOnlyMiss, propose_batch
-    from agentic_swmm.gap_fill.protocol import GapSignal
-    from agentic_swmm.gap_fill.recorder import record_gap_decisions
-    from agentic_swmm.gap_fill.ui import (
-        GapFillNonInteractive,
-        GapFillRejected,
-        review_batch,
-    )
-
-    merged_args: dict[str, object] = dict(call.args)
-    all_resolved = []
-    # Two retries max: one for pre-flight L1, one for in-band L3, plus
-    # a guard so a buggy tool that keeps emitting the same gap can't
-    # loop forever. The PRD allows L1+L3 in one batch but we keep the
-    # iteration count tight.
-    for attempt in range(3):
-        # Pre-flight L1 scan happens BEFORE the tool runs so we never
-        # invoke a tool with a path that won't open.
-        l1_signals = []
-        required = getattr(spec, "required_file_args", ()) or ()
-        if required:
-            l1_signals = scan_required_files(
-                tool_name=spec.name,
-                required_file_args=required,
-                args=merged_args,
-            )
-
-        if l1_signals:
-            resolved = _resolve_gap_batch(
-                l1_signals,
-                tool_name=spec.name,
-                session_dir=session_dir,
-                propose_batch=propose_batch,
-                review_batch=review_batch,
-                record_gap_decisions=record_gap_decisions,
-            )
-            if resolved is None:
-                # User rejected / non-interactive failure — fall back
-                # to a fail-soft result the planner can surface.
-                return {
-                    "tool": call.name,
-                    "args": call.args,
-                    "ok": False,
-                    "summary": "gap-fill aborted (L1 paths could not be resolved)",
-                }
-            for dec in resolved:
-                merged_args[dec.field] = dec.final_value
-            all_resolved.extend(resolved)
-            # Loop back to re-run the pre-flight scan (in case the
-            # new path itself doesn't exist).
-            continue
-
-        # Now run the tool.
-        from agentic_swmm.agent.types import ToolCall as _ToolCall
-
-        invocation = _ToolCall(name=call.name, args=dict(merged_args))
-        try:
-            result = base_invoke(invocation, session_dir)
-        except (GapFillRejected, GapFillNonInteractive, GapFillRegistryOnlyMiss) as exc:
-            return {
-                "tool": call.name,
-                "args": call.args,
-                "ok": False,
-                "summary": f"gap-fill aborted: {exc}",
-                "return_code": 1,
-            }
-
-        gap_payload = result.get("gap_signal") if isinstance(result, dict) else None
-        if not gap_payload:
-            # Tool succeeded (or failed for non-gap reasons). Attach
-            # the cumulative gap_filled list and return.
-            if all_resolved and isinstance(result, dict) and result.get("ok"):
-                result = dict(result)
-                result["gap_filled"] = [
-                    {
-                        "field": d.field,
-                        "final_value": d.final_value,
-                        "source": d.proposer.source,
-                        "decision_id": d.decision_id,
-                    }
-                    for d in all_resolved
-                ]
-            return result
-
-        try:
-            signal = GapSignal.from_dict(gap_payload)
-        except (ValueError, TypeError):
-            # Tool emitted a malformed gap_signal; surface as failure
-            # rather than guessing.
-            return result
-
-        resolved = _resolve_gap_batch(
-            [signal],
-            tool_name=spec.name,
-            session_dir=session_dir,
-            propose_batch=propose_batch,
-            review_batch=review_batch,
-            record_gap_decisions=record_gap_decisions,
-        )
-        if resolved is None:
-            return {
-                "tool": call.name,
-                "args": call.args,
-                "ok": False,
-                "summary": "gap-fill aborted (L3 parameters could not be resolved)",
-            }
-        for dec in resolved:
-            merged_args[dec.field] = dec.final_value
-        all_resolved.extend(resolved)
-
-    # Out of retries — the tool keeps emitting gap signals. Return a
-    # loud failure so the planner doesn't loop forever upstream.
-    return {
-        "tool": call.name,
-        "args": call.args,
-        "ok": False,
-        "summary": (
-            "gap-fill retry budget exhausted after 3 attempts; "
-            "the tool kept emitting gap_signal"
-        ),
-    }
-
-
-def _resolve_gap_batch(
-    signals,
-    *,
-    tool_name,
-    session_dir,
-    propose_batch,
-    review_batch,
-    record_gap_decisions,
-):
-    """Run propose → ui → record over a batch of signals.
-
-    Returns the list of :class:`GapDecision` with ``final_value`` set,
-    or ``None`` if the user rejected the batch or the non-interactive
-    path failed. Errors are folded to ``None`` so the caller can
-    return a fail-soft result; the exception messages are written to
-    the planner trace via stderr.
-    """
-    try:
-        proposals = propose_batch(
-            signals=signals,
-            run_dir=session_dir,
-            llm_proposal_fn=None,
-        )
-    except Exception as exc:  # pragma: no cover - defensive
-        import sys as _sys
-
-        _sys.stderr.write(f"GAP_FILL_PROPOSE_ERROR: {exc}\n")
-        _sys.stderr.flush()
-        return None
-    try:
-        resolved = review_batch(
-            proposals,
-            tool_name=tool_name,
-            is_tty=_is_tty(),
-        )
-    except Exception as exc:
-        import sys as _sys
-
-        _sys.stderr.write(f"GAP_FILL_UI_ERROR: {exc}\n")
-        _sys.stderr.flush()
-        return None
-    try:
-        recorded = record_gap_decisions(session_dir, resolved)
-    except Exception as exc:  # pragma: no cover - defensive
-        import sys as _sys
-
-        _sys.stderr.write(f"GAP_FILL_RECORD_ERROR: {exc}\n")
-        _sys.stderr.flush()
-        return None
-    return recorded
+# Names re-exported here so existing call sites
+# (``tool_registry.AgentToolRegistry.execute``) and ``mock.patch``
+# targets (``runtime_loop._is_tty``) continue to resolve unchanged.
+from agentic_swmm.agent.gap_fill_runtime import (
+    gap_fill_disabled as _gap_fill_disabled,  # noqa: F401 — back-compat re-export
+    invoke_tool_with_gap_fill,
+    is_tty as _is_tty,
+)
