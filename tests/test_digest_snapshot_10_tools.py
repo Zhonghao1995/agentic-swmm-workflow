@@ -280,7 +280,7 @@ class Digest10ToolSnapshotTests(unittest.TestCase):
             f"--- verbose ---\n{verbose}",
         )
 
-    def test_digest_renders_four_pdr_shapes(self) -> None:
+    def test_digest_renders_four_prd_shapes(self) -> None:
         # Sanity that the fixture+renderer cover the four shapes the
         # PRD table requires (so the line-count claim isn't fudged by
         # an unrealistic fixture).
