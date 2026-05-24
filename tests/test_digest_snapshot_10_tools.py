@@ -16,12 +16,18 @@ through the planner).
 """
 from __future__ import annotations
 
-import json
 import unittest
 from dataclasses import dataclass
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from agentic_swmm.agent.digest_render import brief_result, render_step
+from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.permissions_profile import Profile
+from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.tool_registry import AgentToolRegistry
+from agentic_swmm.agent.types import ToolCall
 
 
 @dataclass
@@ -66,27 +72,62 @@ def _render_digest(steps: list[_Step]) -> str:
 
 
 def _render_verbose(steps: list[_Step]) -> str:
-    """Render the fixture in the legacy verbose path.
+    """Render the fixture by driving the real verbose code path.
 
-    Matches the planner's current two-line emit
-    (``[N] tool {args}`` + ``OK|FAILED: <summary>``) plus the
-    executor's ``Running <name> — <first sentence>`` spinner row.
-    The spinner row is included because the digest path drops it and
-    we want the ratio comparison to reflect the full user-visible
-    text on each path.
+    Issue #193 item 8: this used to hand-build what the planner /
+    executor emit in verbose mode, which let the production verbose
+    path drift without failing the ratio assertion. Now we instantiate
+    a real ``OpenAIPlanner(verbose=True)`` + real ``AgentExecutor``,
+    feed each fixture step through ``_emit_step`` directly, and prefix
+    each step with the executor's own ``_tool_label`` (the spinner
+    row the user sees) so the snapshot tracks any future change to
+    either surface automatically.
+
+    ``--verbose`` planner emit per step (production code):
+        [N] tool {args}        <- header
+        OK|FAILED: <summary>   <- outcome
+        <error detail>         <- one or more raw lines for failures
+
+    Plus the executor's spinner label:
+        Running <tool> — <first sentence>
     """
-    lines: list[str] = []
-    for step in steps:
-        lines.append(f"Running {step.tool} — {step.tool} description sentence")
-        lines.append(f"[{step.index}] {step.tool} {json.dumps(step.args, sort_keys=True)}")
-        status = "OK" if step.ok else "FAILED"
-        lines.append(f"{status}: {step.result.get('summary') or 'completed'}")
-        if not step.ok and step.error_detail:
-            # The legacy path also surfaces the error detail, but as
-            # a separate emit instead of an indented continuation.
-            for detail_line in step.error_detail.splitlines():
-                lines.append(detail_line)
-    return "\n".join(lines) + "\n"
+    emitted_lines: list[str] = []
+    registry = AgentToolRegistry()
+    planner = OpenAIPlanner(
+        provider=None,  # type: ignore[arg-type]
+        registry=registry,
+        max_steps=2,
+        verbose=True,
+        emit=emitted_lines.append,
+    )
+    with TemporaryDirectory() as tmp:
+        executor = AgentExecutor(
+            registry,
+            session_dir=Path(tmp),
+            trace_path=Path(tmp) / "trace.jsonl",
+            dry_run=False,
+            profile=Profile.QUICK,
+            verbose=True,
+        )
+        for step in steps:
+            # Spinner row — the executor emits this when announcing
+            # the tool. We invoke the production code path directly so
+            # the snapshot reflects whatever ``_tool_label`` returns.
+            emitted_lines.append(executor._tool_label(step.tool))
+            call = ToolCall(name=step.tool, args=step.args)
+            planner._emit_step(
+                index=step.index,
+                call=call,
+                result=step.result,
+                executor=executor,
+            )
+            # Verbose path surfaces error detail as raw extra emits
+            # (it never auto-expanded into an indented Detail block —
+            # that is digest-mode-only). Replay the same lines here so
+            # the comparison is full-text vs full-text.
+            if not step.ok and step.error_detail:
+                emitted_lines.extend(step.error_detail.splitlines())
+    return "\n".join(emitted_lines) + "\n"
 
 
 def _build_fixture() -> list[_Step]:
