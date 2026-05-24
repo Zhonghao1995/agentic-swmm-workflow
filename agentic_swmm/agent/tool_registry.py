@@ -1,3 +1,29 @@
+"""Central :class:`AgentToolRegistry` and :class:`ToolSpec` plumbing.
+
+PR #128 split the historic god-module ``tool_registry.py`` into the
+``tool_handlers/`` package so each tool family (swmm_runner, swmm_plot,
+swmm_builder, etc.) lives in its own deep module. The handler families
+listed below are intentionally retained here and are NOT scheduled for
+extraction under that plan:
+
+* ``_capabilities_tool`` — surfaces the registry's own ToolSpec listing,
+  so it logically belongs in the registry that owns the data.
+* ``_list_mcp_servers_tool``, ``_list_mcp_tools_tool``,
+  ``_call_mcp_tool_tool``, ``_mcp_failure`` — the MCP bridge. These
+  proxy through to ``mcp_client`` / ``mcp_pool`` and only exist to wrap
+  external MCP calls into the local ToolCall shape; splitting them out
+  would gain nothing.
+* ``_node_suggestions``, ``_plot_selection_options_for_inp``,
+  ``_run_tests_tool``, ``_run_allowed_command_tool`` — registry-internal
+  helpers consumed by the deep-module args mappers (Group A's
+  ``plot_run`` / ``run_swmm_inp``); moving them would create an upward
+  dependency from a deep module back into the registry.
+
+If a future refactor wants to revisit this, this docstring is the
+record of the intentional decision — it isn't an oversight from the
+PR #128 split.
+"""
+
 from __future__ import annotations
 
 import importlib.util
