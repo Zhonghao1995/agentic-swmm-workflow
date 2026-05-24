@@ -61,15 +61,21 @@ class PlotRunArgsOverridesDefaultsTests(unittest.TestCase):
             tmp = Path(raw)
             # _plot_run_args validates paths are inside repo_root() — point
             # the registry's repo_root at our tmp dir so the fake run_dir
-            # under tmp/runs/agent/test-run is accepted.
+            # under tmp/runs/agent/test-run is accepted. ``_repo_path`` now
+            # lives in :mod:`tool_handlers._shared`, so the same fake also
+            # has to land there or the sandbox check fails.
             from agentic_swmm.agent import tool_registry as registry_mod
+            from agentic_swmm.agent.tool_handlers import _shared as shared_mod
 
-            original = registry_mod.repo_root
+            original_registry = registry_mod.repo_root
+            original_shared = shared_mod.repo_root
             registry_mod.repo_root = lambda: tmp  # type: ignore[assignment]
+            shared_mod.repo_root = lambda: tmp  # type: ignore[assignment]
             try:
                 payload = self._build_payload(tmp)
             finally:
-                registry_mod.repo_root = original  # type: ignore[assignment]
+                registry_mod.repo_root = original_registry  # type: ignore[assignment]
+                shared_mod.repo_root = original_shared  # type: ignore[assignment]
 
         # Required MCP keys are present.
         self.assertIn("inp", payload)

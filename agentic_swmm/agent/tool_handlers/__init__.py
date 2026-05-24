@@ -11,8 +11,9 @@ family, so:
 - AI agents navigating the codebase get module sizes that fit their
   context window comfortably.
 
-The submodules import the cross-cutting helpers (``_failure``,
-``_strip_html``, MCP-routing factory) from ``tool_registry`` directly
-during this migration. A future cleanup PR will move those helpers to
-``tool_handlers/_shared.py`` once all families have been extracted.
+Cross-cutting helpers (``_failure``, ``_repo_path``, ``_run_cli_tool``,
+``_strip_html``, ...) live in :mod:`._shared`. Both ``tool_registry``
+and the family submodules import them from there so there is exactly
+one source of truth for the canonical failure shape, repo-sandbox path
+check, and subprocess wrapper.
 """
