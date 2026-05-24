@@ -1,11 +1,17 @@
 """Interactive shell facade + OpenAI planner turn driver for ``aiswmm``.
 
-PRD-02 split this file into deeper modules:
+PRD-02 and Issue #205 split this file into deeper modules:
 
 - :mod:`agentic_swmm.agent.repl` — REPL input/dispatch loop.
 - :mod:`agentic_swmm.agent.warm_intro` — warm-intro state machine.
-- :mod:`agentic_swmm.agent.session_bootstrap` — date-dir + slug + naming
-  helpers.
+- :mod:`agentic_swmm.agent.session_bootstrap` — session-lifecycle
+  bootstrap phases (``bootstrap_session_dir`` /
+  ``bootstrap_prior_state`` / ``bootstrap_system_prompt`` /
+  ``bootstrap_runs_root``) and the path-naming primitives that PRD-02
+  carved out (``safe_name``, ``infer_case_slug``,
+  ``new_interactive_session``).
+- :mod:`agentic_swmm.agent.gap_fill_runtime` — gap-fill state machine
+  (``invoke_tool_with_gap_fill``, ``is_tty``, ``gap_fill_disabled``).
 
 This module is now the facade that boots the REPL with real
 collaborators (real ``input``, real planner) and continues to host the
