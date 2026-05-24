@@ -195,7 +195,7 @@ class Spinner:
             # leaves the cursor at column 0 of a blank line so the
             # next ``print`` lands cleanly.
             try:
-                self.stream.write("\r\x1b[2K")
+                self.stream.write(ui_colors.CLEAR_LINE)
                 self.stream.flush()
             except Exception:  # pragma: no cover - best effort
                 pass
