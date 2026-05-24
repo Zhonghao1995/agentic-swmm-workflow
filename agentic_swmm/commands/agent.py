@@ -37,8 +37,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     parser.add_argument("--planner", choices=["rule", "openai"], default="rule", help="Planner backend. Defaults to the deterministic rule planner.")
-    # Issue #182: provider choices + help text honour the
-    # experimental-providers gate.
     provider_choices = available_provider_choices()
     provider_help = (
         "Provider to use with --planner openai. 'claude_sdk' routes through a Claude Pro/Max subscription. Defaults to config provider.default."

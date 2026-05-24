@@ -11,7 +11,6 @@ from agentic_swmm.commands import agent
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("chat", help="Compatibility alias for the unified Agentic SWMM runtime.")
     parser.add_argument("prompt", nargs="*", help="Prompt text. If omitted, starts the interactive agent runtime.")
-    # Issue #182: provider choices honour the experimental-providers gate.
     parser.add_argument("--provider", choices=available_provider_choices(), help="Provider to use. Defaults to config provider.default.")
     parser.add_argument("--model", help="Model override for this request.")
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")

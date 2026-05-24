@@ -23,10 +23,6 @@ from agentic_swmm.utils.paths import resource_root
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("setup", help="Initialize the local Agentic SWMM orchestration layer.")
-    # Issue #182: the ``--provider`` choices and help text are dynamic
-    # so the ``claude_sdk`` provider is invisible until the user opts
-    # in via ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS``. The provider
-    # implementation is preserved in tree — only the surface is gated.
     provider_choices = available_provider_choices()
     provider_help = (
         "Default provider. 'claude_sdk' routes through a Claude Pro/Max subscription via the local `claude` CLI."
