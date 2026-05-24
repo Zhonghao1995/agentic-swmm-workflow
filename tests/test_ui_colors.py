@@ -67,6 +67,58 @@ class ClearLineConstantTests(unittest.TestCase):
         )
 
 
+class SpinnerFinishCommentHygieneTests(unittest.TestCase):
+    """Issue #190: the in-line comment above ``Spinner.finish``'s
+    CR + erase-line write must be brief and carry only the non-obvious
+    WHY — no narrative re-explanation, no issue-number prefix. (PR #188
+    landed a 7-line comment prefixed with ``# Issue #184``; we trim it
+    down here.)
+    """
+
+    def _finish_clear_line_comment(self) -> list[str]:
+        source = inspect.getsource(ui_module.Spinner.finish)
+        lines = source.splitlines()
+        # Walk backwards from the ``self.stream.write(...CLEAR_LINE)``
+        # line: skip over the ``try:`` scaffolding, then collect the
+        # contiguous block of ``#``-prefixed comment lines that
+        # describe the write.
+        write_idx = next(
+            i for i, line in enumerate(lines) if "CLEAR_LINE" in line
+        )
+        i = write_idx - 1
+        # Skip blank / non-comment scaffold lines (e.g. ``try:``).
+        while i >= 0 and not lines[i].lstrip().startswith("#"):
+            stripped = lines[i].strip()
+            if stripped and not stripped.startswith("try"):
+                break
+            i -= 1
+        comment: list[str] = []
+        while i >= 0 and lines[i].lstrip().startswith("#"):
+            comment.append(lines[i].lstrip()[1:].strip())
+            i -= 1
+        comment.reverse()
+        return comment
+
+    def test_finish_comment_no_more_than_three_lines(self) -> None:
+        comment = self._finish_clear_line_comment()
+        self.assertLessEqual(
+            len(comment),
+            3,
+            f"Spinner.finish CR + erase-line comment must be <= 3 lines; "
+            f"got {len(comment)}:\n" + "\n".join(comment),
+        )
+
+    def test_finish_comment_has_no_issue_number_prefix(self) -> None:
+        comment = self._finish_clear_line_comment()
+        self.assertTrue(comment, "expected a comment above the CLEAR_LINE write")
+        first_line = comment[0]
+        self.assertFalse(
+            first_line.lower().startswith("issue #"),
+            f"Spinner.finish comment must not lead with an ``Issue #N`` "
+            f"prefix; got {first_line!r}",
+        )
+
+
 class ColorizeTests(unittest.TestCase):
     def test_returns_plain_text_when_color_disabled(self) -> None:
         with mock.patch.object(ui_colors, "supports_color", return_value=False):
