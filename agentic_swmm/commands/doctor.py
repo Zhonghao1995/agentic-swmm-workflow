@@ -18,6 +18,7 @@ from agentic_swmm.commands.doctor_extension import (
     collect_llm_provider_status,
     collect_memory_store_status,
     collect_optout_status,
+    collect_sessions_db_status,
     fix_action_to_dict,
     group_identical_warns,
     grouped_warn_to_dict,
@@ -224,6 +225,19 @@ def _memory_dir(root: Path) -> Path:
     return root / "memory" / "modeling-memory"
 
 
+def _runs_dir(root: Path) -> Path:
+    """Resolve the active runs root.
+
+    Honours ``AISWMM_RUNS_ROOT`` for parity with ``aiswmm memory`` so a
+    user who redirects their runs directory sees the redirected
+    sessions.sqlite location in the doctor report.
+    """
+    override = os.environ.get("AISWMM_RUNS_ROOT")
+    if override:
+        return Path(override)
+    return root / "runs"
+
+
 def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     """The historical install-checks block, factored so the JSON path
     and the text path share one source of truth."""
@@ -312,6 +326,10 @@ def main(args: argparse.Namespace) -> int:
 
     memory_dir = _memory_dir(root)
     memory_stores = collect_memory_store_status(memory_dir)
+    # Append the cross-session SQLite store row (issue #204). It lives
+    # under runs/, not memory/modeling-memory/, so it has its own
+    # collector — but it renders in the same Memory stores section.
+    memory_stores.append(collect_sessions_db_status(_runs_dir(root)))
     optout_flags = collect_optout_status()
     llm_provider = collect_llm_provider_status()
 

@@ -67,6 +67,8 @@ class MemoryStoreStatus:
       would make the dependent verb fail.
     * ``"EMPTY"`` — store exists but has zero rows.
     * ``"MISSING"`` — file does not exist.
+    * ``"CORRUPT"`` — file exists but failed integrity validation
+      (issue #204, used by the sessions.sqlite row).
     """
 
     name: str
@@ -505,6 +507,127 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
 
 
 # ---------------------------------------------------------------------------
+# sessions.sqlite (issue #204)
+# ---------------------------------------------------------------------------
+
+
+def _format_size(size_bytes: int | None) -> str:
+    """Render a byte count as ``X.X KB`` / ``X.X MB`` / ``X.X GB``.
+
+    Sized down to KB for tiny dev databases; the doctor row prefers a
+    compact display that still tells the user roughly how much room
+    the store occupies on disk.
+    """
+    if size_bytes is None:
+        return ""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    if size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    if size_bytes < 1024 * 1024 * 1024:
+        return f"{size_bytes / (1024 * 1024):.1f} MB"
+    return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
+
+
+def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
+    """Return the doctor row for ``runs_dir / sessions.sqlite``.
+
+    Three branches per the issue spec:
+
+    * ``state == "absent"`` -> ``OK`` row with a "will be created on
+      first session" remediation hint (no real action required).
+    * ``state == "ok"`` -> ``OK`` row with row counts encoded as
+      ``row_count`` (sessions) + ``verified_count`` (messages) so the
+      shared renderer naturally produces
+      ``N sessions, M messages, X.X MB``.
+    * ``state == "corrupt"`` -> ``CORRUPT`` row with a one-line
+      remediation pointing at ``aiswmm memory repair-sessions``.
+    """
+    from agentic_swmm.memory import session_db
+
+    db_path = runs_dir / "sessions.sqlite"
+    report = session_db.integrity_check(db_path)
+
+    if report.state == "absent":
+        return MemoryStoreStatus(
+            name="sessions.sqlite",
+            path=db_path,
+            exists=False,
+            row_count=None,
+            verified_count=None,
+            last_modified_utc=None,
+            severity="OK",
+            remediation="file absent (will be created on first session)",
+        )
+
+    if report.state == "ok":
+        last = _last_modified_utc(db_path)
+        return MemoryStoreStatus(
+            name="sessions.sqlite",
+            path=db_path,
+            exists=True,
+            row_count=report.session_count,
+            verified_count=report.message_count,
+            last_modified_utc=last,
+            severity="OK",
+            # Stash the on-disk size in remediation? No: the renderer
+            # only appends remediation when severity != "OK". We need a
+            # dedicated formatter for this row, so we tag the size in a
+            # synthetic OK-state remediation that the custom renderer
+            # picks up.
+            remediation=None,
+        )
+
+    # state == "corrupt"
+    corrupt_pages = len(report.errors)
+    return MemoryStoreStatus(
+        name="sessions.sqlite",
+        path=db_path,
+        exists=True,
+        row_count=None,
+        verified_count=None,
+        last_modified_utc=_last_modified_utc(db_path),
+        severity="CORRUPT",
+        remediation=(
+            f"integrity check failed ({corrupt_pages} corrupt pages); "
+            "run aiswmm memory repair-sessions"
+        ),
+    )
+
+
+def render_sessions_sqlite_row(status: MemoryStoreStatus) -> str:
+    """Render the ``sessions.sqlite`` doctor row as a single line.
+
+    The shared :func:`render_memory_stores_section` renderer is fine
+    for the absent / corrupt branches, but the OK branch wants the
+    on-disk size appended ("X.X MB"). We compute that here and emit
+    one row in the exact shape the issue's acceptance criteria spell
+    out.
+    """
+    if status.severity == "CORRUPT":
+        detail = status.remediation or ""
+        return f"  CORRUPT {status.name:30} - {detail}".rstrip()
+    if not status.exists:
+        return f"  OK      {status.name:30} - {status.remediation}".rstrip()
+
+    # OK + exists: build the "N sessions, M messages, X.X MB" detail.
+    bits: list[str] = []
+    if status.row_count is not None:
+        word = "session" if status.row_count == 1 else "sessions"
+        bits.append(f"{status.row_count} {word}")
+    if status.verified_count is not None:
+        word = "message" if status.verified_count == 1 else "messages"
+        bits.append(f"{status.verified_count} {word}")
+    try:
+        size = status.path.stat().st_size
+        bits.append(_format_size(size))
+    except OSError:  # pragma: no cover - file vanished mid-render
+        pass
+    detail = ", ".join(bits)
+    return f"  OK      {status.name:30} - {detail}".rstrip()
+
+
+# ---------------------------------------------------------------------------
 # LLM provider (PRD-09)
 # ---------------------------------------------------------------------------
 
@@ -747,7 +870,7 @@ def render_memory_stores_section(
     """
     if not statuses:
         return "Memory stores: (no known stores)"
-    severities = {"OK": 0, "MISSING": 0, "PARTIAL": 0, "EMPTY": 0}
+    severities = {"OK": 0, "MISSING": 0, "PARTIAL": 0, "EMPTY": 0, "CORRUPT": 0}
     for s in statuses:
         severities[s.severity] = severities.get(s.severity, 0) + 1
     header_parts = [f"{n} {label}" for label, n in severities.items() if n]
@@ -757,6 +880,13 @@ def render_memory_stores_section(
     )
     lines = [header]
     for s in statuses:
+        # sessions.sqlite has its own renderer: it needs the on-disk
+        # size formatted compactly and the "N sessions, M messages"
+        # phrasing instead of the generic "N rows".
+        if s.name == "sessions.sqlite":
+            lines.append(render_sessions_sqlite_row(s))
+            continue
+
         bits: list[str] = []
         if s.row_count is not None:
             row_word = "row" if s.row_count == 1 else "rows"
