@@ -204,12 +204,19 @@ _SUMMARY_SEPARATOR = "─" * 25
 
 
 def _format_peak(payload: dict[str, Any]) -> str | None:
-    peak = payload.get("peak_flow_at_outfall")
+    # Schema matches what swmm-runner actually writes (see
+    # commands/run.py): metrics.peak with keys ``node`` / ``peak`` /
+    # ``time_hhmm``. Same schema PRD-183's audit Run Results section
+    # consumes, so the digest and the audit note agree on "peak".
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    peak = metrics.get("peak")
     if not isinstance(peak, dict):
         return None
     node = peak.get("node")
-    value = peak.get("value")
-    time = peak.get("time")
+    value = peak.get("peak")
+    time = peak.get("time_hhmm")
     if value is None or node is None or time is None:
         return None
     # Keep the precision present in the manifest; format only the
@@ -219,11 +226,28 @@ def _format_peak(payload: dict[str, Any]) -> str | None:
 
 
 def _format_continuity(payload: dict[str, Any]) -> str | None:
-    cont = payload.get("continuity_error")
+    # Schema matches the runner manifest: metrics.continuity has
+    # ``runoff_quantity`` and ``flow_routing`` sub-tables, each with
+    # a literal ``Continuity Error (%)`` key (mirrors the SWMM5
+    # report column header).
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    cont = metrics.get("continuity")
     if not isinstance(cont, dict):
         return None
-    runoff = cont.get("runoff")
-    routing = cont.get("routing")
+    runoff_table = cont.get("runoff_quantity")
+    routing_table = cont.get("flow_routing")
+    runoff = (
+        runoff_table.get("Continuity Error (%)")
+        if isinstance(runoff_table, dict)
+        else None
+    )
+    routing = (
+        routing_table.get("Continuity Error (%)")
+        if isinstance(routing_table, dict)
+        else None
+    )
     if runoff is None and routing is None:
         return None
     parts: list[str] = []

@@ -34,9 +34,14 @@ def _write_manifest(run_dir: Path, payload: dict) -> None:
 
 
 _MANIFEST_OK = {
-    "status": "PASS",
-    "peak_flow_at_outfall": {"node": "OUT_0", "value": 0.061, "time": "03:15"},
-    "continuity_error": {"runoff": -0.13, "routing": -0.004},
+    "return_code": 0,
+    "metrics": {
+        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15"},
+        "continuity": {
+            "runoff_quantity": {"Continuity Error (%)": -0.13},
+            "flow_routing": {"Continuity Error (%)": -0.004},
+        },
+    },
 }
 
 
@@ -80,16 +85,21 @@ class FinalSummaryTests(unittest.TestCase):
             _write_manifest(
                 r2,
                 {
-                    "status": "PASS",
-                    "peak_flow_at_outfall": {
-                        "node": "OUT_1",
-                        # 0.09 (not 0.090) — JSON / Python repr strips
-                        # the trailing zero on round-trip, so we pin
-                        # what callers actually see.
-                        "value": 0.09,
-                        "time": "04:30",
+                    "return_code": 0,
+                    "metrics": {
+                        "peak": {
+                            "node": "OUT_1",
+                            # 0.09 (not 0.090) — JSON / Python repr strips
+                            # the trailing zero on round-trip, so we pin
+                            # what callers actually see.
+                            "peak": 0.09,
+                            "time_hhmm": "04:30",
+                        },
+                        "continuity": {
+                            "runoff_quantity": {"Continuity Error (%)": 0.5},
+                            "flow_routing": {"Continuity Error (%)": 0.1},
+                        },
                     },
-                    "continuity_error": {"runoff": 0.5, "routing": 0.1},
                 },
             )
             block = render_final_summary([r1, r2])
