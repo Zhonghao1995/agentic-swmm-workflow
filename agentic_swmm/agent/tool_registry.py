@@ -854,22 +854,12 @@ from agentic_swmm.agent.tool_handlers.demo import (  # noqa: E402,F401
 #      ``mcp/<server>/server.js`` schemas).
 
 
-def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``audit_run`` args to ``swmm-experiment-audit`` MCP schema."""
-
-    run_dir = call.args.get("run_dir")
-    if not isinstance(run_dir, str) or not run_dir.strip():
-        return _failure(call, "missing required argument: run_dir")
-    args: dict[str, Any] = {"runDir": run_dir}
-    if call.args.get("workflow_mode"):
-        args["workflowMode"] = str(call.args["workflow_mode"])
-    if call.args.get("objective"):
-        args["objective"] = str(call.args["objective"])
-    return args
-
-
-_audit_run_tool = _make_mcp_routed_handler(
-    "swmm-experiment-audit", "audit_run", args_mapper=_audit_run_args
+# PRD #128 Phase 2 Group B: ``_audit_run_args`` / ``_audit_run_tool``
+# moved to ``tool_handlers/swmm_audit.py``. Re-exported here so import
+# paths stay stable for ``_build_tools`` and downstream code.
+from agentic_swmm.agent.tool_handlers.swmm_audit import (  # noqa: E402,F401
+    _audit_run_args,
+    _audit_run_tool,
 )
 
 
@@ -1333,87 +1323,24 @@ _plot_run_tool = _make_mcp_routed_handler(
 )
 
 
-def _network_qa_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``network_qa`` args to ``swmm-network.qa`` MCP schema.
-
-    The MCP server's ``qa`` tool only accepts ``networkJsonPath`` — the
-    optional ``report_json`` from the ToolSpec surface is ignored; we
-    still validate it so the planner gets the same error message it
-    used to. (The QA JSON ends up in the MCP server's stdout content.)
-    """
-
-    network_json = _required_repo_file(call, "network_json", suffix=".json")
-    if isinstance(network_json, dict):
-        return network_json
-    if call.args.get("report_json"):
-        report = _repo_output_path(str(call.args["report_json"]))
-        if report is None or report.suffix.lower() != ".json":
-            return _failure(call, "report_json must be a repository-relative .json path")
-    return {"networkJsonPath": str(network_json)}
-
-
-_network_qa_tool = _make_mcp_routed_handler(
-    "swmm-network", "qa", args_mapper=_network_qa_args
+# PRD #128 Phase 2 Group B: ``_network_qa_args`` / ``_network_qa_tool``
+# and ``_network_to_inp_args`` / ``_network_to_inp_tool`` moved to
+# ``tool_handlers/swmm_network.py``. Re-exported here so import paths
+# stay stable for ``_build_tools`` and downstream code.
+from agentic_swmm.agent.tool_handlers.swmm_network import (  # noqa: E402,F401
+    _network_qa_args,
+    _network_qa_tool,
+    _network_to_inp_args,
+    _network_to_inp_tool,
 )
 
 
-def _network_to_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``network_to_inp`` args to ``swmm-network.export_inp`` MCP schema.
-
-    The MCP tool only accepts ``networkJsonPath`` (writes the .inp into a
-    tmp directory) — ``out_path`` semantics from the legacy ToolSpec
-    surface are preserved by post-processing the MCP response in
-    ``_wrap_mcp_result``. The validation here keeps the planner-facing
-    error parity.
-    """
-
-    network_json = _required_repo_file(call, "network_json", suffix=".json")
-    if isinstance(network_json, dict):
-        return network_json
-    out_path = _repo_output_path(str(call.args["out_path"]))
-    if out_path is None or out_path.suffix.lower() not in {".inp", ".txt"}:
-        return _failure(call, "out_path must be a repository-relative .inp or .txt path")
-    return {"networkJsonPath": str(network_json)}
-
-
-_network_to_inp_tool = _make_mcp_routed_handler(
-    "swmm-network", "export_inp", args_mapper=_network_to_inp_args
-)
-
-
-def _format_rainfall_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``format_rainfall`` args to ``swmm-climate.format_rainfall`` MCP."""
-
-    input_csv = _required_repo_file(call, "input_csv", suffix=".csv")
-    if isinstance(input_csv, dict):
-        return input_csv
-    out_json = _repo_output_path(str(call.args["out_json"]))
-    out_timeseries = _repo_output_path(str(call.args["out_timeseries"]))
-    if out_json is None or out_json.suffix.lower() != ".json":
-        return _failure(call, "out_json must be a repository-relative .json path")
-    if out_timeseries is None or out_timeseries.suffix.lower() not in {".txt", ".dat"}:
-        return _failure(call, "out_timeseries must be a repository-relative .txt or .dat path")
-    args: dict[str, Any] = {
-        "inputCsvPath": str(input_csv),
-        "outputJsonPath": str(out_json),
-        "outputTimeseriesPath": str(out_timeseries),
-    }
-    snake_to_camel = {
-        "series_name": "seriesName",
-        "timestamp_column": "timestampColumn",
-        "value_column": "valueColumn",
-        "value_units": "valueUnits",
-        "unit_policy": "unitPolicy",
-        "timestamp_policy": "timestampPolicy",
-    }
-    for snake, camel in snake_to_camel.items():
-        if call.args.get(snake):
-            args[camel] = str(call.args[snake])
-    return args
-
-
-_format_rainfall_tool = _make_mcp_routed_handler(
-    "swmm-climate", "format_rainfall", args_mapper=_format_rainfall_args
+# PRD #128 Phase 2 Group B: ``_format_rainfall_args`` / ``_format_rainfall_tool``
+# moved to ``tool_handlers/swmm_climate.py``. Re-exported here so import
+# paths stay stable for ``_build_tools`` and downstream code.
+from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
+    _format_rainfall_args,
+    _format_rainfall_tool,
 )
 
 

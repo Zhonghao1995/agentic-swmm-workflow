@@ -42,6 +42,28 @@ _MIGRATED_FAMILIES = [
             "record_fact",
         ),
     ),
+    # PRD #128 Phase 2 Group B (network / climate / audit). See
+    # ``tool_handlers/swmm_network.py``, ``swmm_climate.py``, ``swmm_audit.py``.
+    (
+        "swmm_network",
+        (
+            "_network_qa_args",
+            "_network_qa_tool",
+            "_network_to_inp_args",
+            "_network_to_inp_tool",
+        ),
+        ("network_qa", "network_to_inp"),
+    ),
+    (
+        "swmm_climate",
+        ("_format_rainfall_args", "_format_rainfall_tool"),
+        ("format_rainfall",),
+    ),
+    (
+        "swmm_audit",
+        ("_audit_run_args", "_audit_run_tool"),
+        ("audit_run",),
+    ),
 ]
 
 
