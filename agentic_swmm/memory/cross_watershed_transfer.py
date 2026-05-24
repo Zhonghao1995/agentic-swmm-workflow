@@ -692,6 +692,7 @@ def _default_repo_root(calibration_store: Path) -> Path:
     return store.parent.parent.parent if store.parent.parent.parent != Path("/") else Path.cwd()
 
 
+@on_exception_return_default(default=None, scope="cross_watershed_trace")
 def _maybe_log_trace(
     run_dir: Path | None,
     *,
@@ -703,31 +704,30 @@ def _maybe_log_trace(
 
     Done as a private helper so the policy logic above stays linear
     and easy to read; the trace is *adjunct*, not part of the
-    decision. Any I/O failure here is swallowed — a memory store that
-    cannot be appended to must never break the recommendation path.
+    decision. The ``@on_exception_return_default`` boundary (issue
+    #207) preserves the never-raise contract — a memory store that
+    cannot be appended to must never break the recommendation path —
+    and surfaces failures under ``scope="cross_watershed_trace"``.
     """
     if run_dir is None:
         return
-    try:
-        # Lazy import keeps the agent layer optional for pure-memory
-        # callers (e.g. a future MCP tool that wants recommendations
-        # without pulling the planner's transitive deps).
-        from agentic_swmm.agent.memory_context import MemoryContext
-        from agentic_swmm.agent.memory_trace import log_memory_decision
+    # Lazy import keeps the agent layer optional for pure-memory
+    # callers (e.g. a future MCP tool that wants recommendations
+    # without pulling the planner's transitive deps).
+    from agentic_swmm.agent.memory_context import MemoryContext
+    from agentic_swmm.agent.memory_trace import log_memory_decision
 
-        context = MemoryContext(
-            summary=f"cross-watershed transfer: {evidence_count} recommendation(s)",
-            provenance={"decision_point": DECISION_POINT},
-        )
-        log_memory_decision(
-            run_dir=Path(run_dir),
-            decision_point=DECISION_POINT,
-            context=context,
-            decision=decision,
-            confidence=confidence,
-        )
-    except Exception:  # pragma: no cover - audit must never break dispatch
-        logger.debug("cross_watershed_transfer: trace logging failed", exc_info=True)
+    context = MemoryContext(
+        summary=f"cross-watershed transfer: {evidence_count} recommendation(s)",
+        provenance={"decision_point": DECISION_POINT},
+    )
+    log_memory_decision(
+        run_dir=Path(run_dir),
+        decision_point=DECISION_POINT,
+        context=context,
+        decision=decision,
+        confidence=confidence,
+    )
 
 
 __all__ = [
