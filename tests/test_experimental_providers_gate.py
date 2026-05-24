@@ -72,3 +72,59 @@ class TestGateNoticeForLegacyConfig:
         notice = experimental_providers.gate_notice_for_legacy_config()
         assert isinstance(notice, str)
         assert notice.strip()
+
+
+class TestSharedTruthyHelper:
+    """Issue #191: gate predicate consumes the shared truthy helper.
+
+    ``experimental_providers`` must not maintain its own ``_TRUTHY``
+    membership set. The truthy-string contract lives in
+    ``agentic_swmm.agent.feature_flags`` so a single edit propagates
+    to every ``AISWMM_*`` boolean env var.
+    """
+
+    def test_module_does_not_define_local_truthy_set(self):
+        # Module attribute is the contract: no local ``_TRUTHY`` set
+        # to drift out of sync with ``feature_flags``.
+        assert not hasattr(experimental_providers, "_TRUTHY")
+
+    def test_claude_sdk_enabled_delegates_to_feature_flags_helper(
+        self, monkeypatch
+    ):
+        # Patch the shared helper at its definition site and observe
+        # that ``claude_sdk_enabled`` routes through it. If the gate
+        # ever reverts to a local lookup, the patched stub would be
+        # bypassed and this test would fail.
+        from agentic_swmm.agent import feature_flags
+
+        calls: list[str | None] = []
+
+        def _spy(value: str | None) -> bool:
+            calls.append(value)
+            return True
+
+        monkeypatch.setattr(feature_flags, "is_truthy", _spy, raising=True)
+        monkeypatch.setenv(_ENV_VAR, "anything-the-spy-returns-true")
+        assert experimental_providers.claude_sdk_enabled() is True
+        assert calls, "claude_sdk_enabled did not consult feature_flags.is_truthy"
+
+
+class TestPublicIsTruthyHelper:
+    """Issue #191: promote the truthy helper to a public surface."""
+
+    def test_feature_flags_exposes_public_is_truthy(self):
+        from agentic_swmm.agent import feature_flags
+
+        assert callable(getattr(feature_flags, "is_truthy", None))
+
+    def test_public_helper_accepts_all_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in ("1", "true", "TRUE", "yes", "Yes", "on", "ON"):
+            assert feature_flags.is_truthy(value) is True, value
+
+    def test_public_helper_rejects_non_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in (None, "", "0", "false", "no", "off", "maybe", "  "):
+            assert feature_flags.is_truthy(value) is False, value
