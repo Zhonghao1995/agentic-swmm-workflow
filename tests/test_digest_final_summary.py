@@ -83,7 +83,10 @@ class FinalSummaryTests(unittest.TestCase):
                     "status": "PASS",
                     "peak_flow_at_outfall": {
                         "node": "OUT_1",
-                        "value": 0.090,
+                        # 0.09 (not 0.090) — JSON / Python repr strips
+                        # the trailing zero on round-trip, so we pin
+                        # what callers actually see.
+                        "value": 0.09,
                         "time": "04:30",
                     },
                     "continuity_error": {"runoff": 0.5, "routing": 0.1},
@@ -93,7 +96,7 @@ class FinalSummaryTests(unittest.TestCase):
         self.assertIn(str(r1), block)
         self.assertIn(str(r2), block)
         self.assertIn("Peak: 0.061 CMS @ 03:15 at OUT_0", block)
-        self.assertIn("Peak: 0.090 CMS @ 04:30 at OUT_1", block)
+        self.assertIn("Peak: 0.09 CMS @ 04:30 at OUT_1", block)
 
     def test_missing_peak_or_continuity_falls_through_gracefully(self) -> None:
         # A partial manifest should still produce a block (so the

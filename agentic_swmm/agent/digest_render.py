@@ -10,6 +10,7 @@ own the IO.
 """
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -171,4 +172,92 @@ def render_step(
     return row
 
 
-__all__ = ["brief_result", "render_step"]
+# ---------------------------------------------------------------------------
+# Final summary block (session-end)
+# ---------------------------------------------------------------------------
+#
+# After the planner finishes its turn the digest renderer prints a
+# short block that surfaces the few numbers a stormwater modeller
+# wants to see at a glance: peak flow at the outfall, runoff /
+# routing continuity, run dir. Source fields come from manifest.json
+# (PRD-183 ``Run Results`` section). If a session produced no SWMM
+# run, the block is omitted entirely.
+
+_SUMMARY_SEPARATOR = "─" * 25
+
+
+def _format_peak(payload: dict[str, Any]) -> str | None:
+    peak = payload.get("peak_flow_at_outfall")
+    if not isinstance(peak, dict):
+        return None
+    node = peak.get("node")
+    value = peak.get("value")
+    time = peak.get("time")
+    if value is None or node is None or time is None:
+        return None
+    # Keep the precision present in the manifest; format only the
+    # composition string. Trailing zeros on a float coming out of
+    # JSON survive the round-trip.
+    return f"Peak: {value} CMS @ {time} at {node}"
+
+
+def _format_continuity(payload: dict[str, Any]) -> str | None:
+    cont = payload.get("continuity_error")
+    if not isinstance(cont, dict):
+        return None
+    runoff = cont.get("runoff")
+    routing = cont.get("routing")
+    if runoff is None and routing is None:
+        return None
+    parts: list[str] = []
+    if runoff is not None:
+        parts.append(f"runoff {runoff} %")
+    if routing is not None:
+        parts.append(f"routing {routing} %")
+    return f"Continuity: {', '.join(parts)}"
+
+
+def _block_for_run(run_dir: Path) -> str:
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.exists():
+        return ""
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    lines: list[str] = []
+    peak_line = _format_peak(payload)
+    if peak_line is not None:
+        lines.append(peak_line)
+    cont_line = _format_continuity(payload)
+    if cont_line is not None:
+        lines.append(cont_line)
+    lines.append(f"Run dir: {run_dir}")
+    return "\n".join(lines)
+
+
+def render_final_summary(run_dirs: list[Path]) -> str:
+    """Return the digest's session-end summary block.
+
+    ``run_dirs`` is the list of SWMM run directories the session
+    produced (in order). Each dir is rendered as its own peak /
+    continuity / run-dir trio, separated by a single dashed line.
+    A run_dir without ``manifest.json`` is skipped silently — the
+    PRD says a chat-only session contributes no block. When the
+    final list of rendered blocks is empty, the function returns
+    the empty string so callers can ``if block: print(block)``
+    without further branching.
+    """
+    rendered: list[str] = []
+    for run_dir in run_dirs:
+        block = _block_for_run(run_dir)
+        if block:
+            rendered.append(block)
+    if not rendered:
+        return ""
+    return _SUMMARY_SEPARATOR + "\n" + ("\n" + _SUMMARY_SEPARATOR + "\n").join(rendered)
+
+
+__all__ = ["brief_result", "render_step", "render_final_summary"]
