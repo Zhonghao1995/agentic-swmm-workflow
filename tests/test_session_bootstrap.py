@@ -16,6 +16,7 @@ from unittest import mock
 import yaml
 
 from agentic_swmm.agent.session_bootstrap import (
+    bootstrap_session_dir,
     display_path,
     infer_case_slug,
     new_interactive_session,
@@ -171,6 +172,60 @@ class InferCaseSlugTests(unittest.TestCase):
             ):
                 slug = infer_case_slug("run the mini-watershed analysis")
         self.assertEqual(slug, "mini-watershed")
+
+
+class BootstrapSessionDirTests(unittest.TestCase):
+    """Issue #205 / Phase ``bootstrap_session_dir``.
+
+    Produces the per-turn run/chat directory under the day's date_dir.
+    Formerly ``runtime_loop._new_turn_dir`` — extracting it here lets
+    the phase be exercised in isolation (no need to mock the entire
+    ``run_interactive_shell`` graph).
+
+    Contract:
+
+    - returned path is ``<date_dir>/HHMMSS_<case-slug>_<kind>``,
+    - if that exact path exists, a ``_2`` / ``_3`` / ... suffix is
+      appended until a fresh name is found (no clobbering),
+    - the path is *not* created on disk — that's the caller's
+      responsibility (preserves the prior ``_new_turn_dir`` contract).
+    """
+
+    def test_returns_path_under_date_dir(self) -> None:
+        with TemporaryDirectory() as tmp:
+            date_dir = Path(tmp)
+            path = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
+            self.assertEqual(path.parent, date_dir)
+
+    def test_path_has_case_slug_and_kind(self) -> None:
+        with TemporaryDirectory() as tmp:
+            date_dir = Path(tmp)
+            path = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
+            # Format: HHMMSS_<slug>_<kind>
+            self.assertRegex(path.name, r"^\d{6}_mybasin_run$")
+
+    def test_chat_kind_renders_chat_suffix(self) -> None:
+        with TemporaryDirectory() as tmp:
+            date_dir = Path(tmp)
+            path = bootstrap_session_dir(date_dir, "what skills do you have?", kind="chat")
+            self.assertTrue(path.name.endswith("_chat"))
+
+    def test_collision_appends_counter(self) -> None:
+        with TemporaryDirectory() as tmp:
+            date_dir = Path(tmp)
+            first = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
+            # Materialise the first dir so the second call collides.
+            first.mkdir(parents=True)
+            second = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
+            self.assertNotEqual(first, second)
+            self.assertTrue(second.name.endswith("_2"))
+
+    def test_does_not_create_dir_on_disk(self) -> None:
+        # Caller is responsible for mkdir; the phase is pure path-making.
+        with TemporaryDirectory() as tmp:
+            date_dir = Path(tmp)
+            path = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
+            self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":
