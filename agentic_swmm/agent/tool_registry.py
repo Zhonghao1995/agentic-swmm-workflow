@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 import re
-import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -13,24 +11,19 @@ from typing import Any, Callable
 from agentic_swmm.agent import mcp_cache, mcp_client
 from agentic_swmm.agent.mcp_client import McpClientError
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
-from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _repo_output_path,
     _repo_path,
-    _run_cli_tool,
     _run_process_tool,
-    _run_script_tool,
     _safe_name,
-    _tail,
 )
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR, NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, _find_inp, _find_out, _read_manifest, rainfall_timeseries_options
-from agentic_swmm.config import runtime_state_path
 from agentic_swmm.providers.base import ProviderToolCall
-from agentic_swmm.runtime.registry import discover_skills, load_mcp_registry
-from agentic_swmm.utils.paths import repo_root, script_path
+from agentic_swmm.runtime.registry import load_mcp_registry
+from agentic_swmm.utils.paths import repo_root
 
 
 # CONCURRENCY-OWNER: PRD-GF-CORE
@@ -500,336 +493,45 @@ def _build_tools() -> dict[str, ToolSpec]:
     return {spec.name: spec for spec in specs}
 
 
-def _doctor_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    return _run_cli_tool(call, session_dir, ["doctor"])
+# PRD #128 Phase 2 Group C: ``_doctor_tool`` and ``_retrieve_memory_tool``
+# moved to ``tool_handlers/introspection.py``. Re-exported here so import
+# paths stay stable.
+from agentic_swmm.agent.tool_handlers.introspection import (  # noqa: E402,F401
+    _doctor_tool,
+    _retrieve_memory_tool,
+)
 
 
-def _request_expert_review_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Thin shim around :func:`agentic_swmm.hitl.request_expert_review`.
-
-    The real handler lives in the ``hitl`` package so the tool wiring
-    and the pause/prompt/record logic can evolve independently. The
-    shim is the integration seam the registry calls through.
-    """
-    from agentic_swmm.hitl.request_expert_review import request_expert_review
-
-    return request_expert_review(call, session_dir)
-
-
-# CONCURRENCY-OWNER: PRD-GF-L5
-def _build_default_llm_provider() -> Any:
-    """Construct the LLM provider used by the L5 enumerator.
-
-    Late import so this file stays free of the provider import in
-    environments where the optional LLM extras are not installed. The
-    provider seam matches what the planner uses (``respond_with_tools``).
-
-    PRD-09: construction is routed through ``make_provider`` so the L5
-    enumerator honours ``provider.default`` (``openai`` or
-    ``claude_sdk``) instead of hard-coding the OpenAI backend.
-    """
-    from agentic_swmm.config import load_config
-    from agentic_swmm.providers.factory import make_provider
-
-    config = load_config()
-    provider_name = config.get("provider.default", "openai")
-    model = config.get(f"{provider_name}.model")
-    if not model and provider_name == "openai":
-        model = "gpt-5.5-2026-04-23"
-    return make_provider(provider_name, model=model)
+# PRD #128 Phase 2 Group C: HITL / L5 gap-fill governance handlers moved
+# to ``tool_handlers/gap_fill.py``. Re-exported here so import paths stay
+# stable — ``_is_tty_for_l5`` is monkeypatched by the L5 headless-block
+# tests at ``agentic_swmm.agent.tool_registry._is_tty_for_l5`` and that
+# path must keep resolving.
+from agentic_swmm.agent.tool_handlers.gap_fill import (  # noqa: E402,F401
+    _build_default_llm_provider,
+    _is_tty_for_l5,
+    _request_expert_review_tool,
+    _request_gap_judgement_tool,
+    _restitch_l5_fields_in_ledger,
+)
 
 
-def _is_tty_for_l5() -> bool:
-    """Return whether stdin+stdout are both TTYs (the L5 prompt seam).
+# PRD #128 Phase 2 Group C: runtime file/repo/skill ops moved to
+# ``tool_handlers/runtime_ops.py`` (together with the
+# ``_patch_paths`` / ``_normalize_search_glob`` helpers). Re-exported
+# here so import paths stay stable.
+from agentic_swmm.agent.tool_handlers.runtime_ops import (  # noqa: E402,F401
+    _apply_patch_tool,
+    _git_diff_tool,
+    _list_dir_tool,
+    _list_skills_tool,
+    _normalize_search_glob,
+    _patch_paths,
+    _read_file_tool,
+    _read_skill_tool,
+    _search_files_tool,
+)
 
-    Pulled out as a helper so tests can monkeypatch it without faking
-    sys.stdin.isatty across an entire process.
-    """
-    import sys as _sys
-
-    return _sys.stdin.isatty() and _sys.stdout.isatty()
-
-
-def _request_gap_judgement_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Handler for the ``request_gap_judgement`` ToolSpec (PRD-GF-L5).
-
-    Routes the call through the enumerator + per-gap UI + recorder.
-    The flow:
-
-    1. Validate the three required arguments (``gap_kind``,
-       ``context``, ``evidence_ref``). Missing args return
-       ``{ok: false}`` with a clear summary — the planner can retry
-       with corrected args.
-    2. Ask the LLM to enumerate N candidates with tradeoffs cited
-       via :func:`enumerate_candidates`. The call is recorded under
-       ``09_audit/llm_calls.jsonl`` with ``caller=gap_fill.enumerator``.
-    3. Show the per-gap pause UI via :func:`prompt_judgement`. The
-       user picks one candidate and optionally supplies a free-form
-       note. Non-TTY contexts raise :class:`JudgementBlocked` —
-       judgement is never automated.
-    4. Build an L5 :class:`GapDecision` and persist it via
-       :func:`record_gap_decisions`. The decision carries
-       ``resume_mode="llm_replan"`` and
-       ``enumerator_llm_call_id`` for round-trip lookup.
-    5. Return ``{ok, decision_id, resume_mode, gap_kind, summary}``
-       so the planner's replan-injection branch can pull the decision
-       into the next LLM turn.
-    """
-    # Import the *modules* (not the symbols) so test-side
-    # ``mock.patch("agentic_swmm.gap_fill.llm_enumerator.enumerate_candidates", ...)``
-    # rebinds the attribute the handler actually reads. Importing the
-    # names directly would late-bind once into this function's locals
-    # and ignore the patch.
-    from agentic_swmm.gap_fill import (
-        llm_enumerator as _llm_enumerator,
-        ui_per_gap as _ui_per_gap,
-    )
-    from agentic_swmm.gap_fill.protocol import (
-        GapDecision,
-        ProposerInfo,
-        new_decision_id,
-        new_gap_id,
-    )
-    from agentic_swmm.gap_fill.recorder import record_gap_decisions
-
-    EnumeratorParseError = _llm_enumerator.EnumeratorParseError
-    JudgementBlocked = _ui_per_gap.JudgementBlocked
-    JudgementDeferred = _ui_per_gap.JudgementDeferred
-
-    gap_kind = str(call.args.get("gap_kind") or "").strip()
-    evidence_ref = str(call.args.get("evidence_ref") or "").strip()
-    raw_context = call.args.get("context")
-    if not gap_kind:
-        return _failure(call, "gap_kind is required")
-    if not evidence_ref:
-        return _failure(call, "evidence_ref is required")
-    if not isinstance(raw_context, dict):
-        return _failure(call, "context is required and must be an object")
-    context = dict(raw_context)
-
-    # Build the default provider lazily — the tests stub
-    # ``enumerate_candidates`` before this attribute is even read, so
-    # the OpenAI SDK never needs to be available in CI.
-    try:
-        provider = _build_default_llm_provider()
-    except Exception:  # pragma: no cover - defensive: tests stub before this matters
-        provider = None
-    try:
-        candidates, enumerator_call_id = _llm_enumerator.enumerate_candidates(
-            gap_kind=gap_kind,
-            context=context,
-            evidence_ref=evidence_ref,
-            n_candidates=3,
-            llm_provider=provider,
-            run_dir=session_dir,
-        )
-    except EnumeratorParseError as exc:
-        return _failure(call, f"enumerator parse error: {exc}")
-    except Exception as exc:  # pragma: no cover - defensive
-        return _failure(call, f"enumerator failed: {exc}")
-
-    try:
-        user_pick_id, user_note = _ui_per_gap.prompt_judgement(
-            gap_kind=gap_kind,
-            candidates=candidates,
-            evidence_ref=evidence_ref,
-            llm_call_id=enumerator_call_id,
-            is_tty=_is_tty_for_l5(),
-        )
-    except JudgementDeferred as exc:
-        return {
-            "tool": call.name,
-            "args": dict(call.args),
-            "ok": False,
-            "summary": f"judgement deferred: {exc}",
-        }
-    except JudgementBlocked as exc:
-        # L5 always blocks in headless mode — surface a clean,
-        # actionable failure so a CI run aborts with intent.
-        return {
-            "tool": call.name,
-            "args": dict(call.args),
-            "ok": False,
-            "summary": (
-                f"L5 judgement blocked: {exc}. L5 is human-only and cannot "
-                "be auto-approved or registry-resolved."
-            ),
-        }
-
-    from agentic_swmm.gap_fill.protocol import _now_utc_iso  # type: ignore
-
-    decision_id = new_decision_id()
-    gap_id = new_gap_id()
-    decision = GapDecision(
-        decision_id=decision_id,
-        gap_id=gap_id,
-        severity="L5",
-        # ``field`` is the L1/L3 argument-name slot. For L5 the closest
-        # analogue is the gap_kind, so we store it there too — gives the
-        # provenance ledger something to grep on without inventing a new
-        # field shape.
-        field=gap_kind,
-        # Synthetic proposer info: L5 has no machine-side proposer (the
-        # enumerator presents options but never chooses). ``source="human"``
-        # and ``confidence="HIGH"`` reflect "the human made the call".
-        proposer=ProposerInfo(
-            source="human",
-            confidence="HIGH",
-            llm_call_id=enumerator_call_id,
-        ),
-        proposed_value=None,
-        final_value=user_pick_id,
-        proposer_overridden=False,
-        decided_by="human",
-        decided_at=_now_utc_iso(),
-        resume_mode="llm_replan",
-        human_decisions_ref=None,
-        gap_kind=gap_kind,
-        candidates=tuple(candidates),
-        user_pick=user_pick_id,
-        user_note=user_note,
-        enumerator_llm_call_id=enumerator_call_id,
-    )
-
-    try:
-        # GF-CORE's recorder rebuilds the GapDecision when it
-        # populates ``human_decisions_ref``, which drops the L5
-        # extension fields. We capture the returned (enriched) record
-        # so we can restore the L5 block in the ledger below. The
-        # cross-link in ``experiment_provenance.json`` is still
-        # correct — only the L5-specific keys in ``gap_decisions.json``
-        # need re-stitching. This keeps GF-CORE's recorder untouched.
-        enriched = record_gap_decisions(session_dir, [decision])
-    except Exception as exc:  # pragma: no cover - defensive
-        return _failure(call, f"recorder failed: {exc}")
-
-    _restitch_l5_fields_in_ledger(
-        session_dir=session_dir,
-        decision_id=enriched[0].decision_id,
-        human_decisions_ref=enriched[0].human_decisions_ref,
-        l5_decision=decision,
-    )
-
-    return {
-        "tool": call.name,
-        "args": dict(call.args),
-        "ok": True,
-        "decision_id": decision_id,
-        "resume_mode": "llm_replan",
-        "gap_kind": gap_kind,
-        "summary": (
-            f"L5 judgement recorded for gap_kind={gap_kind!r}; "
-            f"user_pick={user_pick_id!r}"
-        ),
-    }
-
-
-# CONCURRENCY-OWNER: PRD-GF-L5
-def _restitch_l5_fields_in_ledger(
-    *,
-    session_dir: Path,
-    decision_id: str,
-    human_decisions_ref: str | None,
-    l5_decision: Any,
-) -> None:
-    """Re-write the L5-specific fields back into ``gap_decisions.json``.
-
-    The GF-CORE recorder rebuilds the :class:`GapDecision` when it
-    populates ``human_decisions_ref``, and the rebuild drops the L5
-    extension fields (``gap_kind`` / ``candidates`` / ``user_pick`` /
-    ``user_note`` / ``enumerator_llm_call_id``). We avoid touching
-    GF-CORE's module by post-processing the ledger here: locate the
-    record by ``decision_id`` and splice the L5 block back in. The
-    write goes through tmp-file + ``os.replace`` for atomicity.
-    """
-    import json as _json
-    import os as _os
-    import tempfile as _tempfile
-
-    ledger_path = Path(session_dir) / "09_audit" / "gap_decisions.json"
-    if not ledger_path.is_file():
-        return
-    try:
-        payload = _json.loads(ledger_path.read_text(encoding="utf-8"))
-    except (OSError, _json.JSONDecodeError):
-        return
-    if not isinstance(payload, dict):
-        return
-    decisions_list = payload.get("decisions")
-    if not isinstance(decisions_list, list):
-        return
-
-    l5_block = {
-        "gap_kind": l5_decision.gap_kind,
-        "candidates": [c.to_dict() for c in l5_decision.candidates],
-        "user_pick": l5_decision.user_pick,
-        "user_note": l5_decision.user_note,
-        "enumerator_llm_call_id": l5_decision.enumerator_llm_call_id,
-    }
-    found = False
-    for entry in decisions_list:
-        if isinstance(entry, dict) and entry.get("decision_id") == decision_id:
-            entry.update(l5_block)
-            # Preserve the recorder's human_decisions_ref — the
-            # ``enriched`` decision already carries it, but if the
-            # caller passed an override use that.
-            if human_decisions_ref is not None:
-                entry["human_decisions_ref"] = human_decisions_ref
-            found = True
-            break
-    if not found:
-        return
-
-    # Atomic write — same pattern as the GF-CORE recorder.
-    fd, tmp_name = _tempfile.mkstemp(
-        prefix=ledger_path.name + ".",
-        suffix=".tmp",
-        dir=str(ledger_path.parent),
-    )
-    try:
-        with _os.fdopen(fd, "w", encoding="utf-8") as handle:
-            _json.dump(payload, handle, indent=2, sort_keys=True)
-            handle.flush()
-            _os.fsync(handle.fileno())
-        _os.replace(tmp_name, ledger_path)
-    except Exception:
-        try:
-            _os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
-
-
-def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    patch = str(call.args.get("patch") or "")
-    if not patch.strip():
-        return _failure(call, "patch is required")
-    touched = _patch_paths(patch)
-    if not touched:
-        return _failure(call, "patch did not contain recognizable file paths")
-    allow_evidence = bool(call.args.get("allow_evidence_edits"))
-    for path in touched:
-        full = _repo_path(path)
-        if full is None:
-            return _failure(call, f"patch path must be inside repository: {path}")
-        if not is_allowed_write_path(full):
-            return _failure(call, f"patch path is blocked by policy: {path}")
-        if is_evidence_path(full) and not allow_evidence:
-            return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
-    patch_path = session_dir / "tool_results" / "apply_patch.diff"
-    patch_path.parent.mkdir(parents=True, exist_ok=True)
-    patch_path.write_text(patch, encoding="utf-8")
-    proc = subprocess.run(["git", "apply", str(patch_path)], cwd=repo_root(), capture_output=True, text=True)
-    return {
-        "tool": call.name,
-        "args": {"path_count": len(touched), "allow_evidence_edits": allow_evidence},
-        "ok": proc.returncode == 0,
-        "return_code": proc.returncode,
-        "path": str(patch_path),
-        "stdout_tail": _tail(proc.stdout),
-        "stderr_tail": _tail(proc.stderr),
-        "summary": f"applied patch to {len(touched)} path(s)" if proc.returncode == 0 else "patch failed",
-    }
 
 
 # PRD #128: ``_demo_acceptance_tool`` moved to ``tool_handlers/demo.py``.
@@ -883,43 +585,10 @@ _summarize_memory_tool = _make_mcp_routed_handler(
 )
 
 
-# -- swmm-rag-memory retrieval (Issue #124 Part A) ----------------------------
-#
-# The skill ships ``skills/swmm-rag-memory/scripts/retrieve_memory.py`` which
-# already exposes a stable CLI; the agent invokes it via a subprocess so we
-# don't pull the embedding library into the planner's hot path. Output is the
-# script's JSON document (or markdown via ``--format markdown``); we return
-# its trailing tail in ``stdout_tail`` so the planner sees citations.
-
-_RAG_SKILL_DIR_RELATIVE = ("skills", "swmm-rag-memory", "scripts")
-
-
-def _retrieve_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Shell out to the swmm-rag-memory ``retrieve_memory.py`` script.
-
-    Why a subprocess and not an in-process import? The retriever pulls in
-    ``rag_memory_lib`` which lives under ``skills/swmm-rag-memory/scripts/``
-    (not on the package import path) and optionally loads embedding vectors.
-    Subprocess isolation keeps a corrupt index from poisoning the planner's
-    Python state mid-turn.
-    """
-    query = call.args.get("query")
-    if not isinstance(query, str) or not query.strip():
-        return _failure(call, "missing required argument: query")
-    script_path = repo_root().joinpath(*_RAG_SKILL_DIR_RELATIVE, "retrieve_memory.py")
-    if not script_path.is_file():
-        return _failure(call, f"retrieve_memory script not found at {script_path}")
-    cli_args: list[str] = [str(script_path), "--query", query]
-    top_k = call.args.get("top_k")
-    if isinstance(top_k, int) and top_k > 0:
-        cli_args.extend(["--top-k", str(top_k)])
-    retriever = call.args.get("retriever")
-    if retriever in ("keyword", "hybrid"):
-        cli_args.extend(["--retriever", retriever])
-    project = call.args.get("project")
-    if isinstance(project, str) and project.strip():
-        cli_args.extend(["--project", project])
-    return _run_script_tool(call, session_dir, cli_args)
+# PRD #128 Phase 2 Group C: ``_retrieve_memory_tool`` (the swmm-rag-memory
+# retriever shim from Issue #124 Part A) moved to
+# ``tool_handlers/introspection.py`` along with the ``_RAG_SKILL_DIR_RELATIVE``
+# private constant. Re-exported above via the introspection module.
 
 
 # -- Memory recall tools (PRD M1, M6, M7.1) -----------------------------------
@@ -938,30 +607,9 @@ from agentic_swmm.agent.tool_handlers.swmm_memory import (  # noqa: E402,F401
 )
 
 
-def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    path = _repo_path(str(call.args["path"]))
-    if path is None:
-        return _failure(call, "refusing to read outside repository")
-    if not path.exists() or not path.is_file():
-        return _failure(call, f"file not found: {path}")
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read {path.relative_to(repo_root())}"}
-
-
-def _list_skills_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    skills = [{"name": str(r.get("name")), "enabled": bool(r.get("enabled", True)), "path": str(r.get("path"))} for r in discover_skills()]
-    return {"tool": call.name, "args": call.args, "ok": True, "skills": skills, "summary": f"{len(skills)} skills available", "excerpt": json.dumps(skills, indent=2)[:4000]}
-
-
-def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    skill_name = str(call.args["skill_name"])
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", skill_name):
-        return _failure(call, "invalid skill name")
-    path = _repo_path(f"skills/{skill_name}/SKILL.md")
-    if path is None or not path.exists() or not path.is_file():
-        return _failure(call, f"skill not found: {skill_name}")
-    text = path.read_text(encoding="utf-8", errors="replace")
-    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read skill {skill_name}"}
+# PRD #128 Phase 2 Group C: ``_read_file_tool``, ``_list_skills_tool``,
+# ``_read_skill_tool`` moved to ``tool_handlers/runtime_ops.py`` (read-only
+# file / skill introspection family). Re-exported above via runtime_ops.
 
 
 def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -1106,73 +754,10 @@ from agentic_swmm.agent.workflow_modes import all_modes as _all_modes  # noqa: E
 _VALID_MODE_ENUM = frozenset(_all_modes())
 
 
-def _build_response_for_mode(
-    call: ToolCall, mode: str, goal: str, provided: dict[str, str]
-) -> dict[str, Any]:
-    """Validate inputs for ``mode`` and build the tool's response payload.
-
-    Shared between the explicit-mode short-circuit (when the LLM passed
-    ``mode``) and the legacy keyword-fallback path. The ``provided`` dict
-    is read-only here; auto-infer of ``run_dir`` from global state is the
-    caller's responsibility and runs only in the keyword-fallback path.
-
-    PRD-04. The per-mode ``required_inputs`` / ``recommended_next_tools``
-    / ``evidence_boundary`` triples live on adapter classes in
-    ``agentic_swmm.agent.workflow_modes``. The registry is the single
-    source of truth; this function only adds rules that depend on the
-    caller's state (the goal-text-driven baseline_run_dir addendum for
-    comparison audits) or on the ``needs_user_inputs`` sentinel that
-    the keyword fallback emits when no registered mode applies.
-    """
-
-    # Late import keeps the registry an optional dependency of this
-    # module (avoiding an import cycle with the planner package).
-    from agentic_swmm.agent.workflow_modes import get_mode_spec
-
-    spec = get_mode_spec(mode)
-    if spec is not None:
-        required = list(spec.required_inputs)
-        next_tools = list(spec.recommended_next_tools)
-        boundary = spec.evidence_boundary
-        # Goal-text-dependent rule: audit-comparison appends a second
-        # run dir to required inputs. Lives at the call site because
-        # it depends on the goal string, not on declarative spec state.
-        if mode == "audit_only_or_comparison" and (
-            "compare" in goal or "comparison" in goal or "比较" in goal
-        ):
-            required.append("baseline_run_dir")
-    else:
-        # ``needs_user_inputs`` is a sentinel the keyword fallback emits
-        # when no registered mode applies. It is not a workflow the
-        # agent dispatches; it is a prompt asking the user to provide
-        # either a prepared INP or the full-build input set.
-        required = ["inp_path or full modular build inputs"]
-        next_tools = []
-        boundary = "No SWMM execution should start until a prepared INP or complete build inputs are provided."
-
-    missing = [item for item in required if item not in provided]
-    if "inp_path or full modular build inputs" in required:
-        missing = ["SWMM INP path, or network_json + subcatchments_csv + rainfall_input + landuse_input + soil_input"]
-    if mode == "prepared_demo":
-        missing = []
-
-    node_suggestions = _node_suggestions(provided.get("inp_path"))
-    plot_selection_options = _plot_selection_options_for_inp(provided.get("inp_path"))
-    result = {
-        "mode": mode,
-        "top_level_contract": "skills/swmm-end-to-end/SKILL.md",
-        "required_inputs": required,
-        "provided_inputs": sorted(provided),
-        "provided_values": provided,
-        "missing_inputs": missing,
-        "recommended_next_tools": [] if missing else next_tools,
-        "stop_reason": "missing critical input" if missing else None,
-        "evidence_boundary": boundary,
-        "user_prompt": _workflow_user_prompt(mode, missing),
-        "node_suggestions": node_suggestions,
-        "plot_selection_options": plot_selection_options,
-    }
-    return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"mode={mode} missing={len(missing)}"}
+# PRD #128 Phase 2 Group C: ``_build_response_for_mode`` moved to
+# ``tool_handlers/workflow_mode.py`` together with the rest of the
+# workflow-mode selection family. Re-exported below alongside
+# ``_select_workflow_mode_tool`` so existing import paths stay stable.
 
 
 def compute_intent_signals(goal: str) -> dict[str, bool]:
@@ -1194,78 +779,17 @@ def compute_intent_signals(goal: str) -> dict[str, bool]:
     return classify_intent(goal).as_dict()
 
 
-def _select_workflow_mode_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    goal = str(call.args.get("goal") or "").lower()
-    # ``mode`` is consumed below as a routing argument, not a workflow
-    # input; exclude it from ``provided`` so it does not pollute the
-    # echoed ``provided_inputs`` / ``provided_values`` fields.
-    provided = {
-        key: str(value).strip()
-        for key, value in call.args.items()
-        if key != "mode" and isinstance(value, str) and value.strip()
-    }
-
-    # PRD-INTENT-OVERMATCH (#95): the LLM may pass an explicit ``mode``
-    # to bypass keyword-based intent re-derivation. If valid, use it
-    # directly; do NOT auto-infer ``run_dir`` from global state when the
-    # mode is explicit (auto-infer was part of the original bug — see
-    # the PRD's Done Criteria #4).
-    explicit_mode = call.args.get("mode")
-    if isinstance(explicit_mode, str) and explicit_mode in _VALID_MODE_ENUM:
-        return _build_response_for_mode(call, explicit_mode, goal, provided)
-
-    # Legacy keyword-fallback path. NOTE: Chinese keywords are part of
-    # the bilingual goal-routing contract. The `??` placeholders
-    # previously here were a non-UTF-8 sync regression (P0-2 in #79).
-    # Do not replace these with ASCII placeholders again — the
-    # regression test in `tests/test_select_workflow_mode_bilingual.py`
-    # will trip on any reintroduced `??` pair.
-    #
-    # PRD #111: signals are computed by ``compute_intent_signals`` so
-    # the planner's auto-route disambiguator trigger and this keyword
-    # fallback share one source of truth.
-    signals = compute_intent_signals(goal)
-    wants_calibration = signals["wants_calibration"]
-    wants_uncertainty = signals["wants_uncertainty"]
-    wants_audit = signals["wants_audit"]
-    wants_plot = signals["wants_plot"]
-    wants_demo = signals["wants_demo"]
-    wants_run = signals["wants_run"]
-    has_inp = bool(provided.get("inp_path"))
-    has_run_dir = bool(provided.get("run_dir"))
-    if (wants_plot or wants_audit) and not has_run_dir:
-        active_run_dir = _active_run_dir_from_global_state()
-        if active_run_dir:
-            provided["run_dir"] = active_run_dir
-            has_run_dir = True
-    full_build_inputs = ["network_json", "subcatchments_csv", "rainfall_input", "landuse_input", "soil_input"]
-    has_full_build = all(provided.get(key) for key in full_build_inputs)
-
-    # PRD #111: compound run+demo+plot must pin to ``prepared_demo``
-    # *before* the plot branch fires. Without this guard the plot
-    # branch hijacks any goal that mentions ``plot`` once a run_dir is
-    # auto-inferred from global state — which is exactly the bug from
-    # ``runs/2026-05-16/120740_todcreek_run``.
-    if wants_run and wants_demo and not has_inp:
-        mode = "prepared_demo"
-    elif wants_plot and has_run_dir:
-        mode = "existing_run_plot"
-    elif wants_calibration:
-        mode = "calibration"
-    elif wants_uncertainty:
-        mode = "uncertainty"
-    elif has_inp:
-        mode = "prepared_inp_cli"
-    elif wants_demo:
-        mode = "prepared_demo"
-    elif wants_audit and not has_inp:
-        mode = "audit_only_or_comparison"
-    elif has_full_build:
-        mode = "full_modular_build"
-    else:
-        mode = "needs_user_inputs"
-
-    return _build_response_for_mode(call, mode, goal, provided)
+# PRD #128 Phase 2 Group C: workflow-mode selection family moved to
+# ``tool_handlers/workflow_mode.py``. Re-exported here so import paths
+# stay stable (``_select_workflow_mode_tool`` and
+# ``_build_response_for_mode`` are imported directly by several tests
+# and the bilingual-keyword regression suite).
+from agentic_swmm.agent.tool_handlers.workflow_mode import (  # noqa: E402,F401
+    _active_run_dir_from_global_state,
+    _build_response_for_mode,
+    _select_workflow_mode_tool,
+    _workflow_user_prompt,
+)
 
 
 def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -1388,56 +912,9 @@ _build_inp_tool = _make_mcp_routed_handler(
 )
 
 
-def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    path = _repo_path(str(call.args.get("path") or "."))
-    if path is None or not path.exists() or not path.is_dir():
-        return _failure(call, "directory must exist inside repository")
-    entries = [{"name": item.name, "type": "dir" if item.is_dir() else "file", "path": str(item.relative_to(repo_root()))} for item in sorted(path.iterdir())[:200]]
-    return {"tool": call.name, "args": call.args, "ok": True, "results": entries, "summary": f"{len(entries)} entries"}
-
-
-def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    query = str(call.args.get("query") or "").strip()
-    if not query:
-        return _failure(call, "query is required")
-    pattern = _normalize_search_glob(str(call.args.get("glob") or "*"))
-    max_results = int(call.args.get("max_results") or 50)
-    results: list[dict[str, Any]] = []
-    try:
-        paths = repo_root().rglob(pattern)
-    except ValueError as exc:
-        return _failure(call, f"invalid glob pattern: {exc}")
-    for path in paths:
-        if len(results) >= max_results:
-            break
-        if not path.is_file() or any(part in {".git", ".venv", "__pycache__"} for part in path.parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
-            continue
-        for lineno, line in enumerate(text.splitlines(), start=1):
-            if query.lower() in line.lower():
-                results.append({"path": str(path.relative_to(repo_root())), "line": lineno, "text": line.strip()[:300]})
-                break
-    return {"tool": call.name, "args": call.args, "ok": True, "glob": pattern, "results": results, "summary": f"{len(results)} match(es)"}
-
-
-def _normalize_search_glob(pattern: str) -> str:
-    cleaned = pattern.strip() or "*"
-    # pathlib requires "**" to be a complete path component. LLM planners often
-    # produce "**.inp" when they mean a recursive extension search.
-    cleaned = re.sub(r"(?<!/)\*\*\.([A-Za-z0-9_*?[\]-]+)$", r"**/*.\1", cleaned)
-    cleaned = re.sub(r"/\*\*\.([A-Za-z0-9_*?[\]-]+)$", r"/**/*.\1", cleaned)
-    return cleaned
-
-
-def _git_diff_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    command = ["git", "diff", "--stat" if call.args.get("stat_only", True) else "--"]
-    if call.args.get("path"):
-        command.extend(["--", str(call.args["path"])])
-    proc = subprocess.run(command, cwd=repo_root(), capture_output=True, text=True)
-    return {"tool": call.name, "args": call.args, "ok": proc.returncode == 0, "return_code": proc.returncode, "excerpt": proc.stdout[:8000], "stderr_tail": _tail(proc.stderr), "summary": "git diff read" if proc.returncode == 0 else "git diff failed"}
+# PRD #128 Phase 2 Group C: ``_list_dir_tool``, ``_search_files_tool``,
+# ``_normalize_search_glob``, ``_git_diff_tool`` moved to
+# ``tool_handlers/runtime_ops.py``. Re-exported above via runtime_ops.
 
 
 # PRD #128: ``_web_fetch_url_tool`` and ``_web_search_tool`` moved to
@@ -1554,26 +1031,9 @@ def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return {"tool": call.name, "args": call.args, "ok": True, "capabilities": capability_summary(names), "summary": "runtime capabilities returned"}
 
 
-def _workflow_user_prompt(mode: str, missing: list[str]) -> str:
-    if not missing:
-        return "Inputs are sufficient for the selected workflow mode. Continue with the recommended tools."
-    if mode == "needs_user_inputs":
-        return "Please provide a SWMM INP path, or the complete full-build input set: network_json, subcatchments_csv, rainfall_input, landuse_input, and soil_input."
-    return "Please provide: " + ", ".join(missing)
-
-
-def _active_run_dir_from_global_state() -> str | None:
-    path = runtime_state_path()
-    if not path.exists():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(payload, dict):
-        return None
-    value = payload.get("active_run_dir")
-    return str(value) if value else None
+# PRD #128 Phase 2 Group C: ``_workflow_user_prompt`` and
+# ``_active_run_dir_from_global_state`` moved to
+# ``tool_handlers/workflow_mode.py``. Re-exported above.
 
 
 def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -1678,21 +1138,9 @@ def _resolve_existing_inp(value: str) -> Path | None:
     return _find_repo_inp(value)
 
 
-def _patch_paths(patch: str) -> list[str]:
-    paths: list[str] = []
-    for line in patch.splitlines():
-        if line.startswith("+++ b/") or line.startswith("--- a/"):
-            path = line[6:].strip()
-            if path != "/dev/null" and path not in paths:
-                paths.append(path)
-        elif line.startswith("diff --git "):
-            parts = line.split()
-            for part in parts[2:4]:
-                if part.startswith(("a/", "b/")):
-                    path = part[2:]
-                    if path not in paths:
-                        paths.append(path)
-    return paths
+# PRD #128 Phase 2 Group C: ``_patch_paths`` moved to
+# ``tool_handlers/runtime_ops.py`` alongside ``_apply_patch_tool``
+# (its sole caller). Re-exported above via runtime_ops.
 
 
 def _command_allowed(command: list[str]) -> bool:
