@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.utils.paths import repo_root, require_dir, script_path
@@ -93,6 +96,26 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Run apply_decay + archive_retired on the markdown after migration.",
     )
     migrate_neg.set_defaults(func=migrate_negative_lessons_md_main)
+
+    # Issue #204: non-destructive repair for runs/sessions.sqlite.
+    repair = sub.add_parser(
+        "repair-sessions",
+        help=(
+            "Back up the cross-session SQLite store and rebuild it from "
+            "the raw agent_trace.jsonl files under runs/. Non-destructive: "
+            "the original file is moved to sessions.sqlite.corrupt-<utc>."
+        ),
+    )
+    repair.add_argument(
+        "--runs-root",
+        type=Path,
+        default=None,
+        help=(
+            "Override the runs directory walked for agent_trace.jsonl. "
+            "Defaults to $AISWMM_RUNS_ROOT or <repo>/runs."
+        ),
+    )
+    repair.set_defaults(func=repair_sessions_main)
 
 
 def _dispatch(args: argparse.Namespace) -> int:
@@ -337,3 +360,167 @@ def migrate_negative_lessons_md_main(args: argparse.Namespace) -> int:
         summary["archive_path"] = str(archive_path)
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Issue #204: repair-sessions
+# ---------------------------------------------------------------------------
+
+
+def repair_sessions_db(
+    runs_dir: Path,
+    *,
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Back up the corrupt sessions.sqlite and rebuild it from traces.
+
+    Non-destructive: when ``db_path`` already exists, its bytes are
+    moved to ``sessions.sqlite.corrupt-<UTC timestamp>`` BEFORE any
+    rebuild begins. The rebuild then walks ``runs_dir`` for every
+    ``session_state.json`` and projects the sibling
+    ``agent_trace.jsonl`` into a fresh DB via the live sync projector.
+
+    Returns a summary dict::
+
+        {
+            "ok": bool,
+            "backup": "<path>" | None,         # None when no original to back up
+            "sessions_rebuilt": int,
+            "messages_rebuilt": int,
+            "tool_events_rebuilt": int,
+            "failures": [str, ...],
+            "db_path": "<path>",
+        }
+    """
+    from agentic_swmm.memory import session_db
+    from agentic_swmm.memory.session_sync import sync_session_to_db
+
+    runs_dir = Path(runs_dir)
+    if db_path is None:
+        db_path = runs_dir / "sessions.sqlite"
+    db_path = Path(db_path)
+
+    summary: dict[str, Any] = {
+        "ok": False,
+        "backup": None,
+        "sessions_rebuilt": 0,
+        "messages_rebuilt": 0,
+        "tool_events_rebuilt": 0,
+        "failures": [],
+        "db_path": str(db_path),
+    }
+
+    # ---- 0. Refuse if the file is "unreadable" (locked / permission
+    # denied) — the DB itself might be healthy and repair would
+    # overwrite it. Issue #204 review HIGH finding.
+    if db_path.exists():
+        pre_report = session_db.integrity_check(db_path)
+        if pre_report.state == "unreadable":
+            summary["failures"].append(
+                f"{db_path}: file is unreadable ({pre_report.errors[0] if pre_report.errors else 'access denied'}); "
+                "fix permissions or wait for another writer to release the file. "
+                "Refusing to repair because the database may be healthy."
+            )
+            # ok stays False; do not back up or rebuild
+            return summary
+
+    # ---- 1. Back up the existing file (if any) before touching it.
+    if db_path.exists():
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        backup_path = db_path.with_name(f"{db_path.name}.corrupt-{timestamp}")
+        # Pick a unique name if a backup from this same second already
+        # exists (e.g. a tight retry); never overwrite a previous
+        # backup.
+        if backup_path.exists():
+            counter = 1
+            while True:
+                candidate = db_path.with_name(
+                    f"{db_path.name}.corrupt-{timestamp}-{counter}"
+                )
+                if not candidate.exists():
+                    backup_path = candidate
+                    break
+                counter += 1
+        shutil.move(str(db_path), str(backup_path))
+        summary["backup"] = str(backup_path)
+
+    # ---- 2. Discover every session dir under runs_dir.
+    session_dirs: list[Path] = []
+    if runs_dir.exists():
+        for state in runs_dir.rglob("session_state.json"):
+            if state.is_file():
+                session_dirs.append(state.parent)
+    session_dirs.sort()
+
+    # ---- 3. Initialise a fresh DB and project each session into it.
+    session_db.initialize(db_path)
+    for session_dir in session_dirs:
+        try:
+            sync = sync_session_to_db(session_dir, db_path=db_path)
+        except Exception as exc:  # pragma: no cover - defensive
+            summary["failures"].append(f"{session_dir}: {exc}")
+            continue
+        if sync.get("ok"):
+            summary["sessions_rebuilt"] += 1
+            summary["messages_rebuilt"] += int(sync.get("messages") or 0)
+            summary["tool_events_rebuilt"] += int(sync.get("tool_events") or 0)
+        else:
+            summary["failures"].append(
+                f"{session_dir}: {sync.get('reason', 'unknown')}"
+            )
+
+    # ---- 4. Bust the integrity cache so the next doctor / sync run
+    # re-probes the new healthy file rather than serving the stale
+    # corrupt verdict.
+    session_db.clear_integrity_cache()
+
+    # Issue #204 review MEDIUM finding: ok was unconditionally True,
+    # hiding partial failures from CI / scripted callers. Only succeed
+    # when zero sessions failed AND we actually rebuilt something (or
+    # the runs dir was legitimately empty).
+    summary["ok"] = not summary["failures"]
+    return summary
+
+
+def repair_sessions_main(args: argparse.Namespace) -> int:
+    """CLI entry point for ``aiswmm memory repair-sessions``.
+
+    Resolves the runs dir from ``--runs-root`` -> ``$AISWMM_RUNS_ROOT``
+    -> ``<repo>/runs``, calls :func:`repair_sessions_db`, and prints a
+    human-readable summary. Returns 0 on success, 1 when the helper
+    reports ``ok == False``.
+    """
+    runs_root: Path
+    if getattr(args, "runs_root", None) is not None:
+        runs_root = args.runs_root.expanduser().resolve()
+    else:
+        runs_root = _resolve_runs_dir()
+
+    db_path = runs_root / "sessions.sqlite"
+
+    result = repair_sessions_db(runs_root, db_path=db_path)
+
+    backup = result.get("backup")
+    rebuilt = int(result.get("sessions_rebuilt") or 0)
+    messages = int(result.get("messages_rebuilt") or 0)
+    tool_events = int(result.get("tool_events_rebuilt") or 0)
+    failures = list(result.get("failures") or [])
+
+    print(f"runs dir: {runs_root}")
+    print(f"db path:  {db_path}")
+    if backup:
+        print(f"backed up corrupt store -> {backup}")
+    else:
+        print("no prior sessions.sqlite to back up (fresh rebuild)")
+    print(
+        f"rebuilt {rebuilt} session(s), {messages} message(s), "
+        f"{tool_events} tool event(s)"
+    )
+    if failures:
+        print(f"skipped {len(failures)} session(s):")
+        for line in failures[:20]:
+            print(f"  - {line}")
+        if len(failures) > 20:
+            print(f"  ... and {len(failures) - 20} more")
+
+    return 0 if result.get("ok") else 1

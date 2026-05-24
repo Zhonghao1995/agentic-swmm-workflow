@@ -22,12 +22,202 @@ import json
 import re
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
 
 SCHEMA_VERSION = "1.0"
+
+
+# ---------------------------------------------------------------------------
+# Integrity check (issue #204)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class IntegrityReport:
+    """Verdict of ``PRAGMA integrity_check`` on a sessions.sqlite file.
+
+    ``state`` collapses the result into one of three branches the doctor
+    row + the repair-sessions verb both key off:
+
+    * ``"absent"`` — file does not exist; will be created on the first
+      session sync. Not an error.
+    * ``"ok"``     — file opens, PRAGMA reports ``ok``, row counts
+      and on-disk size are populated.
+    * ``"corrupt"`` — PRAGMA reports at least one failure on a file we
+      could fully open. ``errors`` carries the raw diagnostic strings.
+      This is the only state that should trigger the destructive
+      ``aiswmm memory repair-sessions`` remediation.
+    * ``"unreadable"`` — file exists but cannot be opened (permission
+      denied, file locked by another writer, transient I/O error).
+      The DB itself may be perfectly healthy; the user should fix the
+      access problem rather than overwrite the file. The doctor row
+      surfaces a different remediation hint and ``repair-sessions``
+      refuses to operate on this state (see issue #204 review HIGH
+      finding).
+
+    Caches are keyed by ``(resolved_path, mtime_ns, size_bytes)`` so a
+    fresh file replaces a stale verdict automatically; tests can also
+    call :func:`clear_integrity_cache` to force re-evaluation.
+    """
+
+    path: Path
+    state: str  # "absent" | "ok" | "corrupt" | "unreadable"
+    errors: tuple[str, ...] = ()
+    session_count: int | None = None
+    message_count: int | None = None
+    size_bytes: int | None = None
+
+
+# Module-level cache. The key includes mtime + size so the cache
+# auto-invalidates whenever the file changes underneath us (a fresh
+# repair-sessions run rewrites the file, so we want the next caller to
+# pay the PRAGMA round-trip rather than serve the stale "corrupt"
+# verdict).
+_INTEGRITY_CACHE: dict[tuple[str, int, int], IntegrityReport] = {}
+
+
+def clear_integrity_cache() -> None:
+    """Drop every cached :class:`IntegrityReport`.
+
+    Test helper + the repair verb call this after a successful rebuild
+    so subsequent doctor invocations re-probe the (now-healthy) file.
+    """
+    _INTEGRITY_CACHE.clear()
+
+
+def integrity_check(db_path: Path) -> IntegrityReport:
+    """Return an :class:`IntegrityReport` for ``db_path``.
+
+    Runs ``PRAGMA integrity_check`` against the database. The verdict
+    is cached per-process keyed on ``(path, mtime, size)`` so the
+    end-of-session sync path does not pay the PRAGMA round-trip on
+    every turn — only the first call per file revision.
+
+    A missing file is not corruption; it is the "absent" branch and
+    the doctor row surfaces it as "file absent (will be created on
+    first session)".
+    """
+    resolved = Path(db_path)
+    try:
+        stat = resolved.stat()
+    except FileNotFoundError:
+        # Absent files are not cached: the next caller after the file
+        # is created should see the real verdict, not "absent".
+        return IntegrityReport(path=resolved, state="absent")
+    except PermissionError as exc:
+        # Issue #204 review HIGH finding: a permission-denied stat
+        # must NOT be misclassified as "corrupt", because the doctor
+        # row would then advise `repair-sessions` and the user could
+        # overwrite a perfectly healthy DB. Report as "unreadable" so
+        # the doctor row advises "fix permissions" instead.
+        return IntegrityReport(
+            path=resolved,
+            state="unreadable",
+            errors=(f"stat permission denied: {exc}",),
+        )
+    except OSError as exc:
+        # Other transient I/O errors (e.g. EIO from a flaky disk) also
+        # fall under "unreadable" — the DB might still be healthy.
+        return IntegrityReport(
+            path=resolved,
+            state="unreadable",
+            errors=(f"stat failed: {exc}",),
+        )
+
+    cache_key = (str(resolved), stat.st_mtime_ns, stat.st_size)
+    cached = _INTEGRITY_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    report = _probe_integrity(resolved, size_bytes=stat.st_size)
+    _INTEGRITY_CACHE[cache_key] = report
+    return report
+
+
+def _probe_integrity(db_path: Path, *, size_bytes: int) -> IntegrityReport:
+    """One-shot integrity probe. Caller is responsible for caching."""
+    try:
+        conn = sqlite3.connect(str(db_path))
+    except sqlite3.OperationalError as exc:
+        # Locked / permission-denied / I/O — file may be perfectly
+        # healthy. Issue #204 review HIGH finding: report "unreadable"
+        # so the doctor row does not advise the destructive
+        # `repair-sessions` path. `unable to open` and `database is
+        # locked` both surface here as OperationalError.
+        return IntegrityReport(
+            path=db_path,
+            state="unreadable",
+            errors=(f"cannot open: {exc}",),
+            size_bytes=size_bytes,
+        )
+    except PermissionError as exc:
+        # Some platforms surface fs-permission as PermissionError
+        # rather than sqlite3.OperationalError.
+        return IntegrityReport(
+            path=db_path,
+            state="unreadable",
+            errors=(f"permission denied: {exc}",),
+            size_bytes=size_bytes,
+        )
+    except sqlite3.Error as exc:
+        # Other sqlite open-time errors (notably DatabaseError on
+        # "not a database" / corrupt header) — genuinely corrupt.
+        return IntegrityReport(
+            path=db_path,
+            state="corrupt",
+            errors=(f"cannot open: {exc}",),
+            size_bytes=size_bytes,
+        )
+    conn.row_factory = sqlite3.Row
+    try:
+        try:
+            rows = conn.execute("PRAGMA integrity_check").fetchall()
+        except sqlite3.DatabaseError as exc:
+            return IntegrityReport(
+                path=db_path,
+                state="corrupt",
+                errors=(f"integrity_check failed: {exc}",),
+                size_bytes=size_bytes,
+            )
+
+        results = [str(row[0]) for row in rows] if rows else []
+        if results == ["ok"]:
+            sc, mc = _row_counts(conn)
+            return IntegrityReport(
+                path=db_path,
+                state="ok",
+                errors=(),
+                session_count=sc,
+                message_count=mc,
+                size_bytes=size_bytes,
+            )
+        return IntegrityReport(
+            path=db_path,
+            state="corrupt",
+            errors=tuple(results) if results else ("integrity_check returned no rows",),
+            size_bytes=size_bytes,
+        )
+    finally:
+        conn.close()
+
+
+def _row_counts(conn: sqlite3.Connection) -> tuple[int | None, int | None]:
+    """Return ``(session_count, message_count)`` or ``(None, None)``.
+
+    A partially-initialised DB (no schema yet) returns ``(None, None)``
+    so the doctor row falls back to "ok, file present" rather than
+    claiming zero sessions.
+    """
+    try:
+        sc = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        mc = conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0]
+    except sqlite3.Error:
+        return None, None
+    return int(sc), int(mc)
 
 
 _SCHEMA_STATEMENTS: tuple[str, ...] = (

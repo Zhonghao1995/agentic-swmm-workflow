@@ -39,8 +39,9 @@ class DoctorJsonFlagTests(unittest.TestCase):
             "grouped_warns",
         ):
             self.assertIn(key, payload)
-        # 7 memory stores reported.
-        self.assertEqual(len(payload["memory_stores"]), 7)
+        # 8 memory stores reported (7 modeling-memory stores +
+        # sessions.sqlite row from issue #204).
+        self.assertEqual(len(payload["memory_stores"]), 8)
         # 6 opt-out flags reported (PRD-09 adds ANTHROPIC_API_KEY).
         self.assertEqual(len(payload["optout_status"]), 6)
         # PRD-09: the LLM-provider block carries the Claude OAuth flag.
