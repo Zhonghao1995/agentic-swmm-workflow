@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.tui_chrome import use_unicode_box_drawing
+
 
 # ---------------------------------------------------------------------------
 # Per-tool brief-result extractors
@@ -23,21 +25,6 @@ from typing import Any
 # tool's structured return. The PRD requires bespoke extractors for a
 # handful of tools the operator sees most often; everything else falls
 # back to ``result['summary']`` truncated to one line.
-
-
-def _brief_list_dir(result: dict[str, Any]) -> str:
-    # ``list_dir`` returns ``results`` as a flat list of entry dicts;
-    # older callers tucked the list under a ``{"entries": [...]}``
-    # wrapper. Support both shapes so the digest is resilient to
-    # future tool-shape tweaks.
-    results = result.get("results")
-    if isinstance(results, list):
-        return f"{len(results)} entries"
-    if isinstance(results, dict):
-        entries = results.get("entries")
-        if isinstance(entries, list):
-            return f"{len(entries)} entries"
-    return ""
 
 
 def _brief_select_skill(result: dict[str, Any]) -> str:
@@ -69,15 +56,6 @@ def _brief_audit_run(result: dict[str, Any]) -> str:
     return ""
 
 
-def _brief_inspect_plot_options(result: dict[str, Any]) -> str:
-    # ``inspect_plot_options`` already shapes its summary as
-    # "rain=2 nodes=4 attrs=6", which is exactly the brief we want.
-    summary = result.get("summary")
-    if isinstance(summary, str) and summary.strip():
-        return summary.strip().splitlines()[0]
-    return ""
-
-
 def _brief_recall_session_history(result: dict[str, Any]) -> str:
     # ``recall_session_history`` returns its hits as a flat list under
     # ``results``; tolerate the ``{"sessions": [...]}`` wrapper too in
@@ -92,12 +70,17 @@ def _brief_recall_session_history(result: dict[str, Any]) -> str:
     return ""
 
 
+# Issue #193 item 4: ``list_dir`` and ``inspect_plot_options`` are
+# omitted on purpose. Both produce a brief that the generic
+# ``result['summary']`` fallback already returns byte-for-byte (the
+# live ``_list_dir_tool`` sets ``summary="<N> entries"`` and
+# ``inspect_plot_options`` already shapes its summary as
+# ``"rain=2 nodes=4 attrs=6"``). A custom extractor here would be
+# dead code.
 _BRIEF_EXTRACTORS = {
-    "list_dir": _brief_list_dir,
     "select_skill": _brief_select_skill,
     "run_swmm_inp": _brief_run_swmm_inp,
     "audit_run": _brief_audit_run,
-    "inspect_plot_options": _brief_inspect_plot_options,
     "recall_session_history": _brief_recall_session_history,
 }
 
@@ -137,9 +120,23 @@ def brief_result(tool_name: str, result: dict[str, Any]) -> str:
 # indented continuation lines so the user sees the full stacktrace
 # beneath the step row WITHOUT having to re-run with --verbose.
 
-_OK_MARK = "✓"  # ✓
-_FAIL_MARK = "✗"  # ✗
+# PRD-08 Phase B / issue #193 item 3: glyphs fall back to ASCII when
+# the active locale does not advertise UTF-8 (LC_ALL=C / LANG=C) or
+# when AISWMM_TUI=plain. ``tui_chrome.use_unicode_box_drawing()`` owns
+# the decision so every chrome surface in the project agrees.
+_OK_MARK_UNICODE = "✓"
+_FAIL_MARK_UNICODE = "✗"
+_OK_MARK_ASCII = "v"
+_FAIL_MARK_ASCII = "x"
 _DETAIL_INDENT = " " * 4
+
+
+def _ok_mark() -> str:
+    return _OK_MARK_UNICODE if use_unicode_box_drawing() else _OK_MARK_ASCII
+
+
+def _fail_mark() -> str:
+    return _FAIL_MARK_UNICODE if use_unicode_box_drawing() else _FAIL_MARK_ASCII
 
 
 def render_step(
@@ -172,7 +169,7 @@ def render_step(
     elif is_read_only:
         head = f"{head} (read-only, auto)"
     # Outcome marker + brief
-    marker = _OK_MARK if ok else _FAIL_MARK
+    marker = _ok_mark() if ok else _fail_mark()
     if brief:
         row = f"{head}  {marker} {brief}"
     else:
@@ -200,7 +197,18 @@ def render_step(
 # (PRD-183 ``Run Results`` section). If a session produced no SWMM
 # run, the block is omitted entirely.
 
-_SUMMARY_SEPARATOR = "─" * 25
+_SUMMARY_SEPARATOR_UNICODE = "─" * 25
+_SUMMARY_SEPARATOR_ASCII = "-" * 25
+
+
+def _summary_separator() -> str:
+    # Issue #193 item 3: the section divider on the session-end block
+    # follows the same locale gate as the step-row glyphs.
+    return (
+        _SUMMARY_SEPARATOR_UNICODE
+        if use_unicode_box_drawing()
+        else _SUMMARY_SEPARATOR_ASCII
+    )
 
 
 def _format_peak(payload: dict[str, Any]) -> str | None:
@@ -290,6 +298,16 @@ def render_final_summary(run_dirs: list[Path]) -> str:
     final list of rendered blocks is empty, the function returns
     the empty string so callers can ``if block: print(block)``
     without further branching.
+
+    Note (issue #193 item 7): the only production caller today
+    (``runtime_loop.run_once``) passes a single-element list because
+    one ``aiswmm interactive`` turn produces at most one SWMM run.
+    The list signature is kept on purpose — the upcoming REPL
+    chat-session summary (post-#192 follow-up work) plans to emit a
+    single block at the end of a multi-turn chat that may carry
+    several runs. Collapsing this to ``run_dir: Path`` now would
+    force that caller to rebuild the multi-run separator logic from
+    scratch.
     """
     rendered: list[str] = []
     for run_dir in run_dirs:
@@ -298,7 +316,8 @@ def render_final_summary(run_dirs: list[Path]) -> str:
             rendered.append(block)
     if not rendered:
         return ""
-    return _SUMMARY_SEPARATOR + "\n" + ("\n" + _SUMMARY_SEPARATOR + "\n").join(rendered)
+    separator = _summary_separator()
+    return separator + "\n" + ("\n" + separator + "\n").join(rendered)
 
 
 __all__ = ["brief_result", "render_step", "render_final_summary"]

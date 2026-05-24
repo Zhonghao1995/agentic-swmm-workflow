@@ -10,7 +10,7 @@ from typing import IO, Any, Callable
 
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.digest_render import brief_result, render_step
-from agentic_swmm.agent.executor import AgentExecutor
+from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
 from agentic_swmm.agent.intent_map import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
 from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
 from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context
@@ -238,39 +238,53 @@ class OpenAIPlanner:
             status = "OK" if result.get("ok") else "FAILED"
             self.emit(f"{status}: {result.get('summary') or 'completed'}")
             return
-        # Digest path. Reconstruct the permission decision from the
-        # executor's profile + the result's summary string. The
-        # ``"tool not approved by user"`` summary is the only signal
-        # the executor publishes for a user-denied prompted call. We
-        # defensively fall back to "prompted, approved" when an
-        # executor stub (some unit tests) omits the profile attribute
-        # — that yields the same digest shape the legacy emit would
-        # have rendered for a successful write tool.
+        # Digest path. Issue #193 item 2: read the permission decision
+        # straight from the executor's result. The executor stamps
+        # ``_permission`` = ``{"prompted": bool, "approved": bool}`` on
+        # every dispatch, so we no longer have to re-evaluate
+        # ``auto_approve`` here or string-match the denial summary.
+        # Fall back to a derived decision for stub executors used in
+        # unit tests that pre-date this seam.
         is_read_only = self.registry.is_read_only(call.name)
         dry_run = bool(getattr(executor, "dry_run", False))
-        profile = getattr(executor, "profile", None)
-        if dry_run:
-            auto_approved = True
-        elif profile is not None and hasattr(profile, "auto_approve"):
-            auto_approved = bool(profile.auto_approve(call.name, self.registry))
+        perm = result.get("_permission")
+        if isinstance(perm, dict) and "prompted" in perm and "approved" in perm:
+            prompted = bool(perm["prompted"])
+            approved = bool(perm["approved"])
         else:
-            # Stub executor (no profile) — treat read-only tools as
-            # auto-approved (matches QUICK in real runs) and write
-            # tools as prompted-and-approved.
-            auto_approved = is_read_only
-        prompted = (not dry_run) and (not auto_approved)
-        summary = result.get("summary") or ""
-        denied = prompted and summary == "tool not approved by user"
-        approved = not denied
+            profile = getattr(executor, "profile", None)
+            if dry_run:
+                auto_approved = True
+            elif profile is not None and hasattr(profile, "auto_approve"):
+                auto_approved = bool(profile.auto_approve(call.name, self.registry))
+            else:
+                # Stub executor (no profile) — treat read-only tools as
+                # auto-approved (matches QUICK in real runs) and write
+                # tools as prompted-and-approved.
+                auto_approved = is_read_only
+            prompted = (not dry_run) and (not auto_approved)
+            summary = result.get("summary") or ""
+            denied = prompted and summary == DENIED_SUMMARY
+            approved = not denied
         ok = bool(result.get("ok"))
         brief = brief_result(call.name, result)
         error_detail: str | None = None
         if not ok:
-            tail = result.get("stderr_tail") or result.get("stdout_tail") or ""
-            if isinstance(tail, str) and tail.strip():
-                # Trim any trailing blank lines so the expansion stays
-                # tight beneath the step row.
-                error_detail = tail.rstrip("\n")
+            # PRD-185 / issue #193 item 1: try each known failure-detail
+            # field in priority order. Subprocess-shaped tools populate
+            # ``stderr_tail`` / ``stdout_tail``; in-process handlers
+            # carry detail under ``error`` (e.g. caught exception
+            # strings), ``message`` (gap-decision-shaped failures), or
+            # ``traceback`` (multi-line stacks from background workers).
+            # First non-empty string wins so the user always sees *some*
+            # diagnostic beneath a failure row without ``--verbose``.
+            for key in ("stderr_tail", "stdout_tail", "error", "message", "traceback"):
+                candidate = result.get(key)
+                if isinstance(candidate, str) and candidate.strip():
+                    # Trim any trailing blank lines so the expansion
+                    # stays tight beneath the step row.
+                    error_detail = candidate.rstrip("\n")
+                    break
         self.emit(
             render_step(
                 step=index,

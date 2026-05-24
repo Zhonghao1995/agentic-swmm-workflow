@@ -11,6 +11,12 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
 
+# Issue #193 item 2: hoist the denial summary string to a module
+# constant so both the executor and the planner share one source of
+# truth. Anywhere that needs to recognise "this result is a user
+# denial" imports ``DENIED_SUMMARY`` instead of repeating the literal.
+DENIED_SUMMARY = "tool not approved by user"
+
 
 class AgentExecutor:
     def __init__(
@@ -44,17 +50,26 @@ class AgentExecutor:
         event_index = index if index is not None else len(self.results) + 1
         write_event(self.trace_path, {"event": "tool_start", "index": event_index, "tool": call.name, "args": call.args})
         self._announce(call.name)
+        # Issue #193 item 2: capture the permission decision once,
+        # here, where it is actually made — and publish it on the
+        # result dict so downstream renderers (digest mode planner)
+        # do not have to reconstruct it.
+        prompted = False
+        approved = True
         # PRD_runtime: consult the permission profile before prompting.
         # QUICK auto-approves read-only tools; SAFE always defers to
         # ``permissions.prompt_user`` (which itself auto-allows in
         # non-TTY contexts so CI never blocks on stdin).
         if not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
+            prompted = True
             if not permissions.prompt_user(call.name):
+                approved = False
                 result = {
                     "tool": call.name,
                     "args": call.args,
                     "ok": False,
-                    "summary": "tool not approved by user",
+                    "summary": DENIED_SUMMARY,
+                    "_permission": {"prompted": True, "approved": False},
                 }
                 self.results.append(result)
                 write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
@@ -63,6 +78,11 @@ class AgentExecutor:
             result = {"tool": call.name, "args": call.args, "ok": True, "summary": "dry run; tool not executed"}
         else:
             result = self.registry.execute(call, self.session_dir)
+        # Attach the permission record without clobbering existing
+        # fields. Tool handlers return their own dicts; the seam adds
+        # one new key so the planner / digest renderer can read it
+        # directly.
+        result["_permission"] = {"prompted": prompted, "approved": approved}
         self.results.append(result)
         write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
         return result
