@@ -16,6 +16,7 @@ from unittest import mock
 import yaml
 
 from agentic_swmm.agent.session_bootstrap import (
+    bootstrap_prior_state,
     bootstrap_session_dir,
     display_path,
     infer_case_slug,
@@ -226,6 +227,49 @@ class BootstrapSessionDirTests(unittest.TestCase):
             date_dir = Path(tmp)
             path = bootstrap_session_dir(date_dir, "run mybasin.inp", kind="run")
             self.assertFalse(path.exists())
+
+
+class BootstrapPriorStateTests(unittest.TestCase):
+    """Issue #205 / Phase ``bootstrap_prior_state``.
+
+    Loads ``aiswmm_state.json`` from a prior run dir. The planner
+    consumes this to skip re-introspection on continuation turns.
+    Formerly ``runtime_loop._load_prior_session_state``.
+    """
+
+    def test_returns_none_when_no_active_run(self) -> None:
+        self.assertIsNone(bootstrap_prior_state(None))
+
+    def test_returns_none_when_state_file_missing(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            self.assertIsNone(bootstrap_prior_state(run_dir))
+
+    def test_loads_existing_state_payload(self) -> None:
+        import json as _json
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "aiswmm_state.json").write_text(
+                _json.dumps({"goal": "x", "skills_listed": True}),
+                encoding="utf-8",
+            )
+            payload = bootstrap_prior_state(run_dir)
+            self.assertIsInstance(payload, dict)
+            self.assertEqual(payload.get("goal"), "x")
+            self.assertTrue(payload.get("skills_listed"))
+
+    def test_returns_none_for_malformed_json(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "aiswmm_state.json").write_text("{not json", encoding="utf-8")
+            self.assertIsNone(bootstrap_prior_state(run_dir))
+
+    def test_returns_none_for_non_dict_payload(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            (run_dir / "aiswmm_state.json").write_text("[1,2,3]", encoding="utf-8")
+            self.assertIsNone(bootstrap_prior_state(run_dir))
 
 
 if __name__ == "__main__":
