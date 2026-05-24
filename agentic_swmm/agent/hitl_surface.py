@@ -33,6 +33,8 @@ from __future__ import annotations
 import statistics
 from typing import Any
 
+from agentic_swmm.agent.error_boundary import on_exception_return_default
+
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
 
 
@@ -122,17 +124,17 @@ def _format_recency_line(hits: list[ParametricRecord]) -> str | None:
     return f"  most recent run: {latest.run_id} at {latest.recorded_utc}"
 
 
+@on_exception_return_default(default="(unprintable)", scope="hitl_safe_str")
 def _safe_str(value: Any) -> str:
     """Return ``str(value)`` but never let an exotic ``__str__`` raise.
 
     The exception class wraps any object; a hostile ``__str__`` would
     otherwise propagate through the formatter and defeat the
-    "never raises" contract.
+    "never raises" contract. The ``@on_exception_return_default``
+    boundary (issue #207) preserves the ``"(unprintable)"`` fallback
+    and surfaces failures under ``scope="hitl_safe_str"``.
     """
-    try:
-        return str(value)
-    except Exception:  # pragma: no cover - defensive
-        return "(unprintable)"
+    return str(value)
 
 
 def format_hitl_prompt(

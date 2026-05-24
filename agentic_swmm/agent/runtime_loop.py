@@ -50,6 +50,7 @@ from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent import welcome as _welcome
 from agentic_swmm.agent.digest_render import render_final_summary
+from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
@@ -524,20 +525,26 @@ def _build_system_prompt_extras(
     )
 
 
+@on_exception_return_default(default=None, scope="session_db_sync_end")
 def _sync_session_end(session_dir: Path) -> None:
     """Sync the just-finished session into the SQLite store.
 
     Idempotent and silent: per-session double-call is a cheap no-op
     thanks to the unique indices, and any IO failure is swallowed so
-    the user's turn return code is unaffected.
+    the user's turn return code is unaffected. The
+    ``@on_exception_return_default`` boundary (issue #207) preserves
+    the swallow-and-return-None contract and surfaces failures under
+    ``scope="session_db_sync_end"`` in ``silent_fallbacks.jsonl``. The
+    ``finally`` block still runs because Python evaluates it *inside*
+    the wrapped function before the exception propagates to the
+    decorator, so ``_SYNCED_SESSION_DIRS`` is updated on both the
+    happy and error paths exactly as before.
     """
     key = str(session_dir.resolve()) if session_dir else ""
     if not key or key in _SYNCED_SESSION_DIRS:
         return
     try:
         sync_session_to_db(session_dir)
-    except Exception:
-        return
     finally:
         _SYNCED_SESSION_DIRS.add(key)
 
@@ -562,6 +569,19 @@ def _refresh_moc_after_session(session_dir: Path) -> None:
         _log.warning("MOC refresh failed for runs/INDEX.md: %s", exc)
 
 
+@on_exception_return_default(default=None, scope="session_db_sync_atexit")
+def _atexit_sync_one(raw: str) -> None:
+    """Sync one session_dir at atexit; never abort the surrounding loop.
+
+    Extracted so the broad ``Exception`` catch lives at the
+    per-session boundary rather than ad-hoc inside the loop. The
+    ``@on_exception_return_default`` boundary (issue #207) lets the
+    outer iterator advance to the next session when one sync raises,
+    matching the legacy ``except Exception: continue`` semantics.
+    """
+    sync_session_to_db(Path(raw))
+
+
 def _atexit_sync_recent_sessions() -> None:
     """Belt-and-suspenders: re-sync any session we already touched.
 
@@ -572,10 +592,7 @@ def _atexit_sync_recent_sessions() -> None:
     indices guarantee idempotency.
     """
     for raw in list(_SYNCED_SESSION_DIRS):
-        try:
-            sync_session_to_db(Path(raw))
-        except Exception:
-            continue
+        _atexit_sync_one(raw)
 
 
 atexit.register(_atexit_sync_recent_sessions)

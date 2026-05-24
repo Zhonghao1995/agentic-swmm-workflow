@@ -731,6 +731,13 @@ def trigger_memory_refresh(
 
     # PRD M3 / M7-derived: tag the file for compaction if it has grown
     # past the threshold. No automatic compaction in this PRD.
+    #
+    # TODO(#207): boundary-migrate — every audit-hook except block in
+    # this function appends a per-site message to ``result["errors"]``
+    # rather than returning a constant default. That side-effect-on-
+    # local-mutable pattern does not fit the decorator's
+    # "return ``default``" contract; a follow-up refactor would have to
+    # rework the result-collection convention before migrating.
     try:
         from agentic_swmm.memory.proposal_skeleton import maybe_prepend_compaction_marker
 

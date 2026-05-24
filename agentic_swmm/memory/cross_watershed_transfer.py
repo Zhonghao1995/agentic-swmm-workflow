@@ -55,6 +55,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.memory.calibration_memory import recall_calibration, CalibrationRecord
 from agentic_swmm.memory.watershed_similarity import (
     WatershedAttributes,
@@ -286,26 +287,28 @@ def _extract_storm_key(row: dict[str, Any]) -> str | None:
     return key.strip()
 
 
+@on_exception_return_default(default=False, scope="storm_library_lookup")
 def _storm_key_resolves(storm_key: str, repo_root: Path) -> bool:
     """Return True when ``storm_key`` exists in the project storm library.
 
     Best-effort: a missing storm_library file, a malformed YAML, or a
     key that does not appear in the chicago_hyetographs block all
     yield ``False`` without raising. Used as a guard so the rationale
-    only mentions storm keys the user can actually act on.
+    only mentions storm keys the user can actually act on. The
+    ``@on_exception_return_default`` boundary (issue #207) preserves
+    the False-on-failure contract while surfacing the failure under
+    ``scope="storm_library_lookup"`` in ``silent_fallbacks.jsonl``.
     """
-    try:
-        # Lazy import: this module's other consumers should not pull
-        # storm_library into their import graph.
-        from agentic_swmm.memory.storm_library import recall_chicago_spec
+    # Lazy import: this module's other consumers should not pull
+    # storm_library into their import graph.
+    from agentic_swmm.memory.storm_library import recall_chicago_spec
 
-        library_path = repo_root / "memory" / "modeling-memory" / "storm_library.yaml"
-        spec = recall_chicago_spec(library_path, storm_key)
-        return spec is not None
-    except Exception:  # pragma: no cover - defensive
-        return False
+    library_path = repo_root / "memory" / "modeling-memory" / "storm_library.yaml"
+    spec = recall_chicago_spec(library_path, storm_key)
+    return spec is not None
 
 
+@on_exception_return_default(default=None, scope="storm_library_resolve")
 def _resolve_design_storm(
     storm_key: str | None, library_path: Path
 ) -> dict[str, Any] | None:
@@ -316,15 +319,18 @@ def _resolve_design_storm(
     second lookup. ``None`` when the key is empty, the library cannot
     be loaded, or the entry does not exist / is a schema-only
     placeholder.
+
+    The ``@on_exception_return_default`` boundary (issue #207) preserves
+    the None-on-failure contract; the early ``if not storm_key`` exit
+    short-circuits before the decorator sees any exception, and a
+    failure during ``dict(spec)`` post-processing also collapses to
+    None (was: propagated). Logged under ``scope="storm_library_resolve"``.
     """
     if not storm_key:
         return None
-    try:
-        from agentic_swmm.memory.storm_library import recall_chicago_spec
+    from agentic_swmm.memory.storm_library import recall_chicago_spec
 
-        spec = recall_chicago_spec(library_path, storm_key)
-    except Exception:  # pragma: no cover - defensive
-        return None
+    spec = recall_chicago_spec(library_path, storm_key)
     if spec is None:
         return None
     out = dict(spec)
@@ -332,6 +338,7 @@ def _resolve_design_storm(
     return out
 
 
+@on_exception_return_default(default_factory=set, scope="benchmarks_load")
 def _known_manning_n_prefixes(benchmarks_path: Path) -> set[str]:
     """Return the set of top-level ``manning_n_*`` keys from the YAML.
 
@@ -345,16 +352,15 @@ def _known_manning_n_prefixes(benchmarks_path: Path) -> set[str]:
 
     Returns the empty set when the YAML cannot be loaded or contains
     no ``manning_n_*`` keys — the caller then yields an empty Manning's
-    block rather than erroring.
+    block rather than erroring. The ``@on_exception_return_default``
+    boundary (issue #207) preserves the empty-set contract and surfaces
+    failures under ``scope="benchmarks_load"``.
     """
-    try:
-        from agentic_swmm.memory.reference_benchmarks import (
-            load_reference_benchmarks,
-        )
+    from agentic_swmm.memory.reference_benchmarks import (
+        load_reference_benchmarks,
+    )
 
-        data = load_reference_benchmarks(benchmarks_path)
-    except Exception:  # pragma: no cover - defensive
-        return set()
+    data = load_reference_benchmarks(benchmarks_path)
     if not isinstance(data, dict):
         return set()
     return {
@@ -392,6 +398,9 @@ def _extract_recommended_manning_n(
     return out
 
 
+@on_exception_return_default(
+    default_factory=list, scope="negative_lessons_recall"
+)
 def _load_known_failure_patterns(
     source_case: str, store_path: Path
 ) -> list[dict[str, Any]]:
@@ -401,14 +410,14 @@ def _load_known_failure_patterns(
     no lessons, or any read error fires. We surface ``lesson_type``,
     ``parameters_tried``, ``note``, and ``recorded_at`` so a CLI
     consumer can rank the lessons by date without instantiating a
-    :class:`NegativeLesson` dataclass.
+    :class:`NegativeLesson` dataclass. The
+    ``@on_exception_return_default`` boundary (issue #207) preserves
+    the empty-list contract and surfaces failures under
+    ``scope="negative_lessons_recall"``.
     """
-    try:
-        from agentic_swmm.memory.negative_lessons import recall_negative_lessons
+    from agentic_swmm.memory.negative_lessons import recall_negative_lessons
 
-        lessons = recall_negative_lessons(store_path, {"case_name": source_case})
-    except Exception:  # pragma: no cover - defensive
-        return []
+    lessons = recall_negative_lessons(store_path, {"case_name": source_case})
     out: list[dict[str, Any]] = []
     for lesson in lessons:
         out.append(
