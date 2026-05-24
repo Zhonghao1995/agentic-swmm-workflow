@@ -41,16 +41,24 @@ SWMM_GATES_ENV = "AISWMM_DISABLE_SWMM_GATES"
 MEMORY_INFORMED_ENV = "AISWMM_DISABLE_MEMORY_INFORMED"
 
 
-def _is_truthy(value: str | None) -> bool:
+def is_truthy(value: str | None) -> bool:
     """Return True for the canonical truthy strings, case-insensitive.
 
     Empty string and ``None`` are both False so an explicit
     ``AISWMM_DISABLE_SWMM_GATES=`` (set-but-empty) leaves the gate
     on — same as if the variable were not set at all.
+
+    This is the single source of truth every ``AISWMM_*`` boolean env
+    var consults so the truthy contract stays consistent across the
+    codebase (see :mod:`agentic_swmm.agent.experimental_providers`).
     """
     if value is None:
         return False
     return value.strip().lower() in _TRUTHY
+
+
+# Backwards-compatible alias for the now-public spelling.
+_is_truthy = is_truthy
 
 
 def swmm_gates_disabled() -> bool:
@@ -61,7 +69,7 @@ def swmm_gates_disabled() -> bool:
     so the gate stays a single boolean flip rather than a per-mode
     keyword argument that has to propagate through every call site.
     """
-    return _is_truthy(os.environ.get(SWMM_GATES_ENV))
+    return is_truthy(os.environ.get(SWMM_GATES_ENV))
 
 
 def memory_informed_disabled() -> bool:
@@ -73,12 +81,13 @@ def memory_informed_disabled() -> bool:
     *before* it reads any store, so the runtime sees the same shape
     as a fresh project.
     """
-    return _is_truthy(os.environ.get(MEMORY_INFORMED_ENV))
+    return is_truthy(os.environ.get(MEMORY_INFORMED_ENV))
 
 
 __all__ = [
     "MEMORY_INFORMED_ENV",
     "SWMM_GATES_ENV",
+    "is_truthy",
     "memory_informed_disabled",
     "swmm_gates_disabled",
 ]

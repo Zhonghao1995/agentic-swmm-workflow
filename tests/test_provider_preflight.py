@@ -25,6 +25,18 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
+    # Issue #191: symmetric reset of the once-per-process legacy-notice
+    # flag, matching ``tests/test_provider_preflight_gate.py``. The
+    # tests in this file run with the gate ON, so the notice path is
+    # dormant today — but a future gate-OFF test added here would
+    # silently swallow the notice if the flag leaked across tests.
+    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
+        monkeypatch.setattr(
+            provider_preflight,
+            "_legacy_claude_sdk_notice_emitted",
+            False,
+            raising=False,
+        )
     return home
 
 
@@ -165,3 +177,39 @@ class TestClaudeOAuthDetection:
     def test_non_json_oauth_file_treated_as_absent(self, isolated_home):
         _write_oauth(isolated_home, body="not json at all {{{")
         assert provider_preflight.detect_claude_oauth() is False
+
+
+class TestIsolatedHomeFixtureResetsLegacyNoticeFlag:
+    """Issue #191: the ``isolated_home`` fixture here must reset the
+    once-per-process notice flag, matching the sibling fixture in
+    ``tests/test_provider_preflight_gate.py``.
+
+    Today both files happen not to trigger the notice path (the gate
+    is forced ON here, so the legacy-downgrade branch is dormant), but
+    a future gate-OFF test added to this file would silently swallow
+    the notice if the flag leaked across tests. The reset is asymmetric
+    risk we eliminate with a one-line addition.
+    """
+
+    @pytest.fixture
+    def _prepoison_notice_flag(self):
+        """Set the notice flag to True *before* ``isolated_home`` runs.
+
+        Pytest resolves fixtures in declaration-position order, so
+        listing this fixture first in the test signature guarantees it
+        runs ahead of ``isolated_home``. After the test we restore the
+        module flag to ``False`` so the rest of the suite is unaffected.
+        """
+        previous = provider_preflight._legacy_claude_sdk_notice_emitted
+        provider_preflight._legacy_claude_sdk_notice_emitted = True
+        yield
+        provider_preflight._legacy_claude_sdk_notice_emitted = previous
+
+    def test_fixture_resets_pre_poisoned_notice_flag(
+        self, _prepoison_notice_flag, isolated_home
+    ):
+        # ``_prepoison_notice_flag`` flipped the module flag to True
+        # before ``isolated_home`` ran. The fixture's reset hook must
+        # have brought it back to False — otherwise a future gate-OFF
+        # test in this file would silently swallow the legacy notice.
+        assert provider_preflight._legacy_claude_sdk_notice_emitted is False

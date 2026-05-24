@@ -72,3 +72,240 @@ class TestGateNoticeForLegacyConfig:
         notice = experimental_providers.gate_notice_for_legacy_config()
         assert isinstance(notice, str)
         assert notice.strip()
+
+
+class TestSharedTruthyHelper:
+    """Issue #191: gate predicate consumes the shared truthy helper.
+
+    ``experimental_providers`` must not maintain its own ``_TRUTHY``
+    membership set. The truthy-string contract lives in
+    ``agentic_swmm.agent.feature_flags`` so a single edit propagates
+    to every ``AISWMM_*`` boolean env var.
+    """
+
+    def test_module_does_not_define_local_truthy_set(self):
+        # Module attribute is the contract: no local ``_TRUTHY`` set
+        # to drift out of sync with ``feature_flags``.
+        assert not hasattr(experimental_providers, "_TRUTHY")
+
+    def test_claude_sdk_enabled_delegates_to_feature_flags_helper(
+        self, monkeypatch
+    ):
+        # Patch the shared helper at its definition site and observe
+        # that ``claude_sdk_enabled`` routes through it. If the gate
+        # ever reverts to a local lookup, the patched stub would be
+        # bypassed and this test would fail.
+        from agentic_swmm.agent import feature_flags
+
+        calls: list[str | None] = []
+
+        def _spy(value: str | None) -> bool:
+            calls.append(value)
+            return True
+
+        monkeypatch.setattr(feature_flags, "is_truthy", _spy, raising=True)
+        monkeypatch.setenv(_ENV_VAR, "anything-the-spy-returns-true")
+        assert experimental_providers.claude_sdk_enabled() is True
+        assert calls, "claude_sdk_enabled did not consult feature_flags.is_truthy"
+
+
+class TestPublicIsTruthyHelper:
+    """Issue #191: promote the truthy helper to a public surface."""
+
+    def test_feature_flags_exposes_public_is_truthy(self):
+        from agentic_swmm.agent import feature_flags
+
+        assert callable(getattr(feature_flags, "is_truthy", None))
+
+    def test_public_helper_accepts_all_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in ("1", "true", "TRUE", "yes", "Yes", "on", "ON"):
+            assert feature_flags.is_truthy(value) is True, value
+
+    def test_public_helper_rejects_non_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in (None, "", "0", "false", "no", "off", "maybe", "  "):
+            assert feature_flags.is_truthy(value) is False, value
+
+
+class TestSupportedProvidersSingleSourceOfTruth:
+    """Issue #191: provider names live in one tuple, derived elsewhere.
+
+    ``agentic_swmm.providers.factory`` owns the canonical tuple of
+    supported provider names. The gate helper must derive its choices
+    from that tuple rather than hand-roll the same literal — otherwise
+    a third provider lands in one place and the two lists drift.
+    """
+
+    def test_factory_exposes_public_supported_providers(self):
+        from agentic_swmm.providers import factory
+
+        names = getattr(factory, "SUPPORTED_PROVIDERS", None)
+        assert names is not None, (
+            "factory must expose a public SUPPORTED_PROVIDERS tuple"
+        )
+        assert isinstance(names, tuple)
+        assert "openai" in names
+        assert "claude_sdk" in names
+
+    def test_supported_providers_in_factory_dunder_all(self):
+        from agentic_swmm.providers import factory
+
+        assert "SUPPORTED_PROVIDERS" in getattr(factory, "__all__", ())
+
+    def test_available_choices_gate_on_match_supported_providers(
+        self, monkeypatch
+    ):
+        from agentic_swmm.providers import factory
+
+        monkeypatch.setenv(_ENV_VAR, "1")
+        # The gate-ON choice list is the canonical tuple in list form.
+        assert experimental_providers.available_provider_choices() == list(
+            factory.SUPPORTED_PROVIDERS
+        )
+
+    def test_available_choices_gate_off_filters_from_supported_providers(
+        self, monkeypatch
+    ):
+        from agentic_swmm.providers import factory
+
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+        choices = experimental_providers.available_provider_choices()
+        # Every gate-OFF choice must come from the canonical tuple —
+        # the gate-OFF helper filters out claude_sdk; everything else
+        # in the canonical tuple survives.
+        for name in choices:
+            assert name in factory.SUPPORTED_PROVIDERS
+        assert "claude_sdk" not in choices
+
+    def test_adding_a_provider_to_supported_propagates_to_gate_on_choices(
+        self, monkeypatch
+    ):
+        """Mutating SUPPORTED_PROVIDERS at runtime exposes the new
+        provider through the gate-ON helper without editing
+        ``available_provider_choices``. This pins the single-source-
+        of-truth contract: a third provider lands in factory only.
+        """
+        from agentic_swmm.providers import factory
+
+        monkeypatch.setenv(_ENV_VAR, "1")
+        monkeypatch.setattr(
+            factory,
+            "SUPPORTED_PROVIDERS",
+            ("openai", "claude_sdk", "future_provider"),
+            raising=True,
+        )
+        choices = experimental_providers.available_provider_choices()
+        assert "future_provider" in choices
+
+
+class TestProviderHelpText:
+    """Issue #191: gate-aware ``--provider`` help text helper.
+
+    Today ``setup.py`` and ``agent.py`` build dynamic help text that
+    names ``claude_sdk`` when the gate is ON; ``chat.py`` and
+    ``model.py`` use static text that never names ``claude_sdk`` even
+    when the gate is ON. The helper unifies the pattern so a single
+    edit propagates to all four commands.
+    """
+
+    def test_helper_exists(self):
+        assert callable(getattr(experimental_providers, "provider_help_text", None))
+
+    def test_gate_off_returns_base_unchanged(self, monkeypatch):
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+        base = "Default provider."
+        assert experimental_providers.provider_help_text(base) == base
+
+    def test_gate_on_appends_claude_sdk_hint(self, monkeypatch):
+        monkeypatch.setenv(_ENV_VAR, "1")
+        base = "Default provider."
+        out = experimental_providers.provider_help_text(base)
+        assert out.startswith(base)
+        assert "claude_sdk" in out
+        assert "Claude Pro/Max" in out
+
+    def test_gate_on_keeps_caller_base_text_verbatim(self, monkeypatch):
+        # The helper appends, never rewrites — each command keeps its
+        # own role-specific base sentence (provider for chat, planner-
+        # only for agent, etc.).
+        monkeypatch.setenv(_ENV_VAR, "1")
+        base = "Provider to use with --planner openai. Defaults to config provider.default."
+        out = experimental_providers.provider_help_text(base)
+        assert base in out
+
+
+class TestProviderHelpAcrossCommands:
+    """Issue #191: every --provider flag must render the dynamic hint
+    when the gate is ON. Today chat/model render only the static base.
+
+    We assert against the ``help`` string on the argparse action
+    itself, not the rendered ``--help`` output, because argparse
+    auto-prints the choice set (``{openai,claude_sdk}``) regardless of
+    the help text — and we want the *help string* to carry the WHY.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _gate_on(self, monkeypatch):
+        monkeypatch.setenv(_ENV_VAR, "1")
+
+    @pytest.mark.parametrize(
+        "command_name",
+        ["setup", "chat", "model", "agent"],
+    )
+    def test_each_command_help_string_mentions_claude_sdk_when_gate_on(
+        self, command_name
+    ):
+        import argparse
+        from agentic_swmm.commands import agent as agent_cmd
+        from agentic_swmm.commands import chat as chat_cmd
+        from agentic_swmm.commands import model as model_cmd
+        from agentic_swmm.commands import setup as setup_cmd
+
+        modules = {
+            "setup": setup_cmd,
+            "chat": chat_cmd,
+            "model": model_cmd,
+            "agent": agent_cmd,
+        }
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        modules[command_name].register(sub)
+        # Walk the subparser to find the --provider action.
+        subparser = sub.choices[command_name]
+        provider_action = next(
+            a for a in subparser._actions if "--provider" in a.option_strings
+        )
+        assert "claude_sdk" in (provider_action.help or ""), (
+            f"{command_name} --provider help string did not mention "
+            "claude_sdk when gate ON"
+        )
+
+
+class TestNoIssue182CommentsAtArgparseSites:
+    """Issue #191: ``# Issue #182:`` narrative comments at argparse
+    sites in commands/*.py were just restating the helper name. Drop
+    them so the source reads cleanly. The substantive comments in
+    ``provider_preflight.py`` (real non-obvious WHY) stay put.
+    """
+
+    @pytest.mark.parametrize(
+        "module_path",
+        [
+            "agentic_swmm/commands/setup.py",
+            "agentic_swmm/commands/chat.py",
+            "agentic_swmm/commands/model.py",
+            "agentic_swmm/commands/agent.py",
+        ],
+    )
+    def test_command_module_has_no_issue_182_comment(self, module_path):
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        text = (repo_root / module_path).read_text(encoding="utf-8")
+        assert "# Issue #182" not in text, (
+            f"{module_path}: drop the narrative # Issue #182 comment "
+            "(refer to issue tracker, not inline)"
+        )

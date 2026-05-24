@@ -18,7 +18,10 @@ import argparse
 import sys
 from pathlib import Path
 
-from agentic_swmm.agent.experimental_providers import available_provider_choices
+from agentic_swmm.agent.experimental_providers import (
+    available_provider_choices,
+    provider_help_text,
+)
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.agent.permissions_profile import Profile, profile_from_string
 from agentic_swmm.agent.runtime_loop import run_interactive_shell
@@ -37,15 +40,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     parser.add_argument("--planner", choices=["rule", "openai"], default="rule", help="Planner backend. Defaults to the deterministic rule planner.")
-    # Issue #182: provider choices + help text honour the
-    # experimental-providers gate.
-    provider_choices = available_provider_choices()
-    provider_help = (
-        "Provider to use with --planner openai. 'claude_sdk' routes through a Claude Pro/Max subscription. Defaults to config provider.default."
-        if "claude_sdk" in provider_choices
-        else "Provider to use with --planner openai. Defaults to config provider.default."
+    parser.add_argument(
+        "--provider",
+        choices=available_provider_choices(),
+        help=provider_help_text(
+            "Provider to use with --planner openai. Defaults to config provider.default."
+        ),
     )
-    parser.add_argument("--provider", choices=provider_choices, help=provider_help)
     parser.add_argument("--model", help="Model override for --planner openai.")
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")
