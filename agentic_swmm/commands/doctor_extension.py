@@ -578,6 +578,28 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
             remediation=None,
         )
 
+    if report.state == "unreadable":
+        # Issue #204 review HIGH finding: file may be perfectly healthy
+        # but locked / permission-denied / transient I/O. Do NOT advise
+        # `repair-sessions` here — that would let the user overwrite a
+        # healthy DB. Use a distinct severity + a permissions-focused
+        # remediation hint instead.
+        first_error = report.errors[0] if report.errors else "cannot read file"
+        return MemoryStoreStatus(
+            name="sessions.sqlite",
+            path=db_path,
+            exists=True,
+            row_count=None,
+            verified_count=None,
+            last_modified_utc=_last_modified_utc(db_path),
+            severity="UNREADABLE",
+            remediation=(
+                f"file is unreadable ({first_error.split(':')[0]}); "
+                "fix file permissions or wait for another writer to release; "
+                "do NOT run repair-sessions (the DB may be healthy)"
+            ),
+        )
+
     # state == "corrupt"
     corrupt_pages = len(report.errors)
     return MemoryStoreStatus(
@@ -607,6 +629,13 @@ def render_sessions_sqlite_row(status: MemoryStoreStatus) -> str:
     if status.severity == "CORRUPT":
         detail = status.remediation or ""
         return f"  CORRUPT {status.name:30} - {detail}".rstrip()
+    if status.severity == "UNREADABLE":
+        # Issue #204 review HIGH finding: distinct from CORRUPT so the
+        # user does not run the destructive repair-sessions verb
+        # against a (possibly healthy) DB that just has a permissions
+        # or lock problem.
+        detail = status.remediation or ""
+        return f"  WARN    {status.name:30} - {detail}".rstrip()
     if not status.exists:
         return f"  OK      {status.name:30} - {status.remediation}".rstrip()
 
@@ -870,7 +899,7 @@ def render_memory_stores_section(
     """
     if not statuses:
         return "Memory stores: (no known stores)"
-    severities = {"OK": 0, "MISSING": 0, "PARTIAL": 0, "EMPTY": 0, "CORRUPT": 0}
+    severities = {"OK": 0, "MISSING": 0, "PARTIAL": 0, "EMPTY": 0, "CORRUPT": 0, "UNREADABLE": 0}
     for s in statuses:
         severities[s.severity] = severities.get(s.severity, 0) + 1
     header_parts = [f"{n} {label}" for label, n in severities.items() if n]

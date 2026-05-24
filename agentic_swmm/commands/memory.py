@@ -410,6 +410,20 @@ def repair_sessions_db(
         "db_path": str(db_path),
     }
 
+    # ---- 0. Refuse if the file is "unreadable" (locked / permission
+    # denied) — the DB itself might be healthy and repair would
+    # overwrite it. Issue #204 review HIGH finding.
+    if db_path.exists():
+        pre_report = session_db.integrity_check(db_path)
+        if pre_report.state == "unreadable":
+            summary["failures"].append(
+                f"{db_path}: file is unreadable ({pre_report.errors[0] if pre_report.errors else 'access denied'}); "
+                "fix permissions or wait for another writer to release the file. "
+                "Refusing to repair because the database may be healthy."
+            )
+            # ok stays False; do not back up or rebuild
+            return summary
+
     # ---- 1. Back up the existing file (if any) before touching it.
     if db_path.exists():
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -460,7 +474,11 @@ def repair_sessions_db(
     # corrupt verdict.
     session_db.clear_integrity_cache()
 
-    summary["ok"] = True
+    # Issue #204 review MEDIUM finding: ok was unconditionally True,
+    # hiding partial failures from CI / scripted callers. Only succeed
+    # when zero sessions failed AND we actually rebuilt something (or
+    # the runs dir was legitimately empty).
+    summary["ok"] = not summary["failures"]
     return summary
 
 

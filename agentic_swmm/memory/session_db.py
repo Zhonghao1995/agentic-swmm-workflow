@@ -47,9 +47,17 @@ class IntegrityReport:
       session sync. Not an error.
     * ``"ok"``     — file opens, PRAGMA reports ``ok``, row counts
       and on-disk size are populated.
-    * ``"corrupt"`` — PRAGMA reports at least one failure, or the file
-      cannot be opened by sqlite at all. ``errors`` carries the raw
-      diagnostic strings (or a synthesised one for unopenable files).
+    * ``"corrupt"`` — PRAGMA reports at least one failure on a file we
+      could fully open. ``errors`` carries the raw diagnostic strings.
+      This is the only state that should trigger the destructive
+      ``aiswmm memory repair-sessions`` remediation.
+    * ``"unreadable"`` — file exists but cannot be opened (permission
+      denied, file locked by another writer, transient I/O error).
+      The DB itself may be perfectly healthy; the user should fix the
+      access problem rather than overwrite the file. The doctor row
+      surfaces a different remediation hint and ``repair-sessions``
+      refuses to operate on this state (see issue #204 review HIGH
+      finding).
 
     Caches are keyed by ``(resolved_path, mtime_ns, size_bytes)`` so a
     fresh file replaces a stale verdict automatically; tests can also
@@ -57,7 +65,7 @@ class IntegrityReport:
     """
 
     path: Path
-    state: str  # "absent" | "ok" | "corrupt"
+    state: str  # "absent" | "ok" | "corrupt" | "unreadable"
     errors: tuple[str, ...] = ()
     session_count: int | None = None
     message_count: int | None = None
@@ -100,10 +108,23 @@ def integrity_check(db_path: Path) -> IntegrityReport:
         # Absent files are not cached: the next caller after the file
         # is created should see the real verdict, not "absent".
         return IntegrityReport(path=resolved, state="absent")
-    except OSError as exc:
+    except PermissionError as exc:
+        # Issue #204 review HIGH finding: a permission-denied stat
+        # must NOT be misclassified as "corrupt", because the doctor
+        # row would then advise `repair-sessions` and the user could
+        # overwrite a perfectly healthy DB. Report as "unreadable" so
+        # the doctor row advises "fix permissions" instead.
         return IntegrityReport(
             path=resolved,
-            state="corrupt",
+            state="unreadable",
+            errors=(f"stat permission denied: {exc}",),
+        )
+    except OSError as exc:
+        # Other transient I/O errors (e.g. EIO from a flaky disk) also
+        # fall under "unreadable" — the DB might still be healthy.
+        return IntegrityReport(
+            path=resolved,
+            state="unreadable",
             errors=(f"stat failed: {exc}",),
         )
 
@@ -121,7 +142,30 @@ def _probe_integrity(db_path: Path, *, size_bytes: int) -> IntegrityReport:
     """One-shot integrity probe. Caller is responsible for caching."""
     try:
         conn = sqlite3.connect(str(db_path))
+    except sqlite3.OperationalError as exc:
+        # Locked / permission-denied / I/O — file may be perfectly
+        # healthy. Issue #204 review HIGH finding: report "unreadable"
+        # so the doctor row does not advise the destructive
+        # `repair-sessions` path. `unable to open` and `database is
+        # locked` both surface here as OperationalError.
+        return IntegrityReport(
+            path=db_path,
+            state="unreadable",
+            errors=(f"cannot open: {exc}",),
+            size_bytes=size_bytes,
+        )
+    except PermissionError as exc:
+        # Some platforms surface fs-permission as PermissionError
+        # rather than sqlite3.OperationalError.
+        return IntegrityReport(
+            path=db_path,
+            state="unreadable",
+            errors=(f"permission denied: {exc}",),
+            size_bytes=size_bytes,
+        )
     except sqlite3.Error as exc:
+        # Other sqlite open-time errors (notably DatabaseError on
+        # "not a database" / corrupt header) — genuinely corrupt.
         return IntegrityReport(
             path=db_path,
             state="corrupt",
