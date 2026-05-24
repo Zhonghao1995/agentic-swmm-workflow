@@ -7,7 +7,10 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agentic_swmm.agent.experimental_providers import available_provider_choices
+from agentic_swmm.agent.experimental_providers import (
+    available_provider_choices,
+    provider_help_text,
+)
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.config import load_config, mcp_registry_path, setup_state_path, write_config
 from agentic_swmm.commands.doctor import _which_swmm5
@@ -23,13 +26,12 @@ from agentic_swmm.utils.paths import resource_root
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("setup", help="Initialize the local Agentic SWMM orchestration layer.")
-    provider_choices = available_provider_choices()
-    provider_help = (
-        "Default provider. 'claude_sdk' routes through a Claude Pro/Max subscription via the local `claude` CLI."
-        if "claude_sdk" in provider_choices
-        else "Default provider."
+    parser.add_argument(
+        "--provider",
+        choices=available_provider_choices(),
+        default="openai",
+        help=provider_help_text("Default provider."),
     )
-    parser.add_argument("--provider", choices=provider_choices, default="openai", help=provider_help)
     parser.add_argument("--model", default=None, help="Default model for the provider.")
     parser.add_argument("--obsidian-dir", type=Path, help="Optional Obsidian vault or folder for audit and memory exports.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable setup state.")

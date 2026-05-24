@@ -70,6 +70,24 @@ def available_provider_choices() -> list[str]:
     return [name for name in supported if name != "claude_sdk"]
 
 
+def provider_help_text(base: str) -> str:
+    """Return the ``--provider`` argparse help string for the current gate state.
+
+    Each command keeps its own role-specific base sentence
+    (provider-for-planner, default-provider, etc.); when the
+    experimental-providers env gate is ON we append a stable
+    ``claude_sdk`` hint so a single helper unifies the four argparse
+    sites. When the gate is OFF the base is returned unchanged so the
+    help text mirrors the narrowed choice set.
+    """
+    if claude_sdk_enabled():
+        return (
+            f"{base} 'claude_sdk' routes through a Claude Pro/Max "
+            "subscription via the local `claude` CLI."
+        )
+    return base
+
+
 def gate_notice_for_legacy_config() -> str:
     """Return the notice line printed when a legacy config selects ``claude_sdk``.
 
@@ -94,4 +112,5 @@ __all__ = [
     "claude_sdk_enabled",
     "available_provider_choices",
     "gate_notice_for_legacy_config",
+    "provider_help_text",
 ]
