@@ -187,10 +187,15 @@ class Spinner:
         self._closed = True
         self._stop_ticker()
         if self._is_tty:
-            # Terminate the overwritten line so the next print starts
-            # cleanly on a new row.
+            # Issue #184: on finish, wipe the spinner's residual frame
+            # IN PLACE with CR + clear-to-EOL rather than terminating
+            # with ``\n``. A trailing newline would freeze the last
+            # frame (e.g. ``[\] Thinking…``) into scrollback, leaving
+            # an orphan line above every subsequent step row. Wiping
+            # leaves the cursor at column 0 of a blank line so the
+            # next ``print`` lands cleanly.
             try:
-                self.stream.write("\n")
+                self.stream.write("\r\x1b[2K")
                 self.stream.flush()
             except Exception:  # pragma: no cover - best effort
                 pass

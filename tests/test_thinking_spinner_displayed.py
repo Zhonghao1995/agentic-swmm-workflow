@@ -121,12 +121,15 @@ class ThinkingSpinnerDisplayedTests(unittest.TestCase):
             mid_flight_hit,
             f"spinner must render before provider returns; snapshots={snapshots[:8]!r}",
         )
-        # 4) Line cleared after the response — last char of final
-        # output is a newline so the next line of agent output starts
-        # cleanly.
+        # 4) Line cleared after the response — the spinner wipes its
+        # own residual frame on finish with CR + clear-to-EOL so the
+        # next print starts on a blank line. Issue #184 (was
+        # ``endswith("\n")``; that left every finished spinner as an
+        # orphan ``[\\] Thinking…`` line above the next step row).
         self.assertTrue(
-            final_output.endswith("\n"),
-            f"thinking spinner must terminate the line on finish; got {final_output[-10:]!r}",
+            final_output.endswith("\r\x1b[2K"),
+            f"thinking spinner must wipe its frame on finish "
+            f"(CR + clear-EOL); got {final_output[-10:]!r}",
         )
 
 
