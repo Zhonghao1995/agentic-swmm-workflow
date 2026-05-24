@@ -122,6 +122,45 @@ class TerminalRendererSelfTests(unittest.TestCase):
         self.assertEqual(_render_terminal("Thinking\rOK\n"), "OKinking\n")
 
 
+class SpinnerNonTTYEscapeFreeTests(unittest.TestCase):
+    """Regression guard for the non-TTY path.
+
+    The fix for issue #184 introduces ANSI escape sequences
+    (``\\r\\x1b[2K``) on the TTY ``finish`` path. The non-TTY path
+    MUST stay escape-free so CI logs, redirected files, and grep
+    pipelines see plain text only. (This locks the existing
+    contract — both pre-fix and post-fix the non-TTY path emits
+    no escapes — so future edits cannot leak the TTY behaviour
+    into log files by accident.)
+    """
+
+    def test_non_tty_spinner_has_no_ansi_escape_sequences(self) -> None:
+        # Plain StringIO — its ``isatty()`` returns False by default.
+        stream = io.StringIO()
+        # Drive the THINKING path (which on a TTY runs a background
+        # ticker that emits frames every ~120 ms) and exercise
+        # update() too so every spinner code path that writes runs
+        # at least once.
+        with Spinner("Thinking…", stream=stream, state=SpinnerState.THINKING) as spinner:
+            spinner.update("step 1")
+            spinner.update("step 2")
+        output = stream.getvalue()
+        self.assertNotIn(
+            "\x1b",
+            output,
+            "non-TTY spinner output must contain zero ANSI escape "
+            f"bytes; got {output!r}",
+        )
+        # Belt-and-braces: also assert the CSI prefix ``\x1b[`` is
+        # absent — same intent, more specific match per PRD wording.
+        self.assertNotIn(
+            "\x1b[",
+            output,
+            "non-TTY spinner output must contain no CSI sequences; "
+            f"got {output!r}",
+        )
+
+
 class SpinnerResidueIssue184Tests(unittest.TestCase):
     def test_two_thinking_spinners_leave_no_residue_between_step_rows(self) -> None:
         """Two consecutive THINKING spinners followed by step rows
