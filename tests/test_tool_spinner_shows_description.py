@@ -5,9 +5,11 @@ the agent loop with ``Running <toolname> — <first sentence of
 description>`` while the tool is running, then ``✓`` / ``✗`` with
 elapsed time on finish.
 
-This test pins the contract for ``build_inp``: the spinner output
-must contain both the tool name AND the first sentence of the
-``ToolSpec.description`` registered in ``AgentToolRegistry``.
+PRD-185 makes that descriptive label opt-in via ``--verbose`` so the
+new default (digest) keeps the spinner row terse. This test moves
+under the ``--verbose`` umbrella by constructing the executor with
+``verbose=True``; the digest-mode counterpart lives in
+``tests/test_executor_digest_spinner_label.py``.
 """
 from __future__ import annotations
 
@@ -61,6 +63,7 @@ class ToolSpinnerShowsDescriptionTests(unittest.TestCase):
                 trace_path=session_dir / "agent_trace.jsonl",
                 profile=Profile.QUICK,
                 progress_stream=stream,
+                verbose=True,
             )
             executor.execute(
                 ToolCall(

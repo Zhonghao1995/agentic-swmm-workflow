@@ -370,6 +370,7 @@ def run_openai_planner(
         trace_path=trace_path,
         dry_run=args.dry_run,
         profile=profile,
+        verbose=bool(getattr(args, "verbose", False)),
     )
     extras = _build_system_prompt_extras(
         session_dir=session_dir,

@@ -22,6 +22,7 @@ class AgentExecutor:
         dry_run: bool = False,
         profile: Profile = Profile.SAFE,
         progress_stream: IO[str] | None = None,
+        verbose: bool = False,
     ) -> None:
         self.registry = registry
         self.session_dir = session_dir
@@ -29,6 +30,11 @@ class AgentExecutor:
         self.dry_run = dry_run
         self.profile = profile
         self.results: list[dict[str, Any]] = []
+        # PRD-185: in digest mode (verbose=False, the new default) the
+        # per-tool spinner shows only the bare tool name; verbose=True
+        # keeps the legacy ``Running <name> — <first sentence>`` text
+        # so the debugging path is byte-identical.
+        self.verbose = verbose
         # PRD_runtime: per-tool spinner — owned by the executor so the
         # planner does not have to keep printing ``[i/N] toolname``.
         self._progress_stream: IO[str] = progress_stream if progress_stream is not None else sys.stdout
@@ -78,6 +84,11 @@ class AgentExecutor:
             self._spinner.update(rendered)
 
     def _tool_label(self, name: str) -> str:
+        # PRD-185: in digest mode the spinner label is just the tool
+        # name so the user sees motion without the re-printed
+        # description. ``--verbose`` keeps the descriptive label.
+        if not self.verbose:
+            return name
         description = self.registry.describe(name)
         if not description:
             return name
