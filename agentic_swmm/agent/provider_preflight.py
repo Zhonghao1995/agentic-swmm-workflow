@@ -38,11 +38,28 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentic_swmm.agent.experimental_providers import (
+    claude_sdk_enabled,
+    gate_notice_for_legacy_config,
+)
 
-_GUIDANCE_TEMPLATE = (
+
+_GUIDANCE_TEMPLATE_OPENAI_ONLY = (
+    "No LLM provider configured.\n"
+    "\n"
+    "Quick fix — OpenAI API key:\n"
+    "  export OPENAI_API_KEY=\"sk-...\"\n"
+    "  or run `aiswmm setup --provider openai` to persist it.\n"
+    "\n"
+    "Continuing in rule-planner mode (no LLM, limited verbs available)."
+)
+
+
+_GUIDANCE_TEMPLATE_WITH_CLAUDE = (
     "No LLM provider configured.\n"
     "\n"
     "Quick fix (option 1) — OpenAI API key:\n"
@@ -55,6 +72,36 @@ _GUIDANCE_TEMPLATE = (
     "\n"
     "Continuing in rule-planner mode (no LLM, limited verbs available)."
 )
+
+
+# Issue #182: the legacy-config fallback notice prints exactly once
+# per process. A module-level boolean is the simplest contract — the
+# preflight is called only from CLI entry points, so we never need a
+# more sophisticated reset mechanism in production. Tests reset it
+# explicitly via the ``isolated_home`` fixture.
+_legacy_claude_sdk_notice_emitted = False
+
+
+def _guidance_template() -> str:
+    """Return the no-provider guidance banner appropriate for the gate state.
+
+    Issue #182: the "Quick fix (option 2) — Claude Pro/Max" block is
+    hidden when ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` is not set.
+    Re-labels the remaining option (drops the "(option 1)" prefix) so
+    the rendered banner reads naturally with one quick-fix block.
+    """
+    if claude_sdk_enabled():
+        return _GUIDANCE_TEMPLATE_WITH_CLAUDE
+    return _GUIDANCE_TEMPLATE_OPENAI_ONLY
+
+
+def _maybe_emit_legacy_claude_sdk_notice() -> None:
+    """Print the legacy-config notice to stderr, at most once per process."""
+    global _legacy_claude_sdk_notice_emitted
+    if _legacy_claude_sdk_notice_emitted:
+        return
+    print(gate_notice_for_legacy_config(), file=sys.stderr)
+    _legacy_claude_sdk_notice_emitted = True
 
 
 @dataclass(frozen=True)
@@ -247,6 +294,15 @@ def check_interactive_provider() -> ProviderPreflightResult:
     oauth_present = detect_claude_oauth()
     env_value = os.environ.get("OPENAI_API_KEY", "").strip()
 
+    # Issue #182: gate guard wrapping the tier-1 ``claude_sdk`` path.
+    # When the experimental-providers env gate is OFF, a persisted
+    # ``provider.default = claude_sdk`` is silently downgraded — we
+    # emit the once-per-process notice and fall through to tier-2
+    # OpenAI resolution. The tier-1 body itself is unchanged.
+    if explicit_default == "claude_sdk" and not claude_sdk_enabled():
+        _maybe_emit_legacy_claude_sdk_notice()
+        explicit_default = None
+
     # Tier 1: explicit claude_sdk opt-in wins regardless of OpenAI keys.
     if explicit_default == "claude_sdk":
         return ProviderPreflightResult(
@@ -270,7 +326,11 @@ def check_interactive_provider() -> ProviderPreflightResult:
     # Tier 3: a Claude Code OAuth file is present even without an
     # explicit opt-in — surface claude_sdk as available so the runtime
     # does not needlessly drop to the rule planner.
-    if oauth_present:
+    #
+    # Issue #182: hidden from the surface when the experimental-providers
+    # env gate is OFF — exposing a provider the runtime cannot select
+    # would defeat the gate.
+    if oauth_present and claude_sdk_enabled():
         return ProviderPreflightResult(
             has_configured_provider=True,
             provider_name="claude_sdk",
@@ -282,7 +342,7 @@ def check_interactive_provider() -> ProviderPreflightResult:
         has_configured_provider=False,
         provider_name=None,
         fallback_planner="rule",
-        guidance_message=_GUIDANCE_TEMPLATE,
+        guidance_message=_guidance_template(),
     )
 
 

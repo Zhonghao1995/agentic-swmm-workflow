@@ -11,11 +11,20 @@ from agentic_swmm.agent import provider_preflight
 
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
-    """Point ``Path.home()`` at a fresh tmp dir to isolate config files."""
+    """Point ``Path.home()`` at a fresh tmp dir to isolate config files.
+
+    Issue #182 hides ``claude_sdk`` behind the
+    ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` env gate; the tests in
+    this module exercise the PRD-09 tier-1 / tier-3 claude_sdk paths
+    that are only reachable when the gate is ON, so we set the gate
+    here. Gate-OFF behaviour is covered by
+    ``tests/test_provider_preflight_gate.py``.
+    """
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
     return home
 
 
