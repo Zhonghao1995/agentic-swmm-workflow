@@ -19,6 +19,10 @@ FG_BLUE = "\033[34m"
 FG_GREEN = "\033[32m"
 FG_RED = "\033[31m"
 FG_YELLOW = "\033[33m"
+# CR + CSI 2 K: move cursor to column 0, erase the entire current line.
+# Used by Spinner.finish() to wipe its residual frame in place; lives
+# here so every ANSI escape funnels through one module.
+CLEAR_LINE = "\r\033[2K"
 
 
 def supports_color() -> bool:

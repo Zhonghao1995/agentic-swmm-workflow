@@ -20,12 +20,29 @@ Tests that exercise the *real* SDK gate behind the
 """
 from __future__ import annotations
 
+import io
 import sys
 import types
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+
+
+class _FakeTTYStream(io.StringIO):
+    """StringIO that claims to be a TTY.
+
+    Spinner / TTY-rendering tests use this to force the carriage-return
+    rendering path (instead of the newline-per-line non-TTY fallback)
+    while still capturing output via ``.getvalue()``.
+
+    Lives here (instead of being duplicated in each test module) per
+    issue #190 — one definition keeps the test-side contract aligned
+    with the production ``Spinner._stream_is_tty`` probe.
+    """
+
+    def isatty(self) -> bool:  # type: ignore[override]
+        return True
 
 
 @dataclass
