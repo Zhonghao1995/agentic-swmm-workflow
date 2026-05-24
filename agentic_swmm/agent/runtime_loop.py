@@ -44,6 +44,7 @@ from typing import Any
 from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.agent import welcome as _welcome
+from agentic_swmm.agent.digest_render import render_final_summary
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
@@ -370,6 +371,7 @@ def run_openai_planner(
         trace_path=trace_path,
         dry_run=args.dry_run,
         profile=profile,
+        verbose=bool(getattr(args, "verbose", False)),
     )
     extras = _build_system_prompt_extras(
         session_dir=session_dir,
@@ -440,20 +442,26 @@ def run_openai_planner(
     _agent_say(f"Final report: {_display_path(report)}")
     if outcome.final_text:
         _agent_say(outcome.final_text)
-    # CONCURRENCY-OWNER: PRD-TUI-REDESIGN
-    # Final retro-chrome result card. Renders the existing outcome /
-    # run-dir / metrics / artifacts / boundary / next structure inside
-    # a rounded frame; plain-mode users see the same fields without
-    # the frame characters.
-    from agentic_swmm.agent.reporting import render_result_card_from_run as _render_card
+    if args.verbose:
+        # CONCURRENCY-OWNER: PRD-TUI-REDESIGN
+        # Verbose path keeps the rounded-frame ``[SYS] RUN COMPLETE``
+        # card unchanged (debugging surface is sacred per PRD-185).
+        from agentic_swmm.agent.reporting import render_result_card_from_run as _render_card
 
-    print(
-        _render_card(
-            session_dir=session_dir,
-            results=outcome.results,
-            dry_run=args.dry_run,
+        print(
+            _render_card(
+                session_dir=session_dir,
+                results=outcome.results,
+                dry_run=args.dry_run,
+            )
         )
-    )
+    else:
+        # PRD-185 digest mode: emit the compact Peak / Continuity /
+        # Run dir block whenever the session produced a manifest.json
+        # (chat-only sessions naturally render no block).
+        summary_block = render_final_summary([session_dir])
+        if summary_block:
+            print(summary_block)
     return 0 if outcome.ok else 1
 
 
