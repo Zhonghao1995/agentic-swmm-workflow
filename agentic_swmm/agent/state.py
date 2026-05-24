@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.intent_map import intent_contracts, select_relevant_intents
+from agentic_swmm.agent.intent_classifier import intent_contracts, select_relevant_intents
 from agentic_swmm.config import runtime_state_path
 
 
