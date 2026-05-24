@@ -317,6 +317,16 @@ def render_final_summary(run_dirs: list[Path]) -> str:
     final list of rendered blocks is empty, the function returns
     the empty string so callers can ``if block: print(block)``
     without further branching.
+
+    Note (issue #193 item 7): the only production caller today
+    (``runtime_loop.run_once``) passes a single-element list because
+    one ``aiswmm interactive`` turn produces at most one SWMM run.
+    The list signature is kept on purpose — the upcoming REPL
+    chat-session summary (post-#192 follow-up work) plans to emit a
+    single block at the end of a multi-turn chat that may carry
+    several runs. Collapsing this to ``run_dir: Path`` now would
+    force that caller to rebuild the multi-run separator logic from
+    scratch.
     """
     rendered: list[str] = []
     for run_dir in run_dirs:
