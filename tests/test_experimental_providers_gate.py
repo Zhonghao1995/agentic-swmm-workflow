@@ -201,6 +201,89 @@ class TestSupportedProvidersSingleSourceOfTruth:
         assert "future_provider" in choices
 
 
+class TestProviderHelpText:
+    """Issue #191: gate-aware ``--provider`` help text helper.
+
+    Today ``setup.py`` and ``agent.py`` build dynamic help text that
+    names ``claude_sdk`` when the gate is ON; ``chat.py`` and
+    ``model.py`` use static text that never names ``claude_sdk`` even
+    when the gate is ON. The helper unifies the pattern so a single
+    edit propagates to all four commands.
+    """
+
+    def test_helper_exists(self):
+        assert callable(getattr(experimental_providers, "provider_help_text", None))
+
+    def test_gate_off_returns_base_unchanged(self, monkeypatch):
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+        base = "Default provider."
+        assert experimental_providers.provider_help_text(base) == base
+
+    def test_gate_on_appends_claude_sdk_hint(self, monkeypatch):
+        monkeypatch.setenv(_ENV_VAR, "1")
+        base = "Default provider."
+        out = experimental_providers.provider_help_text(base)
+        assert out.startswith(base)
+        assert "claude_sdk" in out
+        assert "Claude Pro/Max" in out
+
+    def test_gate_on_keeps_caller_base_text_verbatim(self, monkeypatch):
+        # The helper appends, never rewrites — each command keeps its
+        # own role-specific base sentence (provider for chat, planner-
+        # only for agent, etc.).
+        monkeypatch.setenv(_ENV_VAR, "1")
+        base = "Provider to use with --planner openai. Defaults to config provider.default."
+        out = experimental_providers.provider_help_text(base)
+        assert base in out
+
+
+class TestProviderHelpAcrossCommands:
+    """Issue #191: every --provider flag must render the dynamic hint
+    when the gate is ON. Today chat/model render only the static base.
+
+    We assert against the ``help`` string on the argparse action
+    itself, not the rendered ``--help`` output, because argparse
+    auto-prints the choice set (``{openai,claude_sdk}``) regardless of
+    the help text — and we want the *help string* to carry the WHY.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _gate_on(self, monkeypatch):
+        monkeypatch.setenv(_ENV_VAR, "1")
+
+    @pytest.mark.parametrize(
+        "command_name",
+        ["setup", "chat", "model", "agent"],
+    )
+    def test_each_command_help_string_mentions_claude_sdk_when_gate_on(
+        self, command_name
+    ):
+        import argparse
+        from agentic_swmm.commands import agent as agent_cmd
+        from agentic_swmm.commands import chat as chat_cmd
+        from agentic_swmm.commands import model as model_cmd
+        from agentic_swmm.commands import setup as setup_cmd
+
+        modules = {
+            "setup": setup_cmd,
+            "chat": chat_cmd,
+            "model": model_cmd,
+            "agent": agent_cmd,
+        }
+        parser = argparse.ArgumentParser()
+        sub = parser.add_subparsers(dest="command")
+        modules[command_name].register(sub)
+        # Walk the subparser to find the --provider action.
+        subparser = sub.choices[command_name]
+        provider_action = next(
+            a for a in subparser._actions if "--provider" in a.option_strings
+        )
+        assert "claude_sdk" in (provider_action.help or ""), (
+            f"{command_name} --provider help string did not mention "
+            "claude_sdk when gate ON"
+        )
+
+
 class TestNoIssue182CommentsAtArgparseSites:
     """Issue #191: ``# Issue #182:`` narrative comments at argparse
     sites in commands/*.py were just restating the helper name. Drop
