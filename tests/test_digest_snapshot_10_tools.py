@@ -250,6 +250,13 @@ def _build_fixture() -> list[_Step]:
     ]
 
 
+# Issue #193 item 5: hoist the PRD-185 headline 50% ratio cap to a
+# named module-level constant so the threshold is grep-able and a
+# one-line change. PRD link:
+#   docs/prd/PRD-185_digest_output_mode.md
+DIGEST_VERBOSE_RATIO_CAP = 0.5
+
+
 class Digest10ToolSnapshotTests(unittest.TestCase):
     def test_digest_line_count_is_at_most_half_of_verbose(self) -> None:
         steps = _build_fixture()
@@ -265,8 +272,9 @@ class Digest10ToolSnapshotTests(unittest.TestCase):
         ratio = digest_lines / verbose_lines
         self.assertLessEqual(
             ratio,
-            0.5,
-            f"digest ({digest_lines}) must be <= 50% of verbose "
+            DIGEST_VERBOSE_RATIO_CAP,
+            f"digest ({digest_lines}) must be <= "
+            f"{int(DIGEST_VERBOSE_RATIO_CAP * 100)}% of verbose "
             f"({verbose_lines}); ratio={ratio:.2%}\n"
             f"--- digest ---\n{digest}\n"
             f"--- verbose ---\n{verbose}",
