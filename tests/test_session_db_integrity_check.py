@@ -23,7 +23,13 @@ import pytest
 
 
 def _seed_intact_db(db_path: Path) -> None:
-    """Create a minimal, syntactically valid sessions.sqlite."""
+    """Create a minimal, syntactically valid sessions.sqlite.
+
+    The DB is seeded with enough rows + chunky message text that the
+    schema is sure to span more than one page on disk — that lets the
+    corruption helper smash content pages while leaving the header
+    intact.
+    """
     from agentic_swmm.memory import session_db
 
     session_db.initialize(db_path)
@@ -39,14 +45,17 @@ def _seed_intact_db(db_path: Path) -> None:
             model="gpt-5",
             ok=True,
         )
-        session_db.insert_message(
-            conn,
-            session_id="20260524_120000_demo_run",
-            step=1,
-            role="user",
-            text="hello",
-            utc="2026-05-24T12:00:01+00:00",
-        )
+        for step in range(1, 16):
+            session_db.insert_message(
+                conn,
+                session_id="20260524_120000_demo_run",
+                step=step,
+                role="user" if step % 2 else "assistant",
+                # Multi-page-worth of text so the integrity check has
+                # plenty of material to verify against.
+                text=f"message {step} " * 80,
+                utc="2026-05-24T12:00:01+00:00",
+            )
         conn.commit()
 
 
@@ -54,20 +63,16 @@ def _corrupt_db_in_place(db_path: Path) -> None:
     """Smash bytes in the middle of a real SQLite file so PRAGMA
     integrity_check reports failures.
 
-    The header is left intact (offset 0..99) so sqlite3 can still open
-    the connection without raising ``DatabaseError``; the corruption
-    lives in the page that holds the schema. PRAGMA integrity_check is
-    the right surface for this layer (header-corrupted files refuse to
-    open and surface differently in the doctor row).
+    The header (offset 0..99) and the tail (last 8 bytes) are left
+    intact so ``sqlite3.connect`` still opens the connection — the
+    corruption lives in the content pages where ``PRAGMA
+    integrity_check`` reads the schema.
     """
     raw = bytearray(db_path.read_bytes())
-    # Overwrite a chunk in the middle of the file with zeros. We avoid
-    # the first 100 bytes (the header) and the last 8 bytes (some
-    # internal pointers) to keep the file openable.
-    start = 200
-    end = min(len(raw) - 8, start + 1024)
-    for i in range(start, end):
-        raw[i] = 0
+    # Stomp every byte from offset 200 onwards (skipping the last 8) so
+    # multiple pages are guaranteed broken.
+    for i in range(200, len(raw) - 8):
+        raw[i] = 0xAA
     db_path.write_bytes(bytes(raw))
 
 
@@ -98,7 +103,7 @@ def test_integrity_check_reports_ok_for_intact_db(tmp_path: Path) -> None:
     assert report.state == "ok"
     assert report.errors == ()
     assert report.session_count == 1
-    assert report.message_count == 1
+    assert report.message_count == 15
     assert report.size_bytes is not None and report.size_bytes > 0
 
 
