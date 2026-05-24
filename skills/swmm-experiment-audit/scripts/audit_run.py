@@ -1020,6 +1020,17 @@ def collect_run(
             "builder_manifest": relpath(builder_manifest_path, repo_root) if builder_manifest_path else None,
             "runner_manifest": relpath(runner_manifest_path, repo_root) if runner_manifest_path else None,
         },
+        # Issue #189: stash the raw runner manifest dict on the returned
+        # provenance so downstream renderers (``render_run_results_section``)
+        # do not have to re-read ``manifest.json`` from disk. ``None`` means
+        # the runner manifest was missing or unreadable; the renderer treats
+        # that as the "unavailable" branch. Keep the key under ``_raw`` so
+        # the public provenance JSON stays the documented schema — the
+        # leading underscore signals "internal, not part of the schema
+        # contract".
+        "_raw": {
+            "runner_manifest": runner_manifest if runner_manifest_path and runner_manifest else None,
+        },
     }
     return provenance
 
@@ -1159,8 +1170,31 @@ def render_run_results_section(runner_manifest: dict[str, Any] | None) -> str:
     - Individual fields missing -> that row reads ``unavailable``.
     - ``metrics.internal_node_peak`` is rendered only when present;
       omitting it must not produce an ``unavailable`` row.
+
+    Issue #189 — relationship to ``## Key Metrics``. Both sections
+    surface peak / continuity / return-code. They survive side-by-side
+    because they answer *different* questions:
+
+    - ``## Run Results`` is the **headline** — what the runner wrote,
+      verbatim, with no re-parsing. Read this first.
+    - ``## Key Metrics`` is the **source-of-truth view** — the same
+      numbers reconciled against the report sections they were parsed
+      from, with explicit source-artifact and source-section columns.
+
+    The decision was to keep both with differentiated leading text
+    (rather than collapsing one into the other) so #186's contract
+    stays stable. A leading tagline on each section makes the intent
+    explicit before the reader scans the numbers.
     """
-    header_lines = ["## Run Results", ""]
+    header_lines = [
+        "## Run Results",
+        "",
+        # Issue #189 tagline: stamps the intent of this section so the
+        # reader knows it's the headline view, not the source-validation
+        # view that follows in ## Key Metrics.
+        "Headline numbers from the runner manifest, rendered verbatim.",
+        "",
+    ]
     if not isinstance(runner_manifest, dict):
         return "\n".join(
             header_lines
@@ -1250,8 +1284,14 @@ def render_note(
     provenance: dict[str, Any],
     comparison: dict[str, Any],
     repo_root: Path,
-    runner_manifest: dict[str, Any] | None = None,
 ) -> str:
+    # Issue #189: the runner manifest dict is sourced from provenance, not
+    # re-read from disk. ``collect_run`` already loads ``manifest.json``
+    # once to build provenance; it stashes the raw dict under
+    # ``provenance["_raw"]["runner_manifest"]`` so renderers can reuse it
+    # without a second I/O round-trip (which also closed a small
+    # time-of-check / time-of-use gap from #186).
+    runner_manifest = (provenance.get("_raw") or {}).get("runner_manifest")
     run_id = provenance.get("run_id")
     status = provenance.get("status")
     peak = ((provenance.get("metrics") or {}).get("peak_flow") or {})
@@ -1360,6 +1400,8 @@ def render_note(
     # without opening manifest.json. The renderer is defensive — a
     # missing or partial manifest yields an ``unavailable`` line/cell
     # rather than aborting the note.
+    # Issue #189: runner_manifest is pulled off provenance (loaded once
+    # by collect_run) instead of being re-read from disk here.
     sections.extend(render_run_results_section(runner_manifest).splitlines())
     sections.append("")
 
@@ -1381,9 +1423,17 @@ def render_note(
     if return_code is not None:
         metric_rows.append(["SWMM return code", return_code, "code", "`runner_manifest`", "`return_code`"])
     if metric_rows:
+        # Issue #189: ``## Key Metrics`` overlaps with ``## Run Results``
+        # on the headline numbers (peak, continuity, return code) but
+        # serves a different purpose — it reconciles each value against
+        # the report section it was parsed from, exposing the source
+        # artifact / table / field. Keep both sections (#186's contract
+        # stays stable) and differentiate via the leading tagline below.
         sections.extend(
             [
                 "## Key Metrics",
+                "",
+                "Headline numbers with provenance and source-of-truth validation against the report sections they were parsed from.",
                 "",
                 md_table(["Metric", "Value", "Unit", "Source artifact", "Source table / field"], metric_rows),
                 "",
@@ -1921,22 +1971,17 @@ def main() -> None:
         produced_by="swmm-experiment-audit",
         used_for=["SWMM-specific screening diagnostics", "modeling memory"],
     )
+    # Issue #189: ``## Run Results`` is rendered straight from the runner
+    # manifest. The dict is loaded once inside ``collect_run`` and stashed
+    # at ``provenance["_raw"]["runner_manifest"]``; ``render_note`` pulls
+    # it from there instead of re-reading ``manifest.json``. We render the
+    # note *before* writing experiment_provenance.json so we can strip the
+    # ``_raw`` scratch payload from the serialized provenance without
+    # losing it for the renderer.
+    note_text = render_note(provenance, comparison, repo_root)
+    provenance.pop("_raw", None)
     write_json(out_provenance, provenance)
     write_json(out_comparison, comparison)
-    # PRD-183: ``## Run Results`` is rendered straight from the runner
-    # manifest so numbers appear exactly as the runner wrote them. The
-    # renderer is defensive — passing ``None`` here yields an
-    # ``unavailable`` line rather than aborting the whole note.
-    runner_manifest_for_note: dict[str, Any] | None = None
-    runner_manifest_path = find_stage_manifest(
-        run_dir, ["05_runner", "06_runner", "runner"]
-    )
-    if runner_manifest_path is not None:
-        loaded = read_json(runner_manifest_path)
-        runner_manifest_for_note = loaded if loaded else None
-    note_text = render_note(
-        provenance, comparison, repo_root, runner_manifest_for_note
-    )
     write_text(out_note, note_text)
     if obsidian_note:
         write_text(obsidian_note, note_text)
