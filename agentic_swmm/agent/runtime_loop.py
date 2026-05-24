@@ -270,7 +270,7 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     """
     if not session_dir.exists() or not session_dir.is_dir():
         return None
-    if _is_swmm_run_dir(session_dir):
+    if _bootstrap_is_swmm_run_dir(session_dir):
         return None
 
     state_path = session_dir / "session_state.json"
@@ -524,11 +524,13 @@ def _welcome_disabled() -> bool:
 
 
 def _is_swmm_run_dir(path: Path) -> bool:
-    if not path.exists() or not path.is_dir():
-        return False
-    if (path / "manifest.json").exists() and ((path / "05_runner").exists() or (path / "01_runner").exists()):
-        return True
-    return any(path.glob("**/*.out")) and any(path.glob("**/*.rpt"))
+    """Facade over :func:`session_bootstrap.is_swmm_run_dir`.
+
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working. New call sites should import
+    ``is_swmm_run_dir`` from ``session_bootstrap`` directly.
+    """
+    return _bootstrap_is_swmm_run_dir(path)
 
 
 def _load_prior_session_state(active_run_dir: Path | None) -> dict[str, Any] | None:
@@ -587,27 +589,13 @@ def _sync_session_end(session_dir: Path) -> None:
 
 
 def _resolve_runs_root_for(session_dir: Path) -> Path:
-    """Return the ``runs/`` root that the MOC should describe.
+    """Facade over :func:`session_bootstrap.bootstrap_runs_root`.
 
-    Order:
-      1. ``AISWMM_RUNS_ROOT`` env var (lets tests point at a tmp tree).
-      2. The first ancestor of ``session_dir`` named ``runs``.
-      3. ``repo_root() / "runs"`` as a last-resort fallback.
-
-    Mirrors the resolution used by ``commands/audit._runs_root_for`` so
-    the session-end and force-refresh paths agree.
+    Kept so any external caller / ``mock.patch`` target that still
+    points at this name keeps working. New call sites should import
+    ``bootstrap_runs_root`` directly.
     """
-    override = os.environ.get("AISWMM_RUNS_ROOT")
-    if override:
-        return Path(override).expanduser().resolve()
-    try:
-        resolved = session_dir.resolve()
-    except OSError:
-        resolved = session_dir
-    for parent in resolved.parents:
-        if parent.name == "runs":
-            return parent
-    return repo_root() / "runs"
+    return _bootstrap_runs_root(session_dir)
 
 
 def _refresh_moc_after_session(session_dir: Path) -> None:
@@ -620,7 +608,7 @@ def _refresh_moc_after_session(session_dir: Path) -> None:
     block the user's turn from exiting cleanly.
     """
     try:
-        runs_root = _resolve_runs_root_for(session_dir)
+        runs_root = _bootstrap_runs_root(session_dir)
         if not runs_root.exists():
             return
         text = generate_moc(runs_root)
