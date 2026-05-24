@@ -18,6 +18,7 @@ import yaml
 from agentic_swmm.agent.session_bootstrap import (
     bootstrap_prior_state,
     bootstrap_session_dir,
+    bootstrap_system_prompt,
     display_path,
     infer_case_slug,
     new_interactive_session,
@@ -270,6 +271,114 @@ class BootstrapPriorStateTests(unittest.TestCase):
             run_dir = Path(tmp)
             (run_dir / "aiswmm_state.json").write_text("[1,2,3]", encoding="utf-8")
             self.assertIsNone(bootstrap_prior_state(run_dir))
+
+
+class BootstrapSystemPromptTests(unittest.TestCase):
+    """Issue #205 / Phase ``bootstrap_system_prompt``.
+
+    Assembles the list of system-prompt extras: ``<facts>`` block
+    (durable user-curated context) and ``<previous-session>`` block
+    (volatile recall). Both gated on non-empty input so the prompt
+    stays tight when nothing applies. Formerly
+    ``runtime_loop._build_system_prompt_extras``.
+    """
+
+    def test_returns_empty_list_when_no_facts_and_no_prior(self) -> None:
+        with TemporaryDirectory() as tmp:
+            # Point facts dir at an empty tmp so no facts block emerges.
+            facts_dir = Path(tmp) / "curated"
+            db_dir = Path(tmp) / "db"
+            session_dir = Path(tmp) / "2026-05-19" / "100000_unknowncase_chat"
+            session_dir.mkdir(parents=True)
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "AISWMM_FACTS_DIR": str(facts_dir),
+                    "AISWMM_SESSION_DB": str(db_dir / "sessions.sqlite"),
+                },
+            ):
+                extras = bootstrap_system_prompt(
+                    session_dir=session_dir,
+                    prior_session_state=None,
+                )
+        self.assertEqual(extras, [])
+
+    def test_facts_block_emitted_when_facts_md_present(self) -> None:
+        with TemporaryDirectory() as tmp:
+            facts_dir = Path(tmp) / "curated"
+            facts_dir.mkdir()
+            (facts_dir / "facts.md").write_text(
+                "- Tecnopolo is on the Po river.\n",
+                encoding="utf-8",
+            )
+            db_dir = Path(tmp) / "db"
+            session_dir = Path(tmp) / "2026-05-19" / "100000_freshcase_chat"
+            session_dir.mkdir(parents=True)
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "AISWMM_FACTS_DIR": str(facts_dir),
+                    "AISWMM_SESSION_DB": str(db_dir / "sessions.sqlite"),
+                },
+            ):
+                extras = bootstrap_system_prompt(
+                    session_dir=session_dir,
+                    prior_session_state=None,
+                )
+        # One extra (the facts block) — no DB so no previous-session block.
+        self.assertEqual(len(extras), 1)
+        self.assertIn("Tecnopolo", extras[0])
+
+    def test_facts_block_precedes_previous_session_block(self) -> None:
+        # Seed both a facts.md AND a SQLite prior session for the same case
+        # the session_dir's leaf encodes. Phase must emit facts first.
+        from agentic_swmm.memory import session_db
+
+        with TemporaryDirectory() as tmp:
+            facts_dir = Path(tmp) / "curated"
+            facts_dir.mkdir()
+            (facts_dir / "facts.md").write_text(
+                "- Project: Po basin\n", encoding="utf-8"
+            )
+
+            db_path = Path(tmp) / "sessions.sqlite"
+            session_db.initialize(db_path)
+            with session_db.connect(db_path) as conn:
+                session_db.upsert_session(
+                    conn,
+                    session_id="20260518_120000_priorcase_run",
+                    start_utc="2026-05-18T12:00:00+00:00",
+                    end_utc="2026-05-18T12:01:00+00:00",
+                    goal="prior turn goal",
+                    case_name="priorcase",
+                    planner="openai",
+                    model="gpt-5",
+                    ok=True,
+                )
+                conn.commit()
+
+            session_dir = Path(tmp) / "2026-05-19" / "100000_priorcase_run"
+            session_dir.mkdir(parents=True)
+
+            with mock.patch.dict(
+                "os.environ",
+                {
+                    "AISWMM_FACTS_DIR": str(facts_dir),
+                    "AISWMM_SESSION_DB": str(db_path),
+                },
+            ):
+                extras = bootstrap_system_prompt(
+                    session_dir=session_dir,
+                    prior_session_state=None,
+                )
+
+        self.assertGreaterEqual(len(extras), 2)
+        # Facts block first, previous-session block second.
+        self.assertIn("Po basin", extras[0])
+        self.assertTrue(
+            any("<previous-session" in e for e in extras),
+            extras,
+        )
 
 
 if __name__ == "__main__":
