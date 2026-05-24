@@ -244,6 +244,43 @@ class RepairSessionsHelperTests(unittest.TestCase):
             # never deleted.
             self.assertTrue(db_path.exists())
 
+    def test_repair_returns_friendly_error_when_backup_fails(self) -> None:
+        """Issue #212 item #4: when ``os.replace`` raises (disk full,
+        permission denied, cross-FS), the user must see a friendly
+        message instead of an unhandled traceback. ``ok`` stays False
+        and the original DB stays untouched.
+        """
+        import os as _os
+        from unittest import mock
+
+        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory import session_db
+
+        with TemporaryDirectory() as tmp:
+            runs_dir = Path(tmp)
+            db_path = runs_dir / "sessions.sqlite"
+            _seed_intact_db(db_path)
+            _corrupt(db_path)
+            session_db.clear_integrity_cache()
+            corrupt_bytes = db_path.read_bytes()
+
+            with mock.patch.object(
+                _os, "replace", side_effect=OSError("disk full")
+            ):
+                result = repair_sessions_db(runs_dir, db_path=db_path)
+
+            self.assertEqual(result["ok"], False)
+            self.assertIsNone(result.get("backup"))
+            # One friendly failure entry mentioning the cause.
+            failures = result.get("failures") or []
+            self.assertTrue(failures)
+            joined = " ".join(failures)
+            self.assertIn("could not back up", joined)
+            self.assertIn("disk full", joined)
+            self.assertIn("aborting repair", joined)
+            # Original file untouched.
+            self.assertEqual(db_path.read_bytes(), corrupt_bytes)
+
 
 # ---------------------------------------------------------------------------
 # CLI surface

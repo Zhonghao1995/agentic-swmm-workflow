@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -441,7 +440,23 @@ def repair_sessions_db(
                     backup_path = candidate
                     break
                 counter += 1
-        shutil.move(str(db_path), str(backup_path))
+        # ``os.replace`` is atomic on a same-filesystem target (POSIX
+        # rename(2)). On cross-filesystem moves it raises ``OSError`` —
+        # which is desirable here: the corrupt DB and its backup MUST
+        # land on the same FS so the rebuild step has a guaranteed
+        # rollback target. ``shutil.move`` would silently degrade to
+        # copy+unlink and the user would learn about the partial state
+        # only when one of the two halves later disappeared.
+        try:
+            os.replace(str(db_path), str(backup_path))
+        except OSError as exc:
+            # Backup itself failed — disk full, permission denied, or
+            # cross-filesystem rename. Refuse to touch the original.
+            summary["failures"].append(
+                f"could not back up {db_path} -> {backup_path}: {exc}; "
+                "aborting repair to protect your data"
+            )
+            return summary
         summary["backup"] = str(backup_path)
 
     # ---- 2. Discover every session dir under runs_dir.
