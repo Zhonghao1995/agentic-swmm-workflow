@@ -199,3 +199,30 @@ class TestSupportedProvidersSingleSourceOfTruth:
         )
         choices = experimental_providers.available_provider_choices()
         assert "future_provider" in choices
+
+
+class TestNoIssue182CommentsAtArgparseSites:
+    """Issue #191: ``# Issue #182:`` narrative comments at argparse
+    sites in commands/*.py were just restating the helper name. Drop
+    them so the source reads cleanly. The substantive comments in
+    ``provider_preflight.py`` (real non-obvious WHY) stay put.
+    """
+
+    @pytest.mark.parametrize(
+        "module_path",
+        [
+            "agentic_swmm/commands/setup.py",
+            "agentic_swmm/commands/chat.py",
+            "agentic_swmm/commands/model.py",
+            "agentic_swmm/commands/agent.py",
+        ],
+    )
+    def test_command_module_has_no_issue_182_comment(self, module_path):
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        text = (repo_root / module_path).read_text(encoding="utf-8")
+        assert "# Issue #182" not in text, (
+            f"{module_path}: drop the narrative # Issue #182 comment "
+            "(refer to issue tracker, not inline)"
+        )
