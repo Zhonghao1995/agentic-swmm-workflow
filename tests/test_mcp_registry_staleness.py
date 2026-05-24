@@ -30,10 +30,7 @@ def _write_partial_registry(path: Path, *, names: list[str]) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-@pytest.fixture
-def isolated_config_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("AISWMM_CONFIG_DIR", str(tmp_path))
-    yield tmp_path
+# NOTE: ``isolated_config_dir`` fixture is provided by ``tests/conftest.py``.
 
 
 def test_full_registry_loads_unchanged(isolated_config_dir, capsys):

@@ -191,7 +191,16 @@ def on_exception_return_default(
                 return fn(*args, **kwargs)
             except Exception as exc:
                 exc_type = type(exc).__name__
-                exc_str = str(exc)
+                # ``str(exc)`` itself can raise if the exception's
+                # ``__str__`` is hostile (rare, but precisely the class
+                # of failure the ``hitl_surface._safe_str`` boundary
+                # exists to defend against — symmetry matters: the
+                # boundary that catches ``__str__`` failures must not
+                # itself re-crash on one).
+                try:
+                    exc_str = str(exc)
+                except Exception:
+                    exc_str = "(unprintable exception)"
                 # In-process logger — the human-readable channel a
                 # developer tailing stderr will notice.
                 _log.log(

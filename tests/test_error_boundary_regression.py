@@ -32,29 +32,11 @@ Companion abstract tests live in ``test_error_boundary.py``.
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
+from tests.conftest import read_silent_fallback_events as _read_events
 
-
-def _read_events(jsonl_path: Path) -> list[dict]:
-    """Read every JSON object from ``jsonl_path`` in line order."""
-    if not jsonl_path.exists():
-        return []
-    return [
-        json.loads(line)
-        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-
-
-@pytest.fixture
-def isolated_config_dir(tmp_path, monkeypatch):
-    """Point ``config_dir()`` at a fresh tmpdir so the jsonl is local."""
-    monkeypatch.setenv("AISWMM_CONFIG_DIR", str(tmp_path))
-    yield tmp_path
+# NOTE: ``isolated_config_dir`` fixture comes from ``tests/conftest.py``.
 
 
 def test_on_disk_skill_names_returns_empty_when_discover_raises(

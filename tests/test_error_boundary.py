@@ -24,31 +24,16 @@ abstract decorator contract.
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 
 import pytest
 
 from agentic_swmm.agent.error_boundary import on_exception_return_default
+from tests.conftest import read_silent_fallback_events as _read_events
 
-
-def _read_events(jsonl_path: Path) -> list[dict]:
-    """Read every JSON object from ``jsonl_path`` in line order."""
-    if not jsonl_path.exists():
-        return []
-    return [
-        json.loads(line)
-        for line in jsonl_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-
-
-@pytest.fixture
-def isolated_config_dir(tmp_path, monkeypatch):
-    """Point ``config_dir()`` at a fresh tmpdir so the jsonl is local."""
-    monkeypatch.setenv("AISWMM_CONFIG_DIR", str(tmp_path))
-    yield tmp_path
+# NOTE: ``isolated_config_dir`` fixture comes from ``tests/conftest.py``.
+# ``_read_events`` is a thin alias to the conftest helper so the existing
+# test body reads identically while sharing the parser.
 
 
 def test_returns_function_result_on_success(isolated_config_dir):
