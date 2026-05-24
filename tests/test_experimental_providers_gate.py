@@ -26,7 +26,10 @@ class TestClaudeSdkEnabled:
         monkeypatch.delenv(_ENV_VAR, raising=False)
         assert experimental_providers.claude_sdk_enabled() is False
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "True", "yes", "YES", "Yes"])
+    @pytest.mark.parametrize(
+        "value",
+        ["1", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On"],
+    )
     def test_truthy_values_return_true(self, monkeypatch, value):
         monkeypatch.setenv(_ENV_VAR, value)
         assert experimental_providers.claude_sdk_enabled() is True

@@ -32,17 +32,19 @@ import os
 
 
 _ENV_VAR = "AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS"
-_TRUTHY = frozenset({"1", "true", "yes"})
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 
 def claude_sdk_enabled() -> bool:
     """Return True iff the experimental-providers env gate is set.
 
-    Truthy values (case-insensitive): ``"1"``, ``"true"``, ``"yes"``.
-    Anything else — including unset, ``""``, ``"0"``, ``"false"``,
-    ``"no"`` — returns False. We use an explicit allowlist rather than
-    a generic non-empty check so a stray export of ``=0`` does not
-    accidentally flip the gate ON.
+    Truthy values (case-insensitive): ``"1"``, ``"true"``, ``"yes"``,
+    ``"on"`` — matching ``agentic_swmm.agent.feature_flags._TRUTHY`` so
+    every ``AISWMM_*`` boolean env var honours the same set. Anything
+    else — including unset, ``""``, ``"0"``, ``"false"``, ``"no"``,
+    ``"off"`` — returns False. We use an explicit allowlist rather
+    than a generic non-empty check so a stray export of ``=0`` does
+    not accidentally flip the gate ON.
     """
     return os.environ.get(_ENV_VAR, "").strip().lower() in _TRUTHY
 
