@@ -240,14 +240,14 @@ class OpenAIPlanner:
             return
         # Digest path. Issue #193 item 2: read the permission decision
         # straight from the executor's result. The executor stamps
-        # ``_permission`` = ``{"prompted": bool, "approved": bool}`` on
+        # ``permission`` = ``{"prompted": bool, "approved": bool}`` on
         # every dispatch, so we no longer have to re-evaluate
         # ``auto_approve`` here or string-match the denial summary.
         # Fall back to a derived decision for stub executors used in
         # unit tests that pre-date this seam.
         is_read_only = self.registry.is_read_only(call.name)
         dry_run = bool(getattr(executor, "dry_run", False))
-        perm = result.get("_permission")
+        perm = result.get("permission")
         if isinstance(perm, dict) and "prompted" in perm and "approved" in perm:
             prompted = bool(perm["prompted"])
             approved = bool(perm["approved"])
@@ -272,10 +272,11 @@ class OpenAIPlanner:
         if not ok:
             # PRD-185 / issue #193 item 1: try each known failure-detail
             # field in priority order. Subprocess-shaped tools populate
-            # ``stderr_tail`` / ``stdout_tail``; in-process handlers
-            # carry detail under ``error`` (e.g. caught exception
-            # strings), ``message`` (gap-decision-shaped failures), or
-            # ``traceback`` (multi-line stacks from background workers).
+            # ``stderr_tail`` / ``stdout_tail`` today; the trailing
+            # ``error`` / ``message`` / ``traceback`` keys are reserved
+            # for handlers that adopt them in future (no handler in the
+            # tree emits them at the moment, but the priority order is
+            # pinned here so the digest UX is forward-compatible).
             # First non-empty string wins so the user always sees *some*
             # diagnostic beneath a failure row without ``--verbose``.
             for key in ("stderr_tail", "stdout_tail", "error", "message", "traceback"):

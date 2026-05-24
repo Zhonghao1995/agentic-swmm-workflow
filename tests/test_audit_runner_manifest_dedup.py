@@ -7,19 +7,18 @@ during a single audit pipeline invocation:
 2. Again at the bottom of ``main()`` via ``find_stage_manifest`` +
    ``read_json`` to feed ``render_run_results_section``.
 
-That's pure waste plus a TOCTOU smell. After #189:
+That's pure waste plus a TOCTOU smell. After #189 + #196 polish:
 
-- ``collect_run`` exposes the raw runner manifest dict on the returned
-  provenance (under ``provenance["_raw"]["runner_manifest"]``).
-- ``render_note`` no longer takes a ``runner_manifest`` parameter — it
-  pulls the dict off provenance directly.
+- ``collect_run`` returns a ``(provenance, raw_runner_manifest)`` tuple
+  so the raw dict is an explicit second return value rather than a
+  smuggled key on the persisted provenance dict.
+- ``render_note`` takes the raw manifest as an explicit fourth
+  parameter.
 - ``main()`` reads the runner ``manifest.json`` exactly once.
 """
 from __future__ import annotations
 
-import importlib.util
 import inspect
-import json
 import subprocess
 import sys
 import tempfile
@@ -31,92 +30,38 @@ from unittest import mock
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
 
-
-def _load_audit_module():
-    """Load ``audit_run.py`` as an importable module for unit-testing."""
-    spec = importlib.util.spec_from_file_location("_audit_run_dedup", AUDIT_SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules["_audit_run_dedup"] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def _build_minimal_run_dir(repo_root: Path) -> Path:
-    """Build a runnable run-dir layout the audit pipeline accepts."""
-    run_dir = repo_root / "runs" / "case-dedup"
-    runner = run_dir / "05_runner"
-    runner.mkdir(parents=True)
-    (runner / "model.rpt").write_text(
-        """
-        ***** Node Inflow Summary *****
-        ------------------------------------------------
-          OU2             OUTFALL       0.001       0.061      2    03:15
-
-        ***** Runoff Quantity Continuity *****
-        Continuity Error (%) ............. -0.13
-
-        ***** Flow Routing Continuity *****
-        Continuity Error (%) ............. -0.004
-        """,
-        encoding="utf-8",
-    )
-    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-    (runner / "stdout.txt").write_text("", encoding="utf-8")
-    (runner / "stderr.txt").write_text("", encoding="utf-8")
-    (runner / "manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "rpt": str(runner / "model.rpt"),
-                    "out": str(runner / "model.out"),
-                    "stdout": str(runner / "stdout.txt"),
-                    "stderr": str(runner / "stderr.txt"),
-                },
-                "metrics": {
-                    "peak": {
-                        "node": "OU2",
-                        "peak": 0.061,
-                        "time_hhmm": "03:15",
-                        "source": "Node Inflow Summary",
-                    },
-                    "continuity": {
-                        "runoff_quantity": {
-                            "Surface Runoff": {"col1": 0.097, "col2": 44.483},
-                            "Continuity Error (%)": -0.13,
-                        },
-                        "flow_routing": {
-                            "Continuity Error (%)": -0.004,
-                        },
-                    },
-                },
-                "return_code": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
-    return run_dir
+from tests.conftest import load_audit_module, seed_minimal_run_dir  # noqa: E402
 
 
 class CollectRunExposesRawRunnerManifestTests(unittest.TestCase):
-    """AC1: ``collect_run`` returns the raw runner manifest dict in provenance."""
+    """AC1: ``collect_run`` returns ``(provenance, raw_runner_manifest)``."""
 
     def setUp(self) -> None:
-        self.audit_run = _load_audit_module()
+        self.audit_run = load_audit_module()
         self.tmp = tempfile.TemporaryDirectory()
         self.repo_root = Path(self.tmp.name)
-        self.run_dir = _build_minimal_run_dir(self.repo_root)
+        self.run_dir = seed_minimal_run_dir(self.repo_root)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_provenance_carries_raw_runner_manifest_dict(self) -> None:
-        provenance = self.audit_run.collect_run(
+    def test_collect_run_returns_two_tuple(self) -> None:
+        result = self.audit_run.collect_run(self.run_dir, repo_root=self.repo_root)
+        self.assertIsInstance(result, tuple)
+        self.assertEqual(len(result), 2)
+
+    def test_first_tuple_element_is_provenance_without_raw_key(self) -> None:
+        provenance, _ = self.audit_run.collect_run(
             self.run_dir, repo_root=self.repo_root
         )
+        # Provenance must not smuggle ``_raw`` anymore — the raw payload
+        # is the explicit second tuple element instead.
+        self.assertNotIn("_raw", provenance)
 
-        raw = provenance.get("_raw") or {}
-        runner_manifest = raw.get("runner_manifest")
+    def test_second_tuple_element_is_raw_runner_manifest_dict(self) -> None:
+        _, runner_manifest = self.audit_run.collect_run(
+            self.run_dir, repo_root=self.repo_root
+        )
         self.assertIsInstance(runner_manifest, dict)
         # Sanity: the dict matches what the runner wrote.
         self.assertEqual(runner_manifest.get("return_code"), 0)
@@ -127,59 +72,95 @@ class CollectRunExposesRawRunnerManifestTests(unittest.TestCase):
 
 
 class RenderNoteSignatureTests(unittest.TestCase):
-    """AC2: ``render_note`` no longer accepts a ``runner_manifest`` parameter."""
+    """AC2: ``render_note`` takes the raw manifest as an explicit parameter."""
 
     def setUp(self) -> None:
-        self.audit_run = _load_audit_module()
+        self.audit_run = load_audit_module()
 
-    def test_render_note_has_three_positional_parameters(self) -> None:
+    def test_render_note_signature_accepts_runner_manifest(self) -> None:
         sig = inspect.signature(self.audit_run.render_note)
         params = list(sig.parameters)
-        # provenance, comparison, repo_root — and nothing else.
-        self.assertEqual(params, ["provenance", "comparison", "repo_root"])
+        # provenance, comparison, repo_root, runner_manifest.
+        self.assertEqual(
+            params, ["provenance", "comparison", "repo_root", "runner_manifest"]
+        )
 
-    def test_render_note_pulls_runner_manifest_off_provenance(self) -> None:
-        """render_note must source the runner manifest from provenance._raw."""
+    def test_render_note_renders_runner_manifest_passed_explicitly(self) -> None:
         provenance = {
             "run_id": "case-x",
             "status": "pass",
             "generated_at_utc": "1970-01-01T00:00:00Z",
-            "_raw": {
-                "runner_manifest": {
-                    "return_code": 0,
-                    "metrics": {
-                        "peak": {
-                            "node": "OU2",
-                            "peak": 0.061,
-                            "time_hhmm": "03:15",
-                        },
-                        "continuity": {
-                            "runoff_quantity": {
-                                "Surface Runoff": {"col1": 0.097, "col2": 44.483},
-                                "Continuity Error (%)": -0.13,
-                            },
-                            "flow_routing": {
-                                "Continuity Error (%)": -0.004,
-                            },
-                        },
+        }
+        runner_manifest = {
+            "return_code": 0,
+            "metrics": {
+                "peak": {
+                    "node": "OU2",
+                    "peak": 0.061,
+                    "time_hhmm": "03:15",
+                },
+                "continuity": {
+                    "runoff_quantity": {
+                        "Surface Runoff": {"col1": 0.097, "col2": 44.483},
+                        "Continuity Error (%)": -0.13,
                     },
-                }
+                    "flow_routing": {
+                        "Continuity Error (%)": -0.004,
+                    },
+                },
             },
         }
         comparison = {"comparison_available": False}
-        out = self.audit_run.render_note(provenance, comparison, Path("/tmp"))
+        out = self.audit_run.render_note(
+            provenance, comparison, Path("/tmp"), runner_manifest
+        )
         self.assertIn("## Run Results", out)
         self.assertIn("`0.061` CMS at node `OU2` at `03:15`", out)
 
 
-class MainReadsRunnerManifestOnceTests(unittest.TestCase):
-    """AC3 + AC6: a typical audit pipeline run reads ``manifest.json`` once."""
+class PersistedProvenanceHasNoRawKeyTests(unittest.TestCase):
+    """AC3: the on-disk ``experiment_provenance.json`` carries no ``_raw`` key."""
 
     def setUp(self) -> None:
-        self.audit_run = _load_audit_module()
         self.tmp = tempfile.TemporaryDirectory()
         self.repo_root = Path(self.tmp.name)
-        self.run_dir = _build_minimal_run_dir(self.repo_root)
+        self.run_dir = seed_minimal_run_dir(self.repo_root)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_persisted_provenance_json_omits_raw_key(self) -> None:
+        import json
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(AUDIT_SCRIPT),
+                "--run-dir",
+                str(self.run_dir),
+                "--repo-root",
+                str(self.repo_root),
+                "--no-obsidian",
+            ],
+            check=True,
+            cwd=REPO_ROOT,
+        )
+        provenance = json.loads(
+            (self.run_dir / "09_audit" / "experiment_provenance.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn("_raw", provenance)
+
+
+class MainReadsRunnerManifestOnceTests(unittest.TestCase):
+    """AC4: a typical audit pipeline run reads ``manifest.json`` once."""
+
+    def setUp(self) -> None:
+        self.audit_run = load_audit_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo_root = Path(self.tmp.name)
+        self.run_dir = seed_minimal_run_dir(self.repo_root)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -216,12 +197,12 @@ class MainReadsRunnerManifestOnceTests(unittest.TestCase):
 
 
 class RunResultsAndKeyMetricsCoexistTests(unittest.TestCase):
-    """AC4: both sections survive, with differentiated leading text."""
+    """AC5: both sections survive, with differentiated leading text."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.repo_root = Path(self.tmp.name)
-        self.run_dir = _build_minimal_run_dir(self.repo_root)
+        self.run_dir = seed_minimal_run_dir(self.repo_root)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()

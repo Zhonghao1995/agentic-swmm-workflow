@@ -69,7 +69,7 @@ class AgentExecutor:
                     "args": call.args,
                     "ok": False,
                     "summary": DENIED_SUMMARY,
-                    "_permission": {"prompted": True, "approved": False},
+                    "permission": {"prompted": True, "approved": False},
                 }
                 self.results.append(result)
                 write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
@@ -82,7 +82,7 @@ class AgentExecutor:
         # fields. Tool handlers return their own dicts; the seam adds
         # one new key so the planner / digest renderer can read it
         # directly.
-        result["_permission"] = {"prompted": prompted, "approved": approved}
+        result["permission"] = {"prompted": prompted, "approved": approved}
         self.results.append(result)
         write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
         return result

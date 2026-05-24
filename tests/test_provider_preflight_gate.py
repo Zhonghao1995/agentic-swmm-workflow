@@ -28,21 +28,9 @@ from agentic_swmm.agent import provider_preflight
 
 _ENV_VAR = "AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS"
 
-
-@pytest.fixture
-def isolated_home(tmp_path, monkeypatch):
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv(_ENV_VAR, raising=False)
-    # Reset the once-per-process notice flag between tests so each
-    # test starts with a clean slate.
-    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
-        monkeypatch.setattr(
-            provider_preflight, "_legacy_claude_sdk_notice_emitted", False, raising=False
-        )
-    return home
+# Every test in this file exercises the gate-OFF path; ``isolated_home``
+# is sourced from ``tests/conftest.py`` and gated by this mark.
+pytestmark = pytest.mark.gate("off")
 
 
 def _write_config_default(home: Path, provider: str) -> None:

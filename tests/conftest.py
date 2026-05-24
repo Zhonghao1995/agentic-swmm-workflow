@@ -20,13 +20,153 @@ Tests that exercise the *real* SDK gate behind the
 """
 from __future__ import annotations
 
+import contextlib
+import importlib.util
 import io
+import json
+import os
 import sys
 import types
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+@contextlib.contextmanager
+def env_overrides(**overrides: str | None):
+    """Snapshot + restore ``os.environ`` for the duration of the block.
+
+    Promoted to ``conftest.py`` per issue #201 — both
+    ``tests/test_digest_locale_glyphs.py`` and
+    ``tests/test_prd08_b_storm_and_chrome.py`` previously rolled the
+    same context-manager (under the names ``_EnvOverride`` and
+    ``_env_overrides``). A single definition keeps the env-restore
+    contract aligned across the test suite.
+
+    Pass ``key=None`` to *unset* a variable for the duration of the
+    block (so a test that needs ``LC_ALL`` unset can ``LC_ALL=None``
+    rather than ``monkeypatch.delenv``).
+    """
+    snapshot: dict[str, str | None] = {}
+    for key, value in overrides.items():
+        snapshot[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    try:
+        yield
+    finally:
+        for key, original in snapshot.items():
+            if original is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = original
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_AUDIT_SCRIPT = (
+    _REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
+)
+
+
+def load_audit_module():
+    """Load ``audit_run.py`` as an importable module.
+
+    The audit script is run as a subprocess by ``aiswmm audit`` and
+    therefore does not live inside the ``agentic_swmm`` package. Tests
+    that want to exercise its helpers reach for ``importlib.util`` —
+    previously each test file hand-rolled the spec/loader dance. Lifted
+    here per issue #196 so both audit-test files share one definition.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "_audit_run_under_test", _AUDIT_SCRIPT
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["_audit_run_under_test"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def seed_minimal_run_dir(
+    tmp_path: Path,
+    *,
+    case_name: str = "case-dedup",
+    with_internal_node: bool = False,
+) -> Path:
+    """Build the minimal SWMM run-dir layout the audit pipeline accepts.
+
+    The two audit-pipeline test files (``test_audit_run_results_section``
+    and ``test_audit_runner_manifest_dedup``) previously hand-rolled the
+    same ~50-line builder; consolidated here per issue #196 so the
+    fixture has a single source of truth.
+
+    ``with_internal_node=True`` adds the ``metrics.internal_node_peak``
+    payload that the Tecnopolo fixture in
+    ``test_audit_run_results_section`` requires.
+    """
+    run_dir = tmp_path / "runs" / case_name
+    runner = run_dir / "05_runner"
+    runner.mkdir(parents=True)
+    (runner / "model.rpt").write_text(
+        """
+        ***** Node Inflow Summary *****
+        ------------------------------------------------
+          OU2             OUTFALL       0.001       0.061      2    03:15
+
+        ***** Runoff Quantity Continuity *****
+        Continuity Error (%) ............. -0.13
+
+        ***** Flow Routing Continuity *****
+        Continuity Error (%) ............. -0.004
+        """,
+        encoding="utf-8",
+    )
+    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
+    (runner / "stdout.txt").write_text("", encoding="utf-8")
+    (runner / "stderr.txt").write_text("", encoding="utf-8")
+    metrics: dict[str, Any] = {
+        "peak": {
+            "node": "OU2",
+            "peak": 0.061,
+            "time_hhmm": "03:15",
+            "source": "Node Inflow Summary",
+        },
+        "continuity": {
+            "runoff_quantity": {
+                "Surface Runoff": {"col1": 0.097, "col2": 44.483},
+                "Continuity Error (%)": -0.13,
+            },
+            "flow_routing": {
+                "Continuity Error (%)": -0.004,
+            },
+        },
+    }
+    if with_internal_node:
+        metrics["internal_node_peak"] = {
+            "node": "J22",
+            "peak": 0.007,
+            "time_hhmm": "03:15",
+        }
+    (runner / "manifest.json").write_text(
+        json.dumps(
+            {
+                "files": {
+                    "rpt": str(runner / "model.rpt"),
+                    "out": str(runner / "model.out"),
+                    "stdout": str(runner / "stdout.txt"),
+                    "stderr": str(runner / "stderr.txt"),
+                },
+                "metrics": metrics,
+                "return_code": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return run_dir
 
 
 class _FakeTTYStream(io.StringIO):
@@ -43,6 +183,57 @@ class _FakeTTYStream(io.StringIO):
 
     def isatty(self) -> bool:  # type: ignore[override]
         return True
+
+
+@pytest.fixture
+def isolated_home(tmp_path, monkeypatch, request):
+    """Point ``Path.home()`` at a fresh tmp dir to isolate config files.
+
+    Both provider-preflight test files (``test_provider_preflight.py``
+    and ``test_provider_preflight_gate.py``) need the same isolated
+    ``HOME``, cleared ``OPENAI_API_KEY``, and reset of the once-per-
+    process ``_legacy_claude_sdk_notice_emitted`` flag. The only thing
+    that varied was the direction of the
+    ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` gate.
+
+    The fixture honours an optional ``@pytest.mark.gate("on" | "off")``
+    marker — default is ``"off"`` (the new-user default). This keeps
+    each test file's gate direction explicit at the marker level
+    without duplicating the 25-line scaffold.
+    """
+    from agentic_swmm.agent import provider_preflight
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    marker = request.node.get_closest_marker("gate")
+    gate_state = (marker.args[0] if marker and marker.args else "off").lower()
+    if gate_state == "on":
+        monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
+    else:
+        monkeypatch.delenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", raising=False)
+
+    # Reset the once-per-process legacy-notice flag so each test starts
+    # from a clean slate; otherwise an earlier test that triggered the
+    # notice would silence it for the rest of the session.
+    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
+        monkeypatch.setattr(
+            provider_preflight,
+            "_legacy_claude_sdk_notice_emitted",
+            False,
+            raising=False,
+        )
+    return home
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "gate(state): set the AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS gate "
+        "for ``isolated_home`` ('on' or 'off'; default 'off').",
+    )
 
 
 @dataclass
