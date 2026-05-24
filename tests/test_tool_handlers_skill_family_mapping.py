@@ -64,6 +64,22 @@ _MIGRATED_FAMILIES = [
         ("_audit_run_args", "_audit_run_tool"),
         ("audit_run",),
     ),
+    # PRD #128 Phase 2 Group A — runner / plot / builder.
+    (
+        "swmm_runner",
+        ("_run_swmm_inp_args", "_run_swmm_inp_tool"),
+        ("run_swmm_inp",),
+    ),
+    (
+        "swmm_plot",
+        ("_inspect_plot_options_tool", "_plot_run_args", "_plot_run_tool"),
+        ("inspect_plot_options", "plot_run"),
+    ),
+    (
+        "swmm_builder",
+        ("_build_inp_args", "_build_inp_tool"),
+        ("build_inp",),
+    ),
 ]
 
 
