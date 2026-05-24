@@ -57,10 +57,6 @@ def is_truthy(value: str | None) -> bool:
     return value.strip().lower() in _TRUTHY
 
 
-# Backwards-compatible alias for the now-public spelling.
-_is_truthy = is_truthy
-
-
 def swmm_gates_disabled() -> bool:
     """Return True when SWMM pre/postflight gates should be skipped.
 

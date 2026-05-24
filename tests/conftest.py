@@ -45,6 +45,57 @@ class _FakeTTYStream(io.StringIO):
         return True
 
 
+@pytest.fixture
+def isolated_home(tmp_path, monkeypatch, request):
+    """Point ``Path.home()`` at a fresh tmp dir to isolate config files.
+
+    Both provider-preflight test files (``test_provider_preflight.py``
+    and ``test_provider_preflight_gate.py``) need the same isolated
+    ``HOME``, cleared ``OPENAI_API_KEY``, and reset of the once-per-
+    process ``_legacy_claude_sdk_notice_emitted`` flag. The only thing
+    that varied was the direction of the
+    ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` gate.
+
+    The fixture honours an optional ``@pytest.mark.gate("on" | "off")``
+    marker — default is ``"off"`` (the new-user default). This keeps
+    each test file's gate direction explicit at the marker level
+    without duplicating the 25-line scaffold.
+    """
+    from agentic_swmm.agent import provider_preflight
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    marker = request.node.get_closest_marker("gate")
+    gate_state = (marker.args[0] if marker and marker.args else "off").lower()
+    if gate_state == "on":
+        monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
+    else:
+        monkeypatch.delenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", raising=False)
+
+    # Reset the once-per-process legacy-notice flag so each test starts
+    # from a clean slate; otherwise an earlier test that triggered the
+    # notice would silence it for the rest of the session.
+    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
+        monkeypatch.setattr(
+            provider_preflight,
+            "_legacy_claude_sdk_notice_emitted",
+            False,
+            raising=False,
+        )
+    return home
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "gate(state): set the AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS gate "
+        "for ``isolated_home`` ('on' or 'off'; default 'off').",
+    )
+
+
 @dataclass
 class _StubTextBlock:
     text: str = ""

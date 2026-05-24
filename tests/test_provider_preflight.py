@@ -1,4 +1,13 @@
-"""Tests for ``agentic_swmm.agent.provider_preflight`` (PRD-08 A.3)."""
+"""Tests for ``agentic_swmm.agent.provider_preflight`` (PRD-08 A.3).
+
+Issue #182 hides ``claude_sdk`` behind the
+``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` env gate; the tests here
+exercise the PRD-09 tier-1 / tier-3 claude_sdk paths that are only
+reachable when the gate is ON — so the module-level ``gate("on")``
+mark flips the gate before the shared ``isolated_home`` fixture
+(``tests/conftest.py``) runs. Gate-OFF behaviour is covered by
+``tests/test_provider_preflight_gate.py``.
+"""
 from __future__ import annotations
 
 import os
@@ -9,35 +18,7 @@ import pytest
 from agentic_swmm.agent import provider_preflight
 
 
-@pytest.fixture
-def isolated_home(tmp_path, monkeypatch):
-    """Point ``Path.home()`` at a fresh tmp dir to isolate config files.
-
-    Issue #182 hides ``claude_sdk`` behind the
-    ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` env gate; the tests in
-    this module exercise the PRD-09 tier-1 / tier-3 claude_sdk paths
-    that are only reachable when the gate is ON, so we set the gate
-    here. Gate-OFF behaviour is covered by
-    ``tests/test_provider_preflight_gate.py``.
-    """
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
-    # Issue #191: symmetric reset of the once-per-process legacy-notice
-    # flag, matching ``tests/test_provider_preflight_gate.py``. The
-    # tests in this file run with the gate ON, so the notice path is
-    # dormant today — but a future gate-OFF test added here would
-    # silently swallow the notice if the flag leaked across tests.
-    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
-        monkeypatch.setattr(
-            provider_preflight,
-            "_legacy_claude_sdk_notice_emitted",
-            False,
-            raising=False,
-        )
-    return home
+pytestmark = pytest.mark.gate("on")
 
 
 class TestCheckInteractiveProvider:

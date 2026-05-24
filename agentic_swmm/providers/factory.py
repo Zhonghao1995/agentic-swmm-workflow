@@ -24,12 +24,13 @@ from typing import Any
 from agentic_swmm.providers.base import ChatProvider
 
 
-_SUPPORTED = ("openai", "claude_sdk")
-# Public alias of :data:`_SUPPORTED` — the single source of truth for
-# the set of provider names this factory accepts. Surfaces here so the
-# experimental-providers env gate (and any future caller) can derive
-# its argparse choices from one tuple instead of restating the literal.
-SUPPORTED_PROVIDERS = _SUPPORTED
+SUPPORTED_PROVIDERS = ("openai", "claude_sdk")
+"""Canonical tuple of provider names this factory accepts.
+
+Single source of truth for the set so the experimental-providers env
+gate (and any future caller) can derive its argparse choices from one
+tuple instead of restating the literal.
+"""
 
 
 def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvider:
@@ -39,7 +40,8 @@ def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvid
     and ``"claude_sdk"`` (requires the ``[claude]`` optional extra).
 
     Raises:
-        ValueError: when ``provider_name`` is not in :data:`_SUPPORTED`.
+        ValueError: when ``provider_name`` is not in
+            :data:`SUPPORTED_PROVIDERS`.
         RuntimeError: when ``"claude_sdk"`` is requested but the
             optional extra has not been installed. The error message
             includes the exact ``pip install aiswmm[claude]`` command.
@@ -59,7 +61,7 @@ def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvid
         return ClaudeSDKProvider(model=model)  # type: ignore[arg-type]
     raise ValueError(
         f"unsupported provider: {provider_name!r}. "
-        f"Supported providers: {', '.join(_SUPPORTED)}."
+        f"Supported providers: {', '.join(SUPPORTED_PROVIDERS)}."
     )
 
 

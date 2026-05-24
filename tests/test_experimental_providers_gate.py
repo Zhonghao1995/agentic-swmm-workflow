@@ -74,14 +74,36 @@ class TestGateNoticeForLegacyConfig:
         assert notice.strip()
 
 
-class TestSharedTruthyHelper:
-    """Issue #191: gate predicate consumes the shared truthy helper.
+class TestIsTruthyHelper:
+    """The truthy-string contract lives in ``feature_flags.is_truthy``
+    and is consumed by every ``AISWMM_*`` boolean env var.
 
-    ``experimental_providers`` must not maintain its own ``_TRUTHY``
-    membership set. The truthy-string contract lives in
-    ``agentic_swmm.agent.feature_flags`` so a single edit propagates
-    to every ``AISWMM_*`` boolean env var.
+    Merged from former ``TestSharedTruthyHelper`` /
+    ``TestPublicIsTruthyHelper`` (issue #200): both classes asserted
+    overlapping concerns at slightly different layers. One class with
+    subtests keeps the helper / consumer contract in one place.
     """
+
+    # --- Helper is public on feature_flags --------------------------
+
+    def test_feature_flags_exposes_public_is_truthy(self):
+        from agentic_swmm.agent import feature_flags
+
+        assert callable(getattr(feature_flags, "is_truthy", None))
+
+    def test_public_helper_accepts_all_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in ("1", "true", "TRUE", "yes", "Yes", "on", "ON"):
+            assert feature_flags.is_truthy(value) is True, value
+
+    def test_public_helper_rejects_non_truthy_values(self):
+        from agentic_swmm.agent import feature_flags
+
+        for value in (None, "", "0", "false", "no", "off", "maybe", "  "):
+            assert feature_flags.is_truthy(value) is False, value
+
+    # --- Gate predicate consumes the shared helper ------------------
 
     def test_module_does_not_define_local_truthy_set(self):
         # Module attribute is the contract: no local ``_TRUTHY`` set
@@ -107,27 +129,6 @@ class TestSharedTruthyHelper:
         monkeypatch.setenv(_ENV_VAR, "anything-the-spy-returns-true")
         assert experimental_providers.claude_sdk_enabled() is True
         assert calls, "claude_sdk_enabled did not consult feature_flags.is_truthy"
-
-
-class TestPublicIsTruthyHelper:
-    """Issue #191: promote the truthy helper to a public surface."""
-
-    def test_feature_flags_exposes_public_is_truthy(self):
-        from agentic_swmm.agent import feature_flags
-
-        assert callable(getattr(feature_flags, "is_truthy", None))
-
-    def test_public_helper_accepts_all_truthy_values(self):
-        from agentic_swmm.agent import feature_flags
-
-        for value in ("1", "true", "TRUE", "yes", "Yes", "on", "ON"):
-            assert feature_flags.is_truthy(value) is True, value
-
-    def test_public_helper_rejects_non_truthy_values(self):
-        from agentic_swmm.agent import feature_flags
-
-        for value in (None, "", "0", "false", "no", "off", "maybe", "  "):
-            assert feature_flags.is_truthy(value) is False, value
 
 
 class TestSupportedProvidersSingleSourceOfTruth:
