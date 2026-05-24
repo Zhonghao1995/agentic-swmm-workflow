@@ -128,3 +128,74 @@ class TestPublicIsTruthyHelper:
 
         for value in (None, "", "0", "false", "no", "off", "maybe", "  "):
             assert feature_flags.is_truthy(value) is False, value
+
+
+class TestSupportedProvidersSingleSourceOfTruth:
+    """Issue #191: provider names live in one tuple, derived elsewhere.
+
+    ``agentic_swmm.providers.factory`` owns the canonical tuple of
+    supported provider names. The gate helper must derive its choices
+    from that tuple rather than hand-roll the same literal — otherwise
+    a third provider lands in one place and the two lists drift.
+    """
+
+    def test_factory_exposes_public_supported_providers(self):
+        from agentic_swmm.providers import factory
+
+        names = getattr(factory, "SUPPORTED_PROVIDERS", None)
+        assert names is not None, (
+            "factory must expose a public SUPPORTED_PROVIDERS tuple"
+        )
+        assert isinstance(names, tuple)
+        assert "openai" in names
+        assert "claude_sdk" in names
+
+    def test_supported_providers_in_factory_dunder_all(self):
+        from agentic_swmm.providers import factory
+
+        assert "SUPPORTED_PROVIDERS" in getattr(factory, "__all__", ())
+
+    def test_available_choices_gate_on_match_supported_providers(
+        self, monkeypatch
+    ):
+        from agentic_swmm.providers import factory
+
+        monkeypatch.setenv(_ENV_VAR, "1")
+        # The gate-ON choice list is the canonical tuple in list form.
+        assert experimental_providers.available_provider_choices() == list(
+            factory.SUPPORTED_PROVIDERS
+        )
+
+    def test_available_choices_gate_off_filters_from_supported_providers(
+        self, monkeypatch
+    ):
+        from agentic_swmm.providers import factory
+
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+        choices = experimental_providers.available_provider_choices()
+        # Every gate-OFF choice must come from the canonical tuple —
+        # the gate-OFF helper filters out claude_sdk; everything else
+        # in the canonical tuple survives.
+        for name in choices:
+            assert name in factory.SUPPORTED_PROVIDERS
+        assert "claude_sdk" not in choices
+
+    def test_adding_a_provider_to_supported_propagates_to_gate_on_choices(
+        self, monkeypatch
+    ):
+        """Mutating SUPPORTED_PROVIDERS at runtime exposes the new
+        provider through the gate-ON helper without editing
+        ``available_provider_choices``. This pins the single-source-
+        of-truth contract: a third provider lands in factory only.
+        """
+        from agentic_swmm.providers import factory
+
+        monkeypatch.setenv(_ENV_VAR, "1")
+        monkeypatch.setattr(
+            factory,
+            "SUPPORTED_PROVIDERS",
+            ("openai", "claude_sdk", "future_provider"),
+            raising=True,
+        )
+        choices = experimental_providers.available_provider_choices()
+        assert "future_provider" in choices
