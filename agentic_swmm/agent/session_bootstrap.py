@@ -150,7 +150,7 @@ def _match_registered_case(lowered_prompt: str) -> str | None:
     return None
 
 
-# --- Issue #205: named lifecycle phases -------------------------------------
+# --- named lifecycle phases -------------------------------------------------
 #
 # Each phase below replaces a tightly-coupled private helper that used to
 # live on ``runtime_loop.py``. They share the bootstrap concern (preparing

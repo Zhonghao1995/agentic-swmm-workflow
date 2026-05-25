@@ -129,6 +129,11 @@ def _append_event(payload: dict[str, Any]) -> None:
     cannot create, or a transient I/O error MUST NOT propagate — the
     decorator's whole point is to keep the runtime alive on failure.
     """
+    # Concurrency: relies on POSIX ``O_APPEND`` atomicity for writes
+    # smaller than ``PIPE_BUF`` (~4 KB). Each row is ~200 B so the
+    # invariant holds in practice on Linux/macOS. Non-POSIX FS
+    # (Windows, some network mounts) could interleave lines; this is a
+    # best-effort audit log, not a DB, so we accept the risk.
     try:
         target = config_dir() / _SILENT_FALLBACKS_FILENAME
         target.parent.mkdir(parents=True, exist_ok=True)

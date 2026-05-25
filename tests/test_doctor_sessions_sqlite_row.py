@@ -213,3 +213,41 @@ def test_render_corrupt_severity_header_counter(tmp_path: Path) -> None:
 
     header_line = rendered.splitlines()[0]
     assert "1 CORRUPT" in header_line
+
+
+def test_doctor_exit_code_nonzero_on_corrupt_sessions_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #212 item #2: ``aiswmm doctor`` must exit non-zero when
+    the cross-session DB is CORRUPT so CI health checks catch
+    data-loss conditions, not just missing binaries.
+
+    Also: the CORRUPT row must appear in the rendered Issues section
+    with the repair-sessions remediation hint.
+    """
+    import io
+    from contextlib import redirect_stdout
+
+    from agentic_swmm.cli import main as cli_main
+    from agentic_swmm.memory import session_db
+
+    session_db.clear_integrity_cache()
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    db_path = runs_dir / "sessions.sqlite"
+    _seed_intact_db(db_path)
+    _corrupt(db_path)
+    session_db.clear_integrity_cache()
+
+    monkeypatch.setenv("AISWMM_RUNS_ROOT", str(runs_dir))
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        rc = cli_main(["doctor"])
+
+    assert rc == 1
+    body = buf.getvalue()
+    # Issues section surfaces the corrupt row + the remediation hint.
+    assert "Issues:" in body
+    assert "sessions.sqlite" in body
+    assert "aiswmm memory repair-sessions" in body

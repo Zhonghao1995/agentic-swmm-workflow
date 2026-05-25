@@ -244,6 +244,43 @@ class RepairSessionsHelperTests(unittest.TestCase):
             # never deleted.
             self.assertTrue(db_path.exists())
 
+    def test_repair_returns_friendly_error_when_backup_fails(self) -> None:
+        """Issue #212 item #4: when ``os.replace`` raises (disk full,
+        permission denied, cross-FS), the user must see a friendly
+        message instead of an unhandled traceback. ``ok`` stays False
+        and the original DB stays untouched.
+        """
+        import os as _os
+        from unittest import mock
+
+        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory import session_db
+
+        with TemporaryDirectory() as tmp:
+            runs_dir = Path(tmp)
+            db_path = runs_dir / "sessions.sqlite"
+            _seed_intact_db(db_path)
+            _corrupt(db_path)
+            session_db.clear_integrity_cache()
+            corrupt_bytes = db_path.read_bytes()
+
+            with mock.patch.object(
+                _os, "replace", side_effect=OSError("disk full")
+            ):
+                result = repair_sessions_db(runs_dir, db_path=db_path)
+
+            self.assertEqual(result["ok"], False)
+            self.assertIsNone(result.get("backup"))
+            # One friendly failure entry mentioning the cause.
+            failures = result.get("failures") or []
+            self.assertTrue(failures)
+            joined = " ".join(failures)
+            self.assertIn("could not back up", joined)
+            self.assertIn("disk full", joined)
+            self.assertIn("aborting repair", joined)
+            # Original file untouched.
+            self.assertEqual(db_path.read_bytes(), corrupt_bytes)
+
 
 # ---------------------------------------------------------------------------
 # CLI surface
@@ -276,7 +313,11 @@ class RepairSessionsCLITests(unittest.TestCase):
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
             try:
                 with redirect_stdout(buf):
-                    rc = cli_main(["memory", "repair-sessions"])
+                    # ``--yes`` skips the new interactive prompt
+                    # (issue #212). Without it the CLI now refuses on
+                    # non-interactive stdin to protect users from
+                    # accidental destructive runs in scripts.
+                    rc = cli_main(["memory", "repair-sessions", "--yes"])
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
 
@@ -285,6 +326,92 @@ class RepairSessionsCLITests(unittest.TestCase):
         # Summary mentions both the backup filename and the rebuild count.
         self.assertIn("sessions.sqlite.corrupt-", body)
         self.assertIn("rebuilt", body.lower())
+
+    def test_cli_repair_sessions_dry_run_writes_nothing(self) -> None:
+        """Issue #212 item #1: ``--dry-run`` prints the would-be plan
+        without touching disk. Both the corrupt DB and the absence of
+        a backup file are guaranteed.
+        """
+        from agentic_swmm.cli import main as cli_main
+        from agentic_swmm.memory import session_db
+
+        with TemporaryDirectory() as tmp:
+            runs_dir = Path(tmp)
+            db_path = runs_dir / "sessions.sqlite"
+            _seed_intact_db(db_path)
+            _corrupt(db_path)
+            session_db.clear_integrity_cache()
+            corrupt_bytes = db_path.read_bytes()
+            _seed_session_dir(
+                runs_dir,
+                date="2026-05-24",
+                leaf="100000_demo_run",
+                case_name="demo",
+                user_text="dry run",
+                assistant_text="dry reply",
+            )
+
+            buf = io.StringIO()
+            import os
+
+            os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
+            try:
+                with redirect_stdout(buf):
+                    rc = cli_main(
+                        ["memory", "repair-sessions", "--dry-run"]
+                    )
+            finally:
+                os.environ.pop("AISWMM_RUNS_ROOT", None)
+
+            self.assertEqual(rc, 0)
+            body = buf.getvalue()
+            self.assertIn("would back up", body)
+            self.assertIn("would rebuild", body)
+            self.assertIn("dry run", body.lower())
+            # File untouched — same bytes as before.
+            self.assertEqual(db_path.read_bytes(), corrupt_bytes)
+            # No backup file was created.
+            backups = list(runs_dir.glob("sessions.sqlite.corrupt-*"))
+            self.assertEqual(backups, [])
+
+    def test_cli_repair_sessions_refuses_without_yes_on_non_tty(
+        self,
+    ) -> None:
+        """Issue #212 item #1: without ``--yes`` and without a TTY
+        stdin (i.e. scripted invocation) the CLI must refuse rather
+        than silently destroy data.
+        """
+        from agentic_swmm.cli import main as cli_main
+        from agentic_swmm.memory import session_db
+
+        with TemporaryDirectory() as tmp:
+            runs_dir = Path(tmp)
+            db_path = runs_dir / "sessions.sqlite"
+            _seed_intact_db(db_path)
+            _corrupt(db_path)
+            session_db.clear_integrity_cache()
+            corrupt_bytes = db_path.read_bytes()
+
+            import io as _io
+            import os
+
+            buf_out = _io.StringIO()
+            buf_err = _io.StringIO()
+            from contextlib import redirect_stderr
+
+            os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
+            try:
+                with redirect_stdout(buf_out), redirect_stderr(buf_err):
+                    rc = cli_main(["memory", "repair-sessions"])
+            finally:
+                os.environ.pop("AISWMM_RUNS_ROOT", None)
+
+            self.assertEqual(rc, 1)
+            # Friendly stderr explaining the refusal.
+            self.assertIn("refusing", buf_err.getvalue().lower())
+            self.assertIn("--yes", buf_err.getvalue())
+            # File untouched.
+            self.assertEqual(db_path.read_bytes(), corrupt_bytes)
 
 
 if __name__ == "__main__":  # pragma: no cover
