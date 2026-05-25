@@ -114,6 +114,23 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Defaults to $AISWMM_RUNS_ROOT or <repo>/runs."
         ),
     )
+    repair.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Scan + print what would be backed up and rebuilt, write "
+            "nothing. Useful for sanity-checking before an irreversible "
+            "rebuild."
+        ),
+    )
+    repair.add_argument(
+        "--yes",
+        action="store_true",
+        help=(
+            "Skip the interactive y/N confirmation prompt. Required for "
+            "scripted / non-interactive use."
+        ),
+    )
     repair.set_defaults(func=repair_sessions_main)
 
 
@@ -497,6 +514,30 @@ def repair_sessions_db(
     return summary
 
 
+def _preview_repair(runs_root: Path, db_path: Path) -> dict[str, Any]:
+    """Return a preview of what ``repair_sessions_db`` would do.
+
+    Walks the same paths as the real call but writes nothing — the
+    user can see the would-be backup name and the count of sessions
+    that would be rebuilt before committing to an irreversible move.
+    """
+    from datetime import datetime, timezone
+
+    candidate_backup: str | None = None
+    if db_path.exists():
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        candidate_backup = str(db_path.with_name(f"{db_path.name}.corrupt-{timestamp}"))
+    session_count = 0
+    if runs_root.exists():
+        for state in runs_root.rglob("session_state.json"):
+            if state.is_file():
+                session_count += 1
+    return {
+        "would_back_up_to": candidate_backup,
+        "would_rebuild_sessions": session_count,
+    }
+
+
 def repair_sessions_main(args: argparse.Namespace) -> int:
     """CLI entry point for ``aiswmm memory repair-sessions``.
 
@@ -504,6 +545,10 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
     -> ``<repo>/runs``, calls :func:`repair_sessions_db`, and prints a
     human-readable summary. Returns 0 on success, 1 when the helper
     reports ``ok == False``.
+
+    Issue #212: gated by ``--dry-run`` (preview, write nothing) and
+    an interactive y/N prompt unless ``--yes`` is passed. ``--yes``
+    is required for non-interactive / scripted callers.
     """
     runs_root: Path
     if getattr(args, "runs_root", None) is not None:
@@ -512,6 +557,44 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
         runs_root = _resolve_runs_dir()
 
     db_path = runs_root / "sessions.sqlite"
+
+    # ---- --dry-run: walk the same paths but write nothing.
+    if getattr(args, "dry_run", False):
+        preview = _preview_repair(runs_root, db_path)
+        print(f"runs dir: {runs_root}")
+        print(f"db path:  {db_path}")
+        backup = preview["would_back_up_to"]
+        if backup:
+            print(f"would back up corrupt store -> {backup}")
+        else:
+            print("no prior sessions.sqlite to back up (would fresh-rebuild)")
+        print(
+            f"would rebuild {preview['would_rebuild_sessions']} session(s)"
+        )
+        print("(dry run — no files written)")
+        return 0
+
+    # ---- Default interactive confirm. Skip when --yes or when stdin
+    # is not a TTY (the caller is scripted but forgot --yes — refuse
+    # rather than silently destroy data).
+    if not getattr(args, "yes", False):
+        if not sys.stdin.isatty():
+            print(
+                "repair-sessions is destructive; refusing to run without "
+                "--yes on a non-interactive stdin.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"runs dir: {runs_root}")
+        print(f"db path:  {db_path}")
+        print(
+            "This will move the current sessions.sqlite (if any) to a "
+            ".corrupt-<utc> backup and rebuild from runs/*/agent_trace.jsonl."
+        )
+        response = input("Proceed? [y/N]: ").strip().lower()
+        if response not in {"y", "yes"}:
+            print("aborted; nothing was written.")
+            return 0
 
     result = repair_sessions_db(runs_root, db_path=db_path)
 
