@@ -338,6 +338,27 @@ def main(args: argparse.Namespace) -> int:
     warn_or_missing = [
         d for d in install_check_dicts if not d["passed"]
     ]
+    # Issue #212: CORRUPT / UNREADABLE memory stores must appear in
+    # the Issues section AND drive a non-zero exit code so CI health
+    # checks don't miss data-loss conditions. Project each into the
+    # install-check shape so the existing renderer / exit-code logic
+    # picks them up without a special case.
+    severe_memory_stores = [
+        s for s in memory_stores
+        if s.severity in {"CORRUPT", "UNREADABLE"}
+    ]
+    for store in severe_memory_stores:
+        warn_or_missing.append(
+            {
+                "name": f"memory store: {store.name}",
+                "passed": False,
+                "detail": (
+                    store.remediation
+                    or f"{store.severity.lower()} — run aiswmm memory repair-sessions"
+                ),
+                "required": True,
+            }
+        )
     grouped = group_identical_warns(warn_or_missing)
 
     report = {
@@ -409,8 +430,14 @@ def main(args: argparse.Namespace) -> int:
             apply_fix_actions(actions, yes=getattr(args, "yes", False))
 
     # Overall exit code: 0 iff every required install check passed AND
-    # no MEMORY-store store is missing in a way that would block the
-    # core verbs. MISSING memory stores are advisory; required install
-    # rows decide the exit code.
-    ok = all(passed or not required for (_, passed, _, required) in install_checks)
-    return 0 if ok else 1
+    # no memory store is CORRUPT or UNREADABLE (issue #212 — CI health
+    # checks must fail on data-loss conditions, not just missing
+    # binaries). MISSING memory stores stay advisory because the
+    # bootstrap verbs create them lazily; only the destructive
+    # CORRUPT / UNREADABLE states demand operator action.
+    install_ok = all(
+        passed or not required
+        for (_, passed, _, required) in install_checks
+    )
+    memory_severe = bool(severe_memory_stores)
+    return 0 if install_ok and not memory_severe else 1
