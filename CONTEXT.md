@@ -180,6 +180,21 @@ A classified user goal extracted from a prompt. Categories: `wants_demo`, `wants
 5. **No `Co-Authored-By: Claude` trailer in any commit.** Forward-only — do not rewrite history. See global `~/.claude/CLAUDE.md`.
 6. **Reproducibility is byte-level for SWMM execution.** The same INP must produce the same `model.out` byte-for-byte across macOS / Linux / Docker. Validated via `aiswmm tecnopolo` benchmark + the `tecnopolo` Docker entrypoint. Do not introduce nondeterminism in the runner skill.
 
+## Real-data path vs synth-data path
+
+A new orthogonal axis introduced by the `swmm-anywhere` skill (PRD `swmmanywhere_integration`). Two parallel entry paths for "I want a SWMM model":
+
+| Aspect | Real-data path (`swmm-gis` / `swmm-network`) | Synth-data path (`swmm-anywhere`) |
+| --- | --- | --- |
+| User inputs | `.shp` / CAD / `network.json` of real pipes, or a prepared `.inp` | Just a bbox (4 numbers) — no pipe inventory needed |
+| What aiswmm does | Imports the user's measured infrastructure into a SWMM model | Downloads OSM streets + DEM + buildings; SWMManywhere infers a plausible network |
+| Reproducibility guarantee | byte-identical given same INP | byte-identical given same `00_raw/` snapshot (OSM is mutable upstream; snapshot pins it) |
+| Best for | Catchments where the city has pipe data on hand | Data-scarce regions; pre-survey scoping; sensitivity baselines |
+| Downstream skills | identical — both paths feed `swmm-runner` → `swmm-experiment-audit` → `swmm-plot` | identical (validated by the e2e chain in `scripts/spike_swmmanywhere/05_e2e_chain.py`) |
+| What planners must NOT do | Use `swmm-anywhere` when the user has real pipe data — the synth network would silently disagree with the real one | Skip the `00_raw/` snapshot — OSM drift would invalidate reproducibility |
+
+The orchestrator (`swmm-end-to-end`) picks the entry based on user inputs: any pipe file → real-data; bbox-only → synth-data. Output structure under `runs/<date>/<id>/` is intentionally identical from `swmm_run/` downward so audit / plot / calibration treat both paths symmetrically.
+
 ## Subagent context priority
 
 When briefing a subagent for implementation work, the priority order is:

@@ -1,6 +1,6 @@
 ---
 name: swmm-gis
-description: GIS/DEM preprocessing for SWMM experiments. Use when Zhonghao asks to (1) delineate subcatchments through QGIS/GRASS (standard or entropy-guided), (2) preprocess QGIS-derived subcatchment polygons into builder-ready CSV, (3) identify high-entropy hotspot subcatchments, or (4) expose QGIS/GRASS-backed preprocessing as MCP tools for reproducible workflows.
+description: GIS/DEM preprocessing for SWMM experiments using the user's own QGIS/GRASS layers. Use when Zhonghao asks to (1) delineate subcatchments through QGIS/GRASS (standard or entropy-guided), (2) preprocess QGIS-derived subcatchment polygons into builder-ready CSV, (3) identify high-entropy hotspot subcatchments, or (4) expose QGIS/GRASS-backed preprocessing as MCP tools for reproducible workflows. For bbox-only inputs WITHOUT real pipe data, use `swmm-anywhere` instead (it synthesises a plausible network from OSM streets + DEM).
 ---
 
 # SWMM GIS / Preprocess

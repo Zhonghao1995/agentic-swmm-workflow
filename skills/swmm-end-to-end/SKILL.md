@@ -9,6 +9,7 @@ description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. U
 - A top-level orchestration contract for OpenClaw.
 - A stable handoff point for Agentic AI project memory in `agent/memory/`.
 - A deterministic execution order across the existing module skills:
+  - `swmm-anywhere` (entry skill for data-scarce regions — no real pipe data)
   - `swmm-gis`
   - `swmm-climate`
   - `swmm-params`
@@ -20,6 +21,14 @@ description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. U
   - `swmm-uncertainty`
   - `swmm-lid-optimization`
   - `swmm-experiment-audit`
+
+## Routing rule — real-data path vs synth-data path
+
+The orchestrator MUST inspect the user's inputs before choosing the entry skill:
+
+- If the request includes any of `.shp`, `.csv`, `network.json`, a CAD file, or an existing `.inp` path → the user has real data; route to `swmm-network` (or `swmm-builder` if the INP is already prepared).
+- If the request includes only a **bbox** or a **location name** with no pipe-network file attached → the user is in data-scarce mode; route to `swmm-anywhere`, which produces a synth `.inp` that downstream skills (`swmm-runner`, `swmm-experiment-audit`, `swmm-plot`) then consume identically to a real-data INP.
+- If both signals appear (bbox **and** a SHP) → prefer the real-data path (`swmm-network`); only fall back to `swmm-anywhere` if the user explicitly asks for a synth baseline for comparison.
 - Clear stop conditions so the agent does not pretend a full model was built when critical inputs are still missing.
 - A minimal real-data fallback path for Tod Creek via `scripts/real_cases/run_todcreek_minimal.py`.
 - A mandatory audit handoff that consolidates artifacts, metrics, QA, comparison records, and default Obsidian audit notes after success or failure.

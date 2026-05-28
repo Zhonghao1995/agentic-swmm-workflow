@@ -4,6 +4,18 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Added — `swmm-anywhere` skill (PRD swmmanywhere_integration)
+
+- **New skill `skills/swmm-anywhere/`** synthesises a plausible SWMM drainage network from a bounding box when no real pipe-network data exists. Wraps [ImperialCollegeLondon/SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (BSD-3-Clause) — © Imperial College London. End-to-end chain (bbox → OSM/DEM download → 24-step graphfcn pipeline → synth INP → aiswmm `swmm5` → audit + plot) verified at ~38 s on a 1×1 km London Greenwich bbox; peak flow parses cleanly through the standard audit pipeline.
+- **New optional dependency extra** `pip install aiswmm[anywhere]` pulls in the ~27 geo dependencies (geopandas, osmnx, rasterio, pyflwdir, pywbt, …) only for users who opt in. Default `pip install aiswmm` footprint is unchanged.
+- **New deep modules** `agentic_swmm/integrations/raw_snapshot.py` (reusable OSM/DEM hash + cache + verify under `runs/<id>/00_raw/`) and `agentic_swmm/integrations/swmmanywhere_runner.py` (Python wrapper with structured `SynthRunResult` / `SynthRunError`). The wrapper handles three macOS arm64 / SWMManywhere v0.2.2 gotchas inline: pyswmm SIGKILL on import (stubbed before SWMManywhere loads), `base_dir` str→Path coercion, and SWMM 5.2 `ERROR 205` when `[RAINGAGES] FILE` path contains spaces (external files copied next to the INP and the reference rewritten as a bare filename).
+- **Default `outfall_derivation` parameters tuned** in spike 04 A/B testing (`method="withtopo"` + `river_buffer_distance=300` + `outfall_length=200`) — reduces outfall count by ~34 % vs SWMManywhere defaults on the spike test bbox.
+- **New CLI script** `skills/swmm-anywhere/scripts/synth_from_bbox.py` is a thin argparse wrapper around `run_synth_from_bbox` that drops outputs into the standard `runs/<date>/<id>/` audit-pipeline layout.
+- **Planner routing defended in 4 layers** so the LLM planner cannot pick `swmm-anywhere` when the user has real pipe data: (a) exclusive wording in `swmm-anywhere`'s SKILL.md (`"ONLY when no real pipe-network data exists"`), (b) reverse pointers in `swmm-gis` / `swmm-network` SKILL.md, (c) a `synth-from-bbox` intent block in `agent/config/intent_map.json` with an `exclusive_when` rule, (d) a routing rule in `swmm-end-to-end` SKILL.md choosing between real-data and synth-data entry skills based on whether the user attached `.shp`/`.csv`/`network.json`/`.inp`.
+- **`CONTEXT.md` gains a "Real-data path vs Synth-data path" section** making the new orthogonal axis explicit for any agent or contributor reading the doc.
+- **`aiswmm doctor`** now reports a `swmm-anywhere extra` row (`installed` / `not installed` with the install hint) so users can see at a glance whether the synth path is callable.
+- 21 new unit tests (9 `raw_snapshot`, 10 `swmmanywhere_runner`, 2 CLI smoke); D1 verification spike scripts live under `scripts/spike_swmmanywhere/` (gitignored isolated venv + reproducible e2e driver).
+
 ## v0.7.0 - Modeling memory, agent runtime, install UX (2026-05-27)
 
 First stable point release on the 0.7.x line. Promotes the v0.7.0a1 / a2 prereleases to stable, folds in the v0.7.0a2 architecture refactor wave that never had its own changelog, and applies the onboarding hotfixes uncovered by the v0.7.0a* dogfood. Default `pip install aiswmm` now resolves to v0.7.0; v0.6.4 remains available on every pinned channel (PyPI, Git tag, Docker image) for paper-aligned reproducibility runs.

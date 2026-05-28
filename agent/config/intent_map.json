@@ -24,7 +24,17 @@
     "审计",
     "校准",
     "率定",
-    "不确定"
+    "不确定",
+    "bbox",
+    "osm",
+    "synthesize",
+    "synthesise",
+    "synth",
+    "no pipe data",
+    "data-scarce",
+    "无管道",
+    "没有管道",
+    "自动建模"
   ],
   "plot_keywords": [
     "plot",
@@ -61,6 +71,17 @@
     "swmm-uncertainty"
   ],
   "intents": [
+    {
+      "id": "synth-from-bbox",
+      "skills": ["swmm-anywhere"],
+      "keywords": ["bbox", "osm", "synthesize", "synthesise", "synth", "no pipe data", "data-scarce", "无管道", "没有管道", "自动建模", "data scarce"],
+      "required_inputs": ["bbox"],
+      "optional_inputs": ["run_dir", "project_name", "refresh_raw"],
+      "preferred_tools": ["synth_from_bbox"],
+      "stop_conditions": ["missing bbox", "swmmanywhere upstream failure"],
+      "next_user_prompt": "Please provide a bbox as four numbers (min_lon min_lat max_lon max_lat) for the area you want to synthesise a network for.",
+      "exclusive_when": "user has not provided any .shp/.csv/network.json/.inp file — only use this intent when the user lacks real pipe-network data"
+    },
     {
       "id": "runner",
       "skills": ["swmm-runner"],
