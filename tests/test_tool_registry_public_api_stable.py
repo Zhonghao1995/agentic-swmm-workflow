@@ -35,12 +35,11 @@ class ToolRegistryPublicApiTests(unittest.TestCase):
         self.assertIn("wants_plot", signals)
         self.assertTrue(signals["wants_plot"])
 
-    def test_valid_mode_enum_importable(self) -> None:
-        """``_VALID_MODE_ENUM`` is consumed by ``intent_disambiguator``."""
-        from agentic_swmm.agent.tool_registry import _VALID_MODE_ENUM
-
-        self.assertIsInstance(_VALID_MODE_ENUM, (set, frozenset, tuple, list))
-        self.assertGreater(len(_VALID_MODE_ENUM), 0)
+    # LLM-driven dispatch refactor: ``_VALID_MODE_ENUM`` and the
+    # ``intent_disambiguator`` consumer are gone, so the import-stability
+    # contract no longer applies. ``compute_intent_signals`` above is
+    # the surviving legacy surface that the warm-intro classifier still
+    # consumes.
 
 
 if __name__ == "__main__":

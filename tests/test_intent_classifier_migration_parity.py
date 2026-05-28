@@ -16,7 +16,12 @@ from __future__ import annotations
 import unittest
 
 from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
-from agentic_swmm.agent.planner import _is_negated
+# LLM-driven dispatch refactor: the legacy ``planner._is_negated``
+# re-export came from the deleted ``workflow_modes._helpers``. The
+# function itself lives on ``intent_classifier.is_negated`` (no leading
+# underscore there); the test below pins parity against that surface
+# directly.
+from agentic_swmm.agent.intent_classifier import is_negated as _is_negated
 from agentic_swmm.agent.runtime_loop import is_open_shaped_prompt
 from agentic_swmm.agent.tool_registry import compute_intent_signals
 
