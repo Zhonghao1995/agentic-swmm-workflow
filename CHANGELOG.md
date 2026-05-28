@@ -4,6 +4,47 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+## v0.7.0 - Modeling memory, agent runtime, install UX (2026-05-27)
+
+First stable point release on the 0.7.x line. Promotes the v0.7.0a1 / a2 prereleases to stable, folds in the v0.7.0a2 architecture refactor wave that never had its own changelog, and applies the onboarding hotfixes uncovered by the v0.7.0a* dogfood. Default `pip install aiswmm` now resolves to v0.7.0; v0.6.4 remains available on every pinned channel (PyPI, Git tag, Docker image) for paper-aligned reproducibility runs.
+
+### Added
+
+- **Modeling-memory substrate.** An on-disk memory layer under `memory/modeling-memory/`: `parametric_memory` (run-level parameters and QA metrics), `calibration_memory` (accepted calibrations and goodness-of-fit), `reference_benchmarks` (library defaults) with a per-project `project_overrides.yaml` overlay, a citation library, and `negative_lessons` (known-bad parameter regions). Includes watershed-similarity matching, SQLite indexing for large stores, lifecycle-managed `lessons_learned.md` with three-tier decay (`active` → `dormant` → `retired` → archived), and an LLM-assisted reflection workflow (`aiswmm memory reflect --apply`) for human-in-the-loop curation. Scaffold the directory with `aiswmm bootstrap memory`.
+- **Memory-informed runtime.** The planner can read modeling memory to disambiguate ambiguous requests, adapt QA thresholds to project history, and carry parameter priors across watersheds, with a transparency log of which memory entries were used. Opt out per run with `--ignore-memory`.
+- **Claude Agent SDK provider (optional).** A second LLM backend that routes the planner through a Claude Pro/Max subscription via the local `claude` CLI. Install with the optional extra `pip install aiswmm[claude]`. The default OpenAI provider is unchanged and pulls none of this. The provider is gated behind the `AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS` env flag while it stabilises.
+- **New CLI verbs.** `aiswmm compare` (per-node / per-subcatchment run diffs), `aiswmm storm` (Chicago / Huff / SCS design hyetographs), `aiswmm trace` (inspect the agent trace), `aiswmm uncertainty plan`, and `aiswmm bootstrap memory`.
+- **Agent runtime error boundary.** New `@on_exception_return_default` decorator gives tool handlers a uniform soft-fail contract — exceptions become structured error objects in the agent trace instead of crashing the turn.
+- **`sessions.sqlite` integrity check + repair path.** The runtime detects truncated or corrupted session databases at startup and offers a non-destructive repair (rebuilds FTS index, recovers recoverable messages) before falling back to a clean reset.
+- **`CONTEXT.md`.** A repository-root document that captures the domain vocabulary (Session / Run / Case / Provider / Memory / Skill / MCP) and architectural decisions, intended as the canonical onboarding artifact for new contributors and AI agents.
+
+### Changed
+
+- **CLI/UX overhaul.** A unified flag convention across every verb (`--inp` / `--json` / `--quiet` / `--example`), grouped `--help` output, differentiated `error: / cause: / hint:` messages, and an honesty layer that detects SWMM `ERROR` output and stub modes instead of reporting false success. SWMM error text is now routed to stderr.
+- **Calibration workflow closure.** Batch-aware planning, run-progress reporting, and resource estimation.
+- **SWMM solver-version mismatch refused** rather than run silently.
+- **Tool registry deep-modularised.** The 2163-line `tool_registry.py` monolith was split into focused handler packages — `tool_handlers/{web, demo, swmm_memory, swmm_runner, swmm_plot, swmm_builder, swmm_network, swmm_climate, swmm_audit, workflow_mode, introspection, runtime_ops, gap_fill}` — with shared helpers in `tool_handlers/_shared.py`. Adding a new tool family now touches one file instead of grepping a wall.
+- **Intent classifier consolidated.** Keyword-driven intent resolution previously scattered across six modules (`planner.py`, `tool_registry.py`, `single_shot.py`, `runtime_loop.py`, `continuation_classifier.py`, `intent_map.py`) is now centralised in `agent/intent_classifier.py` with a single `classify_intent(goal, *, workflow_state) -> IntentSignals` entrypoint. Bilingual EN/ZH parity, warm-intro gating, and plot-continuation logic are preserved.
+- **Runtime-loop bootstrap phases extracted.** The interactive shell's startup sequence (welcome, profile detection, session resume, memory load, tool registry build) is split into typed phases, each independently testable.
+- **`__version__` now read dynamically from package metadata** (`importlib.metadata.version("aiswmm")`) so `aiswmm --version`, `pyproject.toml`, and the installed wheel can never drift.
+- **OpenAI model selection menu removed** from the `curl|bash` installer. The default is locked to `gpt-5.5`; override via `AISWMM_MODEL` env var if needed.
+
+### Fixed
+
+- **`pip install aiswmm` no longer crashes on first import.** PyYAML was an undeclared dependency on the CLI import chain (`agentic_swmm.memory.reference_benchmarks` imports `yaml` at module level), so the wheel could be installed but `aiswmm --version` would `ModuleNotFoundError`. PyYAML is now an explicit dependency in `pyproject.toml`.
+- **MCP servers now honour the launcher-supplied `.venv` interpreter.** Ten of eleven MCP servers previously hardcoded `python3` in their `spawn` call; on macOS that often resolves to system Python 3.9, below the project's `requires-python>=3.10` floor, causing `ImportError` on every MCP tool call for users who hadn't activated a `.venv`. All servers now read `process.env.PYTHON || "python3"`, matching the pre-existing `swmm-plot` pattern.
+- **`curl|bash` install flow prompts for the OpenAI API key.** The API-key step previously skipped under `--yes` (which `bootstrap.sh` always passes), leaving first-time installers with no key configured and the agent CLI mute. The step now uses `/dev/tty` so it remains interactive even when stdin is piped from `curl`.
+- **Unknown CLI verbs are reported as errors.** `aiswmm bogus` or `aiswmm runn` (typo) used to be silently routed to the LLM planner — without an OpenAI key, the user saw `OPENAI_API_KEY is not set` and concluded (incorrectly) that the tool required a key for everything. The CLI now reports `error: unknown command 'runn'. Did you mean 'run'?` with exit code 2; free-form natural-language goals still work via the explicit `aiswmm agent "<goal>"` entrypoint.
+- **`docs/installation.md` `aiswmm --provider openai` example corrected** to `aiswmm agent --provider openai "..."`. The top-level CLI has no `--provider` flag; that example was silently dropping the argument.
+- **Install step labels match actual behaviour.** Step 4 of `scripts/install.sh` is renamed from "Skill files copy" to "Initialize `~/.aiswmm/` directory" (the step only `mkdir`s; real skill deployment happens later, in `aiswmm setup`). The MCP-server-count footnote ("8 servers") was stale and is now generic ("~11 servers").
+- **README pre-release pointer no longer hard-codes a version number.** Pre-release pointers now refer readers to `CHANGELOG.md` for the current version instead of going stale on every alpha bump.
+
+### Notes
+
+- v0.6.4 reproducibility is **unaffected** — every pinned channel (PyPI, Git tag, Docker image) is immutable, and `pip install aiswmm==0.6.4` / `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4` still produce byte-identical environments for paper-aligned runs.
+- The v0.7.0a1 release notes below are preserved as historical context. The v0.7.0a2 tag carried the tool-registry / runtime-loop refactor wave but never published a changelog of its own; that content is folded into the "Changed" section above.
+- The agent runtime stays in its alpha-stage software status as described in the README — the API surface may still evolve before the planned 1.0 release.
+
 ## v0.7.0a1 - Modeling memory, Claude Agent SDK provider, CLI/UX overhaul (2026-05-21)
 
 Pre-release (alpha) on top of v0.6.4. Install with `pip install aiswmm==0.7.0a1` or `pip install --pre aiswmm`; the default `pip install aiswmm` still ships v0.6.4. v0.6.4 reproducibility is unaffected — every pinned channel (PyPI, Git tag, Docker image) is immutable.

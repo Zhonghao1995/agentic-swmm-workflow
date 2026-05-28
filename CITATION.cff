@@ -7,7 +7,7 @@ authors:
   - family-names: Valeo
     given-names: Caterina
 year: 2026
-version: "0.6.4"
+version: "0.7.0"
 doi: "10.5281/zenodo.20337281"
 license: MIT
 repository-code: "https://github.com/Zhonghao1995/agentic-swmm-workflow"

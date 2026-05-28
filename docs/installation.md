@@ -8,7 +8,7 @@ Install Docker Desktop or Docker Engine, then run:
 
 ```bash
 mkdir -p agentic-swmm-runs
-docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4 acceptance
+docker run --rm -v "$PWD/agentic-swmm-runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.0 acceptance
 ```
 
 Artifacts are written to `agentic-swmm-runs`.
@@ -38,7 +38,7 @@ Install the Python package:
 pip install aiswmm
 ```
 
-As of v0.6.4 this resolves to a regular, non-prerelease version, so `pip install aiswmm` selects it directly — no `--pre` required. (Packaging note: v0.6.4 is the current point release, not an `a`/`b`/`rc` pre-release. The project itself is still alpha-stage software — see the README status note.) To install a **pre-release** (e.g. an alpha or release-candidate) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
+As of v0.7.0 this resolves to a regular, non-prerelease version, so `pip install aiswmm` selects it directly — no `--pre` required. (Packaging note: v0.7.0 is the current point release, not an `a`/`b`/`rc` pre-release. v0.6.4 remains available on PyPI for paper-aligned reproducibility runs. The project itself is still alpha-stage software — see the README status note.) To install a **pre-release** (e.g. an alpha or release-candidate) you must opt in explicitly — `pip install aiswmm` alone never selects an alpha/beta/rc per [PEP 440](https://peps.python.org/pep-0440/):
 
 ```bash
 pip install aiswmm==0.6.3a1   # pin a specific pre-release
@@ -111,11 +111,11 @@ The Windows installer also creates user-level `aiswmm` and `agentic-swmm` comman
 The website scripts are thin stable entrypoints. They download the repository bootstrap scripts from GitHub, then run the local installer. For reproducible installs, pin a release tag before running:
 
 ```bash
-curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.6.4 bash
+curl -fsSL https://aiswmm.com/install.sh | AISWMM_INSTALL_REF=v0.7.0 bash
 ```
 
 ```powershell
-$env:AISWMM_INSTALL_REF = "v0.6.4"
+$env:AISWMM_INSTALL_REF = "v0.7.0"
 irm https://aiswmm.com/install.ps1 | iex
 ```
 

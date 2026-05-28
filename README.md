@@ -28,7 +28,7 @@
   </a>
 </p>
 
-> **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`. The latest pre-release is available via `pip install --pre aiswmm` (see [CHANGELOG.md](CHANGELOG.md) for the current version).
+> **Pre-1.0 — actively developed.** The latest stable point release is **v0.7.0** (current default on PyPI; companion-paper reproducibility evidence is pinned at v0.6.4). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.7.0` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.0` (v0.6.4 remains available on the same channels for paper-aligned runs). Pre-releases are available via `pip install --pre aiswmm` (see [CHANGELOG.md](CHANGELOG.md) for the current version).
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
@@ -69,7 +69,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## Meet your agent in about five minutes
 
-> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.6.4`) is the recommended path** — see [runtime install options](docs/runtime-install-options.md).
+> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.7.0`) is the recommended path** (v0.6.4 remains pinned for companion-paper reproducibility) — see [runtime install options](docs/runtime-install-options.md).
 
 macOS and Linux:
 
