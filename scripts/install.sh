@@ -9,8 +9,8 @@
 #   3. Per-step Y/n:
 #        Step 1/5 -- Python venv creation        (~30s)
 #        Step 2/5 -- Python deps install         (~2 min)
-#        Step 3/5 -- MCP servers npm install     (~2 min, 8 servers)
-#        Step 4/5 -- Skill files copy            (~10s)
+#        Step 3/5 -- MCP servers npm install     (~2 min, ~11 servers)
+#        Step 4/5 -- Initialize ~/.aiswmm/        (~5s)
 #        Step 5/5 -- OpenAI API key config       (skippable)
 #   4. Success summary + next-step hint.
 #
@@ -162,14 +162,21 @@ do_api_key() {
     echo "OpenAI API key already configured at $AISWMM_ENV_FILE"
     return 0
   fi
-  if [[ "$INSTALL_AUTO" == "1" || "$TEST_MODE" == "1" ]]; then
-    echo "API key configuration skipped (auto / test mode)."
+  if [[ "$TEST_MODE" == "1" ]]; then
+    echo "API key configuration skipped (test mode)."
     return 0
   fi
-  printf 'Paste OpenAI API key (or press Enter to skip): '
+  # In curl|bash flow stdin is the curl pipe, not a terminal, so we read/write
+  # via /dev/tty. If /dev/tty is unavailable (CI), fall back to the skip path.
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    echo "No interactive terminal available; skipping API key prompt."
+    echo "Add it later by editing $AISWMM_ENV_FILE"
+    return 0
+  fi
+  printf 'Paste OpenAI API key (or press Enter to skip): ' >/dev/tty
   local api_key=""
-  IFS= read -rs api_key || api_key=""
-  printf '\n'
+  IFS= read -rs api_key </dev/tty || api_key=""
+  printf '\n' >/dev/tty
   if [[ -z "${api_key:-}" ]]; then
     echo "Skipped. Add it later in $AISWMM_ENV_FILE"
     return 0
@@ -254,7 +261,7 @@ fi
 if [[ "$SKIP_MCP" == "1" ]]; then
   echo "Step 3/${total}: MCP servers (skipped via --skip-mcp)"
 else
-  if ! prompt_yn "Run Step 3/${total} (MCP servers ~2 min, 8 servers)?" "Y"; then
+  if ! prompt_yn "Run Step 3/${total} (MCP servers ~2 min, ~11 servers)?" "Y"; then
     echo "Installation aborted at MCP step."
     exit 0
   fi
@@ -265,13 +272,13 @@ else
   fi
 fi
 
-# Step 4: skill files
-if ! prompt_yn "Run Step 4/${total} (Skill files copy ~10s)?" "Y"; then
-  echo "Installation aborted at skill copy step."
+# Step 4: initialize ~/.aiswmm/ (real skill deployment runs via `aiswmm setup`)
+if ! prompt_yn "Run Step 4/${total} (Initialize ~/.aiswmm/ ~5s)?" "Y"; then
+  echo "Installation aborted at config-dir init step."
   exit 0
 fi
-if ! run_step 4 "$total" "Skill files copy to ~/.aiswmm" "10s" do_skill_copy; then
-  fail_step "Skill files copy failed" \
+if ! run_step 4 "$total" "Initialize ~/.aiswmm/ directory" "5s" do_skill_copy; then
+  fail_step "~/.aiswmm/ initialization failed" \
     "Verify $HOME is writable and $AISWMM_CONFIG_DIR can be created."
 fi
 
