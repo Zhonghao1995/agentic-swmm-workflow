@@ -11,7 +11,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, map as map_cmd, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -31,6 +31,10 @@ COMMANDS = {
     "run",
     "audit",
     "plot",
+    # PRD swmmanywhere_integration: spatial-layout counterpart to
+    # ``plot`` (which is time-series). Listed top-level so the
+    # default-router does not punt it to the agent — pure CLI surface.
+    "map",
     "memory",
     "demo",
     # PRD-06 Phase D.4: bootstrap memory scaffold. Top-level so the
@@ -153,6 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.register(subparsers)
     audit.register(subparsers)
     plot.register(subparsers)
+    # PRD swmmanywhere_integration: spatial-layout counterpart to ``plot``.
+    map_cmd.register(subparsers)
     memory.register(subparsers)
     demo.register(subparsers)
     # PRD-06 Phase D.4 — bootstrap the memory skeleton.

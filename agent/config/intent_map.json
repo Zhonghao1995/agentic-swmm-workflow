@@ -8,6 +8,10 @@
     ".inp",
     "audit",
     "plot",
+    "map",
+    "layout",
+    "网络图",
+    "网络结构",
     "作图",
     "画图",
     "图",
@@ -111,6 +115,16 @@
       "preferred_tools": ["inspect_plot_options", "plot_run"],
       "stop_conditions": ["missing run_dir", "ambiguous rainfall/node/node_attr selection"],
       "next_user_prompt": "Choose a rainfall series, node/outfall, and plot variable before plotting."
+    },
+    {
+      "id": "map",
+      "skills": ["swmm-plot"],
+      "keywords": ["map", "layout", "network map", "网络图", "结构图"],
+      "required_inputs": ["run_dir"],
+      "optional_inputs": ["inp", "out_png"],
+      "preferred_tools": ["map_run"],
+      "stop_conditions": ["missing run_dir or INP"],
+      "next_user_prompt": "Provide the run directory (or INP) whose spatial layout should be rendered."
     },
     {
       "id": "calibration",
