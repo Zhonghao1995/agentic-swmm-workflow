@@ -41,8 +41,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     # ``llm`` is the provider-neutral planner name; ``openai`` is kept as a
     # deprecated alias so existing scripts/dispatch keep parsing. The chosen
-    # backend is resolved from ``provider.default`` (subscription claude_sdk
-    # by default), not from the planner name.
+    # backend is resolved from ``provider.default`` (``openai`` by default,
+    # or ``anthropic``), not from the planner name.
     parser.add_argument(
         "--planner",
         choices=["rule", "llm", "openai"],

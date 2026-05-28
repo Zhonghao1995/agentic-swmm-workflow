@@ -2,7 +2,7 @@
 
 This is the opt-in second backend (``--provider anthropic``). It speaks
 the public Anthropic Messages API directly over pure-stdlib ``urllib``
-— no ``anthropic`` package, no ``claude-agent-sdk``, no subprocess —
+— no ``anthropic`` package, no agent SDK, no subprocess —
 so it adds zero dependencies and uses robust, standard function
 calling (the planner's registered tools are advertised verbatim and
 the model can only emit those tools).

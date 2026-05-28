@@ -53,15 +53,15 @@ def _request_expert_review_tool(call: ToolCall, session_dir: Path) -> dict[str, 
 def _build_default_llm_provider() -> Any:
     """Construct the LLM provider used by the L5 enumerator.
 
-    Late import so this file stays free of the provider import in
-    environments where the optional LLM extras are not installed. The
-    provider seam matches what the planner uses (``respond_with_tools``).
+    Late import so this file stays free of the provider import at module
+    load. The provider seam matches what the planner uses
+    (``respond_with_tools``).
 
-    PRD-09: construction is routed through ``make_provider`` so the L5
-    enumerator honours ``provider.default`` (``claude_sdk`` by default,
-    or ``openai``) instead of hard-coding the OpenAI backend. When the
-    provider is ``claude_sdk`` an unset model is fine — the SDK uses the
-    subscription default; only OpenAI needs the canonical model fallback.
+    Construction is routed through ``make_provider`` so the L5
+    enumerator honours ``provider.default`` (``openai`` by default, or
+    ``anthropic``) instead of hard-coding a backend. The model is read
+    from the matching ``<provider>.model`` config key; ``load_config``
+    supplies the canonical per-provider defaults.
     """
     from agentic_swmm.config import DEFAULT_PROVIDER, load_config
     from agentic_swmm.providers.factory import make_provider
@@ -69,8 +69,6 @@ def _build_default_llm_provider() -> Any:
     config = load_config()
     provider_name = config.get("provider.default", DEFAULT_PROVIDER)
     model = config.get(f"{provider_name}.model")
-    if not model and provider_name == "openai":
-        model = "gpt-5.5"
     return make_provider(provider_name, model=model)
 
 

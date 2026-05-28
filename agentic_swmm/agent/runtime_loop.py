@@ -295,14 +295,14 @@ def run_openai_planner(
     model = args.model or config.get(f"{provider_name}.model")
     if provider_name not in SUPPORTED_PROVIDERS:
         raise ValueError(f"unsupported planner provider: {provider_name}")
-    # Subscription-first: ``claude_sdk`` may run with no model configured —
-    # the SDK falls back to the `claude` CLI / subscription default, so we
-    # pass ``model=None`` through rather than raising. OpenAI still needs an
-    # explicit model (config supplies ``gpt-5.5``).
-    if not model and provider_name != "claude_sdk":
+    # Both API-key providers require an explicit model; config supplies
+    # per-provider defaults (openai.model=gpt-5.5,
+    # anthropic.model=claude-sonnet-4-6) so this only trips when the user
+    # has cleared the default.
+    if not model:
         raise ValueError(
-            "OpenAI model is not configured. Run "
-            "`aiswmm model --provider openai --model gpt-5.5`."
+            f"No model configured for provider {provider_name!r}. Run "
+            f"`aiswmm model --provider {provider_name} --model <model-id>`."
         )
 
     # PRD-X: bind a per-process MCP pool so list_tools / call_tool against

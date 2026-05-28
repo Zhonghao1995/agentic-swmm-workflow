@@ -250,22 +250,32 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
         checks.append(
             (f"mcp.json: {server_name}", False, drift_detail, False)
         )
+    # The detailed per-provider key rows live in the dedicated
+    # "LLM provider" section (render_llm_provider_section). This compact
+    # install-check row reflects the *default* provider's key so a fresh
+    # install sees an accurate hint instead of a hard-coded OpenAI line.
+    from agentic_swmm.agent.provider_preflight import provider_key_present
+
+    try:
+        from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+
+        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
+    except Exception:  # pragma: no cover - defensive; config is shallow
+        from agentic_swmm.config import DEFAULT_PROVIDER
+
+        default_provider = DEFAULT_PROVIDER
+    default_key_env = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }.get(default_provider, "OPENAI_API_KEY")
+    default_key_present = provider_key_present(default_provider)
     checks.append(
         (
-            "OPENAI_API_KEY",
-            bool(os.environ.get("OPENAI_API_KEY")),
+            default_key_env,
+            default_key_present,
             "set"
-            if os.environ.get("OPENAI_API_KEY")
-            else "not set; needed for OpenAI agent planner mode",
-            False,
-        )
-    )
-    claude = shutil.which("claude")
-    checks.append(
-        (
-            "claude code CLI",
-            claude is not None,
-            claude or "not found; optional future provider",
+            if default_key_present
+            else f"not set; needed for the default '{default_provider}' planner provider",
             False,
         )
     )
