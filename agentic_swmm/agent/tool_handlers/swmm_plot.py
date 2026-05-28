@@ -132,30 +132,50 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(call, f"could not resolve .inp from {run_dir}")
     if out_path is None or not out_path.is_file():
         return _failure(call, f"could not resolve .out from {run_dir}")
+    # ``link`` (conduit) is mutually exclusive with ``node`` at the
+    # script's argparse layer. When the LLM supplies a link, we must
+    # forward it to the MCP and suppress ``node`` so the script doesn't
+    # reject the call. If both are supplied (LLM mis-fill), prefer the
+    # more-specific ``link`` — silently dropping ``node`` keeps the
+    # call valid instead of failing the conduit hydrograph request.
+    link_raw = call.args.get("link")
+    link = str(link_raw).strip() if isinstance(link_raw, str) and link_raw.strip() else None
+
     if call.args.get("out_png"):
         out_png = _repo_output_path(str(call.args["out_png"]))
         if out_png is None or out_png.suffix.lower() != ".png":
             return _failure(call, "out_png must be a repository-relative .png path")
     else:
         # The MCP server requires outPng. Match the historical CLI default
-        # (``07_plots/fig_<node>_<attr>.png`` under the run dir).
-        node_for_default = re.sub(
-            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node") or "node")
-        ).strip("_") or "node"
-        attr_for_default = re.sub(
-            r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node_attr") or "series")
-        ).strip("_") or "series"
-        out_png = run_dir / "07_plots" / f"fig_{node_for_default}_{attr_for_default}.png"
+        # (``07_plots/fig_<node>_<attr>.png`` under the run dir). When
+        # ``link`` is set, use the conduit id so the file is findable.
+        if link is not None:
+            safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", link).strip("_") or "link"
+            out_png = run_dir / "07_plots" / f"fig_link_{safe}_flow.png"
+        else:
+            node_for_default = re.sub(
+                r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node") or "node")
+            ).strip("_") or "node"
+            attr_for_default = re.sub(
+                r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node_attr") or "series")
+            ).strip("_") or "series"
+            out_png = run_dir / "07_plots" / f"fig_{node_for_default}_{attr_for_default}.png"
         out_png.parent.mkdir(parents=True, exist_ok=True)
     args: dict[str, Any] = {
         "inp": str(inp_path),
         "out": str(out_path),
         "outPng": str(out_png),
     }
-    if call.args.get("node"):
-        args["node"] = str(call.args["node"])
-    if call.args.get("node_attr"):
-        args["nodeAttr"] = str(call.args["node_attr"])
+    if link is not None:
+        args["link"] = link
+        # node_attr is only meaningful in the node path; the script
+        # ignores it when --link is set, and the MCP server branches
+        # on the presence of ``link`` to emit --link instead of --node.
+    else:
+        if call.args.get("node"):
+            args["node"] = str(call.args["node"])
+        if call.args.get("node_attr"):
+            args["nodeAttr"] = str(call.args["node_attr"])
     if call.args.get("rain_ts"):
         args["rainTs"] = str(call.args["rain_ts"])
     if call.args.get("rain_kind"):

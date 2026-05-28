@@ -324,10 +324,23 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool, is_read_only=True),
+        ToolSpec("map_run", "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.", _object({"run_dir": {"type": "string"}, "inp": {"type": "string"}, "out_png": {"type": "string"}, "dpi": {"type": "integer"}, "no_subcatchments": {"type": "boolean"}, "no_vertices": {"type": "boolean"}}, ["run_dir"]), _map_run_tool),
         ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
         ToolSpec("network_to_inp", "Export a SWMM network JSON to INP section text using the swmm-network script.", _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]), _network_to_inp_tool),
-        ToolSpec("plot_run", "Create a rainfall-runoff plot from a run directory using selected rainfall series, node, and node output attribute.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
-        ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
+        ToolSpec("plot_run", "Create a rainfall + flow hydrograph plot from a run directory. The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). 'node' and 'link' are mutually exclusive; pass one. Pick conduit IDs from the .rpt Link Flow Summary; pick node IDs from inspect_plot_options.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "link": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
+        ToolSpec("read_file", "Read a repository file and return a bounded excerpt (capped at 4000 chars). NOTE: for SWMM .rpt summary sections (Link Flow / Outfall Loading / Node Inflow), use read_rpt_summary instead — read_file's 4000-char cap cannot reach summary sections, which sit past the rpt header in 300+ KB files.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
+        ToolSpec(
+            "read_rpt_summary",
+            "Parse a structured summary section from a SWMM .rpt file. AVAILABLE SECTIONS (the 'section' enum): 'Link Flow Summary' = every conduit's peak flow / time-of-peak / Max-Full ratio (use to find the busiest pipe); 'Outfall Loading Summary' = every outfall node's flow frequency / avg / max / total volume (use to find the busiest outfall node id); 'Node Inflow Summary' = every node's lateral and total inflow (use for upstream-network diagnostics). CALL THIS TOOL ONCE PER SECTION YOU NEED — the tool is stateless, so issuing multiple calls with different 'section' values is the correct and cheap pattern; do NOT try to fetch 'Outfall Loading' by re-reading the rpt with read_file. Returns top N rows (default 5) as typed JSON objects sorted by the per-section peak/max column. USE THIS, NOT read_file or search_files, for ALL .rpt data extraction in agent flows.",
+            _object({
+                "rpt_path": {"type": "string"},
+                "section": {"type": "string", "enum": ["Link Flow Summary", "Outfall Loading Summary", "Node Inflow Summary"]},
+                "top_n": {"type": "integer"},
+                "sort_by": {"type": "string"},
+            }, ["rpt_path", "section"]),
+            _read_rpt_summary_tool,
+            is_read_only=True,
+        ),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool, is_read_only=True),
         ToolSpec(
             "recall_memory",
@@ -1147,6 +1160,18 @@ from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
 # late-import dance the MCP-routed families use.
 from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
     _synth_swmm_from_bbox_tool,
+)
+# ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
+# no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;
+# sibling of ``plot_run`` at the LLM-facing-tool level.
+from agentic_swmm.agent.tool_handlers.swmm_map import (  # noqa: E402,F401
+    _map_run_tool,
+)
+# ``read_rpt_summary`` is an in-process rpt parser — no CLI verb, no
+# MCP. Sits next to ``swmm_map`` in the late-import block because the
+# handler late-imports ``_required_repo_file`` from this module.
+from agentic_swmm.agent.tool_handlers.swmm_rpt import (  # noqa: E402,F401
+    _read_rpt_summary_tool,
 )
 
 

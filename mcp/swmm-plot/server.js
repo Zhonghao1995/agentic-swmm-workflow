@@ -99,6 +99,10 @@ const Args = z.object({
   dtMin: z.number().default(5),
   node: z.string().default("<outfall-or-junction>"),
   nodeAttr: z.string().default("Total_inflow"),
+  // ``link`` is the conduit-level selector. When set, the handler
+  // emits ``--link`` to the script INSTEAD OF ``--node`` (the script
+  // declares the two in a mutually-exclusive argparse group).
+  link: z.string().optional(),
   dpi: z.number().default(300),
   focusDay: z.string().optional(),
   windowStart: z.string().optional(),
@@ -128,6 +132,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             dtMin: { type: "number", default: 5 },
             node: { type: "string", default: "<outfall-or-junction>" },
             nodeAttr: { type: "string", default: "Total_inflow" },
+            link: { type: "string", description: "SWMM conduit/link id; when set, the lower panel plots Flow_rate for the conduit instead of a node attribute. Mutually exclusive with 'node'." },
             dpi: { type: "number", default: 300 },
             focusDay: { type: "string" },
             windowStart: { type: "string" },
@@ -155,10 +160,17 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     "--rain-ts", a.rainTs,
     "--rain-kind", a.rainKind,
     "--dt-min", String(a.dtMin),
-    "--node", a.node,
-    "--node-attr", a.nodeAttr,
     "--dpi", String(a.dpi)
   ];
+  // ``link`` and ``node`` are mutually exclusive at the script's
+  // argparse layer. Branch on link presence so the script never sees
+  // both selectors at once. ``--node-attr`` is only meaningful with
+  // ``--node`` so it rides the node branch.
+  if (a.link) {
+    pyArgs.push("--link", a.link);
+  } else {
+    pyArgs.push("--node", a.node, "--node-attr", a.nodeAttr);
+  }
 
   if (a.focusDay) {
     pyArgs.push("--focus-day", a.focusDay);
