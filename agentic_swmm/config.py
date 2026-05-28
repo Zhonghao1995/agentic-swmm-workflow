@@ -7,8 +7,12 @@ from typing import Any
 
 
 CONFIG_DIR_ENV = "AISWMM_CONFIG_DIR"
-DEFAULT_PROVIDER = "openai"
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+# Subscription-first: the shipped default routes the LLM planner through a
+# Claude Pro/Max subscription via the local `claude` CLI (zero marginal
+# per-token cost). OpenAI is opt-in via ``--provider openai`` / config.
+DEFAULT_PROVIDER = "claude_sdk"
+# Canonical OpenAI model id when the user opts in to the OpenAI backend.
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
 
 
 @dataclass(frozen=True)

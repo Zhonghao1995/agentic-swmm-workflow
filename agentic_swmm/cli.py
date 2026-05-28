@@ -614,10 +614,10 @@ def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
     """Swap the planner to ``rule`` when no LLM provider is configured.
 
     The interactive shell currently hard-routes to
-    ``--planner openai``; if no key is set, the first prompt fails
-    mid-turn. We surface a guidance block on stderr and rewrite the
-    dispatched argv to use the rule planner so the user can still
-    discover the deterministic verbs without an API key.
+    ``--planner llm``; if no provider is configured at all, the first
+    prompt fails mid-turn. We surface a guidance block on stderr and
+    rewrite the dispatched argv to use the rule planner so the user can
+    still discover the deterministic verbs without a configured provider.
 
     Only ``--interactive`` dispatches trigger the preflight — a bare
     one-shot ``agent`` call that the user typed deliberately is left
@@ -708,17 +708,17 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
     if not argv:
         # PRD-08 A.3 (audit #6): when the user types bare ``aiswmm`` we
         # are about to drop them into the interactive shell with the
-        # OpenAI planner. If no provider is configured, print a stderr
+        # LLM planner. If no provider is configured, print a stderr
         # guidance block and downgrade to the rule planner so the user
         # at least sees the deterministic verbs.
         return _preflight_interactive_dispatch(
-            ["agent", "--planner", "openai", "--interactive"]
+            ["agent", "--planner", "llm", "--interactive"]
         )
     if argv[0] == "chat":
         dispatched = (
-            ["agent", "--planner", "openai", *argv[1:]]
+            ["agent", "--planner", "llm", *argv[1:]]
             if len(argv) > 1
-            else ["agent", "--planner", "openai", "--interactive"]
+            else ["agent", "--planner", "llm", "--interactive"]
         )
         return _preflight_interactive_dispatch(dispatched)
     if argv[0] in COMMANDS:
@@ -736,15 +736,15 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
             # natural-language planner so the user can describe the
             # model in prose. ``--help``/``-h``/``--example`` short-
             # circuit this so each lands in the run subparser.
-            return ["agent", "--planner", "openai", *argv]
+            return ["agent", "--planner", "llm", *argv]
         return argv
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0].startswith("-"):
         if _agent_options_without_goal(argv):
-            return ["agent", "--planner", "openai", "--interactive", *argv]
-        return ["agent", "--planner", "openai", *argv]
-    return ["agent", "--planner", "openai", *argv]
+            return ["agent", "--planner", "llm", "--interactive", *argv]
+        return ["agent", "--planner", "llm", *argv]
+    return ["agent", "--planner", "llm", *argv]
 
 
 def _agent_options_without_goal(argv: list[str]) -> bool:

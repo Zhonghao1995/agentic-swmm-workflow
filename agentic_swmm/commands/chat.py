@@ -41,7 +41,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def main(args: argparse.Namespace) -> int:
     forwarded = SimpleNamespace(
         goal=list(args.prompt),
-        planner="openai",
+        planner="llm",
         provider=args.provider,
         model=args.model,
         session_id=args.session_id,

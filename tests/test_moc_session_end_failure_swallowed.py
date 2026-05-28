@@ -55,7 +55,7 @@ def test_moc_failure_does_not_crash_session_exit(
     trace_path = session_dir / "agent_trace.jsonl"
 
     monkeypatch.setattr(
-        "agentic_swmm.agent.runtime_loop.OpenAIProvider",
+        "agentic_swmm.agent.runtime_loop.make_provider",
         lambda *args, **kwargs: _NoopProvider(),
     )
     monkeypatch.setenv("AISWMM_DISABLE_AUTO_WORKFLOW_ROUTER", "1")

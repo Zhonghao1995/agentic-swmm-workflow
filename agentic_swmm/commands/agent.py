@@ -39,15 +39,24 @@ __all__ = [
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
-    parser.add_argument("--planner", choices=["rule", "openai"], default="rule", help="Planner backend. Defaults to the deterministic rule planner.")
+    # ``llm`` is the provider-neutral planner name; ``openai`` is kept as a
+    # deprecated alias so existing scripts/dispatch keep parsing. The chosen
+    # backend is resolved from ``provider.default`` (subscription claude_sdk
+    # by default), not from the planner name.
+    parser.add_argument(
+        "--planner",
+        choices=["rule", "llm", "openai"],
+        default="rule",
+        help="Planner backend ('llm' or the deterministic 'rule'). Defaults to rule.",
+    )
     parser.add_argument(
         "--provider",
         choices=available_provider_choices(),
         help=provider_help_text(
-            "Provider to use with --planner openai. Defaults to config provider.default."
+            "Provider to use with --planner llm. Defaults to config provider.default."
         ),
     )
-    parser.add_argument("--model", help="Model override for --planner openai.")
+    parser.add_argument("--model", help="Model override for --planner llm.")
     parser.add_argument("--session-id", help="Stable session id. Defaults to a timestamped id.")
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not execute tools.")

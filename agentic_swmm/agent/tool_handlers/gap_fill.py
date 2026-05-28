@@ -58,17 +58,19 @@ def _build_default_llm_provider() -> Any:
     provider seam matches what the planner uses (``respond_with_tools``).
 
     PRD-09: construction is routed through ``make_provider`` so the L5
-    enumerator honours ``provider.default`` (``openai`` or
-    ``claude_sdk``) instead of hard-coding the OpenAI backend.
+    enumerator honours ``provider.default`` (``claude_sdk`` by default,
+    or ``openai``) instead of hard-coding the OpenAI backend. When the
+    provider is ``claude_sdk`` an unset model is fine — the SDK uses the
+    subscription default; only OpenAI needs the canonical model fallback.
     """
-    from agentic_swmm.config import load_config
+    from agentic_swmm.config import DEFAULT_PROVIDER, load_config
     from agentic_swmm.providers.factory import make_provider
 
     config = load_config()
-    provider_name = config.get("provider.default", "openai")
+    provider_name = config.get("provider.default", DEFAULT_PROVIDER)
     model = config.get(f"{provider_name}.model")
     if not model and provider_name == "openai":
-        model = "gpt-5.5-2026-04-23"
+        model = "gpt-5.5"
     return make_provider(provider_name, model=model)
 
 

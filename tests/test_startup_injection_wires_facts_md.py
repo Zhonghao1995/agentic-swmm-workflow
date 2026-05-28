@@ -58,7 +58,7 @@ def test_project_facts_fence_lands_in_system_prompt(tmp_path, monkeypatch) -> No
     from agentic_swmm.agent.tool_registry import AgentToolRegistry
 
     monkeypatch.setattr(
-        "agentic_swmm.agent.runtime_loop.OpenAIProvider", lambda *a, **kw: provider
+        "agentic_swmm.agent.runtime_loop.make_provider", lambda *a, **kw: provider
     )
     monkeypatch.setattr(
         "agentic_swmm.agent.runtime_loop.load_config",
@@ -109,7 +109,7 @@ def test_no_project_facts_fence_when_facts_md_is_empty(tmp_path, monkeypatch) ->
     from agentic_swmm.agent.tool_registry import AgentToolRegistry
 
     monkeypatch.setattr(
-        "agentic_swmm.agent.runtime_loop.OpenAIProvider", lambda *a, **kw: provider
+        "agentic_swmm.agent.runtime_loop.make_provider", lambda *a, **kw: provider
     )
     monkeypatch.setattr(
         "agentic_swmm.agent.runtime_loop.load_config",

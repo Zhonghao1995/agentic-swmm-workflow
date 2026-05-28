@@ -44,7 +44,7 @@ def _run_one_chat_turn(
     from agentic_swmm.agent.tool_registry import AgentToolRegistry
 
     monkeypatch.setattr(
-        "agentic_swmm.agent.runtime_loop.OpenAIProvider",
+        "agentic_swmm.agent.runtime_loop.make_provider",
         lambda *args, **kwargs: _NoopProvider(),
     )
     # Avoid the auto workflow router so the planner reaches the

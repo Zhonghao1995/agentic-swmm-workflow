@@ -30,7 +30,9 @@ PRD-02 (``is_open_shaped_prompt``, ``maybe_warm_intro``,
 ``invoke_tool_with_gap_fill``, ``execute_with_chrome``, ``_is_tty``,
 ``OpenAIProvider``, ``load_config``, ``generate_moc``) is re-exported
 from here, so existing imports and ``unittest.mock.patch`` targets
-continue to work without changes.
+continue to work without changes. Provider construction now routes
+through ``make_provider`` (also re-exported) for every backend; the
+``OpenAIProvider`` symbol is retained only for back-compat imports.
 """
 
 from __future__ import annotations
@@ -64,9 +66,9 @@ from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.audit.moc_generator import generate_moc
-from agentic_swmm.config import load_config
+from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 from agentic_swmm.memory.session_sync import sync_session_to_db
-from agentic_swmm.providers.factory import make_provider
+from agentic_swmm.providers.factory import SUPPORTED_PROVIDERS, make_provider
 from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
@@ -99,7 +101,8 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
 
     This function owns the boot-time concerns:
 
-    - argument validation (``--planner openai`` required),
+    - argument validation (``--planner llm`` required; ``openai`` accepted
+      as the deprecated alias),
     - root run-folder resolution (``args.session_dir`` or ``repo_root()/runs``),
     - first-session bootstrap (``_new_interactive_session``),
     - welcome banner + startup banner.
@@ -108,8 +111,8 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     :func:`agentic_swmm.agent.repl.run_repl` with real collaborators
     (real ``input``, real ``_run_planner_for_prompt`` planner runner).
     """
-    if args.planner != "openai":
-        raise ValueError("interactive agent shell currently requires `--planner openai`.")
+    if args.planner not in ("llm", "openai"):
+        raise ValueError("interactive agent shell currently requires `--planner llm`.")
 
     base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs"
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -288,31 +291,30 @@ def run_openai_planner(
     prior_session_state: dict[str, Any] | None = None,
 ) -> int:
     config = load_config()
-    provider_name = args.provider or config.get("provider.default", "openai")
+    provider_name = args.provider or config.get("provider.default", DEFAULT_PROVIDER)
     model = args.model or config.get(f"{provider_name}.model")
-    if provider_name not in ("openai", "claude_sdk"):
+    if provider_name not in SUPPORTED_PROVIDERS:
         raise ValueError(f"unsupported planner provider: {provider_name}")
-    if not model:
-        if provider_name == "claude_sdk":
-            raise ValueError(
-                "claude_sdk model is not configured. Run "
-                "`aiswmm model --provider claude_sdk --model claude-sonnet-4-5-20250929`."
-            )
-        raise ValueError("OpenAI model is not configured. Run `aiswmm model --provider openai --model gpt-5.5-2026-04-23`.")
+    # Subscription-first: ``claude_sdk`` may run with no model configured —
+    # the SDK falls back to the `claude` CLI / subscription default, so we
+    # pass ``model=None`` through rather than raising. OpenAI still needs an
+    # explicit model (config supplies ``gpt-5.5``).
+    if not model and provider_name != "claude_sdk":
+        raise ValueError(
+            "OpenAI model is not configured. Run "
+            "`aiswmm model --provider openai --model gpt-5.5`."
+        )
 
     # PRD-X: bind a per-process MCP pool so list_tools / call_tool against
     # local servers reuse one long-running node child per server instead of
     # spawning on every call. Lazy — pool only spawns servers on first use.
     ensure_session_pool()
 
-    # PRD-09: route construction through the provider factory. The
-    # ``openai`` path still goes through the module-level
-    # ``OpenAIProvider`` symbol so existing ``mock.patch`` targets keep
-    # working; only the ``claude_sdk`` path takes the factory branch.
-    if provider_name == "openai":
-        provider = OpenAIProvider(model=model)
-    else:
-        provider = make_provider(provider_name, model=model)
+    # Provider-neutral construction: every backend is built through the
+    # factory so adding a new provider is a factory-only change. Tests
+    # patch ``runtime_loop.make_provider`` (or the factory) to inject a
+    # stub provider.
+    provider = make_provider(provider_name, model=model)
 
     _agent_say("aiswmm executor")
     _agent_say(f"Goal: {goal}")
