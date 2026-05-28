@@ -29,6 +29,8 @@ EXPECTED_READ_ONLY: set[str] = {
     "list_mcp_tools",
     "list_skills",
     "read_file",
+    # v0.7.1: structured-summary parser over SWMM .rpt files.
+    "read_rpt_summary",
     "read_skill",
     "recall_memory",
     "recall_memory_search",

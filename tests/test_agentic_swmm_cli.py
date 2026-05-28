@@ -372,10 +372,18 @@ class AgenticSwmmCliTests(unittest.TestCase):
         )
 
     def test_agent_default_step_budget_covers_run_audit_plot(self) -> None:
+        # The default --max-steps was bumped from 16 -> 40 in v0.7.1 to
+        # give the LLM-driven dispatch loop headroom after the ~15-step
+        # introspection (list_skills / read_skill / list_mcp_tools /
+        # select_skill) gpt-5.5 typically does before the first real op.
+        # The precise default + override behaviour is pinned by
+        # ``tests/test_max_steps_default.py``; this assertion keeps the
+        # legacy "run + audit + plot is budgeted by default" sanity
+        # check in the broader CLI suite.
         parser = build_parser()
         args = parser.parse_args(["agent", "run", "examples/tecnopolo"])
 
-        self.assertEqual(args.max_steps, 16)
+        self.assertEqual(args.max_steps, 40)
 
     def test_openai_planner_prompt_loads_startup_identity_memory(self) -> None:
         prompt = openai_planner_prompt()

@@ -31,6 +31,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "demo_acceptance": False,
     "doctor": False,
     "format_rainfall": False,
+    # v0.7.1: aiswmm map verb wrapped as a typed LLM-facing tool —
+    # writes a PNG, so not read-only.
+    "map_run": False,
     "network_qa": False,
     "network_to_inp": False,
     "plot_run": False,
@@ -56,6 +59,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "list_mcp_tools": True,
     "list_skills": True,
     "read_file": True,
+    # v0.7.1: structured-summary parser over SWMM .rpt files.
+    # Pure read — opens the rpt, parses one section, returns rows.
+    "read_rpt_summary": True,
     "read_skill": True,
     "recall_memory": True,
     "recall_memory_search": True,
