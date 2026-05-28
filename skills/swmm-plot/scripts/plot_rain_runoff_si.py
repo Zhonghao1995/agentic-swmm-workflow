@@ -234,8 +234,17 @@ def main():
     ap.add_argument('--rain-kind', choices=['intensity_mm_per_hr', 'depth_mm_per_dt', 'cumulative_depth_mm'], default='depth_mm_per_dt',
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
-    ap.add_argument('--node', default='<outfall-or-junction>',
-                    help='SWMM node id (outfall or junction) whose attribute is plotted. The agent flow passes the resolved value; manual CLI users must supply this.')
+    # ``--node`` and ``--link`` are alternate entity selectors. The
+    # argparse group below enforces mutual exclusion: a single render
+    # plots either a node-level series or a link-level (Flow_rate)
+    # series. ``--node`` keeps its placeholder default so existing
+    # callers / tests that omit the flag still get the same fail-fast
+    # message that pre-dates --link.
+    entity_group = ap.add_mutually_exclusive_group()
+    entity_group.add_argument('--node', default='<outfall-or-junction>',
+                              help='SWMM node id (outfall or junction) whose attribute is plotted. The agent flow passes the resolved value; manual CLI users must supply this.')
+    entity_group.add_argument('--link', default=None,
+                              help='SWMM link/conduit id; when set, the lower panel plots Flow_rate for the link instead of a node attribute. Mutually exclusive with --node.')
     ap.add_argument('--node-attr', default='Total_inflow')
     ap.add_argument('--out-png', required=True, type=Path)
     ap.add_argument('--dpi', type=int, default=300)
@@ -266,10 +275,15 @@ def main():
             "(The agent-driven path resolves this automatically via "
             "inspect_plot_options; this error only appears in manual CLI use.)"
         )
-    if args.node == '<outfall-or-junction>':
+    # The ``--node`` placeholder check only fires when ``--link`` was
+    # not supplied. ``--link`` is the alternate selector and provides
+    # its own (non-placeholder) id, so the user must not be told to
+    # pass --node in that case.
+    if not args.link and args.node == '<outfall-or-junction>':
         raise SystemExit(
             "--node is a placeholder ('<outfall-or-junction>'); pass an "
-            "actual SWMM node id, e.g. --node OUT_0. "
+            "actual SWMM node id, e.g. --node OUT_0, or use --link for "
+            "a conduit-level hydrograph. "
             "(The agent-driven path resolves this automatically via "
             "inspect_plot_options; this error only appears in manual CLI use.)"
         )
@@ -303,8 +317,19 @@ def main():
         rain_plot = rain_v * (args.dt_min / 60.0)
         rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
 
-    # Flow series (SI): CMS = m^3/s
-    key = f'node,{args.node},{args.node_attr}'
+    # Flow series (SI): CMS = m^3/s.
+    # Node-level path reads ``node,<id>,<attr>`` (Total_inflow by
+    # default); link-level path reads ``link,<id>,Flow_rate`` so the
+    # lower panel renders a conduit hydrograph. Both share the same
+    # paired-axis layout (rain top, flow bottom).
+    if args.link:
+        key = f'link,{args.link},Flow_rate'
+        flow_label = 'Flow'
+        flow_ylabel = 'Flow (m³/s)'
+    else:
+        key = f'node,{args.node},{args.node_attr}'
+        flow_label = 'Flow'
+        flow_ylabel = 'Flow (m³/s)'
     flow_df = extract(str(args.out_file), key)
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
@@ -332,8 +357,8 @@ def main():
 
     # Flow line (draw above rain)
     ax_flow = ax_rain.twinx()
-    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label='Flow', zorder=3)
-    ax_flow.set_ylabel('Flow (m³/s)')
+    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label=flow_label, zorder=3)
+    ax_flow.set_ylabel(flow_ylabel)
 
     rain_max = float(np.nanmax(rain_plot)) if rain_plot.size else 0.0
     if rain_max > 0:
