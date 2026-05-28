@@ -64,7 +64,6 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "retrieve_memory": True,
     "search_files": True,
     "select_skill": True,
-    "select_workflow_mode": True,
     "web_fetch_url": True,
     "web_search": True,
 }
@@ -102,9 +101,3 @@ def test_capabilities_is_read_only() -> None:
     """Direct lock — `capabilities` was the canonical drift case in P1-5."""
     registry = AgentToolRegistry()
     assert registry.is_read_only("capabilities") is True
-
-
-def test_select_workflow_mode_is_read_only() -> None:
-    """Direct lock — `select_workflow_mode` was the second drift case."""
-    registry = AgentToolRegistry()
-    assert registry.is_read_only("select_workflow_mode") is True

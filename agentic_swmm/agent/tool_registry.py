@@ -536,7 +536,11 @@ def _build_tools() -> dict[str, ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools. OPTIONAL but recommended: pass `mode` with your identified workflow mode (one of calibration / uncertainty / prepared_inp_cli / full_modular_build / existing_run_plot / audit_only_or_comparison / prepared_demo) so the tool uses your classification directly instead of re-deriving intent via legacy keyword matching.", _object({"goal": {"type": "string"}, "mode": {"type": "string", "enum": ["calibration", "uncertainty", "prepared_inp_cli", "full_modular_build", "existing_run_plot", "audit_only_or_comparison", "prepared_demo"], "description": "OPTIONAL but recommended. The workflow mode you have identified from the user's goal. If provided and valid, the tool uses this directly. If absent or invalid, falls back to keyword matching (legacy compatibility)."}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
+        # LLM-driven dispatch refactor: ``select_workflow_mode`` removed.
+        # Frontier LLMs read each tool's description / SKILL.md and
+        # pick the right tool directly; the hardcoded mode enum was a
+        # GPT-4-era guardrail that re-introduced keyword-matching
+        # brittleness on top of the LLM's own classifier.
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec(
             "retrieve_memory",

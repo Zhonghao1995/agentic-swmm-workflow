@@ -37,7 +37,6 @@ EXPECTED_READ_ONLY: set[str] = {
     "retrieve_memory",
     "search_files",
     "select_skill",
-    "select_workflow_mode",
     "web_fetch_url",
     "web_search",
 }
