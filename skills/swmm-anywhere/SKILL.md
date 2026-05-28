@@ -117,16 +117,16 @@ aiswmm plot --run-dir <run-dir>/swmm_run --link <conduit_id>
 - **Plausible ≠ real**: the synthesized network reflects *what a sewer system might look like under these streets and this DEM*. It is a starting point for calibration / sensitivity analysis, not a substitute for surveyed infrastructure data.
 - **Memory profile**: end-to-end requires ~1–2 GB free RAM at peak (raster ops + numba JIT). On a constrained machine, close other apps before running large bboxes (> 2×2 km).
 
-## Optional dependency
+## Installing — and credit where it's due
 
-This skill requires the `aiswmm[anywhere]` optional extra:
+This skill leans on **[SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)**, a project from the Imperial College London team that figures out a plausible urban drainage network from OSM streets and a DEM. The clever part — graph cleanup, subcatchment delineation, pipe topology, pipe sizing — is all their work, released under BSD-3-Clause. What this skill adds is the agent-loop plumbing around it: a typed tool the LLM can call, a SKILL.md contract for context priming, a Python runner that smooths over a few macOS arm64 quirks, and the standard `runs/<date>/<id>/` audit layout for the resulting INP.
+
+To install:
 
 ```
 pip install aiswmm[anywhere]
 ```
 
-Pulls in 27 geo dependencies (geopandas, osmnx, rasterio, pyflwdir, pywbt, …) — kept out of the default `pip install aiswmm` footprint.
+That brings in `swmmanywhere` from PyPI along with the geospatial stack it needs (geopandas, osmnx, rasterio, pyflwdir, pywbt, and ~22 others). The default `pip install aiswmm` stays light — the geo stack only shows up when you opt in to this extra.
 
-## Upstream attribution
-
-Built on **[ImperialCollegeLondon/SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)** (BSD-3-Clause), © Imperial College London. Their tooling is the engine for the OSM/DEM ingest and 24-step graphfcn pipeline. The aiswmm `swmm-anywhere` skill wraps it with run-aware audit pipeline integration, raw-input snapshotting, and macOS arm64 portability fixes.
+If you're publishing work that uses or builds on this skill, please **cite SWMManywhere** and check the upstream repository at <https://github.com/ImperialCollegeLondon/SWMManywhere> for their citation guidance and the BSD-3-Clause license text. The synthesised network is upstream's intellectual contribution; this skill is just the agent-side adapter.
