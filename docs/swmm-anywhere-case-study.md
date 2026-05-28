@@ -1,6 +1,14 @@
-# Case study: bbox → audited SWMM model in 38 seconds via `swmm-anywhere`
+# Case study: rapid SWMM modelling in a data-scarce region via SWMManywhere + aiswmm audit
 
-A 1 × 1 km bounding box in London Greenwich was handed to the `aiswmm` runtime with **no pipe-network data, no DEM file, no rainfall timeseries** — only four floats and an instruction. Thirty-eight seconds later, the system produced a runnable SWMM 5.2 model, a 24-hour simulation with peak hydraulics, a full audit dossier, a spatial layout figure, and a rain–runoff hydrograph. This page records what was produced, how, and the boundaries of what the result proves.
+> **Upstream credit (read this first).** The network *synthesis* in this case study — turning OSM streets + DEM into a plausible drainage network — is performed entirely by **SWMManywhere**, © Imperial College London, BSD-3-Clause (<https://github.com/ImperialCollegeLondon/SWMManywhere>). SWMManywhere is **not** an aiswmm component, and the synthesised network is **not** aiswmm's intellectual output.
+>
+> What aiswmm contributes is a **wrapper skill** (`swmm-anywhere`) that calls SWMManywhere on the user's behalf and adapts its output to aiswmm's existing audit pipeline (deterministic `swmm5` execution, `runs/<id>/` directory layout, `experiment_note.md` audit dossier, `aiswmm map` visualisation). The wrapper does not modify the synthesis algorithm.
+>
+> If your work using this skill leads to a publication, the **primary** citation should be the SWMManywhere project. Treat aiswmm as the integration layer, not the modelling engine.
+
+This case study is a **data-scarce rapid-modelling** demonstration — given only a bounding box (no pipe shapefile, no DEM file, no measured network), SWMManywhere infers a *plausible* drainage network in seconds, and aiswmm runs and audits it through the same pipeline used for real-data SWMM models. The synthesised network is an inferred plausibility from public data, not a substitute for surveyed infrastructure.
+
+A 1 × 1 km bounding box in London Greenwich was used. Thirty-eight seconds later the chain produced: a runnable SWMM 5.2 INP (synthesised by SWMManywhere), a 24-hour deterministic simulation through aiswmm's `swmm5` binary, a full audit dossier, a spatial layout figure (via the new `aiswmm map` verb on top of SWMManywhere's geoparquet output), and a rain–runoff hydrograph (via the existing `aiswmm plot` verb). This page records what was produced at each step, who produced it, and the boundaries of what the result proves.
 
 ## What was input
 
@@ -61,20 +69,40 @@ The five-step chain timing breakdown:
 
 The discrepancy between RPT and `.out` is expected — RPT records an instantaneous maximum across the dynamic-wave routing's internal timestep (5 s), while `.out` is sampled at the report interval (15 min). The RPT value is the authoritative peak.
 
-## Capabilities demonstrated
+## Who did what — a strict separation of concerns
 
-This single 38-second run exercises ten distinct aiswmm components, all of which become available **without the user installing anything beyond `pip install aiswmm[anywhere]` and dropping a bounding box**:
+To avoid any ambiguity about authorship: the following table partitions every artefact in this run between SWMManywhere (the upstream tool) and the aiswmm wrapper layer.
 
-1. **Optional-extra pattern** — the heavy 27-package geo stack (geopandas, osmnx, rasterio, pyflwdir, pywbt …) installs only when the user opts in. The default `pip install aiswmm` footprint is unchanged.
-2. **Non-determinism quarantine** — OSM is mutable upstream; the skill snapshots every input file with SHA-256 under `00_raw/` so re-runs are byte-identical given the same snapshot.
-3. **Path-with-spaces compatibility shim** — SWMM 5.2 refuses to parse INP `[RAINGAGES] FILE` paths containing spaces (a common macOS-path failure mode); the runner copies external files next to the INP and rewrites the reference automatically.
-4. **macOS arm64 OpenMP compatibility** — `pyswmm`'s bundled `libomp.dylib` SIGKILLs on Apple Silicon when any other OpenMP runtime is already loaded; the wrapper installs a `pyswmm` stub before SWMManywhere imports it, then runs the resulting INP through aiswmm's own statically-linked `swmm5` binary.
-5. **Tuned-default `outfall_derivation`** — three parameters (`method=withtopo`, `river_buffer_distance=300 m`, `outfall_length=200`) cut outfall count by ~34 % vs. SWMManywhere upstream defaults; the spike A/B is documented in `scripts/spike_swmmanywhere/04_optimize_outfalls.py`.
-6. **`--upstream-defaults` opt-out** — when the user wants to reproduce SWMManywhere's upstream demo behaviour exactly, one flag bypasses the tuned defaults.
-7. **`--rain-file` injection** — the bundled 15-minute demo storm can be replaced with the user's own rainfall file in one argument.
-8. **Audit-layer integration** — the resulting INP feeds aiswmm's existing `swmm-runner` → `swmm-experiment-audit` → `swmm-plot` chain with no special-casing for the synth-data origin. Provenance records flag the SWMManywhere-synth source.
-9. **`aiswmm map` spatial verb** — a new top-level CLI command renders the network layout from either the SWMManywhere geoparquet trio (preferred) or the SWMM INP `[COORDINATES]` + `[Polygons]` blocks (fallback). Works on any SWMM model, not just synth ones.
-10. **HITL plot interaction (planner directive)** — `skills/swmm-plot/SKILL.md` instructs the LLM planner to ask the user which node/link/attribute/window before calling any plot tool, so plots are user-driven rather than default-driven.
+### What SWMManywhere did (the core modelling work — not aiswmm's contribution)
+
+* Downloaded OSM streets, DEM, building footprints, and river lines for the bbox.
+* Cleaned and simplified the street graph (24-step `graphfcn` pipeline).
+* Delineated subcatchment polygons by clipping the street graph against derived catchments.
+* Inferred pipe topology along the cleaned street graph (`derive_topology`).
+* Sized pipes by accumulated drainage area (`pipe_by_pipe`).
+* Identified outfalls and routed flow direction via DEM elevations.
+* Emitted the SWMM 5.2 `.inp` file containing the resulting network.
+
+**Everything in `runs/<id>/10_swmmanywhere/` is SWMManywhere's output.** The synthesised network is the upstream tool's work, not aiswmm's.
+
+### What aiswmm adds on top (the wrapper / integration contribution)
+
+The `swmm-anywhere` skill is purely an integration layer over SWMManywhere. The novel value it provides:
+
+1. **Audit-pipeline integration.** aiswmm's existing `swmm-runner` → `swmm-experiment-audit` → `swmm-plot` chain (predating this skill) accepts the synth INP without special-casing. Provenance records mark the source as SWMManywhere-synth so downstream consumers can distinguish real-data from synth-data runs.
+2. **Deterministic `swmm5` execution path.** aiswmm runs the synth INP through its own statically-linked SWMM 5.2.4 binary, not through the `pyswmm` Python wrapper that SWMManywhere itself uses. This sidesteps a macOS arm64 OpenMP collision (described in step 4 below) and gives the same execution path used for every other aiswmm run.
+3. **Path-with-spaces compatibility shim.** SWMM 5.2 refuses to parse INP `[RAINGAGES] FILE` paths containing whitespace. The wrapper copies external files next to the INP and rewrites the reference to a bare filename — a fix for a SWMM-engine limitation, not for SWMManywhere itself.
+4. **macOS arm64 portability.** `pyswmm`'s bundled `libomp.dylib` SIGKILLs on Apple Silicon when any other OpenMP runtime is already loaded. The wrapper installs a `pyswmm` stub in `sys.modules` before SWMManywhere imports it. This is a platform-portability workaround; the modelling logic is untouched.
+5. **OSM/DEM snapshot pinning.** Every file SWMManywhere fetches is captured under `00_raw/` with a SHA-256 manifest, so the run is byte-identical given the same snapshot. SWMManywhere itself does not pin upstream data; this is the audit layer reaching across to make the synthesis reproducible.
+6. **Optional-extra packaging.** `pip install aiswmm[anywhere]` is a Python-packaging mechanism so the 27-package geo stack only installs when users opt in.
+7. **`--upstream-defaults` flag.** Lets the user bypass the wrapper's tuned `outfall_derivation` parameters and reproduce SWMManywhere upstream demo behaviour exactly. This exists so the wrapper's opinions are auditable.
+8. **`--rain-file` flag.** Lets the user substitute SWMManywhere's bundled 15-minute demo storm with their own rainfall file. Pure plumbing — SWMManywhere accepts external rainfall the same way; the flag just makes the swap one argument.
+9. **`aiswmm map` spatial verb.** Renders a network layout PNG from either the SWMManywhere geoparquet trio (preferred) or any SWMM INP's `[COORDINATES]` + `[Polygons]` blocks. Works on real-data INPs too — it is not specific to the synth path.
+10. **HITL plot interaction (planner directive).** `skills/swmm-plot/SKILL.md` instructs the LLM planner to ask the user *which* node/link/attribute/window before calling any plot tool. Applies to the entire `swmm-plot` skill regardless of synth or real-data provenance.
+
+### A short way to read the split
+
+If you remove every aiswmm-side item above, you still have SWMManywhere doing exactly the synthesis it would do standalone. If you remove the SWMManywhere upstream package, the entire `swmm-anywhere` skill does nothing useful — there is no fallback synthesis engine.
 
 ## Audit-layer artefacts (what `SWMManywhere alone cannot produce`)
 
@@ -150,6 +178,12 @@ The deterministic chain script will produce a directory matching the schema abov
 - **macOS RAM ceiling**: bboxes > 2 × 2 km commonly exhaust ~2 GB RAM during numba JIT + WhiteboxTools flow accumulation. The spike machine specifically crashed on the official 4 × 7 km bbox; the 1 × 1 km bbox in this case study fits comfortably in < 1.5 GB peak.
 - **OpenMP collision on `swmm.toolkit` import**: even with the `pyswmm` stub, *directly* importing `swmm.toolkit._solver` (e.g. for a Python-side post-processing pipeline) will SIGKILL the process. This is why aiswmm reads `.out` via the older `swmmtoolbox` package (no OpenMP dependency) rather than `swmm.toolkit.output`.
 
-## Attribution
+## Attribution and how to cite
 
-This case study uses **SWMManywhere** by Imperial College London (BSD-3-Clause licensed), available at <https://github.com/ImperialCollegeLondon/SWMManywhere>. The aiswmm `swmm-anywhere` skill wraps SWMManywhere with run-aware audit-pipeline integration, raw-input snapshotting, macOS arm64 portability fixes, and tuned default outfall-derivation parameters. The underlying SWMM 5.2.4 engine binary is from USEPA's Stormwater Management Model release.
+The data-scarce network synthesis demonstrated here is the work of **SWMManywhere** by Imperial College London (BSD-3-Clause licensed), available at <https://github.com/ImperialCollegeLondon/SWMManywhere>. SWMManywhere is the primary intellectual contribution behind the synthesised pipe network, subcatchment delineation, and pipe-sizing logic shown in every figure on this page. Please cite SWMManywhere as the upstream tool in any publication or technical report that uses or extends this case study.
+
+The `aiswmm` project adds an integration wrapper (the `swmm-anywhere` skill) and the surrounding audit pipeline (`swmm5` execution, `experiment_provenance.json`, `aiswmm map` rendering). This wrapper is **not** a re-implementation of SWMManywhere and does not modify its synthesis algorithm. If you cite aiswmm, do so as the integration / audit layer that adapts SWMManywhere into a reproducible workflow — not as the source of the modelling capability.
+
+The underlying SWMM 5.2.4 simulation engine binary is from USEPA's Stormwater Management Model release (<https://github.com/USEPA/Stormwater-Management-Model>).
+
+This document is a usage demonstration. It is **not** a paper-grade benchmark of SWMManywhere's accuracy or a validation of its outputs against real measurements; for those, please refer to SWMManywhere's own publications and notebooks.

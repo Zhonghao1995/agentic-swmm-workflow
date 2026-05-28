@@ -1,8 +1,14 @@
-# Quickstart: synthesise an audited SWMM model from a bounding box (natural-language flow)
+# Quickstart: rapid SWMM modelling in a data-scarce region via SWMManywhere + aiswmm audit
 
-This page walks you from a clean machine to an audited SWMM model + spatial map + hydrograph driven by natural-language prompts, using only public OpenStreetMap and DEM data. The companion document [`swmm-anywhere-case-study.md`](swmm-anywhere-case-study.md) records what one such run produced (Greenwich, 38 s wall time, peak 354 LPS) and the boundaries of what that proves; this page is the *how-to*.
+> **Upstream credit (read this first).** The network *synthesis* in this workflow — turning a bounding box into a plausible drainage network — is performed by **SWMManywhere**, © Imperial College London, BSD-3-Clause (<https://github.com/ImperialCollegeLondon/SWMManywhere>). SWMManywhere is **not** an aiswmm component, and the synthesised network is **not** aiswmm's intellectual output.
+>
+> aiswmm provides only a wrapper (`swmm-anywhere` skill) that calls SWMManywhere on your behalf, runs the resulting SWMM model through aiswmm's deterministic `swmm5` execution path, and produces an audit dossier. The wrapper does **not** modify SWMManywhere's synthesis algorithm.
+>
+> **If your work using this workflow produces a publication, the primary citation must be to SWMManywhere.** aiswmm should be cited only as the integration / audit layer.
 
-The reproduction target is the same run shown in the case study. After the steps below, the directory tree under `runs/<date>/<HHMMSS>_*/` and the contents of `09_audit/` should be structurally identical to those documented there.
+This page is the *how-to* — installation, the natural-language prompts to drive the workflow, and the audit structure you should expect afterwards. The companion document [`swmm-anywhere-case-study.md`](swmm-anywhere-case-study.md) is the *what-it-produced* evidence record (Greenwich 1 × 1 km bbox, 38 s wall time, peak 354 LPS) with explicit boundaries on what that result proves and does not prove.
+
+**What this workflow is for.** Rapid, *plausibility-based* SWMM modelling for areas where you have no real pipe data. SWMManywhere's output is an inference from OSM + DEM, not a substitute for surveyed infrastructure. If you have real pipe shapefiles, the `swmm-gis` or `swmm-network` aiswmm skills are the correct entry points instead.
 
 ## What you will need
 
@@ -14,11 +20,17 @@ The reproduction target is the same run shown in the case study. After the steps
 * **Disk space** — budget ~500 MB for the optional `[anywhere]` Python dependencies and ~50–200 MB per run-directory (OSM/DEM snapshot + SWMManywhere intermediate artefacts).
 * **Peak RAM** — 1–2 GB during the SWMManywhere 24-step graphfcn pipeline (numba JIT + WhiteboxTools flow accumulation). Close background applications on machines with < 8 GB total.
 
-### Upstream attribution (read this before installing)
+### Upstream tool — SWMManywhere (the actual synthesis engine)
 
-The synthesis step depends on **SWMManywhere** by Imperial College London (BSD-3-Clause), available at <https://github.com/ImperialCollegeLondon/SWMManywhere>. The aiswmm `swmm-anywhere` skill is a wrapper layer that adds run-aware audit-pipeline integration, raw-input snapshotting, macOS arm64 portability fixes, and tuned default outfall-derivation parameters; it does **not** vendor SWMManywhere source code — it pulls SWMManywhere from PyPI when you opt into the `[anywhere]` extra.
+* **Project**: SWMManywhere — *Derive and simulate a sewer network anywhere in the world*
+* **Authors / origin**: Imperial College London team — see the SWMManywhere repository contributors list at <https://github.com/ImperialCollegeLondon/SWMManywhere/graphs/contributors>
+* **License**: BSD-3-Clause
+* **Source / download**: <https://github.com/ImperialCollegeLondon/SWMManywhere>
+* **PyPI package**: <https://pypi.org/project/swmmanywhere/> (this is what `pip install aiswmm[anywhere]` pulls in)
+* **Project documentation**: <https://imperialcollegelondon.github.io/SWMManywhere/>
+* **Citation**: please cite SWMManywhere as the **primary** tool if your work depends on the synthesised network. The aiswmm wrapper around it is integration plumbing, not a re-implementation.
 
-If your work using this skill leads to a publication or technical report, please cite both **SWMManywhere** and **aiswmm** as upstream tooling.
+The aiswmm `swmm-anywhere` skill **does not vendor** SWMManywhere source code — it pulls the package from PyPI whenever a user runs `pip install aiswmm[anywhere]`. The wrapper layer (in `agentic_swmm/integrations/swmmanywhere_runner.py`) only handles audit-pipeline integration, raw-input snapshotting, macOS arm64 portability, and parameter defaults; it does not contain a copy of, or a modified version of, the synthesis algorithm itself.
 
 ## Step 1 — Install the optional `[anywhere]` extra
 
@@ -68,23 +80,25 @@ aiswmm
 
 The four-prompt sequence below is the recommended walkthrough; it mirrors the case-study run and exercises every part of the synth-data path. Replace the bbox with one of your own when you want to try a different region.
 
-### Prompt 1 — synthesise the network
+### Prompt 1 — ask SWMManywhere (via aiswmm) to synthesise a plausible network
 
 ```
 我要给伦敦 Greenwich 区一个 1×1 km 的范围建一个 SWMM 模型，没有真实管网数据。
-bbox 是 [0.04020, 51.55759, 0.05450, 51.56660]。请你帮我从 OSM + DEM 推一个 plausible 的管网。
+bbox 是 [0.04020, 51.55759, 0.05450, 51.56660]。请你用 SWMManywhere 从 OSM + DEM 推一个 plausible 的管网。
 ```
 
 What the planner does:
 
 1. Reads `intent_map.json` → matches the `synth-from-bbox` intent (`exclusive_when: user has not provided any .shp/.csv/network.json/.inp file`).
 2. Confirms the bbox interpretation back to you and asks for an output directory (or accepts the default `runs/<date>/<HHMMSS>_swmm_anywhere/`).
-3. Calls `skills/swmm-anywhere/scripts/synth_from_bbox.py` with the bbox.
+3. Calls `skills/swmm-anywhere/scripts/synth_from_bbox.py` with the bbox. That script in turn calls **SWMManywhere** (Imperial College London, BSD-3) to perform the actual OSM/DEM download, street-graph cleanup, subcatchment delineation, pipe topology derivation, and pipe sizing.
 
-Expected end-state:
+Expected end-state (the contents of `10_swmmanywhere/` are SWMManywhere's outputs, not aiswmm's):
 
-* `runs/<date>/<id>/10_swmmanywhere/synth.inp` — the SWMM 5.2 model (~540 KB on a 1 × 1 km bbox).
-* `runs/<date>/<id>/00_raw/raw_manifest.json` — SHA-256 of every OSM/DEM file fetched.
+* `runs/<date>/<id>/10_swmmanywhere/synth.inp` — the SWMM 5.2 model written by SWMManywhere (~540 KB on a 1 × 1 km bbox).
+* `runs/<date>/<id>/10_swmmanywhere/{nodes,edges,subcatchments}.geoparquet` — SWMManywhere's intermediate geometries.
+* `runs/<date>/<id>/10_swmmanywhere/synth_provenance.json` — record of which SWMManywhere parameters and version were used.
+* `runs/<date>/<id>/00_raw/raw_manifest.json` — the aiswmm wrapper's contribution: SHA-256 of every OSM/DEM file SWMManywhere fetched, so a re-run can be byte-identical.
 * Console reports total wall time (~30–40 s on Apple Silicon).
 
 ### Prompt 2 — run SWMM with aiswmm's own swmm5 binary
@@ -246,13 +260,15 @@ If your numbers fall outside these ranges and you used the default tuned paramet
 | `aiswmm plot` fails with `Unable to infer rainfall TIMESERIES` | aiswmm v0.7.0 or older, which only parses `[TIMESERIES]` rainfall, not `[RAINGAGES] FILE` (SWMManywhere's format) | Upgrade to v0.7.1+ — the FILE-fallback parser ships there. |
 | `aiswmm map` says `geopandas not available` | `[anywhere]` extra not installed; the INP-text-parsing fallback should engage automatically | If `--inp` is set and the geoparquet trio is absent, the map verb falls back to pure-matplotlib INP parsing. If you see this message and have geoparquet files in `10_swmmanywhere/`, file a bug. |
 
-## What this skill does NOT do
+## What this workflow does NOT do (important limits)
 
-The case study's *evidence boundary* section enumerates the limits. To repeat the most important ones for your reproduction planning:
+The case study's *evidence boundary* section enumerates the limits in full. To repeat the most important ones for your reproduction planning:
 
-* It does **not** validate the synth network against real measurements. Synthesised pipe locations are inferred plausibilities, not surveyed truth.
-* It does **not** guarantee cross-environment byte-identical results (unlike the v0.6.4 Tecnopolo run). OSM drift is a permanent source of non-determinism.
-* It does **not** auto-calibrate. If you have observed flows for the bbox, the synth INP becomes a starting point for `aiswmm calibrate`, not a final model.
+* The synthesised network is **plausible, not real**. SWMManywhere infers pipe locations from OSM street geometry plus DEM flow direction; the result is *what a sewer system might look like under these streets and this DEM*, **not** a surveyed infrastructure dataset. Do not present the output as a measured network in any publication.
+* This workflow is **not** a re-implementation, replacement, or improvement of SWMManywhere. The aiswmm wrapper adds integration plumbing only; the modelling algorithm is unchanged from SWMManywhere upstream. Any claims about modelling capability belong to SWMManywhere.
+* It does **not** validate against real measurements. No observed flows are compared with the synth output here; doing so requires a real reference network, which by definition does not exist for the workflow's target use cases.
+* It does **not** guarantee cross-environment byte-identical results (unlike the v0.6.4 Tecnopolo run). OSM drift is a permanent source of non-determinism; snapshot pinning under `00_raw/` is a best-effort defence.
+* It does **not** auto-calibrate. If you have observed flows for the bbox, the synth INP becomes a *starting point* for `aiswmm calibrate`, not a final model.
 * It does **not** ship in the default Docker image; the `[anywhere]` extra is a separate variant build (`ghcr.io/zhonghao1995/agentic-swmm-workflow:<tag>-anywhere`, planned for v0.7.1).
 
 ## Where the case study run lives
