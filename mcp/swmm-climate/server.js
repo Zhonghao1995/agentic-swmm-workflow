@@ -13,8 +13,10 @@ const scriptsDir = path.resolve(__dirname, '../../skills/swmm-climate/scripts');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
 
+const PY = process.env.PYTHON || 'python3';
+
 function runPython(script, args) {
-  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
   if (proc.error) {
     throw new Error(proc.error.message);
   }

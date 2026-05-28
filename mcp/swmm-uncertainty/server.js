@@ -43,9 +43,11 @@ const sourceDecompositionPy = path.resolve(
   "../../skills/swmm-uncertainty/scripts/source_decomposition.py",
 );
 
+const PY = process.env.PYTHON || "python3";
+
 function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(PY, [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));

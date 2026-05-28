@@ -20,9 +20,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const runnerPy = path.resolve(__dirname, "../../skills/swmm-runner/scripts/swmm_runner.py");
 
+const PY = process.env.PYTHON || "python3";
+
 function runPy(args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [runnerPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(PY, [runnerPy, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));

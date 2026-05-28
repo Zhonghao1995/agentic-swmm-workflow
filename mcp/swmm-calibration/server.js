@@ -27,9 +27,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const calibratePy = path.resolve(__dirname, "../../skills/swmm-calibration/scripts/swmm_calibrate.py");
 
+const PY = process.env.PYTHON || "python3";
+
 function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn("python3", [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(PY, [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d.toString()));

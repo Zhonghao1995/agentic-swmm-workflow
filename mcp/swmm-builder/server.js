@@ -12,8 +12,10 @@ const __dirname = path.dirname(__filename);
 const scriptsDir = path.resolve(__dirname, '../../skills/swmm-builder/scripts');
 const buildScript = path.join(scriptsDir, 'build_swmm_inp.py');
 
+const PY = process.env.PYTHON || 'python3';
+
 function runPython(script, args) {
-  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
   if (proc.error) {
     throw new Error(proc.error.message);
   }

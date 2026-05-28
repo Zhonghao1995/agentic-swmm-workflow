@@ -20,8 +20,10 @@ const inferOutfallScript = path.join(scriptsDir, 'infer_outfall.py');
 const assignSubcatchmentOutletsScript = path.join(scriptsDir, 'assign_subcatchment_outlets.py');
 const snapPipeEndpointsScript = path.join(scriptsDir, 'snap_pipe_endpoints.py');
 
+const PY = process.env.PYTHON || 'python3';
+
 function runPython(script, args) {
-  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
   if (proc.status !== 0) {
     throw new Error((proc.stderr || proc.stdout || `python failed: ${proc.status}`).trim());
   }

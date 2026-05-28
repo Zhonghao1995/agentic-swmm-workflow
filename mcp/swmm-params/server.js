@@ -14,8 +14,10 @@ const landuseScript = path.join(scriptsDir, 'landuse_to_swmm_params.py');
 const soilScript = path.join(scriptsDir, 'soil_to_greenampt.py');
 const mergeScript = path.join(scriptsDir, 'merge_swmm_params.py');
 
+const PY = process.env.PYTHON || 'python3';
+
 function runPython(script, args) {
-  const proc = spawnSync('python3', [script, ...args], { encoding: 'utf8' });
+  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
   if (proc.error) {
     throw new Error(proc.error.message);
   }
