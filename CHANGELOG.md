@@ -2,7 +2,47 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
-## Unreleased
+## v0.7.1 - SWMManywhere natural-language integration + runtime hardening (2026-05-28)
+
+A single natural-language sentence referring only to a WGS84 bounding box now drives an end-to-end SWMM workflow: synthesise the drainage network from public OSM + DEM data, run SWMM, write a deterministic audit dossier, and render a spatial network map — all via the standard `runs/<date>/<id>/` layout. Synthesis comes from SWMManywhere (Imperial College London, BSD-3-Clause); aiswmm is the agent-side adapter. SWMM execution is byte-identical to v0.7.0 — Tecnopolo `model.out` SHA256 unchanged.
+
+### Added — three new LLM-facing typed tools (v0.7.1)
+
+- **`map_run`** — render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of `plot_run` at the LLM surface (plot_run = hydrograph; map_run = network map). In-process wrapper around the `aiswmm map` CLI verb so the agent can request a network figure in one step. 14 unit tests + family-mapping drift entry.
+- **`plot_run.link`** — new `link` parameter renders a conduit Flow_rate hydrograph when set. Mutually exclusive with `node` (which still renders the node-attribute hydrograph). Plumbed through three layers: ToolSpec schema, `_plot_run_args` mapper (forwards link, suppresses node, picks a sensible default `out_png` filename by link id), and the swmm-plot MCP server's zod Args + CallToolRequestSchema handler (emits `--link` or `--node` to the underlying script, never both). 9 unit tests.
+- **`read_rpt_summary`** — parses SWMM .rpt summary sections (`Link Flow Summary` / `Outfall Loading Summary` / `Node Inflow Summary`) into structured JSON rows sorted by the per-section peak/max column. Replaces the `read_file`-with-4000-char-cap workaround on 300+ KB rpts. The ToolSpec description explicitly steers the LLM to call the tool once per section needed ("CALL THIS TOOL ONCE PER SECTION YOU NEED — the tool is stateless") and to use it instead of `read_file` or `search_files` for rpt data. Verified on the 2026-05-28 Tecnopolo run: the LLM called `read_rpt_summary` four times in a single run with different `section` values. 25 unit tests.
+
+### Fixed (v0.7.1)
+
+- **MCP transport `spawn ENOEXEC`.** A zero-byte `.venv/bin/python` stub (left by a half-finished venv or a test-fixture leak) caused the Node MCP launcher to assign `env.PYTHON` to an unusable executable. The downstream `spawn(PY, ...)` call returned `ENOEXEC` because the kernel cannot recognise an empty file as an executable. Fixed in two layers: `agentic_swmm/utils/subprocess_runner.py:runtime_env()` now pins `PYTHON=sys.executable` so the launcher inherits the correct interpreter, and `scripts/run_mcp_server.mjs` adds `isUsableInterpreter()` that rejects empty / non-executable candidates before assignment. Regression test plants a zero-byte stub and asserts the launcher does not select it.
+- **`final_report.md` "What you got" listed `SKILL.md` paths instead of real artifacts.** `_what_you_got` was reading only `result["path"]`, and only `_read_skill_tool` put a path there. Production handlers nested artifact paths under `result["results"]` / `result["excerpt"]` (MCP JSON) / `result["args"]` / `result["summary"]`. New recursive `_mine_paths()` harvests artifact paths from anywhere in the result payload, with planner-internal-fragment filtering and an introspection-tool skip set (`read_skill`, `read_file`, `list_*`, `select_skill`, `search_files`, `capabilities`). Reports now list the produced `synth.inp`, `model.rpt`, `network_map.png`, audit JSONs in their correct sections. 13 unit tests.
+- **`--max-steps` default 16 → 40** in both `aiswmm agent` and `aiswmm chat`. The 16-step ceiling cut the planner off mid-workflow because `gpt-5.5` typically spends ~15 steps on introspection (`list_skills`, `read_skill ×N`, `list_mcp_tools`, `select_skill`) before the first real op. The new default leaves ~25 steps of headroom. Pinned by 4 tests.
+
+### Changed (v0.7.1)
+
+- **`skills/swmm-anywhere/SKILL.md` install + attribution language humanised.** Same substance (BSD-3-Clause, Imperial College London, GitHub URL, citation request) reframed as one researcher crediting another rather than compliance copy. Upstream-attribution paragraph merged into the install section so it cannot be missed.
+- **`.gitignore`** now covers `*.egg-info/`, caches (`.cache/`, `cache/`, `.pytest_cache/`), coverage output (`.coverage`, `htmlcov/`), Docker-mounted run outputs (`docker-runs/`), memory runtime side-files (`command_trace.json`, `project_overrides.yaml`, `.last_refresh_error.json`), spike research artifacts (`scripts/spike_swmmanywhere/`), and local-only experimental data dirs (`data/Todcreek/of1/`, `examples/hand1/`). `package-lock.json` now tracked for reproducible MCP-server npm installs.
+
+### Evidence (v0.7.1)
+
+- **Byte-identical reproducibility re-verified.** Tecnopolo `model.out` SHA256 = `85c5514a81ea745ebb0c1c3e2aebb0c2cc0d5a6aa3ef00a0fa6c8f7b760be38c` on v0.7.1, identical to the 2026-05-15 canonical lock-in across macOS native vs Docker stacks. Downstream tests that pin this SHA can upgrade v0.7.0 → v0.7.1 without re-baselining. See `docs/byte-identical-reproducibility.md`.
+- **Minimum NL prompt length for the full Tecnopolo chain is 11 words.** `examples/tecnopolo/tecnopolo_r1_199401.inp。run it and audit it and plot the result` reaches synthesise-free SWMM execution + audit + plot end-to-end on the standard prepared INP. See `docs/byte-identical-reproducibility.md` for the recipe.
+- **Cross-session memory layer autonomously activated on a real run.** The LLM planner, with no memory-related keyword in the user prompt, issued `recall_session_history(case_name="tecnopolo")` and recovered two prior Tecnopolo sessions from 12 days earlier — the first user-observable activation of the memory layer on a real workflow. See `docs/v0.7.1-cross-session-memory-evidence.md`.
+- **Natural-language SWMManywhere chain end-to-end on two independent regions.** Greenwich Peninsula (1×1 km) canonical case study figures + NYC Midtown (1×1 km) cross-geography verification. See `docs/v0.7.1-swmmanywhere-nl-driven-evidence.md`.
+
+### Out of scope — next milestone
+
+v0.7.1 ships the **agent-side plumbing** for SWMManywhere and the cross-session memory layer. The modelling-science quality bars are explicitly out of scope and tracked as next-milestone work: calibration of the synthesised network against observed flows, systematic continuity-error characterisation across bbox sizes, a memory-aware calibration loop, negative-precedent handling in memory recall, and time-decay weighting for stale precedents.
+
+### Attribution
+
+Network synthesis in v0.7.1 is the work of [**SWMManywhere**](https://github.com/ImperialCollegeLondon/SWMManywhere) by Imperial College London (BSD-3-Clause licensed). Please cite SWMManywhere in any publication that uses or extends the SWMManywhere workflows shown in this release.
+
+---
+
+## v0.7.0a3 — pre-v0.7.1 dispatch refactor + SWMManywhere skill landing (developer-only marker)
+
+The work below was developed on the `feat/swmmanywhere` branch and ships to users as part of v0.7.1. It is preserved here as a separate developer-facing section because it landed as a coherent design effort over the two weeks before v0.7.1 cut.
 
 ### Changed — LLM-driven dispatch refactor
 
