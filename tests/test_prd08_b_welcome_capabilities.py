@@ -53,14 +53,26 @@ class WelcomeMemoryVerbsTests(unittest.TestCase):
 
 
 class MissingSetupTipTests(unittest.TestCase):
-    def test_tip_fires_when_key_missing_and_memory_empty(self) -> None:
+    def setUp(self) -> None:
+        # Subscription-first: the tip now also suppresses when a Claude
+        # subscription is detected. Neutralise the (Keychain-aware) probe
+        # so these tests do not depend on the host's login state.
+        self._sub_patch = mock.patch(
+            "agentic_swmm.agent.provider_preflight.detect_claude_oauth",
+            return_value=False,
+        )
+        self._sub_patch.start()
+        self.addCleanup(self._sub_patch.stop)
+
+    def test_tip_fires_when_no_provider_and_memory_empty(self) -> None:
         with TemporaryDirectory() as tmp:
             empty_dir = Path(tmp) / "missing"
             with mock.patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("OPENAI_API_KEY", None)
+                os.environ.pop("ANTHROPIC_API_KEY", None)
                 tip = _missing_setup_tip(memory_dir=empty_dir)
             self.assertIsNotNone(tip)
-            self.assertIn("aiswmm doctor", tip)
+            self.assertIn("aiswmm login", tip)
 
     def test_tip_silent_when_api_key_set(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -68,6 +80,23 @@ class MissingSetupTipTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "x"}):
                 tip = _missing_setup_tip(memory_dir=empty_dir)
             self.assertIsNone(tip)
+
+    def test_tip_silent_when_subscription_detected(self) -> None:
+        # A logged-in subscription user is never nagged, even with empty
+        # memory and no OpenAI key.
+        self._sub_patch.stop()
+        with mock.patch(
+            "agentic_swmm.agent.provider_preflight.detect_claude_oauth",
+            return_value=True,
+        ):
+            with TemporaryDirectory() as tmp:
+                empty_dir = Path(tmp) / "missing"
+                with mock.patch.dict(os.environ, {}, clear=False):
+                    os.environ.pop("OPENAI_API_KEY", None)
+                    tip = _missing_setup_tip(memory_dir=empty_dir)
+                self.assertIsNone(tip)
+        # Re-start so addCleanup's stop() does not error on a stopped patch.
+        self._sub_patch.start()
 
     def test_tip_silent_when_memory_populated(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -78,6 +107,7 @@ class MissingSetupTipTests(unittest.TestCase):
             )
             with mock.patch.dict(os.environ, {}, clear=False):
                 os.environ.pop("OPENAI_API_KEY", None)
+                os.environ.pop("ANTHROPIC_API_KEY", None)
                 tip = _missing_setup_tip(memory_dir=memory_dir)
             self.assertIsNone(tip)
 

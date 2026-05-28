@@ -26,15 +26,30 @@ from agentic_swmm.commands.doctor_extension import (
 
 
 class _ClaudeHomeMixin(unittest.TestCase):
-    """Point ``Path.home()`` at a fresh tmp dir for each test."""
+    """Point ``Path.home()`` at a fresh tmp dir for each test.
+
+    Also neutralises the macOS Keychain probe (the Keychain is independent
+    of ``$HOME``) and clears ``ANTHROPIC_API_KEY`` so OAuth detection
+    reflects only the on-disk credential file under the tmp home.
+    """
 
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
         self.home = Path(self._tmp.name)
         self._home_patch = mock.patch.object(Path, "home", return_value=self.home)
         self._home_patch.start()
+        self._keychain_patch = mock.patch(
+            "agentic_swmm.agent.provider_preflight._detect_macos_keychain_credentials",
+            return_value=False,
+        )
+        self._keychain_patch.start()
+        self._env_patch = mock.patch.dict(os.environ, {}, clear=False)
+        self._env_patch.start()
+        os.environ.pop("ANTHROPIC_API_KEY", None)
 
     def tearDown(self) -> None:
+        self._env_patch.stop()
+        self._keychain_patch.stop()
         self._home_patch.stop()
         self._tmp.cleanup()
 
@@ -65,17 +80,25 @@ class CollectLLMProviderStatusTests(_ClaudeHomeMixin):
 
 
 class RenderLLMProviderSectionTests(_ClaudeHomeMixin):
-    def test_section_shows_present_when_oauth_exists(self) -> None:
+    def test_section_shows_detected_when_oauth_exists(self) -> None:
         self._write_oauth()
         body = render_llm_provider_section(collect_llm_provider_status())
         self.assertIn("LLM provider", body)
-        self.assertIn("Claude Code OAuth", body)
-        self.assertIn("present", body)
+        # Subscription row leads the section now.
+        self.assertIn("Claude subscription", body)
+        self.assertIn("detected", body)
 
-    def test_section_shows_absent_otherwise(self) -> None:
+    def test_section_shows_not_detected_otherwise(self) -> None:
         body = render_llm_provider_section(collect_llm_provider_status())
-        self.assertIn("Claude Code OAuth", body)
-        self.assertIn("absent", body)
+        self.assertIn("Claude subscription", body)
+        self.assertIn("not detected", body)
+        # The opt-in OpenAI row points at the login command.
+        self.assertIn("aiswmm login --openai", body)
+
+    def test_section_lists_cli_and_sdk_rows(self) -> None:
+        body = render_llm_provider_section(collect_llm_provider_status())
+        self.assertIn("claude CLI", body)
+        self.assertIn("claude_agent_sdk", body)
 
 
 class DoctorJsonCarriesProviderTests(_ClaudeHomeMixin):

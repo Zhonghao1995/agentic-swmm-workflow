@@ -235,25 +235,29 @@ def _tip_line() -> str:
 
 
 def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
-    """Return a "run aiswmm doctor" hint when the user looks un-onboarded.
+    """Return an ``aiswmm login`` hint when the user looks un-onboarded.
 
-    The hint fires when *both* are true:
+    Subscription-first: the hint fires when *both* are true:
 
-    * No ``OPENAI_API_KEY`` is set (the planner has no provider, so
-      the interactive shell is going to be limited until they pick
-      one), AND
+    * No LLM provider is reachable — neither a Claude subscription
+      credential (Keychain / OAuth file / ``ANTHROPIC_API_KEY``) nor an
+      ``OPENAI_API_KEY`` — so the interactive shell is going to be
+      limited until they authenticate, AND
     * The default ``memory/modeling-memory/`` directory is missing or
       empty (so transfer / cite-param / cite will all fail with
       empty-store errors).
 
-    A user in that state typed ``aiswmm`` and is about to discover
-    the limitations the hard way. Surfacing one proactive line —
-    "Tip: run `aiswmm doctor` to see what's set up." — costs nothing
-    and points at the single command that names every gap.
+    A logged-in subscription user is never nagged. A user genuinely
+    without any provider sees one proactive line pointing at the
+    primary auth command.
 
     Returns ``None`` when at least one signal is healthy.
     """
-    if os.environ.get("OPENAI_API_KEY"):
+    # Late import keeps welcome's import graph free of the preflight at
+    # module load; the probe is cheap (env + file + Keychain returncode).
+    from agentic_swmm.agent.provider_preflight import detect_claude_oauth
+
+    if os.environ.get("OPENAI_API_KEY") or detect_claude_oauth():
         return None
     target = memory_dir or (Path.cwd() / "memory" / "modeling-memory")
     try:
@@ -266,7 +270,7 @@ def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
     except OSError:
         # Filesystem error: do not pester the user with the tip.
         return None
-    return "Tip: run `aiswmm doctor` to see what's set up."
+    return "Tip: run `aiswmm login` to connect your Claude subscription (or `aiswmm doctor` to see what's set up)."
 
 
 def render_returning_banner(
