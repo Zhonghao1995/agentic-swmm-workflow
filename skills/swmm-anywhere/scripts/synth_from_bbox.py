@@ -38,7 +38,9 @@ def _default_run_dir() -> Path:
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Synthesize a plausible SWMM .inp from a bbox via SWMManywhere. "
+            "Synthesize a plausible SWMM .inp from a bbox via SWMManywhere "
+            "(© Imperial College London, BSD-3-Clause, "
+            "https://github.com/ImperialCollegeLondon/SWMManywhere). "
             "Use only when no real pipe-network data exists for the area."
         )
     )
@@ -116,10 +118,12 @@ def main(argv: list[str] | None = None) -> int:
         # hint that doesn't apply.
         if exc.stage == "extra_missing":
             print(
-                "hint: this skill requires the optional [anywhere] extra. "
-                "Install with:",
+                "hint: this skill requires the optional [anywhere] extra, which "
+                "wraps SWMManywhere by Imperial College London (BSD-3-Clause).",
                 file=sys.stderr,
             )
+            print("      Upstream: https://github.com/ImperialCollegeLondon/SWMManywhere", file=sys.stderr)
+            print("      Install with:", file=sys.stderr)
             print("        pip install aiswmm[anywhere]", file=sys.stderr)
             print(
                 "      (pulls in ~27 geo dependencies — geopandas, osmnx, "

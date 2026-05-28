@@ -42,7 +42,9 @@ dependencies = [
 claude = ["claude-agent-sdk>=0.2,<1.0"]
 
 # `swmm-anywhere` skill: synthesise a plausible SWMM model from a bbox
-# (OSM streets + DEM) via ImperialCollegeLondon/SWMManywhere (BSD-3).
+# (OSM streets + DEM) via SWMManywhere — © Imperial College London,
+# BSD-3-Clause, https://github.com/ImperialCollegeLondon/SWMManywhere.
+# Upstream paper / DOI / authorship attribution: see SKILL.md.
 # OPTIONAL — pulls in ~27 heavy geo dependencies (geopandas, osmnx,
 # rasterio, pyflwdir, pywbt, …). Install with: pip install aiswmm[anywhere]
 anywhere = ["swmmanywhere>=0.2.2,<0.3"]

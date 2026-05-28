@@ -97,6 +97,8 @@ def _check_anywhere_extra_installed() -> None:
             "extra_missing",
             ModuleNotFoundError(
                 "The aiswmm[anywhere] optional extra is not installed. "
+                "This extra wraps SWMManywhere by Imperial College London "
+                "(BSD-3-Clause, https://github.com/ImperialCollegeLondon/SWMManywhere). "
                 "Install with: pip install aiswmm[anywhere]"
             ),
         )
