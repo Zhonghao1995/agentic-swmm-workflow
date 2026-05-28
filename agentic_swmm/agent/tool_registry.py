@@ -736,23 +736,14 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-# Valid workflow modes the LLM may pass via the ``mode`` argument.
-# PRD-04: derived from the workflow-mode adapter registry — adding an
-# adapter file is enough to make a new mode acceptable here. The
-# ToolSpec input_schema enum above still has to be updated for the
-# LLM-visible schema (that surface stays in this module per PRD-04
-# scope). Computed once at import time because
-# ``intent_disambiguator`` imports this name directly and uses it in
-# module-level response-schema construction.
-from agentic_swmm.agent.workflow_modes import all_modes as _all_modes  # noqa: E402
-
-_VALID_MODE_ENUM = frozenset(_all_modes())
-
-
-# PRD #128 Phase 2 Group C: ``_build_response_for_mode`` moved to
-# ``tool_handlers/workflow_mode.py`` together with the rest of the
-# workflow-mode selection family. Re-exported below alongside
-# ``_select_workflow_mode_tool`` so existing import paths stay stable.
+# LLM-driven dispatch refactor: the workflow-mode adapter registry
+# (``agentic_swmm.agent.workflow_modes``) and the
+# ``select_workflow_mode`` handler module have been deleted. The LLM
+# now reads each tool's description / SKILL.md and picks tools
+# directly — see ``.claude/prds/PRD_llm_driven_dispatch.md`` for the
+# decision record. ``compute_intent_signals`` survives because the
+# warm-intro classifier (``intent_classifier``) still consumes its
+# legacy dict shape; the function is now a thin adapter only.
 
 
 def compute_intent_signals(goal: str) -> dict[str, bool]:
@@ -760,10 +751,8 @@ def compute_intent_signals(goal: str) -> dict[str, bool]:
 
     PRD #121 made ``agentic_swmm.agent.intent_classifier`` the single
     source of truth for keyword-driven intent extraction. This function
-    is now a thin adapter that returns the legacy ``compute_intent_signals``
-    dict shape so existing callers (``_select_workflow_mode_tool`` and
-    the planner's auto-route disambiguator trigger from PRD #111) keep
-    working byte-for-byte. New callers should use
+    is the legacy-shaped adapter that any remaining keyword-driven
+    surface (warm-intro gates, tests) consumes; new callers should use
     ``intent_classifier.classify_intent`` directly.
     """
 
@@ -772,19 +761,6 @@ def compute_intent_signals(goal: str) -> dict[str, bool]:
     from agentic_swmm.agent.intent_classifier import classify_intent
 
     return classify_intent(goal).as_dict()
-
-
-# PRD #128 Phase 2 Group C: workflow-mode selection family moved to
-# ``tool_handlers/workflow_mode.py``. Re-exported here so import paths
-# stay stable (``_select_workflow_mode_tool`` and
-# ``_build_response_for_mode`` are imported directly by several tests
-# and the bilingual-keyword regression suite).
-from agentic_swmm.agent.tool_handlers.workflow_mode import (  # noqa: E402,F401
-    _active_run_dir_from_global_state,
-    _build_response_for_mode,
-    _select_workflow_mode_tool,
-    _workflow_user_prompt,
-)
 
 
 # PRD #128 Phase 2 Group A: ``_plot_run_args`` / ``_plot_run_tool``
