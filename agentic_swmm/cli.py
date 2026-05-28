@@ -628,10 +628,17 @@ def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
     from agentic_swmm.agent.provider_preflight import check_interactive_provider
 
     result = check_interactive_provider()
-    if result.has_configured_provider:
-        return argv
+    # Subscription-first: surface any guidance (a soft "not logged in"
+    # warning when claude_sdk is selected without detectable credentials,
+    # or the full no-provider block) before dispatch.
     if result.guidance_message:
         print(result.guidance_message, file=sys.stderr)
+    # A usable provider was selected (subscription or OpenAI) — keep the
+    # LLM planner; the SDK / provider authenticates at call time.
+    if result.has_configured_provider:
+        return argv
+    # No usable provider: downgrade to the rule planner so the user still
+    # sees the deterministic verbs.
     rewritten: list[str] = []
     swap_next = False
     for item in argv:

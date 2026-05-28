@@ -186,20 +186,19 @@ class _FakeTTYStream(io.StringIO):
 
 
 @pytest.fixture
-def isolated_home(tmp_path, monkeypatch, request):
+def isolated_home(tmp_path, monkeypatch):
     """Point ``Path.home()`` at a fresh tmp dir to isolate config files.
 
-    Both provider-preflight test files (``test_provider_preflight.py``
-    and ``test_provider_preflight_gate.py``) need the same isolated
-    ``HOME``, cleared ``OPENAI_API_KEY``, and reset of the once-per-
-    process ``_legacy_claude_sdk_notice_emitted`` flag. The only thing
-    that varied was the direction of the
-    ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` gate.
+    The provider-preflight tests need an isolated ``HOME`` with no
+    ``OPENAI_API_KEY`` / ``ANTHROPIC_API_KEY`` leaking from the real
+    environment, so the subscription-first resolution is exercised
+    against a known-empty slate.
 
-    The fixture honours an optional ``@pytest.mark.gate("on" | "off")``
-    marker — default is ``"off"`` (the new-user default). This keeps
-    each test file's gate direction explicit at the marker level
-    without duplicating the 25-line scaffold.
+    Isolating ``HOME`` is not enough on macOS: the Claude Code Keychain
+    probe queries the real login Keychain regardless of ``$HOME``, so a
+    developer running the suite while logged in would see a phantom
+    subscription. We neutralise the probe to ``False`` by default;
+    tests that specifically exercise Keychain detection re-patch it.
     """
     from agentic_swmm.agent import provider_preflight
 
@@ -207,24 +206,13 @@ def isolated_home(tmp_path, monkeypatch, request):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-    marker = request.node.get_closest_marker("gate")
-    gate_state = (marker.args[0] if marker and marker.args else "off").lower()
-    if gate_state == "on":
-        monkeypatch.setenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", "1")
-    else:
-        monkeypatch.delenv("AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS", raising=False)
-
-    # Reset the once-per-process legacy-notice flag so each test starts
-    # from a clean slate; otherwise an earlier test that triggered the
-    # notice would silence it for the rest of the session.
-    if hasattr(provider_preflight, "_legacy_claude_sdk_notice_emitted"):
-        monkeypatch.setattr(
-            provider_preflight,
-            "_legacy_claude_sdk_notice_emitted",
-            False,
-            raising=False,
-        )
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(
+        provider_preflight,
+        "_detect_macos_keychain_credentials",
+        lambda: False,
+        raising=True,
+    )
     return home
 
 
@@ -263,14 +251,6 @@ def read_silent_fallback_events(jsonl_path):
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-
-
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "gate(state): set the AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS gate "
-        "for ``isolated_home`` ('on' or 'off'; default 'off').",
-    )
 
 
 @dataclass
