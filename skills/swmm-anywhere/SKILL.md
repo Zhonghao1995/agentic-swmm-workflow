@@ -60,6 +60,56 @@ runs/<date>/<id>/
 │   └── synth_provenance.json     # parameters, tool versions, timings
 ```
 
+## Example invocation
+
+Minimum: just give a bbox.
+
+```bash
+# Default — uses tuned outfall_derivation defaults (33 outfalls on the spike bbox)
+python skills/swmm-anywhere/scripts/synth_from_bbox.py \
+    --bbox 0.04020 51.55759 0.05450 51.56660 \
+    --run-dir runs/2026-05-28/100000_my_first_synth
+```
+
+To reproduce SWMManywhere upstream extended_demo behaviour (separate-mode outfalls):
+
+```bash
+python skills/swmm-anywhere/scripts/synth_from_bbox.py \
+    --bbox 0.04020 51.55759 0.05450 51.56660 \
+    --upstream-defaults \
+    --run-dir runs/2026-05-28/100000_upstream_replica
+```
+
+To use your own rainfall instead of the bundled 15-min demo storm:
+
+```bash
+python skills/swmm-anywhere/scripts/synth_from_bbox.py \
+    --bbox 0.04020 51.55759 0.05450 51.56660 \
+    --rain-file /path/to/your/storm.dat \
+    --run-dir runs/2026-05-28/100000_custom_rain
+```
+
+## What to do next
+
+The skill produces a runnable SWMM .inp under `<run-dir>/10_swmmanywhere/synth.inp`. Chain it through aiswmm's standard audit pipeline:
+
+```bash
+# 1. Run SWMM (aiswmm's own swmm5 binary, NOT pyswmm)
+aiswmm run --inp <run-dir>/10_swmmanywhere/synth.inp --run-dir <run-dir>/swmm_run
+
+# 2. Audit the run
+aiswmm audit --run-dir <run-dir>/swmm_run
+
+# 3. Plot rain/runoff
+aiswmm plot --run-dir <run-dir>/swmm_run
+
+# 4. Plot a specific node or conduit (requires --link support; see swmm-plot SKILL.md)
+aiswmm plot --run-dir <run-dir>/swmm_run --node <node_id> --node-attr Total_inflow
+
+# 5. Pick a peak-flow conduit from the RPT Link Flow Summary and plot it
+aiswmm plot --run-dir <run-dir>/swmm_run --link <conduit_id>
+```
+
 ## Constraints and known limits
 
 - **Apple Silicon (macOS arm64)**: SWMManywhere's `pyswmm` dependency triggers a `SIGKILL` on import because its bundled `swmm.toolkit._solver.abi3.so` ships its own `libomp.dylib` that collides with the OS OpenMP runtime. The runner module stubs `pyswmm` before any SWMManywhere import; aiswmm runs the resulting INP through its own `swmm5` binary, so the stub is fully safe.
