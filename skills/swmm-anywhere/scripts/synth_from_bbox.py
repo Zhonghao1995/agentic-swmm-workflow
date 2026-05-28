@@ -81,6 +81,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--rain-file",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a SWMM-format rainfall DAT file. Overrides SWMManywhere's "
+            "bundled 15-min demo storm.dat by copying the file next to the "
+            "synth INP and rewriting every [RAINGAGES] FILE entry to point at "
+            "it. Validated for existence up-front (fails fast before the heavy "
+            "pipeline runs)."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the SynthRunResult summary as machine-readable JSON.",
@@ -116,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
             project_name=args.project_name,
             refresh_raw=args.refresh_raw,
             use_upstream_defaults=args.upstream_defaults,
+            rain_file=args.rain_file,
         )
     except SynthRunError as exc:
         print(
@@ -142,6 +155,13 @@ def main(argv: list[str] | None = None) -> int:
                 "      (pulls in ~27 geo dependencies — geopandas, osmnx, "
                 "rasterio, … ~500 MB.\n      Opt-in by design so the default "
                 "aiswmm install stays light.)",
+                file=sys.stderr,
+            )
+        elif exc.stage == "rain_file_missing":
+            print(
+                "hint: --rain-file must point at an existing SWMM-format DAT "
+                "file (an absolute path is safest). See the SWMM 5.2 manual "
+                "[RAINGAGES] FILE format for the expected layout.",
                 file=sys.stderr,
             )
         else:

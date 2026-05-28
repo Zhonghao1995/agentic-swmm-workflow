@@ -187,6 +187,62 @@ def normalize_external_paths(inp_path: Path) -> tuple[Path, ...]:
     return tuple(copied)
 
 
+def override_rain_file(inp_path: Path, rain_file: Path) -> Path:
+    """Copy a user-supplied rainfall file next to the INP and rewrite every
+    ``[RAINGAGES]`` FILE entry to point at it.
+
+    SWMManywhere bundles a 15-min demo ``storm.dat`` that ships with the
+    upstream package; for any real analysis the user needs to swap in their
+    own rain forcing. This helper does the swap as a post-process step so
+    callers don't have to hand-edit the synthesised INP.
+
+    The destination filename is kept relative (bare ``rain_file.name``) so
+    SWMM 5.2's path-with-spaces parsing bug never bites — same defensive
+    pattern as ``normalize_external_paths``.
+
+    Args:
+        inp_path: the synthesised INP whose ``[RAINGAGES]`` lines to rewrite.
+        rain_file: absolute path to the user's rainfall data file.
+
+    Returns:
+        The destination path the rain file was copied to (inside the INP's
+        parent directory).
+    """
+    inp_path = Path(inp_path)
+    rain_file = Path(rain_file)
+    inp_dir = inp_path.parent
+
+    dest = inp_dir / rain_file.name
+    if rain_file.resolve() != dest.resolve():
+        shutil.copyfile(rain_file, dest)
+
+    text = inp_path.read_text()
+    new_lines: list[str] = []
+    in_raingages = False
+    for line in text.splitlines():
+        stripped = line.strip().lower()
+        if stripped.startswith("[raingages]"):
+            in_raingages = True
+            new_lines.append(line)
+            continue
+        if stripped.startswith("[") and stripped != "[raingages]":
+            in_raingages = False
+            new_lines.append(line)
+            continue
+        if not in_raingages:
+            new_lines.append(line)
+            continue
+        m = _RAINGAGE_FILE_RE.match(line)
+        if not m:
+            new_lines.append(line)
+            continue
+        prefix, _old_path, suffix = m.group(1), m.group(2), m.group(3)
+        new_lines.append(f"{prefix}{rain_file.name}{suffix}")
+
+    inp_path.write_text("\n".join(new_lines) + ("\n" if text.endswith("\n") else ""))
+    return dest
+
+
 def _apply_parameter_overrides(config: dict, overrides: Mapping[str, Any]) -> dict:
     """Push parameter group overrides into the SWMManywhere config dict."""
     bucket = config.setdefault("parameter_overrides", {})
@@ -263,6 +319,7 @@ def run_synth_from_bbox(
     refresh_raw: bool = False,
     config_overrides: Mapping[str, Any] | None = None,
     use_upstream_defaults: bool = False,
+    rain_file: Path | None = None,
 ) -> SynthRunResult:
     """Run SWMManywhere on a bbox and return a SynthRunResult.
 
@@ -283,6 +340,12 @@ def run_synth_from_bbox(
             river_buffer_distance=150 m, outfall_length=40). ``config_overrides``
             still applies on top, so users can opt into upstream behaviour and
             then nudge individual knobs.
+        rain_file: optional path to a user-supplied rainfall data file
+            (SWMM ``DAT`` format). When provided, the file is copied next to
+            the synth INP and every ``[RAINGAGES]`` FILE entry is rewritten
+            to point at it, replacing SWMManywhere's bundled 15-min demo
+            ``storm.dat``. Raises ``SynthRunError(stage='rain_file_missing')``
+            if the path does not exist.
 
     Raises:
         SynthRunError(stage=...): wraps upstream exceptions with a tagged
@@ -296,10 +359,26 @@ def run_synth_from_bbox(
     stage_durations: dict = {}
     warnings: list[str] = []
 
+    # Validate the user-supplied rain file path up-front. This runs *before*
+    # the [anywhere] extra check so a typo in --rain-file fails immediately,
+    # without needing the geo stack installed — it's a pure-filesystem check.
+    if rain_file is not None:
+        rain_file = Path(rain_file)
+        if not rain_file.exists():
+            raise SynthRunError(
+                "rain_file_missing",
+                FileNotFoundError(
+                    f"--rain-file path does not exist: {rain_file}. "
+                    "Hint: pass an absolute path to a SWMM-format DAT file "
+                    "(see the [RAINGAGES] FILE format in the SWMM 5.2 manual)."
+                ),
+            )
+
     # Fail fast with an actionable message if the user hasn't opted into the
-    # 27-package [anywhere] extra. Doing this first avoids the misleading
-    # "stage='config_build' / ModuleNotFoundError" the user would otherwise
-    # see when the lazy SWMManywhere import inside _build_config fails.
+    # 27-package [anywhere] extra. Doing this before the heavy imports avoids
+    # the misleading "stage='config_build' / ModuleNotFoundError" the user
+    # would otherwise see when the lazy SWMManywhere import inside
+    # _build_config fails.
     _check_anywhere_extra_installed()
 
     try:
@@ -346,6 +425,11 @@ def run_synth_from_bbox(
             if src.exists():
                 shutil.copyfile(src, synth_dir / artefact)
         copied_externals = normalize_external_paths(final_inp)
+        if rain_file is not None:
+            override_rain_file(final_inp, rain_file)
+            warnings.append(
+                f"replaced bundled SWMManywhere storm.dat with user rain file: {rain_file.name}"
+            )
         stage_durations["post_process_inp"] = round(time.time() - t0, 2)
         if copied_externals:
             warnings.append(

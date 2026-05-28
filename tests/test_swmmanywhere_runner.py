@@ -27,6 +27,7 @@ from agentic_swmm.integrations.swmmanywhere_runner import (
     _coerce_base_dir,
     _install_pyswmm_stub,
     normalize_external_paths,
+    override_rain_file,
     run_synth_from_bbox,
 )
 
@@ -289,6 +290,89 @@ class UpstreamDefaultsTests(unittest.TestCase):
                 )
         outfall = config["parameter_overrides"]["outfall_derivation"]
         self.assertEqual(outfall, {"method": "withtopo"})
+
+
+class OverrideRainFileTests(unittest.TestCase):
+    """``--rain-file`` arg — user can swap the bundled demo storm for their
+    own rainfall data without hand-editing the synth INP."""
+
+    def _make_inp_with_raingages_pointing_to(self, inp_path: Path, file_ref: str) -> None:
+        inp_path.write_text(
+            "[TITLE]\n;;Project Title/Notes\n\n"
+            "[OPTIONS]\nFLOW_UNITS LPS\n\n"
+            "[RAINGAGES]\n"
+            ";;Name  Format    Interval  SCF  Source\n"
+            f"1                INTENSITY 00:05    1        FILE       {file_ref} 1          mm   \n"
+            "\n"
+            "[SUBCATCHMENTS]\n"
+        )
+
+    def test_rewrites_raingages_to_point_at_user_rain_file(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            inp = tmp_path / "synth.inp"
+            self._make_inp_with_raingages_pointing_to(inp, "storm.dat")
+
+            rain_src = tmp_path / "user_rain.dat"
+            rain_src.write_text("0 0 0 0 0 0  1.23\n")
+
+            dest = override_rain_file(inp, rain_src)
+
+            # File copied next to the INP.
+            self.assertTrue(dest.exists())
+            self.assertEqual(dest.read_text(), "0 0 0 0 0 0  1.23\n")
+            self.assertEqual(dest.name, "user_rain.dat")
+            # INP rewritten to reference the new file.
+            text = inp.read_text()
+            self.assertIn("FILE       user_rain.dat 1", text)
+            self.assertNotIn("storm.dat", text)
+
+    def test_run_synth_raises_rain_file_missing_when_path_absent(self) -> None:
+        # Missing rain file must fail fast (before the SWMManywhere pipeline)
+        # with stage='rain_file_missing' so the CLI can surface the hint.
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(SynthRunError) as ctx:
+                run_synth_from_bbox(
+                    bbox=[0.0, 51.0, 0.01, 51.01],
+                    run_dir=Path(tmp) / "out",
+                    rain_file=Path(tmp) / "does_not_exist.dat",
+                )
+            self.assertEqual(ctx.exception.stage, "rain_file_missing")
+            self.assertIn("does not exist", str(ctx.exception.original_exc))
+
+    def test_final_inp_references_user_rain_file_after_postprocess(self) -> None:
+        # Simulate what `run_synth_from_bbox` does to the INP after the
+        # SWMManywhere pipeline runs: synth INP starts off pointing at a
+        # bundled storm.dat (path-with-spaces, absolute); we then run the
+        # normalize-then-override sequence. The end-state INP must reference
+        # the *user* rain file by bare name.
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # SWMManywhere-style: stash demo storm at an absolute path with
+            # spaces (matches the real failure mode).
+            bundled_dir = tmp_path / "dir with spaces"
+            bundled_dir.mkdir()
+            bundled = bundled_dir / "storm.dat"
+            bundled.write_text("default storm payload")
+
+            inp = tmp_path / "synth.inp"
+            self._make_inp_with_raingages_pointing_to(inp, str(bundled))
+
+            user_rain = tmp_path / "my_storm.dat"
+            user_rain.write_text("real rain payload")
+
+            # Mirror the order in run_synth_from_bbox().
+            normalize_external_paths(inp)
+            override_rain_file(inp, user_rain)
+
+            text = inp.read_text()
+            self.assertIn("FILE       my_storm.dat 1", text)
+            self.assertNotIn("storm.dat 1", text.replace("my_storm.dat", ""))
+            self.assertTrue((inp.parent / "my_storm.dat").exists())
+            self.assertEqual(
+                (inp.parent / "my_storm.dat").read_text(),
+                "real rain payload",
+            )
 
 
 class DataStructureTests(unittest.TestCase):
