@@ -108,11 +108,31 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         print(f"cause: {exc.original_exc!r}", file=sys.stderr)
-        print(
-            "hint: re-run with --refresh-raw if the failure was a stale "
-            "OSM/DEM snapshot, or pass a smaller bbox if the failure was OOM.",
-            file=sys.stderr,
-        )
+
+        # Stage-specific actionable hints. The `extra_missing` branch is the
+        # most common first-time failure — the user has aiswmm installed but
+        # never opted into the geo-heavy [anywhere] extra. Surface the fix
+        # path prominently instead of the generic "smaller bbox / refresh"
+        # hint that doesn't apply.
+        if exc.stage == "extra_missing":
+            print(
+                "hint: this skill requires the optional [anywhere] extra. "
+                "Install with:",
+                file=sys.stderr,
+            )
+            print("        pip install aiswmm[anywhere]", file=sys.stderr)
+            print(
+                "      (pulls in ~27 geo dependencies — geopandas, osmnx, "
+                "rasterio, … ~500 MB.\n      Opt-in by design so the default "
+                "aiswmm install stays light.)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "hint: re-run with --refresh-raw if the failure was a stale "
+                "OSM/DEM snapshot, or pass a smaller bbox if the failure was OOM.",
+                file=sys.stderr,
+            )
         return 1
 
     summary = {

@@ -83,6 +83,25 @@ class SynthRunError(RuntimeError):
         self.original_exc = original_exc
 
 
+def _check_anywhere_extra_installed() -> None:
+    """Pre-check that the optional ``[anywhere]`` extra is importable.
+
+    Raises ``SynthRunError(stage='extra_missing', ...)`` if not. We raise
+    *before* ``_install_pyswmm_stub`` runs so the user gets a clean,
+    actionable message instead of a misleading downstream traceback.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("swmmanywhere") is None:
+        raise SynthRunError(
+            "extra_missing",
+            ModuleNotFoundError(
+                "The aiswmm[anywhere] optional extra is not installed. "
+                "Install with: pip install aiswmm[anywhere]"
+            ),
+        )
+
+
 def _install_pyswmm_stub() -> None:
     """Install a minimal pyswmm stub so SWMManywhere's module-level
     ``import pyswmm`` doesn't trigger the libomp SIGKILL on macOS arm64."""
@@ -259,6 +278,12 @@ def run_synth_from_bbox(
 
     stage_durations: dict = {}
     warnings: list[str] = []
+
+    # Fail fast with an actionable message if the user hasn't opted into the
+    # 27-package [anywhere] extra. Doing this first avoids the misleading
+    # "stage='config_build' / ModuleNotFoundError" the user would otherwise
+    # see when the lazy SWMManywhere import inside _build_config fails.
+    _check_anywhere_extra_installed()
 
     try:
         _install_pyswmm_stub()

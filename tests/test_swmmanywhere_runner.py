@@ -22,9 +22,11 @@ from agentic_swmm.integrations.swmmanywhere_runner import (
     DEFAULT_OUTFALL_DERIVATION,
     SynthRunError,
     SynthRunResult,
+    _check_anywhere_extra_installed,
     _coerce_base_dir,
     _install_pyswmm_stub,
     normalize_external_paths,
+    run_synth_from_bbox,
 )
 
 
@@ -130,6 +132,59 @@ class NormalizeExternalPathsTests(unittest.TestCase):
 
             self.assertEqual(copied, ())
             self.assertIn(str(external_file), inp.read_text())
+
+
+class ExtraMissingTests(unittest.TestCase):
+    """Gotcha #4: if user hasn't installed the [anywhere] extra, surface
+    an actionable error before the SWMManywhere lazy import."""
+
+    def test_check_raises_synthrunerror_with_actionable_stage(self) -> None:
+        # Monkey-patch importlib.util.find_spec to simulate the extra being
+        # absent from the current Python environment.
+        import importlib.util as iu
+
+        original = iu.find_spec
+
+        def fake_find_spec(name, *args, **kwargs):
+            if name == "swmmanywhere":
+                return None
+            return original(name, *args, **kwargs)
+
+        iu.find_spec = fake_find_spec
+        try:
+            with self.assertRaises(SynthRunError) as ctx:
+                _check_anywhere_extra_installed()
+            self.assertEqual(ctx.exception.stage, "extra_missing")
+            self.assertIn("pip install aiswmm[anywhere]", str(ctx.exception.original_exc))
+        finally:
+            iu.find_spec = original
+
+    def test_run_synth_from_bbox_raises_extra_missing_first(self) -> None:
+        # When the extra is absent, run_synth_from_bbox must raise the
+        # 'extra_missing' stage *before* attempting to install pyswmm stub
+        # or build a config. This gives the CLI a clean code path to print
+        # the install hint.
+        import importlib.util as iu
+
+        original = iu.find_spec
+
+        def fake_find_spec(name, *args, **kwargs):
+            if name == "swmmanywhere":
+                return None
+            return original(name, *args, **kwargs)
+
+        iu.find_spec = fake_find_spec
+        try:
+            from tempfile import TemporaryDirectory
+            with TemporaryDirectory() as tmp:
+                with self.assertRaises(SynthRunError) as ctx:
+                    run_synth_from_bbox(
+                        bbox=[0.0, 51.0, 0.01, 51.01],
+                        run_dir=Path(tmp) / "out",
+                    )
+                self.assertEqual(ctx.exception.stage, "extra_missing")
+        finally:
+            iu.find_spec = original
 
 
 class DataStructureTests(unittest.TestCase):
