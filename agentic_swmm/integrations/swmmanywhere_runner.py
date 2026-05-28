@@ -200,6 +200,7 @@ def _build_config(
     run_dir: Path,
     project_name: str,
     config_overrides: Mapping[str, Any] | None,
+    use_upstream_defaults: bool = False,
 ) -> dict:
     # Lazy import — yaml ships with aiswmm so this is light, but read the
     # SWMManywhere demo template only when we actually run.
@@ -217,8 +218,15 @@ def _build_config(
     config["metric_list"] = []
     config["run_model"] = False
 
-    # Apply tuned outfall_derivation defaults from spike 04.
-    config = _apply_parameter_overrides(config, {"outfall_derivation": DEFAULT_OUTFALL_DERIVATION})
+    # Apply tuned outfall_derivation defaults from spike 04 — unless the caller
+    # explicitly opts out via use_upstream_defaults=True. The opt-out path lets
+    # power-users reproduce SWMManywhere's upstream extended_demo behaviour
+    # (method=separate, river_buffer_distance=150 m, outfall_length=40) for
+    # comparison/validation against ImperialCollegeLondon/SWMManywhere itself.
+    if not use_upstream_defaults:
+        config = _apply_parameter_overrides(
+            config, {"outfall_derivation": DEFAULT_OUTFALL_DERIVATION}
+        )
 
     if config_overrides:
         config = _apply_parameter_overrides(config, config_overrides)
@@ -254,6 +262,7 @@ def run_synth_from_bbox(
     project_name: str = "swmm_anywhere",
     refresh_raw: bool = False,
     config_overrides: Mapping[str, Any] | None = None,
+    use_upstream_defaults: bool = False,
 ) -> SynthRunResult:
     """Run SWMManywhere on a bbox and return a SynthRunResult.
 
@@ -268,6 +277,12 @@ def run_synth_from_bbox(
             cache-aware path described in the PRD.
         config_overrides: per-call SWMManywhere parameter overrides; merged
             into the tuned defaults from spike 04.
+        use_upstream_defaults: when True, skip the spike-04 tuned
+            ``outfall_derivation`` overrides and let SWMManywhere fall back to
+            its upstream ``parameters.py`` defaults (method=separate,
+            river_buffer_distance=150 m, outfall_length=40). ``config_overrides``
+            still applies on top, so users can opt into upstream behaviour and
+            then nudge individual knobs.
 
     Raises:
         SynthRunError(stage=...): wraps upstream exceptions with a tagged
@@ -293,7 +308,13 @@ def run_synth_from_bbox(
         raise SynthRunError("pyswmm_stub", exc) from exc
 
     try:
-        config = _build_config(bbox, run_dir, project_name, config_overrides)
+        config = _build_config(
+            bbox,
+            run_dir,
+            project_name,
+            config_overrides,
+            use_upstream_defaults=use_upstream_defaults,
+        )
         config = _coerce_base_dir(config)
     except Exception as exc:
         raise SynthRunError("config_build", exc) from exc

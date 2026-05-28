@@ -22,6 +22,7 @@ from agentic_swmm.integrations.swmmanywhere_runner import (
     DEFAULT_OUTFALL_DERIVATION,
     SynthRunError,
     SynthRunResult,
+    _build_config,
     _check_anywhere_extra_installed,
     _coerce_base_dir,
     _install_pyswmm_stub,
@@ -185,6 +186,109 @@ class ExtraMissingTests(unittest.TestCase):
                 self.assertEqual(ctx.exception.stage, "extra_missing")
         finally:
             iu.find_spec = original
+
+
+class _SwmmanywhereModuleStub:
+    """Context manager that installs a fake ``swmmanywhere`` package in
+    ``sys.modules`` pointing at a temp ``defs/demo_config.yml``.
+
+    Lets ``_build_config`` run without the real (heavy, optional) extra
+    installed. The fake module ships a minimal demo config matching the
+    schema ``_build_config`` mutates.
+    """
+
+    DEMO_CONFIG_YAML = (
+        "base_dir: /tmp/placeholder\n"
+        "project: placeholder\n"
+        "bbox: [0, 0, 0, 0]\n"
+        "real: {}\n"
+        "metric_list: []\n"
+        "run_model: true\n"
+        "parameter_overrides: {}\n"
+    )
+
+    def __init__(self, tmp_path: Path) -> None:
+        self.tmp_path = tmp_path
+        self._saved: dict[str, object | None] = {}
+
+    def __enter__(self) -> "_SwmmanywhereModuleStub":
+        pkg_dir = self.tmp_path / "swmmanywhere_fake_pkg"
+        pkg_dir.mkdir(parents=True, exist_ok=True)
+        defs_dir = pkg_dir / "defs"
+        defs_dir.mkdir(exist_ok=True)
+        (defs_dir / "demo_config.yml").write_text(self.DEMO_CONFIG_YAML)
+        # Module placeholders the runner imports.
+        import types
+        fake_pkg = types.ModuleType("swmmanywhere")
+        fake_inner = types.ModuleType("swmmanywhere.swmmanywhere")
+        fake_inner.__file__ = str(pkg_dir / "swmmanywhere.py")
+        fake_pkg.swmmanywhere = fake_inner  # type: ignore[attr-defined]
+        for name, mod in (
+            ("swmmanywhere", fake_pkg),
+            ("swmmanywhere.swmmanywhere", fake_inner),
+        ):
+            self._saved[name] = sys.modules.get(name)
+            sys.modules[name] = mod
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        for name, prev in self._saved.items():
+            if prev is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = prev
+
+
+class UpstreamDefaultsTests(unittest.TestCase):
+    """`use_upstream_defaults=True` must skip the spike-04 outfall_derivation
+    overrides so SWMManywhere falls back to its own parameters.py defaults."""
+
+    def test_default_path_applies_spike04_outfall_derivation(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with _SwmmanywhereModuleStub(Path(tmp)):
+                config = _build_config(
+                    bbox=[0.0, 51.0, 0.01, 51.01],
+                    run_dir=Path(tmp) / "out",
+                    project_name="x",
+                    config_overrides=None,
+                )
+        outfall = config["parameter_overrides"]["outfall_derivation"]
+        self.assertEqual(outfall["method"], "withtopo")
+        self.assertEqual(outfall["river_buffer_distance"], 300.0)
+        self.assertEqual(outfall["outfall_length"], 200.0)
+
+    def test_upstream_defaults_skips_outfall_derivation_keys(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with _SwmmanywhereModuleStub(Path(tmp)):
+                config = _build_config(
+                    bbox=[0.0, 51.0, 0.01, 51.01],
+                    run_dir=Path(tmp) / "out",
+                    project_name="x",
+                    config_overrides=None,
+                    use_upstream_defaults=True,
+                )
+        outfall = (config.get("parameter_overrides") or {}).get(
+            "outfall_derivation", {}
+        )
+        # The three tuned keys must NOT appear when upstream defaults are
+        # requested — SWMManywhere parameters.py supplies its own values.
+        self.assertNotIn("method", outfall)
+        self.assertNotIn("river_buffer_distance", outfall)
+        self.assertNotIn("outfall_length", outfall)
+
+    def test_upstream_defaults_still_honours_config_overrides(self) -> None:
+        # Power-user pattern: opt into upstream defaults *and* nudge one knob.
+        with TemporaryDirectory() as tmp:
+            with _SwmmanywhereModuleStub(Path(tmp)):
+                config = _build_config(
+                    bbox=[0.0, 51.0, 0.01, 51.01],
+                    run_dir=Path(tmp) / "out",
+                    project_name="x",
+                    config_overrides={"outfall_derivation": {"method": "withtopo"}},
+                    use_upstream_defaults=True,
+                )
+        outfall = config["parameter_overrides"]["outfall_derivation"]
+        self.assertEqual(outfall, {"method": "withtopo"})
 
 
 class DataStructureTests(unittest.TestCase):

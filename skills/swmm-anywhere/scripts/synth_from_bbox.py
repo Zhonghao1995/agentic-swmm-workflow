@@ -69,6 +69,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Reserved: re-fetch OSM/DEM even if a snapshot already exists.",
     )
     parser.add_argument(
+        "--upstream-defaults",
+        action="store_true",
+        help=(
+            "Skip the spike-04 tuned outfall_derivation overrides "
+            "(method=withtopo, river_buffer_distance=300, outfall_length=200) "
+            "and let SWMManywhere use its upstream parameters.py defaults "
+            "(method=separate, river_buffer_distance=150, outfall_length=40). "
+            "Use to reproduce SWMManywhere's extended_demo behaviour or to "
+            "compare against upstream output."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the SynthRunResult summary as machine-readable JSON.",
@@ -103,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             run_dir=run_dir,
             project_name=args.project_name,
             refresh_raw=args.refresh_raw,
+            use_upstream_defaults=args.upstream_defaults,
         )
     except SynthRunError as exc:
         print(
