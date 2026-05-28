@@ -22,9 +22,9 @@ class TestMakeProvider:
         from agentic_swmm.providers.factory import make_provider
         from agentic_swmm.providers.openai_api import OpenAIProvider
 
-        provider = make_provider("openai", model="gpt-4o-mini")
+        provider = make_provider("openai", model="gpt-5.5")
         assert isinstance(provider, OpenAIProvider)
-        assert provider.model == "gpt-4o-mini"
+        assert provider.model == "gpt-5.5"
 
     def test_claude_sdk_returns_claude_sdk_provider(self, mock_claude_sdk_module):
         from agentic_swmm.providers.factory import make_provider
