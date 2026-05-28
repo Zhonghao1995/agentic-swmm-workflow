@@ -54,12 +54,12 @@ Not every Run has a Case — ad-hoc runs are valid.
 
 The LLM backend driving the planner. Two implementations exist:
 
-- `openai` (default; requires `OPENAI_API_KEY`).
-- `claude_sdk` (gated behind `AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS=1`; routes through the local `claude` CLI's OAuth so a Pro/Max subscription is enough — no separate Anthropic API key needed).
+- `claude_sdk` (**default**; routes through the local `claude` CLI's OAuth so a Claude Pro/Max subscription is enough — no separate Anthropic API key needed, zero marginal per-token cost). On macOS the subscription credential lives in the login Keychain, not a JSON file; detection probes `security find-generic-password -s "Claude Code-credentials"` (exit code only, never reads the secret). A model is optional — the SDK follows the subscription default.
+- `openai` (opt-in; requires `OPENAI_API_KEY`, billed per token; model defaults to `gpt-5.5`). Selected only via explicit `provider.default = openai` / `--provider openai`, never silently when a subscription is present.
 
-Provider abstraction lives in `agentic_swmm/providers/`. Concrete providers implement the `ChatProvider` Protocol in `providers/base.py`. The planner never imports a concrete provider directly — it goes through `providers/factory.make_provider(name, ...)`.
+Provider abstraction lives in `agentic_swmm/providers/`. Concrete providers implement the `ChatProvider` Protocol in `providers/base.py`. The planner never imports a concrete provider directly — it goes through `providers/factory.make_provider(name, ...)`. Adding a backend is a `factory.SUPPORTED_PROVIDERS` + `make_provider` change only.
 
-See the `~/.aiswmm/config.toml` `provider.default` field and `aiswmm model --provider <name>` for switching at the user surface.
+Authenticate via `aiswmm login` (subscription) or `aiswmm login --openai` (opt-in key). See the `~/.aiswmm/config.toml` `provider.default` field and `aiswmm model --provider <name>` for switching at the user surface; `aiswmm login --status` / `aiswmm doctor` report which provider and credentials are active.
 
 ### Tool
 

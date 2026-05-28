@@ -2,6 +2,27 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## Unreleased — subscription-first, provider-neutral LLM auth
+
+The default LLM path is now the **Claude Pro/Max subscription** (`claude_sdk` via the local `claude` CLI), so the runtime works on flat-fee subscription quota at zero marginal per-token cost. OpenAI is preserved as an explicit opt-in. The provider/auth layer was also neutralised so future backends are factory-only additions.
+
+### Changed
+
+- **Default provider `openai` → `claude_sdk`.** `DEFAULT_PROVIDER = "claude_sdk"`; the planner routes the subscription path by default. `claude_sdk` may run with **no model** configured (the SDK follows the subscription default); only `openai` requires a model.
+- **OpenAI demoted to opt-in**, pinned to model `gpt-5.5` (`DEFAULT_OPENAI_MODEL`). Reachable via `--provider openai` / `aiswmm login --openai`; never selected silently when a Claude subscription is detected.
+- **Removed the `AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS` gate** — `claude_sdk` is first-class. Provider argparse choices always include both backends.
+- **`claude-agent-sdk` moved from the optional `[claude]` extra into core dependencies** so the default provider works out of the box (the `[claude]` extra is retained as a back-compat alias). This increases install weight for all users.
+- **Provider-neutral planner:** the runtime derives its supported set from `factory.SUPPORTED_PROVIDERS` and constructs every backend through `make_provider`; the agent `--planner` flag gains the provider-neutral `llm` value (`openai` kept as a deprecated alias).
+- Doctor / setup / welcome guidance reordered subscription-first.
+
+### Added
+
+- **`aiswmm login`** — an independent, extensible auth subsystem. Bare `aiswmm login` authenticates the Claude subscription (`claude login` when not already logged in); `aiswmm login --openai` stores an OpenAI key in `~/.aiswmm/env` at mode 0600; `aiswmm login --status` prints the auth state (no secrets).
+
+### Fixed
+
+- **macOS Keychain login detection.** A logged-in macOS user keeps Claude Code credentials in the login **Keychain**, not a JSON file, so the old OAuth check returned false and dropped them to the rule planner. Detection now probes `security find-generic-password -s "Claude Code-credentials"` (exit code only — never `-w`, never reads/logs the secret) and also treats `ANTHROPIC_API_KEY` as a credential signal.
+
 ## v0.7.1 - SWMManywhere natural-language integration + runtime hardening (2026-05-28)
 
 A single natural-language sentence referring only to a WGS84 bounding box now drives an end-to-end SWMM workflow: synthesise the drainage network from public OSM + DEM data, run SWMM, write a deterministic audit dossier, and render a spatial network map — all via the standard `runs/<date>/<id>/` layout. Synthesis comes from SWMManywhere (Imperial College London, BSD-3-Clause); aiswmm is the agent-side adapter. SWMM execution is byte-identical to v0.7.0 — Tecnopolo `model.out` SHA256 unchanged.
