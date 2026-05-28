@@ -32,13 +32,18 @@ dependencies = [
   "SALib",
   "spotpy",
   "swmmtoolbox",
+  # Subscription-first: claude_sdk is now the DEFAULT provider (routes the
+  # LLM planner through a Claude Pro/Max subscription via the local `claude`
+  # CLI), so the SDK ships in core dependencies — the default provider works
+  # out of the box. Previously this lived in the optional [claude] extra.
+  # NOTE: this increases the install weight for all users.
+  "claude-agent-sdk>=0.2,<1.0",
 ]
 
 [project.optional-dependencies]
-# PRD-09: the Claude Agent SDK provider routes the LLM planner through a
-# Claude Pro/Max subscription via the local `claude` CLI. It is an
-# OPTIONAL extra — the default OpenAI path stays pure-Python and pulls
-# none of this. Install with: pip install aiswmm[claude]
+# Back-compat alias: ``pip install aiswmm[claude]`` still resolves now that
+# claude-agent-sdk is a core dependency (the extra is a harmless no-op so
+# existing install commands / docs keep working).
 claude = ["claude-agent-sdk>=0.2,<1.0"]
 
 # `swmm-anywhere` skill: synthesise a plausible SWMM model from a bbox

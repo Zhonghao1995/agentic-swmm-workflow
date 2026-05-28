@@ -1,8 +1,10 @@
-"""Packaging + docs tests for the PRD-09 Claude extra.
+"""Packaging + docs tests for the Claude SDK dependency.
 
-``claude-agent-sdk`` is declared as an OPTIONAL extra, never a hard
-dependency. These tests assert the ``pyproject.toml`` declaration and
-the presence of the provider documentation page.
+Subscription-first: ``claude_sdk`` is the DEFAULT provider, so
+``claude-agent-sdk`` ships as a CORE dependency (the default provider
+works out of the box). The ``[claude]`` extra is retained as a harmless
+back-compat alias. These tests assert the ``pyproject.toml`` declaration
+and the presence of the provider documentation page.
 """
 from __future__ import annotations
 
@@ -20,28 +22,27 @@ def _pyproject() -> dict:
 
 
 class PyprojectClaudeExtraTests(unittest.TestCase):
-    def test_optional_dependencies_declares_claude_extra(self) -> None:
-        data = _pyproject()
-        extras = data.get("project", {}).get("optional-dependencies", {})
-        self.assertIn("claude", extras)
-
-    def test_claude_extra_lists_claude_agent_sdk(self) -> None:
-        extras = _pyproject()["project"]["optional-dependencies"]
-        joined = " ".join(extras["claude"])
-        self.assertIn("claude-agent-sdk", joined)
-
-    def test_claude_agent_sdk_not_a_hard_dependency(self) -> None:
-        # The default install must stay pure-Python; the SDK belongs
-        # only in the optional extra.
+    def test_claude_agent_sdk_is_a_core_dependency(self) -> None:
+        # Subscription-first: claude_sdk is the default provider, so the
+        # SDK must ship in core dependencies (works out of the box).
         deps = _pyproject()["project"].get("dependencies", [])
         joined = " ".join(deps)
-        self.assertNotIn("claude-agent-sdk", joined)
-        self.assertNotIn("claude_agent_sdk", joined)
+        self.assertIn("claude-agent-sdk", joined)
 
-    def test_claude_extra_pin_is_compatible_with_installed_sdk(self) -> None:
+    def test_claude_extra_retained_as_backcompat_alias(self) -> None:
+        # ``pip install aiswmm[claude]`` must still resolve.
+        extras = _pyproject()["project"].get("optional-dependencies", {})
+        self.assertIn("claude", extras)
+        self.assertIn("claude-agent-sdk", " ".join(extras["claude"]))
+
+    def test_anywhere_extra_left_untouched(self) -> None:
+        extras = _pyproject()["project"].get("optional-dependencies", {})
+        self.assertIn("anywhere", extras)
+
+    def test_claude_sdk_pin_is_compatible_with_installed_sdk(self) -> None:
         # The declared pin floor must not exceed the installed version
-        # the provider was developed against. Skipped when the optional
-        # extra is not installed.
+        # the provider was developed against. Skipped when the SDK is not
+        # installed.
         try:
             import claude_agent_sdk  # noqa: F401
         except ImportError:
@@ -49,10 +50,9 @@ class PyprojectClaudeExtraTests(unittest.TestCase):
         from importlib.metadata import version
 
         installed = version("claude-agent-sdk")
-        extras = _pyproject()["project"]["optional-dependencies"]
-        spec = " ".join(extras["claude"])
+        deps = " ".join(_pyproject()["project"]["dependencies"])
         # The pin is a range like ``claude-agent-sdk>=0.2,<1.0``.
-        self.assertIn("claude-agent-sdk", spec)
+        self.assertIn("claude-agent-sdk", deps)
         installed_major_minor = tuple(int(p) for p in installed.split(".")[:2])
         # Floor declared as >=0.2 — installed must be at least that.
         self.assertGreaterEqual(installed_major_minor, (0, 2))
