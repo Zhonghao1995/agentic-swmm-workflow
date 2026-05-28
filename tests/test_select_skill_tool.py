@@ -70,7 +70,10 @@ def test_select_skill_with_agent_internal_returns_in_process_subset(tmp_path: Pa
     assert result["ok"] is True
     names = {entry["name"] for entry in result["tools"]}
     assert "recall_memory" in names
-    assert "select_workflow_mode" in names
+    # LLM-driven dispatch refactor: ``select_workflow_mode`` removed;
+    # ``capabilities`` is the canonical always-available agent-internal
+    # tool that stays as the assertion anchor.
+    assert "capabilities" in names
     # The agent-internal subset must NOT carry deterministic-SWMM tools.
     assert "build_inp" not in names
 

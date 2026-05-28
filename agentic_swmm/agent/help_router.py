@@ -44,7 +44,7 @@ from collections import OrderedDict
 
 VERB_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict(
     [
-        ("Core workflow", ["run", "audit", "plot", "demo"]),
+        ("Core workflow", ["run", "audit", "plot", "map", "demo"]),
         (
             "Memory",
             [
@@ -85,6 +85,7 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     "run": "Execute SWMM on an INP, write audit + plots.",
     "audit": "Re-write audit notes for an existing run.",
     "plot": "Render rain/runoff/depth plots from a run directory.",
+    "map": "Render the spatial layout (subcatchments + network + outfalls).",
     "demo": "Run a packaged demo case end-to-end.",
     "compare": "Diff continuity/peak/runoff between two runs.",
     "cite": "Look up an entry in the citations library by key.",

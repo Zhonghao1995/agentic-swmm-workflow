@@ -8,11 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, Callable
 
-from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 from agentic_swmm.agent.digest_render import brief_result, render_step
 from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
 from agentic_swmm.agent.intent_classifier import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
-from agentic_swmm.agent.intent_disambiguator import PLOT_CONFLICT_SIGNALS, disambiguate
 from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context
 from agentic_swmm.agent.memory_informed_policy import (
     MemoryHITLRequired,
@@ -23,30 +21,9 @@ from agentic_swmm.agent.memory_trace import log_memory_decision
 from agentic_swmm.agent.planner_introspection import should_introspect
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.agent.reporting import write_event
-from agentic_swmm.agent.tool_registry import AgentToolRegistry, compute_intent_signals
+from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState
-from agentic_swmm.agent.workflow_modes import WorkflowContext, get_mode
-# PRD-04: re-export workflow-mode helpers under their legacy planner-module
-# names so downstream callers (tests and intent-classifier migration
-# parity) keep working without an import-path update.
-from agentic_swmm.agent.workflow_modes._helpers import (  # noqa: F401
-    _asks_for_plot_options,
-    _default_rain_kind,
-    _is_negated,
-)
-from agentic_swmm.agent.workflow_modes._helpers import (  # noqa: F401
-    existing_run_plot_done_text as _existing_run_plot_done_text,
-    extract_after_label as _extract_after_label,
-    extract_example_inp_path as _extract_example_inp_path,
-    extract_inp_path as _extract_inp_path,
-    extract_plot_choice as _extract_plot_choice,
-    extract_run_dir as _extract_run_dir,
-    plot_choice_prompt as _plot_choice_prompt,
-    plot_output_path as _plot_output_path,
-    prepared_inp_done_text as _prepared_inp_done_text,
-    workflow_route_args as _workflow_route_args,
-)
 from agentic_swmm.audit.llm_calls import extract_usage_tokens, record_llm_call
 from agentic_swmm.providers.base import ChatProvider
 
@@ -321,23 +298,15 @@ class OpenAIPlanner:
         if os.environ.get("AISWMM_OPENAI_MOCK_TOOL_CALLS") and os.environ.get("AISWMM_FORCE_AUTO_WORKFLOW_ROUTER") != "1":
             auto_router_enabled = False
 
-        # PRD_runtime: classifier-driven short-circuit. When the user's
-        # prompt continues a prior SWMM run with a plot-style request
-        # (and we already have an active_run_dir from the previous
-        # turn), skip ``select_workflow_mode`` and the introspection
-        # cluster — go straight to inspect_plot_options + plot_run.
-        early_route = self._classify_plot_continuation(goal, prior_state)
-        if early_route is not None and auto_router_enabled:
-            return self._dispatch_workflow_mode(
-                mode_name="existing_run_plot",
-                goal=goal,
-                session_dir=session_dir,
-                plan=plan,
-                route=early_route,
-                executor=executor,
-                trace_path=trace_path,
-            )
-
+        # LLM-driven dispatch (post-refactor):
+        # The defensive `select_workflow_mode` first-hop has been
+        # removed. The LLM now reads SKILL.md descriptions and the
+        # typed tool schemas directly and picks tools without a mode
+        # gate — matching the OpenAI / Anthropic function-calling
+        # contract. We still optionally prime LLM context with the
+        # skill / MCP introspection cluster (``_consult_workflow_skills``)
+        # and consult the memory-informed policy before the first
+        # provider call so audit + escalation surfaces are unchanged.
         if _looks_like_swmm_request(goal) and auto_router_enabled:
             self._consult_workflow_skills(
                 goal=goal,
@@ -345,57 +314,18 @@ class OpenAIPlanner:
                 executor=executor,
                 prior_session_state=prior_state,
             )
-            route_args = _workflow_route_args(goal)
-            # PRD-07 Phase 3: consult memory before the LLM
-            # disambiguator. Empty memory yields a ``llm`` decision and
-            # we fall through unchanged (paper-grade reproducibility
-            # on fresh projects). A populated store can short-circuit
-            # to ``auto_complete`` and skip the LLM call entirely, or
-            # raise ``MemoryHITLRequired`` on high-stakes + zero
-            # evidence — the runtime catches the exception and surfaces
-            # the escalation prompt to the user.
+            # PRD-07 Phase 3: consult memory before the LLM picks a
+            # tool. Empty memory yields a ``llm`` decision and we fall
+            # through unchanged; a populated store can short-circuit
+            # via ``MemoryHITLRequired`` on high-stakes + zero evidence
+            # (the runtime catches the exception and surfaces the
+            # escalation prompt to the user).
             self._consult_memory_informed_policy(
                 goal=goal,
                 trace_path=trace_path,
                 session_dir=session_dir,
                 prior_session_state=prior_state,
             )
-            # PRD #111: LLM disambiguation for compound plot-conflict
-            # goals. Returns ``None`` for unambiguous prompts so the
-            # deterministic SOP fast-path runs unchanged (paper-grade
-            # reproducibility, user story 2). When it returns a mode
-            # we inject it as ``mode=<picked>`` so the tool's
-            # explicit-mode short-circuit fires.
-            mode_hint = self._maybe_disambiguate(goal=goal, trace_path=trace_path, session_dir=session_dir)
-            if mode_hint is not None:
-                route_args = {**route_args, "mode": mode_hint}
-            route_call = ToolCall("select_workflow_mode", route_args)
-            plan.append(route_call)
-            route_result = executor.execute(route_call, index=len(plan))
-            self._emit_step(
-                index=len(plan),
-                call=route_call,
-                result=route_result,
-                executor=executor,
-            )
-            route = route_result.get("results") if isinstance(route_result.get("results"), dict) else {}
-            if route.get("missing_inputs"):
-                final_text = str(route.get("user_prompt") or "Please provide the missing SWMM workflow inputs.")
-                return PlannerRun(ok=True, plan=plan, results=executor.results, final_text=final_text)
-            # PRD-04: workflow-mode dispatch reads from the
-            # ``agent/workflow_modes`` registry. Adding a mode means
-            # adding one adapter file; the planner does not change.
-            dispatched = self._dispatch_workflow_mode(
-                mode_name=str(route.get("mode") or ""),
-                goal=goal,
-                session_dir=session_dir,
-                plan=plan,
-                route=route,
-                executor=executor,
-                trace_path=trace_path,
-            )
-            if dispatched is not None:
-                return dispatched
 
         input_items: list[dict[str, Any]] = [
             {
@@ -564,81 +494,6 @@ class OpenAIPlanner:
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
 
-    def _maybe_disambiguate(
-        self,
-        *,
-        goal: str,
-        trace_path: Path,
-        session_dir: Path,
-    ) -> str | None:
-        """Return an LLM-picked workflow mode for compound plot-conflict goals.
-
-        PRD #111. The trigger fires only when ``wants_plot`` and another
-        action verb both fire — the small fraction of goals where the
-        keyword fallback's priority is ambiguous. For everything else
-        this short-circuits to ``None`` and the deterministic SOP
-        fast-path runs unchanged.
-
-        Records one ``intent_disambiguation`` trace event per call so
-        the audit trail captures the goal, which signals fired, the
-        picked mode, and whether we fell back. The provider call
-        itself is funnelled through ``record_llm_call`` under
-        ``model_role="disambiguate_intent"`` for symmetry with the
-        rest of the LLM trace.
-        """
-
-        signals = compute_intent_signals(goal)
-        if not signals.get("wants_plot"):
-            return None
-        if not any(signals.get(name) for name in PLOT_CONFLICT_SIGNALS):
-            return None
-
-        conflict_signals = [
-            name for name in ("wants_plot", *PLOT_CONFLICT_SIGNALS) if signals.get(name)
-        ]
-        _start = time.monotonic()
-
-        def _on_response(response: Any, prompt: tuple[Any, Any], call_duration_ms: int) -> None:
-            # PRD-LLM-TRACE: every LLM API invocation funnels through
-            # ``record_llm_call`` so ``09_audit/llm_calls.jsonl``
-            # captures a symmetric trace. ``model_role`` lets a paper
-            # reviewer grep for disambiguation interventions
-            # specifically.
-            _tokens_in, _tokens_out = extract_usage_tokens(response)
-            record_llm_call(
-                run_dir=session_dir,
-                caller="planner",
-                model_role="disambiguate_intent",
-                prompt=prompt,
-                response=response,
-                tokens_in=_tokens_in,
-                tokens_out=_tokens_out,
-                duration_ms=call_duration_ms,
-            )
-
-        # ``disambiguate`` swallows provider exceptions and returns
-        # ``None`` so the planner never crashes on LLM downtime
-        # (user story 7).
-        picked = disambiguate(
-            goal=goal,
-            signals=signals,
-            provider=self.provider,
-            on_response=_on_response,
-        )
-        duration_ms = int((time.monotonic() - _start) * 1000)
-        write_event(
-            trace_path,
-            {
-                "event": "intent_disambiguation",
-                "goal": goal,
-                "conflict_signals": conflict_signals,
-                "picked_mode": picked,
-                "duration_ms": duration_ms,
-                "fallback_used": picked is None,
-            },
-        )
-        return picked
-
     def _consult_memory_informed_policy(
         self,
         *,
@@ -736,37 +591,6 @@ class OpenAIPlanner:
 
         return decision
 
-    def _classify_plot_continuation(
-        self,
-        goal: str,
-        prior_session_state: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        """Return a synthesized ``route`` dict when the prompt is a
-        plot continuation against a known active_run_dir.
-
-        Returns ``None`` when the classifier yields anything other than
-        ``PLOT_CONTINUATION`` or there is no active_run_dir to plot.
-        """
-        active_run_dir = prior_session_state.get("active_run_dir")
-        if not active_run_dir:
-            # The prior state may nest workflow_state — be tolerant.
-            workflow_state = prior_session_state.get("workflow_state")
-            if isinstance(workflow_state, dict):
-                active_run_dir = workflow_state.get("active_run_dir")
-        if not active_run_dir:
-            return None
-        # Strip the synthetic "Previous run directory: ..." trailer
-        # ``runtime_loop`` adds so that the classifier sees the user's
-        # actual prompt vocabulary.
-        prompt = goal.split("\n\nPrevious run directory:")[0].strip()
-        path = classify(prompt, {"active_run_dir": active_run_dir})
-        if path is not ExecutionPath.PLOT_CONTINUATION:
-            return None
-        return {
-            "mode": "existing_run_plot",
-            "provided_values": {"run_dir": str(active_run_dir)},
-        }
-
     def _consult_workflow_skills(
         self,
         *,
@@ -800,58 +624,6 @@ class OpenAIPlanner:
                 result=result,
                 executor=executor,
             )
-
-    def _dispatch_workflow_mode(
-        self,
-        *,
-        mode_name: str,
-        goal: str,
-        session_dir: Path,
-        plan: list[ToolCall],
-        route: dict[str, Any],
-        executor: AgentExecutor,
-        trace_path: Path | None = None,
-    ) -> PlannerRun | None:
-        """Dispatch to a registered workflow-mode adapter, or ``None``.
-
-        PRD-04. Replaces the hardcoded ``if route.get("mode") == "X"``
-        chain. Returns ``None`` when ``mode_name`` is empty, unregistered,
-        or registered as a spec-only stub (no ``run`` method) — in
-        which case the planner falls through to its LLM main loop.
-
-        Round 1 integration: when the adapter has a ``run`` method,
-        we wire a default :class:`MemoryIntegration` plus the
-        ``trace_path`` so the adapter's memory consult fires against
-        the real on-disk store and emits the mirror events onto
-        ``agent_trace.jsonl``. The integration is constructed each
-        dispatch so a long-lived planner does not cache stale
-        callables; the helpers are cheap (lazy imports).
-        """
-        if not mode_name:
-            return None
-        adapter = get_mode(mode_name)
-        if adapter is None or not hasattr(adapter, "run"):
-            return None
-        # Late import keeps the module-load graph small for callers
-        # (e.g. unit tests of the planner that never invoke a runnable
-        # adapter still don't pay the import cost).
-        from agentic_swmm.agent.workflow_modes._memory_integration import (
-            build_default_memory_integration,
-        )
-
-        case_name = _resolve_case_name_for_memory(goal, {})
-        ctx = WorkflowContext(
-            goal=goal,
-            session_dir=session_dir,
-            plan=plan,
-            route=route,
-            executor=executor,
-            emit=self.emit,
-            trace_path=trace_path,
-            memory_integration=build_default_memory_integration(),
-            case_name=case_name,
-        )
-        return adapter.run(ctx)
 
 
 def _looks_like_swmm_request(goal: str) -> bool:

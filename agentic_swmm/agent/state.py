@@ -207,12 +207,11 @@ def _workflow_state(goal: str, outcome: Any) -> dict[str, Any]:
     for result in getattr(outcome, "results", []):
         tool = str(result.get("tool") or "")
         payload = result.get("results")
-        if tool == "select_workflow_mode" and isinstance(payload, dict):
-            state["active_run_dir"] = payload.get("provided_values", {}).get("run_dir") or state["active_run_dir"]
-            state["selected_case"] = payload.get("provided_values", {}).get("inp_path") or state["selected_case"]
-            if payload.get("missing_inputs"):
-                state["pending_user_choice"] = payload.get("user_prompt")
-        elif tool == "inspect_plot_options" and isinstance(payload, dict):
+        # LLM-driven dispatch refactor: ``select_workflow_mode`` removed
+        # (the dispatch gate was deleted). State updates that used to
+        # live on its result payload are now derived from the
+        # downstream tool's own call args / results below.
+        if tool == "inspect_plot_options" and isinstance(payload, dict):
             state["available_plot_options"] = {
                 "rainfall": [item.get("name") for item in payload.get("rainfall_options", []) if isinstance(item, dict)],
                 "nodes": list(payload.get("node_options", []))[:50],

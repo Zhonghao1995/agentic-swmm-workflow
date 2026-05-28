@@ -39,14 +39,21 @@ from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
 
 
 class _ScriptedProvider:
-    """Echoes a fake-tool ``classify_workflow_mode`` then a final text.
+    """Echoes a single read-only ``capabilities`` tool call then a final text.
 
-    Mirrors the existing audit-trail test fixture so we don't take a
-    dependency on a real provider while exercising the planner's
-    disambiguation surface.
+    LLM-driven dispatch refactor: the legacy fixture echoed a
+    ``classify_workflow_mode`` fake-tool that the deleted
+    ``intent_disambiguator`` consumed. Post-refactor the planner does
+    not gate on a mode classifier — it sends the full tool registry to
+    the LLM directly. ``capabilities`` is a real, read-only registered
+    tool, so this fixture stays self-contained while still exercising
+    the planner's tool-call dispatch path.
     """
 
     def __init__(self, picked_mode: str = "prepared_demo") -> None:
+        # ``picked_mode`` is kept on the surface so call sites that
+        # used to drive the mode disambiguator still type-check; the
+        # value is no longer threaded through a routing decision.
         self._mode = picked_mode
         self._call_index = 0
 
@@ -63,12 +70,12 @@ class _ScriptedProvider:
             return ProviderToolResponse(
                 text="",
                 model="stub",
-                response_id="r-disambig",
+                response_id="r-tool",
                 tool_calls=[
                     ProviderToolCall(
                         call_id="c1",
-                        name="classify_workflow_mode",
-                        arguments={"mode": self._mode},
+                        name="capabilities",
+                        arguments={},
                     )
                 ],
                 raw={},
@@ -170,17 +177,19 @@ class _PlannerHarness:
 
 
 class NoRegressionOnEmptyMemoryTests(unittest.TestCase):
-    """Slice 1 — the planner must keep dispatching when memory is absent."""
+    """Slice 1 — the planner must keep dispatching when memory is absent.
 
-    def test_plot_conflict_goal_still_records_intent_disambiguation(
-        self,
-    ) -> None:
+    LLM-driven dispatch refactor: the legacy ``intent_disambiguation``
+    trace event came from the deleted ``_maybe_disambiguate`` hop. The
+    memory-informed-policy event (``memory_informed_policy``) is now
+    the surviving audit trail for the dispatch-time memory consult.
+    """
+
+    def test_plot_conflict_goal_records_memory_policy_event(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
-            # No memory_dir override: the planner reads
-            # ``memory/modeling-memory`` (which doesn't exist under
-            # tmp's CWD), MemoryContext is empty, policy yields
-            # ``llm``, and the disambiguator runs normally.
+            # No memory: policy yields ``llm`` and the planner falls
+            # through to the LLM main loop.
             harness = _PlannerHarness(
                 tmp,
                 goal="run Tod Creek demo and plot the figure",
@@ -190,14 +199,9 @@ class NoRegressionOnEmptyMemoryTests(unittest.TestCase):
             trace_path, _ = harness.run()
             events = _read_jsonl(trace_path)
 
-        # The existing intent_disambiguation event still fires.
-        intent_events = [
-            e for e in events if e.get("event") == "intent_disambiguation"
-        ]
-        self.assertEqual(len(intent_events), 1, intent_events)
-        self.assertEqual(intent_events[0]["picked_mode"], "prepared_demo")
-        # The new memory_informed_policy event also fires and reports
-        # the ``llm`` deferral.
+        # The memory_informed_policy event fires and reports the
+        # ``llm`` deferral so the audit trail records that we
+        # consulted memory before letting the LLM decide.
         policy_events = [
             e for e in events if e.get("event") == "memory_informed_policy"
         ]

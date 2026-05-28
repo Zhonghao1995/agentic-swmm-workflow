@@ -324,10 +324,23 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool, is_read_only=True),
+        ToolSpec("map_run", "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.", _object({"run_dir": {"type": "string"}, "inp": {"type": "string"}, "out_png": {"type": "string"}, "dpi": {"type": "integer"}, "no_subcatchments": {"type": "boolean"}, "no_vertices": {"type": "boolean"}}, ["run_dir"]), _map_run_tool),
         ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
         ToolSpec("network_to_inp", "Export a SWMM network JSON to INP section text using the swmm-network script.", _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]), _network_to_inp_tool),
-        ToolSpec("plot_run", "Create a rainfall-runoff plot from a run directory using selected rainfall series, node, and node output attribute.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
-        ToolSpec("read_file", "Read a repository file and return a bounded excerpt.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
+        ToolSpec("plot_run", "Create a rainfall + flow hydrograph plot from a run directory. The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). 'node' and 'link' are mutually exclusive; pass one. Pick conduit IDs from the .rpt Link Flow Summary; pick node IDs from inspect_plot_options.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "link": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
+        ToolSpec("read_file", "Read a repository file and return a bounded excerpt (capped at 4000 chars). NOTE: for SWMM .rpt summary sections (Link Flow / Outfall Loading / Node Inflow), use read_rpt_summary instead — read_file's 4000-char cap cannot reach summary sections, which sit past the rpt header in 300+ KB files.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
+        ToolSpec(
+            "read_rpt_summary",
+            "Parse a structured summary section from a SWMM .rpt file. AVAILABLE SECTIONS (the 'section' enum): 'Link Flow Summary' = every conduit's peak flow / time-of-peak / Max-Full ratio (use to find the busiest pipe); 'Outfall Loading Summary' = every outfall node's flow frequency / avg / max / total volume (use to find the busiest outfall node id); 'Node Inflow Summary' = every node's lateral and total inflow (use for upstream-network diagnostics). CALL THIS TOOL ONCE PER SECTION YOU NEED — the tool is stateless, so issuing multiple calls with different 'section' values is the correct and cheap pattern; do NOT try to fetch 'Outfall Loading' by re-reading the rpt with read_file. Returns top N rows (default 5) as typed JSON objects sorted by the per-section peak/max column. USE THIS, NOT read_file or search_files, for ALL .rpt data extraction in agent flows.",
+            _object({
+                "rpt_path": {"type": "string"},
+                "section": {"type": "string", "enum": ["Link Flow Summary", "Outfall Loading Summary", "Node Inflow Summary"]},
+                "top_n": {"type": "integer"},
+                "sort_by": {"type": "string"},
+            }, ["rpt_path", "section"]),
+            _read_rpt_summary_tool,
+            is_read_only=True,
+        ),
         ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool, is_read_only=True),
         ToolSpec(
             "recall_memory",
@@ -476,6 +489,47 @@ def _build_tools() -> dict[str, ToolSpec]:
             supports_gap_fill=False,
         ),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
+        ToolSpec(
+            "synth_swmm_from_bbox",
+            (
+                "Synthesise a SWMM .inp file from a WGS84 bounding box using the "
+                "swmm-anywhere skill, which wraps ImperialCollegeLondon/SWMManywhere "
+                "(BSD-3-Clause).\n"
+                "USE WHEN: the user wants to build a SWMM model from a geographic "
+                "region and has not supplied a shapefile or pre-built network — "
+                "i.e. there is no SHP / GeoJSON / network_json input, just a bbox "
+                "or a place name with coordinates.\n"
+                "DO NOT USE WHEN: the user supplied a SHP / network_json / "
+                "existing .inp (those flow through build_inp, network_to_inp, "
+                "run_swmm_inp instead).\n"
+                "Requires the optional [anywhere] extra; the tool returns a "
+                "stage-tagged hint if the extra is missing."
+            ),
+            _object(
+                {
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat].",
+                    },
+                    "run_dir": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "refresh_raw": {"type": "boolean"},
+                    "upstream_defaults": {
+                        "type": "boolean",
+                        "description": "When true, skip aiswmm's tuned outfall_derivation overrides and use SWMManywhere's upstream defaults.",
+                    },
+                    "rain_file": {
+                        "type": "string",
+                        "description": "Optional absolute path to a SWMM-format DAT rainfall file to replace the bundled storm.dat.",
+                    },
+                },
+                ["bbox"],
+            ),
+            _synth_swmm_from_bbox_tool,
+        ),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
@@ -495,7 +549,11 @@ def _build_tools() -> dict[str, ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        ToolSpec("select_workflow_mode", "Select the top-level swmm-end-to-end operating mode and report required/missing inputs before running tools. OPTIONAL but recommended: pass `mode` with your identified workflow mode (one of calibration / uncertainty / prepared_inp_cli / full_modular_build / existing_run_plot / audit_only_or_comparison / prepared_demo) so the tool uses your classification directly instead of re-deriving intent via legacy keyword matching.", _object({"goal": {"type": "string"}, "mode": {"type": "string", "enum": ["calibration", "uncertainty", "prepared_inp_cli", "full_modular_build", "existing_run_plot", "audit_only_or_comparison", "prepared_demo"], "description": "OPTIONAL but recommended. The workflow mode you have identified from the user's goal. If provided and valid, the tool uses this directly. If absent or invalid, falls back to keyword matching (legacy compatibility)."}, "inp_path": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}, "network_json": {"type": "string"}, "subcatchments_csv": {"type": "string"}, "rainfall_input": {"type": "string"}, "landuse_input": {"type": "string"}, "soil_input": {"type": "string"}, "observed_flow": {"type": "string"}, "fuzzy_config": {"type": "string"}, "baseline_run_dir": {"type": "string"}}, ["goal"]), _select_workflow_mode_tool, is_read_only=True),
+        # LLM-driven dispatch refactor: ``select_workflow_mode`` removed.
+        # Frontier LLMs read each tool's description / SKILL.md and
+        # pick the right tool directly; the hardcoded mode enum was a
+        # GPT-4-era guardrail that re-introduced keyword-matching
+        # brittleness on top of the LLM's own classifier.
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec(
             "retrieve_memory",
@@ -691,23 +749,14 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-# Valid workflow modes the LLM may pass via the ``mode`` argument.
-# PRD-04: derived from the workflow-mode adapter registry — adding an
-# adapter file is enough to make a new mode acceptable here. The
-# ToolSpec input_schema enum above still has to be updated for the
-# LLM-visible schema (that surface stays in this module per PRD-04
-# scope). Computed once at import time because
-# ``intent_disambiguator`` imports this name directly and uses it in
-# module-level response-schema construction.
-from agentic_swmm.agent.workflow_modes import all_modes as _all_modes  # noqa: E402
-
-_VALID_MODE_ENUM = frozenset(_all_modes())
-
-
-# PRD #128 Phase 2 Group C: ``_build_response_for_mode`` moved to
-# ``tool_handlers/workflow_mode.py`` together with the rest of the
-# workflow-mode selection family. Re-exported below alongside
-# ``_select_workflow_mode_tool`` so existing import paths stay stable.
+# LLM-driven dispatch refactor: the workflow-mode adapter registry
+# (``agentic_swmm.agent.workflow_modes``) and the
+# ``select_workflow_mode`` handler module have been deleted. The LLM
+# now reads each tool's description / SKILL.md and picks tools
+# directly — see ``.claude/prds/PRD_llm_driven_dispatch.md`` for the
+# decision record. ``compute_intent_signals`` survives because the
+# warm-intro classifier (``intent_classifier``) still consumes its
+# legacy dict shape; the function is now a thin adapter only.
 
 
 def compute_intent_signals(goal: str) -> dict[str, bool]:
@@ -715,10 +764,8 @@ def compute_intent_signals(goal: str) -> dict[str, bool]:
 
     PRD #121 made ``agentic_swmm.agent.intent_classifier`` the single
     source of truth for keyword-driven intent extraction. This function
-    is now a thin adapter that returns the legacy ``compute_intent_signals``
-    dict shape so existing callers (``_select_workflow_mode_tool`` and
-    the planner's auto-route disambiguator trigger from PRD #111) keep
-    working byte-for-byte. New callers should use
+    is the legacy-shaped adapter that any remaining keyword-driven
+    surface (warm-intro gates, tests) consumes; new callers should use
     ``intent_classifier.classify_intent`` directly.
     """
 
@@ -727,19 +774,6 @@ def compute_intent_signals(goal: str) -> dict[str, bool]:
     from agentic_swmm.agent.intent_classifier import classify_intent
 
     return classify_intent(goal).as_dict()
-
-
-# PRD #128 Phase 2 Group C: workflow-mode selection family moved to
-# ``tool_handlers/workflow_mode.py``. Re-exported here so import paths
-# stay stable (``_select_workflow_mode_tool`` and
-# ``_build_response_for_mode`` are imported directly by several tests
-# and the bilingual-keyword regression suite).
-from agentic_swmm.agent.tool_handlers.workflow_mode import (  # noqa: E402,F401
-    _active_run_dir_from_global_state,
-    _build_response_for_mode,
-    _select_workflow_mode_tool,
-    _workflow_user_prompt,
-)
 
 
 # PRD #128 Phase 2 Group A: ``_plot_run_args`` / ``_plot_run_tool``
@@ -1120,6 +1154,24 @@ from agentic_swmm.agent.tool_handlers.swmm_plot import (  # noqa: E402,F401
 from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
     _build_inp_args,
     _build_inp_tool,
+)
+# LLM-driven dispatch refactor: ``swmm-anywhere`` handler is in-process
+# (not MCP-routed), so it re-exports cleanly here without needing the
+# late-import dance the MCP-routed families use.
+from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
+    _synth_swmm_from_bbox_tool,
+)
+# ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
+# no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;
+# sibling of ``plot_run`` at the LLM-facing-tool level.
+from agentic_swmm.agent.tool_handlers.swmm_map import (  # noqa: E402,F401
+    _map_run_tool,
+)
+# ``read_rpt_summary`` is an in-process rpt parser — no CLI verb, no
+# MCP. Sits next to ``swmm_map`` in the late-import block because the
+# handler late-imports ``_required_repo_file`` from this module.
+from agentic_swmm.agent.tool_handlers.swmm_rpt import (  # noqa: E402,F401
+    _read_rpt_summary_tool,
 )
 
 

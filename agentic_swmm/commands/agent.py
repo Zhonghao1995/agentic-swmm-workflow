@@ -52,7 +52,18 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument("--session-dir", type=Path, help="Directory for trace, tool outputs, and final report.")
     parser.add_argument("--dry-run", action="store_true", help="Plan only; do not execute tools.")
     parser.add_argument("--interactive", action="store_true", help="Start an interactive agent shell; each prompt is executed with tool access.")
-    parser.add_argument("--max-steps", type=int, default=16, help="Maximum tool calls to execute.")
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=40,
+        help=(
+            "Maximum tool calls per turn. Default 40 leaves ~25 steps for real "
+            "operations after the planner's ~15-step introspection overhead "
+            "(list_skills / read_skill / list_mcp_tools / select_skill). Bump "
+            "higher for chains that include plot_run AND map_run AND audit. "
+            "Lower (e.g. --max-steps 16) if you want a tighter token budget."
+        ),
+    )
     parser.add_argument("--verbose", action="store_true", help="Show full planner/tool details in the terminal.")
     parser.add_argument(
         "--safe",

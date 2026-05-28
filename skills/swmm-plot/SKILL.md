@@ -5,6 +5,17 @@ description: Publication-grade plotting for SWMM rainfall–runoff time-series f
 
 # SWMM Plot (publication spec)
 
+## Before calling plot — ask the user
+
+When the user asks to plot, **always ask these questions first** before calling any plot tool:
+
+1. **Which entity?** A specific node (junction / outfall) — by name — or a specific link (conduit) — by name?
+   - List 3–5 high-peak-flow candidates from the run's RPT `Link Flow Summary` so the user can pick.
+2. **Which attribute?** Node options: `Total_inflow`, `Depth_above_invert`, `Volume_stored_ponded`, `Flow_lost_flooding`. Link options: `Flow_rate`, `Velocity`, `Depth`.
+3. **Time window?** Default is the full simulation (24h). Offer to limit to a focus day or HH:MM-HH:MM window if peaks occur in a short period.
+
+Do **NOT** silently pick defaults. The user needs control — different plots answer different questions (peak inspection vs continuity vs flooding).
+
 ## What this skill provides
 
 - A plotting script that reads:

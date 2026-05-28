@@ -189,7 +189,7 @@ Default:
 Example:
 
 ```text
-Tools: select_workflow_mode -> run_swmm_inp -> audit_run -> inspect_plot_options.
+Tools: run_swmm_inp -> audit_run -> inspect_plot_options.
 ```
 
 Quiet mode:

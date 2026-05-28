@@ -34,10 +34,27 @@ if (!fs.existsSync(serverJs)) {
   process.exit(2);
 }
 
+function isUsableInterpreter(candidate) {
+  // A candidate is usable only if it is a non-empty file the current
+  // user can execute. A zero-byte ``.venv/bin/python`` stub (left behind
+  // by a half-finished venv, a test-fixture leak, or a stray subagent
+  // worktree) trips Node's ``spawn`` with ENOEXEC because the kernel
+  // cannot recognise an empty file as an executable — see the
+  // ``test_launcher_rejects_unusable_venv_python_stub`` regression.
+  try {
+    const st = fs.statSync(candidate);
+    if (!st.isFile() || st.size === 0) return false;
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const pythonCandidates = process.platform === "win32"
   ? [path.join(repoRoot, ".venv", "Scripts", "python.exe")]
   : [path.join(repoRoot, ".venv", "bin", "python")];
-const python = process.env.PYTHON || pythonCandidates.find((candidate) => fs.existsSync(candidate));
+const python = process.env.PYTHON || pythonCandidates.find(isUsableInterpreter);
 
 const env = { ...process.env };
 if (python) {
@@ -47,6 +64,15 @@ if (python) {
 const localBin = path.join(repoRoot, ".local", "bin");
 if (fs.existsSync(localBin)) {
   env.PATH = `${localBin}${path.delimiter}${env.PATH || ""}`;
+}
+
+if (process.env.AISWMM_LAUNCHER_PYTHON_PROBE) {
+  // Test-only side channel: emit the resolved interpreter to stderr
+  // and exit cleanly before spawning the MCP server. Used by
+  // ``tests/test_run_mcp_server_launcher_coverage.py`` to lock in the
+  // candidate-filter behaviour without standing up a full MCP transport.
+  process.stderr.write(`PYTHON=${env.PYTHON || ""}\n`);
+  process.exit(0);
 }
 
 const child = spawn(process.execPath, [serverJs], {

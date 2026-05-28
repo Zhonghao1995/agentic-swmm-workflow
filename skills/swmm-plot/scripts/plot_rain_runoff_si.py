@@ -102,8 +102,86 @@ def parse_timeseries_file(path: Path) -> tuple[list[datetime], list[float]]:
     return times, vals
 
 
+def _find_raingages_file(inp_path: Path, gage_id: str) -> Path | None:
+    """Return the .dat path referenced by ``[RAINGAGES] FILE`` for ``gage_id``.
+
+    SWMManywhere emits INPs whose rainfall input lives in an external
+    .dat file referenced from ``[RAINGAGES]`` instead of an inline
+    ``[TIMESERIES]`` block, e.g.::
+
+        [RAINGAGES]
+        rg1   INTENSITY  0:05   1.0   FILE   "storm.dat"
+
+    Returns ``None`` (not raise) so the caller can produce a context-rich
+    error pointing at both INP and the missing series.
+    """
+    in_raingages = False
+    for raw in inp_path.read_text(errors='ignore').splitlines():
+        s = raw.strip()
+        if s.upper() == '[RAINGAGES]':
+            in_raingages = True
+            continue
+        if in_raingages:
+            if s.startswith('[') and s.endswith(']'):
+                break
+            if not s or s.startswith(';'):
+                continue
+            parts = s.split()
+            upper_parts = [p.upper() for p in parts]
+            if parts[0].strip('"') != gage_id:
+                continue
+            if 'FILE' in upper_parts:
+                idx = upper_parts.index('FILE')
+                if idx + 1 < len(parts):
+                    return inp_path.parent / parts[idx + 1].strip('"')
+    return None
+
+
+def parse_raingages_file(path: Path, gage_id: str | None = None) -> tuple[list[datetime], list[float]]:
+    """Parse the SWMM5 ``[RAINGAGES] FILE`` format::
+
+        <gage_id> <YYYY> <MM> <DD> <HH> <mm> <value>
+
+    Lines whose first token does not match ``gage_id`` (when supplied)
+    are skipped — SWMM5 allows a single .dat to hold multiple gages.
+    """
+    times: list[datetime] = []
+    vals: list[float] = []
+    for raw in path.read_text(errors='ignore').splitlines():
+        s = raw.strip()
+        if not s or s.startswith(';'):
+            continue
+        parts = s.split()
+        if len(parts) < 7:
+            continue
+        if gage_id is not None and parts[0] != gage_id:
+            continue
+        try:
+            dt = datetime(
+                int(parts[1]), int(parts[2]), int(parts[3]),
+                int(parts[4]), int(parts[5]),
+            )
+            v = float(parts[6])
+        except (ValueError, IndexError):
+            continue
+        times.append(dt)
+        vals.append(v)
+    if not times:
+        raise SystemExit(
+            f'No RAINGAGES FILE rows found in {path}'
+            + (f' for gage {gage_id!r}' if gage_id else '')
+        )
+    return times, vals
+
+
 def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[datetime], list[float]]:
-    """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes."""
+    """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes.
+
+    Fallback (strict additive): if no ``[TIMESERIES]`` row matches
+    ``ts_name``, look for a ``[RAINGAGES] <ts_name> ... FILE <storm.dat>``
+    entry and parse that .dat. This supports SWMManywhere-generated INPs
+    which omit ``[TIMESERIES]`` entirely.
+    """
     times: list[datetime] = []
     vals: list[float] = []
     reading = False
@@ -126,6 +204,15 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
             times.append(dt)
             vals.append(float(parts[3]))
     if not times:
+        # Strict additive fallback: try RAINGAGES FILE (SWMManywhere case).
+        raingages_path = _find_raingages_file(inp_path, ts_name)
+        if raingages_path is not None:
+            if not raingages_path.exists():
+                raise SystemExit(
+                    f'RAINGAGES FILE referenced by gage {ts_name!r} not found: '
+                    f'{raingages_path} (referenced from {inp_path})'
+                )
+            return parse_raingages_file(raingages_path, gage_id=ts_name)
         raise SystemExit(f'No TIMESERIES values found for {ts_name} in {inp_path}')
     return times, vals
 
@@ -147,8 +234,17 @@ def main():
     ap.add_argument('--rain-kind', choices=['intensity_mm_per_hr', 'depth_mm_per_dt', 'cumulative_depth_mm'], default='depth_mm_per_dt',
                     help='How to interpret TIMESERIES values for plotting. Use depth_mm_per_dt for (mm/Δt) hyetograph (inverted).')
     ap.add_argument('--dt-min', type=float, default=5.0, help='Used only when rain-kind=depth_mm_per_dt or to convert intensity to depth.')
-    ap.add_argument('--node', default='<outfall-or-junction>',
-                    help='SWMM node id (outfall or junction) whose attribute is plotted. The agent flow passes the resolved value; manual CLI users must supply this.')
+    # ``--node`` and ``--link`` are alternate entity selectors. The
+    # argparse group below enforces mutual exclusion: a single render
+    # plots either a node-level series or a link-level (Flow_rate)
+    # series. ``--node`` keeps its placeholder default so existing
+    # callers / tests that omit the flag still get the same fail-fast
+    # message that pre-dates --link.
+    entity_group = ap.add_mutually_exclusive_group()
+    entity_group.add_argument('--node', default='<outfall-or-junction>',
+                              help='SWMM node id (outfall or junction) whose attribute is plotted. The agent flow passes the resolved value; manual CLI users must supply this.')
+    entity_group.add_argument('--link', default=None,
+                              help='SWMM link/conduit id; when set, the lower panel plots Flow_rate for the link instead of a node attribute. Mutually exclusive with --node.')
     ap.add_argument('--node-attr', default='Total_inflow')
     ap.add_argument('--out-png', required=True, type=Path)
     ap.add_argument('--dpi', type=int, default=300)
@@ -179,10 +275,15 @@ def main():
             "(The agent-driven path resolves this automatically via "
             "inspect_plot_options; this error only appears in manual CLI use.)"
         )
-    if args.node == '<outfall-or-junction>':
+    # The ``--node`` placeholder check only fires when ``--link`` was
+    # not supplied. ``--link`` is the alternate selector and provides
+    # its own (non-placeholder) id, so the user must not be told to
+    # pass --node in that case.
+    if not args.link and args.node == '<outfall-or-junction>':
         raise SystemExit(
             "--node is a placeholder ('<outfall-or-junction>'); pass an "
-            "actual SWMM node id, e.g. --node OUT_0. "
+            "actual SWMM node id, e.g. --node OUT_0, or use --link for "
+            "a conduit-level hydrograph. "
             "(The agent-driven path resolves this automatically via "
             "inspect_plot_options; this error only appears in manual CLI use.)"
         )
@@ -216,8 +317,19 @@ def main():
         rain_plot = rain_v * (args.dt_min / 60.0)
         rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
 
-    # Flow series (SI): CMS = m^3/s
-    key = f'node,{args.node},{args.node_attr}'
+    # Flow series (SI): CMS = m^3/s.
+    # Node-level path reads ``node,<id>,<attr>`` (Total_inflow by
+    # default); link-level path reads ``link,<id>,Flow_rate`` so the
+    # lower panel renders a conduit hydrograph. Both share the same
+    # paired-axis layout (rain top, flow bottom).
+    if args.link:
+        key = f'link,{args.link},Flow_rate'
+        flow_label = 'Flow'
+        flow_ylabel = 'Flow (m³/s)'
+    else:
+        key = f'node,{args.node},{args.node_attr}'
+        flow_label = 'Flow'
+        flow_ylabel = 'Flow (m³/s)'
     flow_df = extract(str(args.out_file), key)
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
@@ -245,8 +357,8 @@ def main():
 
     # Flow line (draw above rain)
     ax_flow = ax_rain.twinx()
-    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label='Flow', zorder=3)
-    ax_flow.set_ylabel('Flow (m³/s)')
+    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label=flow_label, zorder=3)
+    ax_flow.set_ylabel(flow_ylabel)
 
     rain_max = float(np.nanmax(rain_plot)) if rain_plot.size else 0.0
     if rain_max > 0:

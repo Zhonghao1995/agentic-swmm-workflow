@@ -75,10 +75,27 @@ _MIGRATED_FAMILIES = [
         ("_inspect_plot_options_tool", "_plot_run_args", "_plot_run_tool"),
         ("inspect_plot_options", "plot_run"),
     ),
+    # Sibling of ``swmm_plot`` at the CLI verb level (``aiswmm map`` vs
+    # ``aiswmm plot``). The LLM-facing tool stays in its own family file
+    # rather than living inside ``swmm_plot`` so the network-layout
+    # surface can evolve independently of the hydrograph surface.
+    (
+        "swmm_map",
+        ("_map_run_tool",),
+        ("map_run",),
+    ),
     (
         "swmm_builder",
         ("_build_inp_args", "_build_inp_tool"),
         ("build_inp",),
+    ),
+    # In-process .rpt summary-section parser. Sits in its own family
+    # because it has no CLI verb and no MCP server — it is a typed
+    # surface over a stable file format (SWMM 5.2.4 rpt sections).
+    (
+        "swmm_rpt",
+        ("_read_rpt_summary_tool",),
+        ("read_rpt_summary",),
     ),
 ]
 

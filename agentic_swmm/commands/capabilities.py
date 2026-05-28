@@ -42,7 +42,7 @@ CAPABILITY_GROUPS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict(
                 "format_rainfall",
                 "network_qa",
                 "network_to_inp",
-                "select_workflow_mode",
+                "synth_swmm_from_bbox",
             ),
         ),
         (

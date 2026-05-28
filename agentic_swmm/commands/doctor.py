@@ -294,6 +294,26 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
                 True,
             )
         )
+    # Optional [anywhere] extra — swmm-anywhere skill is callable iff
+    # swmmanywhere is importable. We deliberately treat absence as INFO,
+    # not WARN, since the default pip install aiswmm intentionally omits
+    # the 27 heavy geo deps. Upstream attribution: SWMManywhere is © Imperial
+    # College London, BSD-3-Clause.
+    anywhere_installed = _module_available("swmmanywhere")
+    checks.append(
+        (
+            "swmm-anywhere extra",
+            anywhere_installed,
+            "installed (SWMManywhere by Imperial College London, BSD-3)"
+            if anywhere_installed
+            else (
+                "not installed; install with: pip install aiswmm[anywhere] "
+                "(wraps SWMManywhere by Imperial College London, BSD-3-Clause; "
+                "only needed if you want to synthesise networks from a bbox)"
+            ),
+            False,
+        )
+    )
     for path in (
         Path("skills/swmm-runner/scripts/swmm_runner.py"),
         Path("skills/swmm-experiment-audit/scripts/audit_run.py"),

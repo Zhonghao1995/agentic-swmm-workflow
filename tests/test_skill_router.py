@@ -66,15 +66,15 @@ def test_agent_internal_skill_includes_memory_and_introspection(
     bundle = router.tools_for(AGENT_INTERNAL_SKILL)
     assert bundle.source == "in-process"
     names = set(bundle.tool_names())
-    # PRD-Y: agent-internal includes memory recall, workflow selection,
-    # plot option inspection, skill / file / dir / git / web / mcp meta
-    # tools — anything that is NOT a deterministic-SWMM operation.
+    # PRD-Y + LLM-driven dispatch refactor: agent-internal includes
+    # memory recall, plot option inspection, skill / file / dir / git /
+    # web / mcp meta tools — anything that is NOT a deterministic-SWMM
+    # operation. The legacy ``select_workflow_mode`` gate is gone.
     for tool in (
         "recall_memory",
         "recall_memory_search",
         "recall_session_history",
         "record_fact",
-        "select_workflow_mode",
         "inspect_plot_options",
         "list_skills",
         "read_skill",

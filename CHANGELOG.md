@@ -2,7 +2,74 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
-## Unreleased
+## v0.7.1 - SWMManywhere natural-language integration + runtime hardening (2026-05-28)
+
+A single natural-language sentence referring only to a WGS84 bounding box now drives an end-to-end SWMM workflow: synthesise the drainage network from public OSM + DEM data, run SWMM, write a deterministic audit dossier, and render a spatial network map — all via the standard `runs/<date>/<id>/` layout. Synthesis comes from SWMManywhere (Imperial College London, BSD-3-Clause); aiswmm is the agent-side adapter. SWMM execution is byte-identical to v0.7.0 — Tecnopolo `model.out` SHA256 unchanged.
+
+### Added — three new LLM-facing typed tools (v0.7.1)
+
+- **`map_run`** — render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of `plot_run` at the LLM surface (plot_run = hydrograph; map_run = network map). In-process wrapper around the `aiswmm map` CLI verb so the agent can request a network figure in one step. 14 unit tests + family-mapping drift entry.
+- **`plot_run.link`** — new `link` parameter renders a conduit Flow_rate hydrograph when set. Mutually exclusive with `node` (which still renders the node-attribute hydrograph). Plumbed through three layers: ToolSpec schema, `_plot_run_args` mapper (forwards link, suppresses node, picks a sensible default `out_png` filename by link id), and the swmm-plot MCP server's zod Args + CallToolRequestSchema handler (emits `--link` or `--node` to the underlying script, never both). 9 unit tests.
+- **`read_rpt_summary`** — parses SWMM .rpt summary sections (`Link Flow Summary` / `Outfall Loading Summary` / `Node Inflow Summary`) into structured JSON rows sorted by the per-section peak/max column. Replaces the `read_file`-with-4000-char-cap workaround on 300+ KB rpts. The ToolSpec description explicitly steers the LLM to call the tool once per section needed ("CALL THIS TOOL ONCE PER SECTION YOU NEED — the tool is stateless") and to use it instead of `read_file` or `search_files` for rpt data. Verified on the 2026-05-28 Tecnopolo run: the LLM called `read_rpt_summary` four times in a single run with different `section` values. 25 unit tests.
+
+### Fixed (v0.7.1)
+
+- **MCP transport `spawn ENOEXEC`.** A zero-byte `.venv/bin/python` stub (left by a half-finished venv or a test-fixture leak) caused the Node MCP launcher to assign `env.PYTHON` to an unusable executable. The downstream `spawn(PY, ...)` call returned `ENOEXEC` because the kernel cannot recognise an empty file as an executable. Fixed in two layers: `agentic_swmm/utils/subprocess_runner.py:runtime_env()` now pins `PYTHON=sys.executable` so the launcher inherits the correct interpreter, and `scripts/run_mcp_server.mjs` adds `isUsableInterpreter()` that rejects empty / non-executable candidates before assignment. Regression test plants a zero-byte stub and asserts the launcher does not select it.
+- **`final_report.md` "What you got" listed `SKILL.md` paths instead of real artifacts.** `_what_you_got` was reading only `result["path"]`, and only `_read_skill_tool` put a path there. Production handlers nested artifact paths under `result["results"]` / `result["excerpt"]` (MCP JSON) / `result["args"]` / `result["summary"]`. New recursive `_mine_paths()` harvests artifact paths from anywhere in the result payload, with planner-internal-fragment filtering and an introspection-tool skip set (`read_skill`, `read_file`, `list_*`, `select_skill`, `search_files`, `capabilities`). Reports now list the produced `synth.inp`, `model.rpt`, `network_map.png`, audit JSONs in their correct sections. 13 unit tests.
+- **`--max-steps` default 16 → 40** in both `aiswmm agent` and `aiswmm chat`. The 16-step ceiling cut the planner off mid-workflow because `gpt-5.5` typically spends ~15 steps on introspection (`list_skills`, `read_skill ×N`, `list_mcp_tools`, `select_skill`) before the first real op. The new default leaves ~25 steps of headroom. Pinned by 4 tests.
+
+### Changed (v0.7.1)
+
+- **`skills/swmm-anywhere/SKILL.md` install + attribution language humanised.** Same substance (BSD-3-Clause, Imperial College London, GitHub URL, citation request) reframed as one researcher crediting another rather than compliance copy. Upstream-attribution paragraph merged into the install section so it cannot be missed.
+- **`.gitignore`** now covers `*.egg-info/`, caches (`.cache/`, `cache/`, `.pytest_cache/`), coverage output (`.coverage`, `htmlcov/`), Docker-mounted run outputs (`docker-runs/`), memory runtime side-files (`command_trace.json`, `project_overrides.yaml`, `.last_refresh_error.json`), spike research artifacts (`scripts/spike_swmmanywhere/`), and local-only experimental data dirs (`data/Todcreek/of1/`, `examples/hand1/`). `package-lock.json` now tracked for reproducible MCP-server npm installs.
+
+### Evidence (v0.7.1)
+
+- **Byte-identical reproducibility re-verified.** Tecnopolo `model.out` SHA256 = `85c5514a81ea745ebb0c1c3e2aebb0c2cc0d5a6aa3ef00a0fa6c8f7b760be38c` on v0.7.1, identical to the 2026-05-15 canonical lock-in across macOS native vs Docker stacks. Downstream tests that pin this SHA can upgrade v0.7.0 → v0.7.1 without re-baselining. See `docs/byte-identical-reproducibility.md`.
+- **Minimum NL prompt length for the full Tecnopolo chain is 11 words.** `examples/tecnopolo/tecnopolo_r1_199401.inp。run it and audit it and plot the result` reaches synthesise-free SWMM execution + audit + plot end-to-end on the standard prepared INP. See `docs/byte-identical-reproducibility.md` for the recipe.
+- **Cross-session memory layer autonomously activated on a real run.** The LLM planner, with no memory-related keyword in the user prompt, issued `recall_session_history(case_name="tecnopolo")` and recovered two prior Tecnopolo sessions from 12 days earlier — the first user-observable activation of the memory layer on a real workflow. See `docs/v0.7.1-cross-session-memory-evidence.md`.
+- **Natural-language SWMManywhere chain end-to-end on two independent regions.** Greenwich Peninsula (1×1 km) canonical case study figures + NYC Midtown (1×1 km) cross-geography verification. See `docs/v0.7.1-swmmanywhere-nl-driven-evidence.md`.
+
+### Out of scope — next milestone
+
+v0.7.1 ships the **agent-side plumbing** for SWMManywhere and the cross-session memory layer. The modelling-science quality bars are explicitly out of scope and tracked as next-milestone work: calibration of the synthesised network against observed flows, systematic continuity-error characterisation across bbox sizes, a memory-aware calibration loop, negative-precedent handling in memory recall, and time-decay weighting for stale precedents.
+
+### Attribution
+
+Network synthesis in v0.7.1 is the work of [**SWMManywhere**](https://github.com/ImperialCollegeLondon/SWMManywhere) by Imperial College London (BSD-3-Clause licensed). Please cite SWMManywhere in any publication that uses or extends the SWMManywhere workflows shown in this release.
+
+---
+
+## v0.7.0a3 — pre-v0.7.1 dispatch refactor + SWMManywhere skill landing (developer-only marker)
+
+The work below was developed on the `feat/swmmanywhere` branch and ships to users as part of v0.7.1. It is preserved here as a separate developer-facing section because it landed as a coherent design effort over the two weeks before v0.7.1 cut.
+
+### Changed — LLM-driven dispatch refactor
+
+- **`select_workflow_mode` tool removed from the registry.** v0.7.0 placed a forced `select_workflow_mode` first-hop in front of every SWMM-shaped goal: the tool's seven-value enum (`calibration` / `uncertainty` / `prepared_inp_cli` / `full_modular_build` / `existing_run_plot` / `audit_only_or_comparison` / `prepared_demo`) was a GPT-4-era defensive guardrail that hid the concrete SWMM tools from the LLM behind one big "pick a mode" tool. Frontier 2026-era LLMs pick the right function from a flat tools list with high accuracy when each description is well-written; the gate was throwing that capability away and forcing keyword re-classification on top of the LLM's own classifier.
+- **`agentic_swmm/agent/workflow_modes/` directory deleted (12 files, ~1100 LOC).** The per-mode adapter registry that `_dispatch_workflow_mode` routed into is gone. Each adapter was a thin wrapper around a sequence of constrained tool calls; the LLM can now decide the same sequence by reading each tool's description / SKILL.md.
+- **`agentic_swmm/agent/intent_disambiguator.py` deleted.** Its trigger (`wants_plot AND wants_run/demo/calibration/uncertainty`) was a GPT-4-era hedge against keyword-classifier overmatch. With the mode gate gone, the disambiguator has nothing to disambiguate.
+- **`agentic_swmm/agent/tool_handlers/workflow_mode.py` deleted.** The handler for the deleted gate.
+- **New typed-tool handler `agentic_swmm/agent/tool_handlers/swmm_anywhere.py`** exposes the `synth_swmm_from_bbox(bbox, run_dir?, project_name?, refresh_raw?, upstream_defaults?, rain_file?)` tool that wraps `swmmanywhere_runner.run_synth_from_bbox`. The legacy mode enum had no `synth-from-bbox` value, so a "use SWMManywhere on this bbox" prompt always fell through to the wrong mode — that real failure case is what surfaced the refactor.
+- **Planner simplified.** `OpenAIPlanner.run` no longer forces a `select_workflow_mode` step or routes through `_dispatch_workflow_mode` / `_maybe_disambiguate` / `_classify_plot_continuation`. The LLM sees the full `AgentToolRegistry.schemas()` on every turn and picks tools by name. The pre-LLM `_consult_workflow_skills` (context priming) and `_consult_memory_informed_policy` (HITL escalation surface) hooks are unchanged.
+- **System prompt rewritten.** "always call `select_workflow_mode` first" replaced by "read the SKILL.md description for each candidate before invoking a SWMM tool; the description plus the typed schema is the contract you commit to". Agent-internal tool list drops the workflow-mode-selection entry.
+- **Capabilities surface updated.** `aiswmm capabilities` no longer lists `select_workflow_mode` under the "Build" group; the new typed `synth_swmm_from_bbox` entry point takes its place.
+- **Upstream alignment.** Tool surface now mirrors the OpenAI function-calling and Anthropic tool-use APIs: each tool has a name + description + typed parameter schema, and the LLM picks tools from a flat registry. No `select_workflow_mode`-shaped routing layer between the LLM and the real tools.
+- **Migration impact.** Interactive shell behaviour is unchanged from a user's perspective — they never typed `select_workflow_mode` themselves; only the planner did. Anyone with external code that imported `agentic_swmm.agent.workflow_modes`, `agentic_swmm.agent.intent_disambiguator`, or `agentic_swmm.agent.tool_handlers.workflow_mode` will need to update. The `workflow_mode` *string* survives as an optional tag on `audit_run` payloads for provenance bookkeeping; it is no longer a routing surface.
+- **PRD + ADR.** Decision record lives at `.claude/prds/PRD_llm_driven_dispatch.md`; `CONTEXT.md` gains a "Dispatch architecture: LLM-driven over hardcoded mode enum" section after the existing real-data / synth-data discussion.
+- **Tests:** 13 dispatch-layer test files deleted (their behavioural contract is gone), 5 test files modified to drop dispatch-layer assertions, and a new `tests/test_llm_driven_dispatch.py` (5 integration tests) pins the post-refactor contract — bbox prompt + scripted LLM picking `synth_swmm_from_bbox` reaches the executor with no gate, INP-path prompt picks `run_swmm_inp` directly, and `select_workflow_mode` never appears in any plan. Suite: 2140 passing post-refactor.
+
+### Added — `swmm-anywhere` skill (PRD swmmanywhere_integration)
+
+- **New skill `skills/swmm-anywhere/`** synthesises a plausible SWMM drainage network from a bounding box when no real pipe-network data exists. Wraps [ImperialCollegeLondon/SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (BSD-3-Clause) — © Imperial College London. End-to-end chain (bbox → OSM/DEM download → 24-step graphfcn pipeline → synth INP → aiswmm `swmm5` → audit + plot) verified at ~38 s on a 1×1 km London Greenwich bbox; peak flow parses cleanly through the standard audit pipeline.
+- **New optional dependency extra** `pip install aiswmm[anywhere]` pulls in the ~27 geo dependencies (geopandas, osmnx, rasterio, pyflwdir, pywbt, …) only for users who opt in. Default `pip install aiswmm` footprint is unchanged.
+- **New deep modules** `agentic_swmm/integrations/raw_snapshot.py` (reusable OSM/DEM hash + cache + verify under `runs/<id>/00_raw/`) and `agentic_swmm/integrations/swmmanywhere_runner.py` (Python wrapper with structured `SynthRunResult` / `SynthRunError`). The wrapper handles three macOS arm64 / SWMManywhere v0.2.2 gotchas inline: pyswmm SIGKILL on import (stubbed before SWMManywhere loads), `base_dir` str→Path coercion, and SWMM 5.2 `ERROR 205` when `[RAINGAGES] FILE` path contains spaces (external files copied next to the INP and the reference rewritten as a bare filename).
+- **Default `outfall_derivation` parameters tuned** in spike 04 A/B testing (`method="withtopo"` + `river_buffer_distance=300` + `outfall_length=200`) — reduces outfall count by ~34 % vs SWMManywhere defaults on the spike test bbox.
+- **New CLI script** `skills/swmm-anywhere/scripts/synth_from_bbox.py` is a thin argparse wrapper around `run_synth_from_bbox` that drops outputs into the standard `runs/<date>/<id>/` audit-pipeline layout.
+- **Planner routing defended in 4 layers** so the LLM planner cannot pick `swmm-anywhere` when the user has real pipe data: (a) exclusive wording in `swmm-anywhere`'s SKILL.md (`"ONLY when no real pipe-network data exists"`), (b) reverse pointers in `swmm-gis` / `swmm-network` SKILL.md, (c) a `synth-from-bbox` intent block in `agent/config/intent_map.json` with an `exclusive_when` rule, (d) a routing rule in `swmm-end-to-end` SKILL.md choosing between real-data and synth-data entry skills based on whether the user attached `.shp`/`.csv`/`network.json`/`.inp`.
+- **`CONTEXT.md` gains a "Real-data path vs Synth-data path" section** making the new orthogonal axis explicit for any agent or contributor reading the doc.
+- **`aiswmm doctor`** now reports a `swmm-anywhere extra` row (`installed` / `not installed` with the install hint) so users can see at a glance whether the synth path is callable.
+- 21 new unit tests (9 `raw_snapshot`, 10 `swmmanywhere_runner`, 2 CLI smoke); D1 verification spike scripts live under `scripts/spike_swmmanywhere/` (gitignored isolated venv + reproducible e2e driver).
 
 ## v0.7.0 - Modeling memory, agent runtime, install UX (2026-05-27)
 
