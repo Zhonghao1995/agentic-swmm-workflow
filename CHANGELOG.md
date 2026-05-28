@@ -2,26 +2,33 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
-## Unreleased — subscription-first, provider-neutral LLM auth
+## Unreleased — two API-key LLM providers (OpenAI default + Anthropic opt-in)
 
-The default LLM path is now the **Claude Pro/Max subscription** (`claude_sdk` via the local `claude` CLI), so the runtime works on flat-fee subscription quota at zero marginal per-token cost. OpenAI is preserved as an explicit opt-in. The provider/auth layer was also neutralised so future backends are factory-only additions.
-
-### Changed
-
-- **Default provider `openai` → `claude_sdk`.** `DEFAULT_PROVIDER = "claude_sdk"`; the planner routes the subscription path by default. `claude_sdk` may run with **no model** configured (the SDK follows the subscription default); only `openai` requires a model.
-- **OpenAI demoted to opt-in**, pinned to model `gpt-5.5` (`DEFAULT_OPENAI_MODEL`). Reachable via `--provider openai` / `aiswmm login --openai`; never selected silently when a Claude subscription is detected.
-- **Removed the `AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS` gate** — `claude_sdk` is first-class. Provider argparse choices always include both backends.
-- **`claude-agent-sdk` moved from the optional `[claude]` extra into core dependencies** so the default provider works out of the box (the `[claude]` extra is retained as a back-compat alias). This increases install weight for all users.
-- **Provider-neutral planner:** the runtime derives its supported set from `factory.SUPPORTED_PROVIDERS` and constructs every backend through `make_provider`; the agent `--planner` flag gains the provider-neutral `llm` value (`openai` kept as a deprecated alias).
-- Doctor / setup / welcome guidance reordered subscription-first.
+The planner is driven by one of two **API-key** backends, both using standard
+function-calling over pure-stdlib `urllib` (no SDK, no subprocess): `openai`
+(the default, OpenAI Responses API) and `anthropic` (opt-in, native Anthropic
+Messages API). This supersedes the short-lived, never-released subscription
+design — routing through an agent SDK made Claude emit its own built-in tools
+instead of aiswmm's registered tools, so raw function-calling was chosen for
+robustness (accepting per-token cost). The provider/auth layer stays
+factory-only, so adding a backend is a `factory.SUPPORTED_PROVIDERS` +
+`make_provider` change.
 
 ### Added
 
-- **`aiswmm login`** — an independent, extensible auth subsystem. Bare `aiswmm login` authenticates the Claude subscription (`claude login` when not already logged in); `aiswmm login --openai` stores an OpenAI key in `~/.aiswmm/env` at mode 0600; `aiswmm login --status` prints the auth state (no secrets).
+- **Native Anthropic provider** (`agentic_swmm/providers/anthropic_api.py`) — hits `https://api.anthropic.com/v1/messages` with `anthropic-version: 2023-06-01`, translating aiswmm's OpenAI-shaped tool descriptors (`parameters` → `input_schema`) and Responses-style `input_items` (→ `messages` with `tool_use` / `tool_result` blocks). Reads `ANTHROPIC_API_KEY`; honours `AISWMM_ANTHROPIC_MOCK_RESPONSE` / `AISWMM_ANTHROPIC_MOCK_TOOL_CALLS` for offline tests. No new dependency.
+- **`aiswmm login --anthropic`** — stores `ANTHROPIC_API_KEY` in `~/.aiswmm/env` (mode 0600), pins `provider.default = anthropic` + `anthropic.model = claude-sonnet-4-6`. A bare `aiswmm login` targets the current default provider's key.
 
-### Fixed
+### Changed
 
-- **macOS Keychain login detection.** A logged-in macOS user keeps Claude Code credentials in the login **Keychain**, not a JSON file, so the old OAuth check returned false and dropped them to the rule planner. Detection now probes `security find-generic-password -s "Claude Code-credentials"` (exit code only — never `-w`, never reads/logs the secret) and also treats `ANTHROPIC_API_KEY` as a credential signal.
+- **Default provider is `openai`** (`DEFAULT_PROVIDER = "openai"`, model `gpt-5.5`). `anthropic` is the opt-in second backend (`DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"`); both providers require a model, supplied by per-provider config defaults.
+- **`SUPPORTED_PROVIDERS = ("openai", "anthropic")`** — the factory drops the subscription branch; an unknown provider (including the retired `claude_sdk`) raises `ValueError`.
+- **`aiswmm login` manages API keys** via a `provider → handler` registry; `--status` reports the default provider and which keys are present (no secrets).
+- Doctor / setup / welcome surface a two-API-key view (OpenAI default + Anthropic opt-in); the welcome tip and doctor key-row key on the default provider's key.
+
+### Removed
+
+- The `claude_sdk` provider, the `claude-agent-sdk` core dependency, the `[claude]` extra, and all subscription / macOS-Keychain detection logic.
 
 ## v0.7.1 - SWMManywhere natural-language integration + runtime hardening (2026-05-28)
 

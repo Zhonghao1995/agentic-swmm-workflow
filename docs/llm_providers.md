@@ -1,38 +1,39 @@
 # LLM Providers
 
 The `aiswmm` interactive runtime drives its planner with a large language
-model. Two backends are supported. The deterministic `rule` planner needs
-no provider at all; everything below applies only to the LLM planner.
+model. Two API-key backends are supported, both using standard
+function-calling. The deterministic `rule` planner needs no provider at all;
+everything below applies only to the LLM planner.
 
-| Provider     | Backend                         | Authentication                                  | Install                 |
-| ------------ | ------------------------------- | ----------------------------------------------- | ----------------------- |
-| `claude_sdk` | Claude Agent SDK + `claude` CLI | Claude Pro/Max subscription OAuth, or `ANTHROPIC_API_KEY` | ships by default (core dep) |
-| `openai`     | OpenAI Responses API            | `OPENAI_API_KEY` (per-token billing)             | ships by default        |
+| Provider    | Backend                  | Authentication                       | Install          |
+| ----------- | ------------------------ | ------------------------------------ | ---------------- |
+| `openai`    | OpenAI Responses API     | `OPENAI_API_KEY` (per-token billing) | ships by default |
+| `anthropic` | Anthropic Messages API   | `ANTHROPIC_API_KEY` (per-token billing) | ships by default |
 
-`claude_sdk` is the **default** provider: it routes the planner through your
-Claude Pro/Max subscription via the local `claude` CLI at zero marginal
-per-token cost. The fastest way to get going is:
+Both providers are pure-stdlib `urllib` clients — there is no SDK to install
+and no subprocess to spawn. `openai` is the **default** provider. The fastest
+way to get going is:
 
 ```bash
-aiswmm login        # authenticates the Claude subscription (claude login)
+aiswmm login        # stores your OpenAI API key (the default provider)
 ```
 
-`openai` is an explicit opt-in (billed per token). If you prefer it, run
-`aiswmm login --openai` or pass `--provider openai` per invocation.
+`anthropic` is an explicit opt-in (also billed per token). To use it, run
+`aiswmm login --anthropic` or pass `--provider anthropic` per invocation.
 
 ## Switching providers
 
 The active provider is the `provider.default` config key. Set it once:
 
 ```bash
-aiswmm config set provider.default claude_sdk     # or: openai
+aiswmm config set provider.default openai      # or: anthropic
 ```
 
 Per-invocation override (does not persist):
 
 ```bash
-aiswmm --provider claude_sdk "summarise this model"
 aiswmm --provider openai     "summarise this model"
+aiswmm --provider anthropic  "summarise this model"
 ```
 
 Each provider keeps its own model snapshot under a provider-named config
@@ -40,51 +41,27 @@ section:
 
 ```bash
 aiswmm config set openai.model gpt-5.5
-aiswmm config set claude_sdk.model claude-sonnet-4-5-20250929
+aiswmm config set anthropic.model claude-sonnet-4-6
 ```
 
-`claude_sdk` may be left with **no** model set — the SDK then follows the
-`claude` CLI / subscription default. Only `openai` requires an explicit model
-(the shipped default is `gpt-5.5`).
+Both providers require a model. `aiswmm` ships sensible per-provider defaults
+(`openai.model = gpt-5.5`, `anthropic.model = claude-sonnet-4-6`), so you only
+need to set these to pin a different snapshot.
 
 `aiswmm model --provider <name> --model <snapshot>` is an equivalent
 shorthand for the two steps above.
 
 ## Authentication per provider
 
-### `claude_sdk` (default)
+Keys are stored in `~/.aiswmm/env` (file mode 0600) by `aiswmm login` and are
+never echoed back. They can also be exported directly into your shell. Key
+resolution checks, in order: the environment variable, `~/.aiswmm/env`, then
+the `[<provider>]` section of `~/.aiswmm/config.toml`.
 
-The Claude Agent SDK provider routes through the locally installed
-`claude` command-line tool. The SDK ships as a core dependency, so the
-only step is authenticating the CLI:
+### `openai` (default)
 
-```bash
-aiswmm login            # runs `claude login` when not already logged in
-```
-
-`aiswmm login` is idempotent: it detects an existing session and only
-shells out to `claude login` when needed, then pins
-`provider.default = claude_sdk`. The CLI stores OAuth credentials that the
-SDK reads at call time — `aiswmm` never parses or stores those credentials
-itself.
-
-On **macOS** the `claude` CLI keeps credentials in the login **Keychain**
-(not a JSON file), so detection probes
-`security find-generic-password -s "Claude Code-credentials"` and inspects
-the exit code only — it never requests or logs the secret. When no OAuth
-session is present the SDK falls back to an `ANTHROPIC_API_KEY` environment
-variable if one is set. `aiswmm doctor` (and `aiswmm login --status`) report
-whether a Claude subscription is detected, whether the `claude` CLI is on
-PATH, and whether `claude_agent_sdk` is importable.
-
-The provider spawns the `claude` CLI as a child process. If the CLI is not
-installed, the runtime raises a clear error pointing at the Claude Code
-installation docs rather than failing mid-turn.
-
-### `openai` (opt-in)
-
-Store an API key with `aiswmm login --openai` (written to `~/.aiswmm/env`
-at mode 0600, sets `provider.default = openai` and `openai.model = gpt-5.5`),
+Store an API key with `aiswmm login --openai` (writes `OPENAI_API_KEY` to
+`~/.aiswmm/env`, sets `provider.default = openai` and `openai.model = gpt-5.5`),
 or export it directly:
 
 ```bash
@@ -93,29 +70,32 @@ aiswmm login --openai      # prompts for the key, never echoes it
 export OPENAI_API_KEY="sk-..."
 ```
 
-See [api-key-configuration.md](api-key-configuration.md) for the persisted
-`~/.aiswmm/env` flow. Calls are billed per token against your OpenAI
-account, so OpenAI is never selected silently when a Claude subscription is
-detected — it is reachable only via explicit opt-in.
+### `anthropic` (opt-in)
 
-## Rate limits
+Store an API key with `aiswmm login --anthropic` (writes `ANTHROPIC_API_KEY`
+to `~/.aiswmm/env`, sets `provider.default = anthropic` and
+`anthropic.model = claude-sonnet-4-6`), or export it directly:
 
-The Claude Pro/Max subscription path is **subject to subscription tier
-rate limits** — see the Anthropic Claude documentation for the limits that
-apply to your tier. `aiswmm` does not pre-fetch tier metadata, does not
-retry on a rate-limit event, and does not parallelise requests. When a turn
-is rate-limited it surfaces the limit visibly; switch to `--provider openai`
-for that turn if you need to continue immediately.
+```bash
+aiswmm login --anthropic   # prompts for the key, never echoes it
+# or:
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
 
-The `openai` provider is subject to your OpenAI account's own rate and spend
-limits.
+The provider hits `https://api.anthropic.com/v1/messages` directly with the
+`anthropic-version: 2023-06-01` header. It advertises aiswmm's registered
+tools verbatim, so the model can only call those tools — standard,
+predictable function-calling.
 
-## Terms of service — single user, single subscription
+`aiswmm doctor` (and `aiswmm login --status`) report the default provider and
+whether each provider's API key is present. See
+[api-key-configuration.md](api-key-configuration.md) for the persisted
+`~/.aiswmm/env` flow.
 
-The Claude Agent SDK provider consumes your personal Claude Pro/Max
-subscription quota through the `claude` CLI's OAuth credentials. This is a
-**single-user, single-subscription** path. Sharing one subscription's quota
-across multiple developers, shared machines, or automated CI agents may
-violate the Claude subscription terms. Consult Anthropic's terms of service
-before using this provider outside a single-user setup. The provider does
-not attempt to circumvent rate limits and embeds no credentials on disk.
+## Rate limits and billing
+
+Both providers are billed per token against your own account. `aiswmm` does
+not pre-fetch quota metadata, does not retry on a rate-limit response, and
+does not parallelise requests — each is subject to the rate and spend limits
+your OpenAI / Anthropic account enforces. A provider is never selected
+silently: switching the default or passing `--provider` is always explicit.

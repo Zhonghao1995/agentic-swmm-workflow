@@ -52,14 +52,14 @@ Not every Run has a Case — ad-hoc runs are valid.
 
 ### Provider
 
-The LLM backend driving the planner. Two implementations exist:
+The LLM backend driving the planner. Two API-key implementations exist, both standard function-calling over pure-stdlib `urllib` (no SDK, no subprocess):
 
-- `claude_sdk` (**default**; routes through the local `claude` CLI's OAuth so a Claude Pro/Max subscription is enough — no separate Anthropic API key needed, zero marginal per-token cost). On macOS the subscription credential lives in the login Keychain, not a JSON file; detection probes `security find-generic-password -s "Claude Code-credentials"` (exit code only, never reads the secret). A model is optional — the SDK follows the subscription default.
-- `openai` (opt-in; requires `OPENAI_API_KEY`, billed per token; model defaults to `gpt-5.5`). Selected only via explicit `provider.default = openai` / `--provider openai`, never silently when a subscription is present.
+- `openai` (**default**; requires `OPENAI_API_KEY`, billed per token; model defaults to `gpt-5.5`). OpenAI Responses API.
+- `anthropic` (opt-in; requires `ANTHROPIC_API_KEY`, billed per token; model defaults to `claude-sonnet-4-6`). Native Anthropic Messages API (`https://api.anthropic.com/v1/messages`, `anthropic-version: 2023-06-01`). Selected only via explicit `provider.default = anthropic` / `--provider anthropic`.
 
-Provider abstraction lives in `agentic_swmm/providers/`. Concrete providers implement the `ChatProvider` Protocol in `providers/base.py`. The planner never imports a concrete provider directly — it goes through `providers/factory.make_provider(name, ...)`. Adding a backend is a `factory.SUPPORTED_PROVIDERS` + `make_provider` change only.
+Both providers require a model; `load_config` supplies the per-provider defaults above. Provider abstraction lives in `agentic_swmm/providers/`. Concrete providers implement the `ChatProvider` Protocol in `providers/base.py`. The planner never imports a concrete provider directly — it goes through `providers/factory.make_provider(name, ...)`. Adding a backend is a `factory.SUPPORTED_PROVIDERS` + `make_provider` change only.
 
-Authenticate via `aiswmm login` (subscription) or `aiswmm login --openai` (opt-in key). See the `~/.aiswmm/config.toml` `provider.default` field and `aiswmm model --provider <name>` for switching at the user surface; `aiswmm login --status` / `aiswmm doctor` report which provider and credentials are active.
+Authenticate via `aiswmm login --openai` or `aiswmm login --anthropic` (a bare `aiswmm login` targets the current default provider's key). Keys land in `~/.aiswmm/env` (mode 0600) and are never echoed. See the `~/.aiswmm/config.toml` `provider.default` field and `aiswmm model --provider <name>` for switching at the user surface; `aiswmm login --status` / `aiswmm doctor` report which provider is active and which keys are present.
 
 ### Tool
 
