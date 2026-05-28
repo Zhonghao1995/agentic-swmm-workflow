@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import os
 import sys
 
@@ -465,6 +466,18 @@ def main(argv: list[str] | None = None) -> int:
     # so chained commands in the same shell session pick the memory
     # back up automatically.
     argv, ignore_memory = _strip_ignore_memory(argv)
+    # Onboarding hole: a bare unknown verb like ``aiswmm bogus`` or
+    # ``aiswmm runn`` (typo of ``run``) historically fell through to
+    # the LLM planner, so a first-time user without an API key saw
+    # ``OPENAI_API_KEY is not set`` and concluded the tool requires a
+    # key. Reject single-token unknown verbs up-front with a
+    # ``did-you-mean`` hint and the argparse-standard exit code 2.
+    # Natural-language goals (``aiswmm inspect the project`` —
+    # multiple tokens or a quoted goal containing whitespace) still
+    # route to the agent below.
+    reject_code = _reject_unknown_verb(argv)
+    if reject_code is not None:
+        return reject_code
     argv = _route_default_to_agent(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -638,6 +651,51 @@ def _strip_ignore_memory(argv: list[str]) -> tuple[list[str], bool]:
     if "--ignore-memory" not in argv:
         return argv, False
     return [arg for arg in argv if arg != "--ignore-memory"], True
+
+
+def _reject_unknown_verb(argv: list[str]) -> int | None:
+    """Reject single-token unknown verbs with a ``did-you-mean`` hint.
+
+    Returns the exit code (2, matching argparse's convention) when
+    ``argv`` looks like a typo of a known verb; returns ``None`` to
+    fall through to the normal router. The rule fires only when:
+
+    * argv has exactly one positional token (the typo);
+    * that token does not start with ``-`` (so flags like ``--help``
+      still reach argparse);
+    * the token contains no whitespace (a quoted multi-word goal such
+      as ``aiswmm "inspect the project"`` is still a natural-language
+      request);
+    * the token is not a known verb, nor the legacy ``chat`` alias.
+
+    A multi-token argv such as ``aiswmm inspect the project`` is a
+    real natural-language goal and keeps routing to the agent.
+    """
+    if len(argv) != 1:
+        return None
+    token = argv[0]
+    if not token or token.startswith("-"):
+        return None
+    if any(ch.isspace() for ch in token):
+        # Quoted natural-language goal; not a verb candidate.
+        return None
+    if token in COMMANDS or token == "chat":
+        return None
+    # Build the set of suggestable verbs from COMMANDS plus the
+    # legacy ``chat`` alias the router still understands.
+    candidates = sorted(COMMANDS | {"chat"})
+    matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
+    if matches:
+        hint = f" Did you mean '{matches[0]}'?"
+    else:
+        hint = ""
+    sys.stderr.write(
+        f"error: unknown command '{token}'.{hint} "
+        "See 'aiswmm --help' for available commands.\n"
+        "To send a free-form goal to the agent, use: "
+        f"aiswmm agent \"{token}\"\n"
+    )
+    return 2
 
 
 def _route_default_to_agent(argv: list[str]) -> list[str]:

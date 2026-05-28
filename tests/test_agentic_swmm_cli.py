@@ -12,7 +12,11 @@ from unittest.mock import patch
 
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.cli import _route_default_to_agent, build_parser
+from agentic_swmm.cli import (
+    _reject_unknown_verb,
+    _route_default_to_agent,
+    build_parser,
+)
 from agentic_swmm.commands.agent import _find_repo_inp
 from agentic_swmm.agent.intent_classifier import load_intent_map
 from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_mcp_servers, _select_relevant_skills, _workflow_route_args
@@ -307,6 +311,59 @@ class AgenticSwmmCliTests(unittest.TestCase):
             _route_default_to_agent(["run", "-h"]),
             ["run", "-h"],
         )
+
+    def test_unknown_single_token_verb_is_rejected_with_exit_2(self) -> None:
+        # Onboarding hole: ``aiswmm bogus`` historically routed to the
+        # LLM planner, so a first-time user without an API key saw
+        # ``OPENAI_API_KEY is not set`` and concluded the tool requires
+        # a key. Reject single-token unknown verbs with argparse's
+        # standard exit code 2.
+        self.assertEqual(_reject_unknown_verb(["bogus"]), 2)
+
+    def test_unknown_verb_typo_suggests_close_match(self) -> None:
+        # ``aiswmm runn`` is a typo of ``run``; the rejection should
+        # include a difflib-based "Did you mean" hint.
+        import contextlib
+        import io
+
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = _reject_unknown_verb(["runn"])
+        self.assertEqual(code, 2)
+        message = stderr.getvalue()
+        self.assertIn("unknown command 'runn'", message)
+        self.assertIn("Did you mean 'run'", message)
+
+    def test_known_verbs_and_flags_are_not_rejected(self) -> None:
+        # The rejection must not fire for known verbs, flags, the
+        # legacy ``chat`` alias, multi-token natural-language goals,
+        # or a quoted goal containing whitespace.
+        self.assertIsNone(_reject_unknown_verb([]))
+        self.assertIsNone(_reject_unknown_verb(["run"]))
+        self.assertIsNone(_reject_unknown_verb(["doctor"]))
+        self.assertIsNone(_reject_unknown_verb(["chat"]))
+        self.assertIsNone(_reject_unknown_verb(["--help"]))
+        self.assertIsNone(_reject_unknown_verb(["--model", "gpt-test"]))
+        # Multi-token goal — natural-language path still works.
+        self.assertIsNone(_reject_unknown_verb(["inspect", "the", "project"]))
+        # Single quoted goal that contains whitespace — also NL.
+        self.assertIsNone(_reject_unknown_verb(["inspect the project"]))
+
+    def test_unknown_verb_rejection_via_subprocess_exits_2(self) -> None:
+        # End-to-end: invoking the CLI with an unknown single-token verb
+        # must exit with code 2 and write the rejection to stderr. We
+        # specifically check that no LLM call is attempted (``aiswmm
+        # bogus`` should never reach the agent planner).
+        proc = subprocess.run(
+            [sys.executable, "-m", "agentic_swmm.cli", "bogus"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("unknown command 'bogus'", proc.stderr)
+        self.assertNotIn("OPENAI_API_KEY", proc.stderr)
 
     def test_agent_resolves_bare_inp_names_from_examples(self) -> None:
         self.assertEqual(
