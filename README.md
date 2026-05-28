@@ -28,7 +28,7 @@
   </a>
 </p>
 
-> **Pre-1.0 — actively developed.** The latest stable point release is **v0.7.0** (current default on PyPI; companion-paper reproducibility evidence is pinned at v0.6.4). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.7.0` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.0` (v0.6.4 remains available on the same channels for paper-aligned runs). Pre-releases are available via `pip install --pre aiswmm` (see [CHANGELOG.md](CHANGELOG.md) for the current version).
+> **Pre-1.0 — actively developed.** Latest stable: **v0.7.1** (LLM-driven dispatch + SWMManywhere natural-language integration). For reproducibility, pin a version: `pip install aiswmm==0.7.1` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.1` — v0.6.4 remains pinned for companion-paper runs. See [CHANGELOG.md](CHANGELOG.md).
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
@@ -69,7 +69,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## Meet your agent in about five minutes
 
-> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.7.0`) is the recommended path** (v0.6.4 remains pinned for companion-paper reproducibility) — see [runtime install options](docs/runtime-install-options.md).
+> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.7.1`) is the recommended path** (v0.6.4 remains pinned for companion-paper reproducibility) — see [runtime install options](docs/runtime-install-options.md).
 
 macOS and Linux:
 
@@ -118,7 +118,9 @@ The repository includes runnable benchmarks and research previews with different
 | [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
 | [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
 | [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
-| [Cross-environment byte-identical reproducibility](docs/byte-identical-reproducibility.md) | A natural-language prompt (`Run the Tecnopolo (Rome 1994) demo`) drives the aiswmm chain (LLM agent → MCP → swmm-runner skill) to the same byte-identical `model.out` as bare `swmm5`, across macOS and Docker | SWMM execution-layer reproducibility, not agentic workflow reproducibility |
+| [Cross-environment byte-identical reproducibility](docs/byte-identical-reproducibility.md) | A natural-language prompt (`Run the Tecnopolo (Rome 1994) demo`) drives the aiswmm chain (LLM agent → MCP → swmm-runner skill) to the same byte-identical `model.out` as bare `swmm5`, across macOS and Docker. **v0.7.1 re-verification**: the minimum natural-language prompt length for this chain is now **11 words**, and the `model.out` SHA256 remains identical across the v0.7.0 → v0.7.1 minor revision. | SWMM execution-layer reproducibility, not agentic workflow reproducibility |
+| [LLM-driven dispatch + data-scarce urban modeling (SWMManywhere)](docs/v0.7.1-swmmanywhere-nl-driven-evidence.md) | A single natural-language sentence referring only to a WGS84 bounding box drives the end-to-end SWMManywhere → SWMM → audit → network-map workflow on two independent regions (Greenwich Peninsula and NYC Midtown, ~1 km² each) — no shapefile, no DEM file, no step-by-step tool instructions. Synthesis is the work of [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (Imperial College London, BSD-3-Clause). | Agent-side plumbing for data-scarce baseline modeling; **not** a calibrated or validated network. Calibration is next-milestone scope. |
+| [Cross-session memory autonomous activation](docs/v0.7.1-cross-session-memory-evidence.md) | An 11-word user prompt drove a complete Tecnopolo run on 2026-05-28 during which the LLM autonomously queried `recall_session_history` and recovered two prior Tecnopolo sessions from 12 days earlier — the first user-observable activation of the memory layer on a real production run. | Memory layer fires correctly and shapes planner decisions; staleness weighting and negative-precedent handling are next-milestone scope. |
 
 Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
