@@ -63,6 +63,13 @@ def runtime_env() -> dict[str, str]:
     local_bin = repo_root() / ".local" / "bin"
     if local_bin.exists():
         env["PATH"] = f"{local_bin}{os.pathsep}{env.get('PATH', '')}"
+    # Pin ``PYTHON`` to the interpreter aiswmm itself is running under so
+    # downstream MCP launchers / subprocess shells use the same Python.
+    # Without this, ``scripts/run_mcp_server.mjs`` falls back to scanning
+    # for ``.venv/bin/python`` — if that path exists but is a zero-byte
+    # stub (test fixture leak, half-finished venv), Node spawn returns
+    # ENOEXEC and surfaces as ``MCP transport failed: spawn ENOEXEC``.
+    env.setdefault("PYTHON", sys.executable)
     return env
 
 
