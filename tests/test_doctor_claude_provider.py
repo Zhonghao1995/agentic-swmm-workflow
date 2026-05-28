@@ -1,9 +1,9 @@
-"""Doctor LLM-provider reporting tests (PRD-09 §5.4).
+"""Doctor LLM-provider reporting tests (two API keys).
 
-``aiswmm doctor`` gains an "LLM provider" section that reports whether
-a Claude Code OAuth session is present, and adds ``ANTHROPIC_API_KEY``
-to the runtime-knobs section. These tests drive the doctor extension
-data layer directly and through the CLI.
+``aiswmm doctor`` carries an "LLM provider" section reporting whether
+each provider's API key is present (OpenAI default + Anthropic opt-in),
+and lists both keys in the runtime-knobs section. These tests drive the
+doctor extension data layer directly and through the CLI.
 """
 from __future__ import annotations
 
@@ -25,89 +25,72 @@ from agentic_swmm.commands.doctor_extension import (
 )
 
 
-class _ClaudeHomeMixin(unittest.TestCase):
-    """Point ``Path.home()`` at a fresh tmp dir for each test.
+class _CleanKeyEnvMixin(unittest.TestCase):
+    """Isolate key detection: empty ``HOME`` + cleared key env vars.
 
-    Also neutralises the macOS Keychain probe (the Keychain is independent
-    of ``$HOME``) and clears ``ANTHROPIC_API_KEY`` so OAuth detection
-    reflects only the on-disk credential file under the tmp home.
+    ``provider_key_present`` reads the env var, ``~/.aiswmm/env``, and
+    the config file, so we both clear the env vars *and* point
+    ``Path.home()`` at a fresh tmp dir — otherwise a developer with a
+    real ``~/.aiswmm/env`` key would see a phantom configured provider.
     """
 
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
-        self.home = Path(self._tmp.name)
-        self._home_patch = mock.patch.object(Path, "home", return_value=self.home)
-        self._home_patch.start()
-        self._keychain_patch = mock.patch(
-            "agentic_swmm.agent.provider_preflight._detect_macos_keychain_credentials",
-            return_value=False,
+        self._home_patch = mock.patch.object(
+            Path, "home", return_value=Path(self._tmp.name)
         )
-        self._keychain_patch.start()
+        self._home_patch.start()
         self._env_patch = mock.patch.dict(os.environ, {}, clear=False)
         self._env_patch.start()
+        os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("ANTHROPIC_API_KEY", None)
 
     def tearDown(self) -> None:
         self._env_patch.stop()
-        self._keychain_patch.stop()
         self._home_patch.stop()
         self._tmp.cleanup()
 
-    def _write_oauth(self) -> None:
-        claude_dir = self.home / ".claude"
-        claude_dir.mkdir(parents=True, exist_ok=True)
-        (claude_dir / ".credentials.json").write_text(
-            '{"token": "x"}', encoding="utf-8"
-        )
 
-
-class CollectLLMProviderStatusTests(_ClaudeHomeMixin):
-    def test_reports_oauth_present_when_file_exists(self) -> None:
-        self._write_oauth()
-        status = collect_llm_provider_status()
-        self.assertTrue(status.claude_oauth_present)
-
-    def test_reports_oauth_absent_when_no_file(self) -> None:
-        status = collect_llm_provider_status()
-        self.assertFalse(status.claude_oauth_present)
-
-    def test_openai_key_presence_tracked(self) -> None:
+class CollectLLMProviderStatusTests(_CleanKeyEnvMixin):
+    def test_reports_openai_key_present(self) -> None:
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-x"}):
             self.assertTrue(collect_llm_provider_status().openai_key_present)
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("OPENAI_API_KEY", None)
-            self.assertFalse(collect_llm_provider_status().openai_key_present)
+
+    def test_reports_anthropic_key_present(self) -> None:
+        with mock.patch.dict(os.environ, {"ANTHROPIC_API_KEY": "sk-ant"}):
+            self.assertTrue(collect_llm_provider_status().anthropic_key_present)
+
+    def test_reports_keys_absent_when_unset(self) -> None:
+        status = collect_llm_provider_status()
+        self.assertFalse(status.openai_key_present)
+        self.assertFalse(status.anthropic_key_present)
 
 
-class RenderLLMProviderSectionTests(_ClaudeHomeMixin):
-    def test_section_shows_detected_when_oauth_exists(self) -> None:
-        self._write_oauth()
+class RenderLLMProviderSectionTests(_CleanKeyEnvMixin):
+    def test_section_shows_both_provider_rows(self) -> None:
         body = render_llm_provider_section(collect_llm_provider_status())
         self.assertIn("LLM provider", body)
-        # Subscription row leads the section now.
-        self.assertIn("Claude subscription", body)
-        self.assertIn("detected", body)
+        self.assertIn("OPENAI_API_KEY", body)
+        self.assertIn("ANTHROPIC_API_KEY", body)
 
-    def test_section_shows_not_detected_otherwise(self) -> None:
+    def test_section_has_no_subscription_or_sdk_rows(self) -> None:
         body = render_llm_provider_section(collect_llm_provider_status())
-        self.assertIn("Claude subscription", body)
-        self.assertIn("not detected", body)
-        # The opt-in OpenAI row points at the login command.
-        self.assertIn("aiswmm login --openai", body)
+        self.assertNotIn("subscription", body.lower())
+        self.assertNotIn("keychain", body.lower())
+        self.assertNotIn("claude_agent_sdk", body)
 
-    def test_section_lists_cli_and_sdk_rows(self) -> None:
+    def test_anthropic_row_points_at_login(self) -> None:
         body = render_llm_provider_section(collect_llm_provider_status())
-        self.assertIn("claude CLI", body)
-        self.assertIn("claude_agent_sdk", body)
+        self.assertIn("aiswmm login --anthropic", body)
 
 
-class DoctorJsonCarriesProviderTests(_ClaudeHomeMixin):
-    def test_json_payload_carries_oauth_flag(self) -> None:
-        self._write_oauth()
-        status = collect_llm_provider_status()
-        payload = llm_provider_status_to_dict(status)
-        self.assertIn("claude_oauth_present", payload)
-        self.assertTrue(payload["claude_oauth_present"])
+class DoctorJsonCarriesProviderTests(_CleanKeyEnvMixin):
+    def test_json_payload_carries_both_key_flags(self) -> None:
+        with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "sk-x"}):
+            payload = llm_provider_status_to_dict(collect_llm_provider_status())
+        self.assertIn("openai_key_present", payload)
+        self.assertIn("anthropic_key_present", payload)
+        self.assertTrue(payload["openai_key_present"])
 
     def test_doctor_cli_json_includes_llm_provider_block(self) -> None:
         with TemporaryDirectory() as mem:
@@ -117,11 +100,15 @@ class DoctorJsonCarriesProviderTests(_ClaudeHomeMixin):
                     cli_main(["doctor", "--json"])
         payload = json.loads(out.getvalue())
         self.assertIn("llm_provider", payload)
-        self.assertIn("claude_oauth_present", payload["llm_provider"])
+        self.assertIn("openai_key_present", payload["llm_provider"])
+        self.assertIn("anthropic_key_present", payload["llm_provider"])
 
 
-class RuntimeKnobsAnthropicKeyTests(unittest.TestCase):
+class RuntimeKnobsProviderKeyTests(unittest.TestCase):
     def test_runtime_knobs_section_includes_anthropic_api_key(self) -> None:
+        # ANTHROPIC_API_KEY is the opt-in provider's key, listed as a
+        # runtime knob. OPENAI_API_KEY is the default provider's key and
+        # is covered by the dedicated "LLM provider" doctor section.
         names = {s.env_name for s in collect_optout_status()}
         self.assertIn("ANTHROPIC_API_KEY", names)
 

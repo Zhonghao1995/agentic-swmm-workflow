@@ -54,15 +54,24 @@ class WelcomeMemoryVerbsTests(unittest.TestCase):
 
 class MissingSetupTipTests(unittest.TestCase):
     def setUp(self) -> None:
-        # Subscription-first: the tip now also suppresses when a Claude
-        # subscription is detected. Neutralise the (Keychain-aware) probe
-        # so these tests do not depend on the host's login state.
-        self._sub_patch = mock.patch(
-            "agentic_swmm.agent.provider_preflight.detect_claude_oauth",
-            return_value=False,
+        # The tip keys on the *default provider's* API key. Isolate both
+        # the config dir (so ``provider.default`` resolves to the shipped
+        # openai default) and ``Path.home()`` (so the ``~/.aiswmm/env``
+        # key-detection tier does not leak a developer's real key).
+        self._tmp_cfg = TemporaryDirectory()
+        self._tmp_home = TemporaryDirectory()
+        self._cfg_patch = mock.patch.dict(
+            os.environ, {"AISWMM_CONFIG_DIR": self._tmp_cfg.name}
         )
-        self._sub_patch.start()
-        self.addCleanup(self._sub_patch.stop)
+        self._cfg_patch.start()
+        self._home_patch = mock.patch.object(
+            Path, "home", return_value=Path(self._tmp_home.name)
+        )
+        self._home_patch.start()
+        self.addCleanup(self._cfg_patch.stop)
+        self.addCleanup(self._home_patch.stop)
+        self.addCleanup(self._tmp_cfg.cleanup)
+        self.addCleanup(self._tmp_home.cleanup)
 
     def test_tip_fires_when_no_provider_and_memory_empty(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -74,29 +83,13 @@ class MissingSetupTipTests(unittest.TestCase):
             self.assertIsNotNone(tip)
             self.assertIn("aiswmm login", tip)
 
-    def test_tip_silent_when_api_key_set(self) -> None:
+    def test_tip_silent_when_default_provider_key_set(self) -> None:
+        # Default provider is openai; an OPENAI_API_KEY suppresses the tip.
         with TemporaryDirectory() as tmp:
             empty_dir = Path(tmp) / "missing"
             with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "x"}):
                 tip = _missing_setup_tip(memory_dir=empty_dir)
             self.assertIsNone(tip)
-
-    def test_tip_silent_when_subscription_detected(self) -> None:
-        # A logged-in subscription user is never nagged, even with empty
-        # memory and no OpenAI key.
-        self._sub_patch.stop()
-        with mock.patch(
-            "agentic_swmm.agent.provider_preflight.detect_claude_oauth",
-            return_value=True,
-        ):
-            with TemporaryDirectory() as tmp:
-                empty_dir = Path(tmp) / "missing"
-                with mock.patch.dict(os.environ, {}, clear=False):
-                    os.environ.pop("OPENAI_API_KEY", None)
-                    tip = _missing_setup_tip(memory_dir=empty_dir)
-                self.assertIsNone(tip)
-        # Re-start so addCleanup's stop() does not error on a stopped patch.
-        self._sub_patch.start()
 
     def test_tip_silent_when_memory_populated(self) -> None:
         with TemporaryDirectory() as tmp:

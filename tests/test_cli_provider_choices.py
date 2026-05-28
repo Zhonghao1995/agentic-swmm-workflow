@@ -1,10 +1,10 @@
 """CLI surface tests for the ``--provider`` choice list.
 
-``claude_sdk`` is now a first-class, default provider (the
-subscription path). The ``--provider`` argparse choice list across the
-``agent`` / ``chat`` / ``model`` / ``setup`` subcommands is
-``["openai", "claude_sdk"]`` with no env gate, and the config schema
-accepts a ``claude_sdk.model`` section.
+Two API-key providers are supported: ``openai`` (default) and
+``anthropic`` (opt-in). The ``--provider`` argparse choice list across
+the ``agent`` / ``chat`` / ``model`` / ``setup`` subcommands is
+``["openai", "anthropic"]``, and the config schema accepts an
+``anthropic.model`` section.
 """
 from __future__ import annotations
 
@@ -28,39 +28,44 @@ def _register_one(register_fn) -> argparse.ArgumentParser:
 
 
 class ProviderChoiceParsingTests(unittest.TestCase):
-    def test_agent_subcommand_accepts_claude_sdk(self) -> None:
+    def test_agent_subcommand_accepts_anthropic(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["agent", "--provider", "claude_sdk", "hi"])
-        self.assertEqual(args.provider, "claude_sdk")
+        args = parser.parse_args(["agent", "--provider", "anthropic", "hi"])
+        self.assertEqual(args.provider, "anthropic")
 
     def test_agent_subcommand_still_accepts_openai(self) -> None:
         parser = build_parser()
         args = parser.parse_args(["agent", "--provider", "openai", "hi"])
         self.assertEqual(args.provider, "openai")
 
-    def test_chat_subcommand_accepts_claude_sdk(self) -> None:
+    def test_chat_subcommand_accepts_anthropic(self) -> None:
         # ``chat`` is dispatched via the argv router, not ``build_parser``;
         # exercise its ``register`` directly.
         parser = _register_one(chat_cmd.register)
-        args = parser.parse_args(["chat", "--provider", "claude_sdk"])
-        self.assertEqual(args.provider, "claude_sdk")
+        args = parser.parse_args(["chat", "--provider", "anthropic"])
+        self.assertEqual(args.provider, "anthropic")
         with self.assertRaises(SystemExit):
             parser.parse_args(["chat", "--provider", "bogus"])
 
-    def test_model_subcommand_accepts_claude_sdk(self) -> None:
+    def test_model_subcommand_accepts_anthropic(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["model", "--provider", "claude_sdk"])
-        self.assertEqual(args.provider, "claude_sdk")
+        args = parser.parse_args(["model", "--provider", "anthropic"])
+        self.assertEqual(args.provider, "anthropic")
 
-    def test_setup_subcommand_accepts_claude_sdk(self) -> None:
+    def test_setup_subcommand_accepts_anthropic(self) -> None:
         parser = build_parser()
-        args = parser.parse_args(["setup", "--provider", "claude_sdk"])
-        self.assertEqual(args.provider, "claude_sdk")
+        args = parser.parse_args(["setup", "--provider", "anthropic"])
+        self.assertEqual(args.provider, "anthropic")
 
     def test_unknown_provider_rejected_at_parse_time(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):
             parser.parse_args(["agent", "--provider", "bogus", "hi"])
+
+    def test_retired_claude_sdk_rejected_at_parse_time(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["agent", "--provider", "claude_sdk", "hi"])
 
     def test_agent_planner_accepts_llm_and_openai_alias(self) -> None:
         parser = build_parser()
@@ -73,21 +78,21 @@ class ProviderChoiceParsingTests(unittest.TestCase):
         )
 
 
-class ClaudeSdkModelConfigRoundTripTests(unittest.TestCase):
-    def test_config_set_get_round_trips_claude_sdk_model(self) -> None:
-        snapshot = "claude-sonnet-4-5-20250929"
+class AnthropicModelConfigRoundTripTests(unittest.TestCase):
+    def test_config_set_get_round_trips_anthropic_model(self) -> None:
+        snapshot = "claude-sonnet-4-6"
         with TemporaryDirectory() as tmp:
             with mock.patch.dict(os.environ, {CONFIG_DIR_ENV: tmp}):
-                set_config_value("claude_sdk.model", snapshot)
+                set_config_value("anthropic.model", snapshot)
                 config = load_config()
-                self.assertEqual(config.get("claude_sdk.model"), snapshot)
+                self.assertEqual(config.get("anthropic.model"), snapshot)
 
-    def test_provider_default_round_trips_claude_sdk(self) -> None:
+    def test_provider_default_round_trips_anthropic(self) -> None:
         with TemporaryDirectory() as tmp:
             with mock.patch.dict(os.environ, {CONFIG_DIR_ENV: tmp}):
-                set_config_value("provider.default", "claude_sdk")
+                set_config_value("provider.default", "anthropic")
                 config = load_config()
-                self.assertEqual(config.get("provider.default"), "claude_sdk")
+                self.assertEqual(config.get("provider.default"), "anthropic")
 
 
 if __name__ == "__main__":  # pragma: no cover

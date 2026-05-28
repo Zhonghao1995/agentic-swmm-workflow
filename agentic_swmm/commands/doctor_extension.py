@@ -747,10 +747,6 @@ _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
         "API key for the opt-in anthropic provider (Anthropic Messages API)",
     ),
     (
-        "OPENAI_API_KEY",
-        "API key for the default openai provider (OpenAI Responses API)",
-    ),
-    (
         "AISWMM_DISABLE_MEMORY_INFORMED",
         "disable memory-informed policy decisions (LLM-only planner)",
     ),

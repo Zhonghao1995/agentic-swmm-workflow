@@ -1,40 +1,23 @@
-"""Subscription-first interactive dispatch preflight.
+"""Interactive-dispatch preflight (two API keys).
 
-``_preflight_interactive_dispatch`` rewrites the dispatched argv to the
-rule planner only when the preflight reports *no usable provider*. With
-subscription-first defaults the claude_sdk subscription path is always
-selected (the SDK authenticates at call time), so the interactive
-dispatch is left on ``--planner llm`` even when no credentials are
-detected — but a soft warning is printed to stderr.
+``_preflight_interactive_dispatch`` keeps the LLM planner whenever the
+preflight reports a usable (known) provider — which the shipped openai
+default always is — and only rewrites the dispatched argv to the rule
+planner when the resolved default is an *unknown* provider. When the
+selected provider has no detectable key a soft warning lands on stderr.
 """
 from __future__ import annotations
 
 import io
 from contextlib import redirect_stderr
 
-import pytest
-
-from agentic_swmm.agent import provider_preflight
 from agentic_swmm.cli import _preflight_interactive_dispatch
 
 
-@pytest.fixture
-def _no_keychain(monkeypatch):
-    """Neutralise the macOS Keychain probe so the slate is known."""
-    monkeypatch.setattr(
-        provider_preflight,
-        "_detect_macos_keychain_credentials",
-        lambda: False,
-        raising=True,
-    )
-
-
-def test_preflight_keeps_llm_planner_with_subscription_default(
-    monkeypatch, tmp_path, _no_keychain
-):
-    # No credentials at all: the subscription default is still selected
-    # (claude_sdk), so the planner is NOT downgraded to rule. A soft
-    # warning lands on stderr pointing at `aiswmm login`.
+def test_preflight_keeps_llm_planner_with_openai_default_no_key(monkeypatch, tmp_path):
+    # No key at all: the openai default is still a usable (known)
+    # provider, so the planner is NOT downgraded to rule. A soft warning
+    # lands on stderr pointing at `aiswmm login`.
     home = tmp_path / "h"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
@@ -50,7 +33,10 @@ def test_preflight_keeps_llm_planner_with_subscription_default(
     assert "aiswmm login" in err.getvalue()
 
 
-def test_preflight_passes_through_when_openai_key_present(monkeypatch, tmp_path, _no_keychain):
+def test_preflight_passes_through_when_openai_key_present(monkeypatch, tmp_path):
+    home = tmp_path / "h"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     err = io.StringIO()
@@ -62,11 +48,13 @@ def test_preflight_passes_through_when_openai_key_present(monkeypatch, tmp_path,
     assert err.getvalue() == ""
 
 
-def test_preflight_passes_through_with_subscription(monkeypatch, tmp_path, _no_keychain):
-    # A logged-in subscription user (ANTHROPIC_API_KEY signal here) keeps
-    # the llm planner with no warning.
+def test_preflight_passes_through_when_anthropic_default_with_key(monkeypatch, tmp_path):
+    # anthropic pinned as default with its key present -> usable, no warning.
     home = tmp_path / "h"
     home.mkdir()
+    cfg = home / ".aiswmm"
+    cfg.mkdir(parents=True)
+    (cfg / "config.toml").write_text('[provider]\ndefault = "anthropic"\n', encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant")
@@ -79,7 +67,7 @@ def test_preflight_passes_through_with_subscription(monkeypatch, tmp_path, _no_k
     assert err.getvalue() == ""
 
 
-def test_preflight_does_not_swap_for_one_shot_invocations(monkeypatch, tmp_path, _no_keychain):
+def test_preflight_does_not_swap_for_one_shot_invocations(monkeypatch, tmp_path):
     """A one-shot ``agent <goal>`` without ``--interactive`` is left alone."""
     home = tmp_path / "h"
     home.mkdir()

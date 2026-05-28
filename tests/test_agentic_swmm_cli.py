@@ -192,9 +192,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             env["AISWMM_CONFIG_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
             proc = subprocess.run(
-                # ``--provider openai`` opts in to the OpenAI backend so the
-                # OpenAI mock-response env var drives the turn; the shipped
-                # default provider is now the claude_sdk subscription path.
+                # ``--provider openai`` (the shipped default) makes the
+                # OpenAI mock-response env var drive the turn deterministically.
                 [sys.executable, "-m", "agentic_swmm.cli", "--provider", "openai", "--model", "gpt-test"],
                 cwd=REPO_ROOT,
                 env=env,
@@ -262,8 +261,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "agentic_swmm.cli",
-                    # Opt in to OpenAI so the OpenAI mock-response env var
-                    # drives the turn; default provider is now claude_sdk.
+                    # ``openai`` is the default provider; pinning it makes
+                    # the OpenAI mock-response env var drive the turn.
                     "--provider",
                     "openai",
                     "--model",
@@ -284,9 +283,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("mocked natural language agent", proc.stdout)
 
     def test_default_router_preserves_explicit_low_level_run(self) -> None:
-        # Provider-neutralization (subscription-first): the default
-        # router now dispatches the provider-neutral ``--planner llm``
-        # token (the backend is resolved from ``provider.default``).
+        # Provider-neutralization: the default router dispatches the
+        # provider-neutral ``--planner llm`` token (the backend is
+        # resolved from ``provider.default``, openai by default).
         # Pin ``OPENAI_API_KEY`` so the interactive preflight treats a
         # provider as configured and does not downgrade to ``rule``;
         # the no-provider fallback is covered by
