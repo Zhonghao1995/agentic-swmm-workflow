@@ -102,8 +102,86 @@ def parse_timeseries_file(path: Path) -> tuple[list[datetime], list[float]]:
     return times, vals
 
 
+def _find_raingages_file(inp_path: Path, gage_id: str) -> Path | None:
+    """Return the .dat path referenced by ``[RAINGAGES] FILE`` for ``gage_id``.
+
+    SWMManywhere emits INPs whose rainfall input lives in an external
+    .dat file referenced from ``[RAINGAGES]`` instead of an inline
+    ``[TIMESERIES]`` block, e.g.::
+
+        [RAINGAGES]
+        rg1   INTENSITY  0:05   1.0   FILE   "storm.dat"
+
+    Returns ``None`` (not raise) so the caller can produce a context-rich
+    error pointing at both INP and the missing series.
+    """
+    in_raingages = False
+    for raw in inp_path.read_text(errors='ignore').splitlines():
+        s = raw.strip()
+        if s.upper() == '[RAINGAGES]':
+            in_raingages = True
+            continue
+        if in_raingages:
+            if s.startswith('[') and s.endswith(']'):
+                break
+            if not s or s.startswith(';'):
+                continue
+            parts = s.split()
+            upper_parts = [p.upper() for p in parts]
+            if parts[0].strip('"') != gage_id:
+                continue
+            if 'FILE' in upper_parts:
+                idx = upper_parts.index('FILE')
+                if idx + 1 < len(parts):
+                    return inp_path.parent / parts[idx + 1].strip('"')
+    return None
+
+
+def parse_raingages_file(path: Path, gage_id: str | None = None) -> tuple[list[datetime], list[float]]:
+    """Parse the SWMM5 ``[RAINGAGES] FILE`` format::
+
+        <gage_id> <YYYY> <MM> <DD> <HH> <mm> <value>
+
+    Lines whose first token does not match ``gage_id`` (when supplied)
+    are skipped — SWMM5 allows a single .dat to hold multiple gages.
+    """
+    times: list[datetime] = []
+    vals: list[float] = []
+    for raw in path.read_text(errors='ignore').splitlines():
+        s = raw.strip()
+        if not s or s.startswith(';'):
+            continue
+        parts = s.split()
+        if len(parts) < 7:
+            continue
+        if gage_id is not None and parts[0] != gage_id:
+            continue
+        try:
+            dt = datetime(
+                int(parts[1]), int(parts[2]), int(parts[3]),
+                int(parts[4]), int(parts[5]),
+            )
+            v = float(parts[6])
+        except (ValueError, IndexError):
+            continue
+        times.append(dt)
+        vals.append(v)
+    if not times:
+        raise SystemExit(
+            f'No RAINGAGES FILE rows found in {path}'
+            + (f' for gage {gage_id!r}' if gage_id else '')
+        )
+    return times, vals
+
+
 def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[datetime], list[float]]:
-    """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes."""
+    """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes.
+
+    Fallback (strict additive): if no ``[TIMESERIES]`` row matches
+    ``ts_name``, look for a ``[RAINGAGES] <ts_name> ... FILE <storm.dat>``
+    entry and parse that .dat. This supports SWMManywhere-generated INPs
+    which omit ``[TIMESERIES]`` entirely.
+    """
     times: list[datetime] = []
     vals: list[float] = []
     reading = False
@@ -126,6 +204,15 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
             times.append(dt)
             vals.append(float(parts[3]))
     if not times:
+        # Strict additive fallback: try RAINGAGES FILE (SWMManywhere case).
+        raingages_path = _find_raingages_file(inp_path, ts_name)
+        if raingages_path is not None:
+            if not raingages_path.exists():
+                raise SystemExit(
+                    f'RAINGAGES FILE referenced by gage {ts_name!r} not found: '
+                    f'{raingages_path} (referenced from {inp_path})'
+                )
+            return parse_raingages_file(raingages_path, gage_id=ts_name)
         raise SystemExit(f'No TIMESERIES values found for {ts_name} in {inp_path}')
     return times, vals
 
