@@ -75,7 +75,7 @@ For real OpenAI agent planning, set your key in the local shell before running `
 
 ```bash
 export OPENAI_API_KEY="..."
-aiswmm --provider openai "Explain what this Agentic SWMM installation can do"
+aiswmm agent --provider openai "Explain what this Agentic SWMM installation can do"
 ```
 
 `agentic-swmm` remains available as an alias for the same CLI.

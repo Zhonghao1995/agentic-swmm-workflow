@@ -28,7 +28,7 @@
   </a>
 </p>
 
-> **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`. A **v0.7.0a1** preview is available via `pip install --pre aiswmm` ([changelog](CHANGELOG.md)).
+> **Pre-1.0 — actively developed.** The latest stable point release is **v0.6.4** (the version used by the companion paper). The CLI / Skill / MCP surface may still evolve between minor versions before the planned **1.0** stable release. For reproducibility, pin an explicit version: `pip install aiswmm==0.6.4` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.6.4`. The latest pre-release is available via `pip install --pre aiswmm` (see [CHANGELOG.md](CHANGELOG.md) for the current version).
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
