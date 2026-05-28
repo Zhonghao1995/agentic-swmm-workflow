@@ -214,4 +214,29 @@ skill script
 
 ## 7. Implementation status
 
-(filled in at the end of Phase 5)
+Completed on the `feat/swmmanywhere`-based refactor branch in six
+commits:
+
+| Phase | Commit | Title |
+| --- | --- | --- |
+| 0 | `23cc880` | docs(prd): LLM-driven dispatch refactor |
+| 1 | `02f6d8b` | feat(tool_handlers): add swmm_anywhere typed-tool surface for LLM-driven dispatch |
+| 2 | `ebd4dae` | feat(agent): remove select_workflow_mode hardcoded gate; LLM picks tools directly |
+| 3 | `15548e8` | refactor(agent): delete workflow_modes/ and intent_disambiguator — LLM reads SKILL.md directly |
+| 4 | `919d97b` | test(agent): rewrite workflow_mode tests around LLM-driven dispatch; add LLM-mock integration tests |
+| 5 | *this commit* | docs: record LLM-driven dispatch refactor (ADR + CHANGELOG + PRD status) |
+
+Verification (full suite with the standard CI opt-out list applied):
+
+- 2140 tests passing, 12 skipped.
+- 14 pre-existing test failures (geo / MCP / outfall script bugs)
+  are the same set that fails on `feat/swmmanywhere @ 42e6111` —
+  unrelated to this refactor.
+- The new integration suite `tests/test_llm_driven_dispatch.py`
+  pins the post-refactor contract (LLM picks tool by name, call
+  reaches the executor, `select_workflow_mode` never appears in
+  the plan).
+
+Net diff vs `feat/swmmanywhere @ 42e6111`: ~30 files changed,
+1 new tool handler + 1 new integration test added, 12 dispatch-layer
+modules and 13 dispatch-layer test files deleted, ~1100 LOC removed.

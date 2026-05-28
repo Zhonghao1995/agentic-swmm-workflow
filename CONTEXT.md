@@ -113,7 +113,7 @@ Lives in `skills/swmm-experiment-audit/`. Invoked by `aiswmm audit --run-dir <pa
 
 ### Workflow Mode
 
-A coarse classification of what the agent is doing in a Run: `prepared_inp_cli`, `gis_to_inp`, `calibration`, etc. Defined in `agentic_swmm/agent/workflow_modes/`. Used by the planner to route to the right skill family.
+Historically a coarse classification (`prepared_inp_cli`, `gis_to_inp`, `calibration`, …) that the planner used to route to a skill family via a `select_workflow_mode` first-hop tool. **Removed in the LLM-driven dispatch refactor** (see *Dispatch architecture* below) — the LLM now reads each tool's description / SKILL.md and picks tools directly without a mode gate. The string still exists as an optional *tag* on `audit_run` payloads for provenance bookkeeping, but it is no longer a routing surface.
 
 ### Skill
 
@@ -127,7 +127,12 @@ Examples: `swmm-runner` (executes SWMM), `swmm-experiment-audit` (post-run audit
 
 ### Intent
 
-A classified user goal extracted from a prompt. Categories: `wants_demo`, `wants_run`, `wants_plot`, `wants_calibration`, etc. Used by the planner to route to a Workflow Mode and a Skill family. Defined in `agentic_swmm/agent/intent_classifier.py`.
+A classified user goal extracted from a prompt. Categories: `wants_demo`, `wants_run`, `wants_plot`, `wants_calibration`, etc. Defined in `agentic_swmm/agent/intent_classifier.py`. Used by:
+
+- The warm-intro classifier (`is_open_shaped_prompt`) to decide whether a prompt looks open-shaped enough to need the warm-intro template.
+- The memory-informed-policy hook before the LLM main loop, as one input to the case-resolution heuristic.
+
+**Not** used for tool routing post-refactor — the LLM picks tools directly from their descriptions.
 
 ## Key seams
 
@@ -194,6 +199,31 @@ A new orthogonal axis introduced by the `swmm-anywhere` skill (PRD `swmmanywhere
 | What planners must NOT do | Use `swmm-anywhere` when the user has real pipe data — the synth network would silently disagree with the real one | Skip the `00_raw/` snapshot — OSM drift would invalidate reproducibility |
 
 The orchestrator (`swmm-end-to-end`) picks the entry based on user inputs: any pipe file → real-data; bbox-only → synth-data. Output structure under `runs/<date>/<id>/` is intentionally identical from `swmm_run/` downward so audit / plot / calibration treat both paths symmetrically.
+
+## Dispatch architecture: LLM-driven over hardcoded mode enum
+
+### Decision
+
+The planner sends the full `AgentToolRegistry.schemas()` to the LLM and lets the LLM pick tools by name. There is no `select_workflow_mode` first-hop gate, no `workflow_modes/<mode>.py` adapter registry, and no `intent_disambiguator` that re-derives a mode string from keywords. Tools live in `agentic_swmm/agent/tool_handlers/<family>.py` with typed-parameter validation, exactly the shape the OpenAI / Anthropic function-calling APIs assume.
+
+### Context (why this was decided)
+
+v0.7.0a2 introduced a defensive dispatch layer between the user prompt and the SWMM tools: a `select_workflow_mode` tool with a seven-value enum, per-mode adapter files, and an LLM-classifier helper that triggered on plot-conflict goals. The layer was a GPT-4-era guardrail that:
+
+- Hid the concrete SWMM tools from the LLM behind one big "pick a mode" tool — the opposite shape from how every other tool-calling API works.
+- Re-imposed keyword-matching brittleness (the legacy classifier was the fallback inside the mode tool itself).
+- Cost ~4 files per new skill (an adapter, a handler, an enum value, and a disambiguator prompt update). The new `swmm-anywhere` synth-from-bbox path exposed the unsustainability: there was no `synth-from-bbox` enum value, so a "use SWMManywhere on this bbox" prompt always fell through to the wrong mode.
+
+Frontier 2026-era LLMs (GPT-5.5 / Claude Opus 4.7+) pick the right tool from a flat registry at ~95% accuracy when each tool's description is well-written. The mode gate was throwing that capability away.
+
+### Consequences
+
+- **Adding a skill is one file.** Drop a typed handler under `tool_handlers/<name>.py`, register a `ToolSpec` in `tool_registry._build_tools()`, write a SKILL.md for the LLM to read. No adapter / enum / disambiguator edits.
+- **The LLM's tool-pick decision is auditable as a single event** — `planner_response.tool_calls` in `agent_trace.jsonl` — instead of a tool-call chain (`select_workflow_mode` → adapter → real tool) that hid which classifier made the decision.
+- **Two-level select_skill flow stays.** The `select_skill` tool that exposes deterministic-SWMM skills is unchanged; the LLM picks the skill, then picks the tool within it. That's a *help-the-LLM* surface, not a routing gate.
+- **Memory-informed-policy hook stays.** The pre-LLM consult (`_consult_memory_informed_policy`) that escalates high-stakes goals to HITL is orthogonal to dispatch and survives unchanged.
+
+The decision record lives at `.claude/prds/PRD_llm_driven_dispatch.md`.
 
 ## Subagent context priority
 
