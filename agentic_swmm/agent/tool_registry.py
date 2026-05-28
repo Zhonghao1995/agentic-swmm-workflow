@@ -476,6 +476,47 @@ def _build_tools() -> dict[str, ToolSpec]:
             supports_gap_fill=False,
         ),
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
+        ToolSpec(
+            "synth_swmm_from_bbox",
+            (
+                "Synthesise a SWMM .inp file from a WGS84 bounding box using the "
+                "swmm-anywhere skill, which wraps ImperialCollegeLondon/SWMManywhere "
+                "(BSD-3-Clause).\n"
+                "USE WHEN: the user wants to build a SWMM model from a geographic "
+                "region and has not supplied a shapefile or pre-built network — "
+                "i.e. there is no SHP / GeoJSON / network_json input, just a bbox "
+                "or a place name with coordinates.\n"
+                "DO NOT USE WHEN: the user supplied a SHP / network_json / "
+                "existing .inp (those flow through build_inp, network_to_inp, "
+                "run_swmm_inp instead).\n"
+                "Requires the optional [anywhere] extra; the tool returns a "
+                "stage-tagged hint if the extra is missing."
+            ),
+            _object(
+                {
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat].",
+                    },
+                    "run_dir": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "refresh_raw": {"type": "boolean"},
+                    "upstream_defaults": {
+                        "type": "boolean",
+                        "description": "When true, skip aiswmm's tuned outfall_derivation overrides and use SWMManywhere's upstream defaults.",
+                    },
+                    "rain_file": {
+                        "type": "string",
+                        "description": "Optional absolute path to a SWMM-format DAT rainfall file to replace the bundled storm.dat.",
+                    },
+                },
+                ["bbox"],
+            ),
+            _synth_swmm_from_bbox_tool,
+        ),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
@@ -1120,6 +1161,12 @@ from agentic_swmm.agent.tool_handlers.swmm_plot import (  # noqa: E402,F401
 from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
     _build_inp_args,
     _build_inp_tool,
+)
+# LLM-driven dispatch refactor: ``swmm-anywhere`` handler is in-process
+# (not MCP-routed), so it re-exports cleanly here without needing the
+# late-import dance the MCP-routed families use.
+from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
+    _synth_swmm_from_bbox_tool,
 )
 
 

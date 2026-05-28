@@ -43,6 +43,10 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "run_swmm_inp": False,
     "run_tests": False,
     "summarize_memory": False,
+    # LLM-driven dispatch refactor: in-process wrapper around
+    # ImperialCollegeLondon/SWMManywhere — writes a synthesised INP +
+    # raw-data snapshot, so not read-only.
+    "synth_swmm_from_bbox": False,
     # Pure read / inspect.
     "capabilities": True,
     "git_diff": True,
