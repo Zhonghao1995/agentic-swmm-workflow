@@ -24,6 +24,72 @@ _ARTIFACT_KIND_LABELS = {
     "other": "Other artifacts",
 }
 
+# Tools whose result paths are LLM *input* (skill contracts they read,
+# directory listings, registry lookups), not produced artifacts. The
+# legacy ``_what_you_got`` filtered nothing and the section ended up
+# dominated by SKILL.md paths from ``read_skill`` / ``select_skill``
+# while real artifacts (synth.inp, model.rpt, audit JSONs, PNGs) were
+# missed because their paths sit under ``result["results"]`` /
+# ``result["excerpt"]`` / ``result["args"]`` rather than the top-level
+# ``result["path"]``. See ``test_reporting_what_you_got_artifacts.py``.
+_INTROSPECTION_TOOLS = frozenset(
+    {
+        "capabilities",
+        "list_dir",
+        "list_mcp_servers",
+        "list_mcp_tools",
+        "list_skills",
+        "read_file",
+        "read_skill",
+        "search_files",
+        "select_skill",
+    }
+)
+
+# Path suffixes that look like real modeling artifacts. Used by the
+# recursive path-miner to filter out random strings that happen to
+# contain a slash (timestamps, URLs, etc.). Mirror the suffixes the
+# kind-classifier already keys off so a path that gets collected can
+# also be classified.
+_ARTIFACT_SUFFIXES = (
+    ".inp",
+    ".rpt",
+    ".out",
+    ".png",
+    ".pdf",
+    ".json",
+    ".md",
+    ".csv",
+    ".dat",
+    ".geoparquet",
+    ".parquet",
+    ".tif",
+    ".txt",
+)
+
+# Path fragments that mark planner bookkeeping (not user-facing
+# artifacts). ``tool_results/`` is where ``_run_cli_tool`` /
+# ``_run_process_tool`` mirror stdout / stderr. The session-level
+# trace/state files are the runtime's own bookkeeping, not modeling
+# output. The ``stdout.txt`` / ``stderr.txt`` siblings of model.rpt
+# inside ``20_swmm_run/`` are also noise from the SWMM CLI wrapper.
+_PLANNER_INTERNAL_FRAGMENTS = (
+    "/tool_results/",
+    "/agent_trace.jsonl",
+    "/memory_trace.jsonl",
+    "/session_state.json",
+    "/context_summary.md",
+    "/final_report.md",
+    "/stdout.txt",
+    "/stderr.txt",
+)
+
+# Path fragments that mark LLM reading material (skills, docs, repo
+# code). These can show up in legitimate result payloads (e.g.
+# ``read_skill`` putting a SKILL.md at ``result["path"]``) but they
+# are LLM *inputs*, never produced artifacts.
+_LLM_INPUT_FRAGMENTS = ("/skills/", "/docs/")
+
 
 def write_report(
     session_dir: Path,
@@ -99,15 +165,101 @@ def _what_i_did(plan: list[Any], results: list[dict[str, Any]]) -> list[str]:
     return bullets
 
 
+def _looks_like_artifact_path(value: str) -> bool:
+    """Heuristic: is this string a path that a user would want to open?
+
+    Must be (1) absolute, (2) end in a known artifact suffix, and (3)
+    not be planner bookkeeping or LLM-input material. We do NOT touch
+    the filesystem — the recursive miner runs against the in-memory
+    ``results`` payload and the user can always check disk themselves
+    if a path is stale.
+    """
+    if not value.startswith("/"):
+        return False
+    lowered = value.lower()
+    if not lowered.endswith(_ARTIFACT_SUFFIXES):
+        return False
+    if any(frag in lowered for frag in _PLANNER_INTERNAL_FRAGMENTS):
+        return False
+    if any(frag in lowered for frag in _LLM_INPUT_FRAGMENTS):
+        return False
+    return True
+
+
+def _mine_paths(value: Any, sink: list[str]) -> None:
+    """Recursively walk a result payload and collect artifact paths.
+
+    Handlers vary wildly in where they stash paths:
+
+    * ``_run_cli_tool`` returns ``{"args": {"out_png": "/p"}, ...}``
+    * ``_synth_swmm_from_bbox_tool`` returns
+      ``{"results": {"inp_path": "/p", "raw_manifest_path": "/q"}}``
+    * MCP-routed handlers return ``{"excerpt": "<json string>"}`` or
+      ``{"results": {"content": [{"text": "<json string>"}]}}``
+    * Some handlers also dump a ``"summary"`` like
+      ``"map: /path/to.png"`` or ``"synth_inp=/path"``
+
+    Walking the payload recursively (instead of teaching this module
+    every handler's schema) keeps the miner robust to future handlers
+    being added without updating the report renderer.
+    """
+    if isinstance(value, str):
+        # Direct string path.
+        if _looks_like_artifact_path(value):
+            sink.append(value)
+            return
+        # JSON strings emitted by MCP tools — the ``excerpt`` /
+        # ``content[].text`` carry the real manifest. Cheap to parse
+        # speculatively; on failure we fall back to substring mining.
+        stripped = value.strip()
+        if stripped.startswith(("{", "[")):
+            try:
+                _mine_paths(json.loads(stripped), sink)
+                return
+            except (ValueError, TypeError):
+                pass
+        # ``summary`` strings like ``map: /path/x.png`` or
+        # ``synth_inp=/path/y.inp`` — split on whitespace / common
+        # separators and probe each token.
+        for token in value.replace("=", " ").replace(":", " ").split():
+            if _looks_like_artifact_path(token):
+                sink.append(token)
+        return
+    if isinstance(value, dict):
+        for v in value.values():
+            _mine_paths(v, sink)
+        return
+    if isinstance(value, list):
+        for v in value:
+            _mine_paths(v, sink)
+
+
 def _what_you_got(results: list[dict[str, Any]]) -> list[str]:
-    """Group artifact paths by kind for the reader."""
+    """Group artifact paths by kind for the reader.
+
+    Skips introspection tools (``read_skill`` / ``list_*`` / ...) so
+    their LLM-input paths don't drown out real artifacts. Recursively
+    mines paths from the result payload — handlers can stash paths
+    anywhere (top-level ``path``, nested ``results.*_path``, embedded
+    in an MCP ``excerpt`` JSON string, in the ``summary`` text, ...)
+    and the renderer surfaces them all. See
+    ``tests/test_reporting_what_you_got_artifacts.py`` for the lock-in
+    against the introspection-paths-drown-real-artifacts regression.
+    """
     grouped: dict[str, list[str]] = {}
+    seen: set[str] = set()
     for result in results:
-        path = result.get("path")
-        if not path:
+        tool = str(result.get("tool", "")).lower()
+        if tool in _INTROSPECTION_TOOLS:
             continue
-        kind = _classify_artifact(result, path)
-        grouped.setdefault(kind, []).append(str(path))
+        collected: list[str] = []
+        _mine_paths(result, collected)
+        for path in collected:
+            if path in seen:
+                continue
+            seen.add(path)
+            kind = _classify_artifact(result, path)
+            grouped.setdefault(kind, []).append(path)
     if not grouped:
         return []
     lines: list[str] = []
