@@ -7,8 +7,14 @@ from typing import Any
 
 
 CONFIG_DIR_ENV = "AISWMM_CONFIG_DIR"
+# Two API-key providers, both standard function-calling. ``openai`` is
+# the shipped default (OpenAI Responses API); ``anthropic`` is opt-in
+# (native Anthropic Messages API) via ``--provider anthropic`` / config.
 DEFAULT_PROVIDER = "openai"
-DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+# Canonical OpenAI model id for the default backend.
+DEFAULT_OPENAI_MODEL = "gpt-5.5"
+# Canonical Anthropic model id for the opt-in backend.
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 
 @dataclass(frozen=True)
@@ -67,6 +73,9 @@ def default_values() -> dict[str, Any]:
         },
         "openai": {
             "model": os.environ.get("AISWMM_OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        },
+        "anthropic": {
+            "model": os.environ.get("AISWMM_ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL),
         },
         "runtime": {
             "context_max_chars": 20000,

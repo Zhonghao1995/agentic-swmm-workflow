@@ -90,7 +90,7 @@ If an older local `.venv` was previously created with Python 3.9, the installer 
 
 During setup, the installer asks for an OpenAI API key. Press Enter to do it later, or paste a key to enable OpenAI-backed `aiswmm` agent planning immediately. On macOS and Linux, the key is stored in `~/.aiswmm/env`; on Windows, it is stored in `~/.aiswmm/env.ps1`. The installed `aiswmm` command loads that file before starting the CLI. See [API key configuration](api-key-configuration.md) for the recommended setup paths.
 
-The agent planner can also run on a Claude Pro/Max subscription instead of an OpenAI key — see [LLM providers](llm_providers.md) for how to switch backends and authenticate each one.
+The agent planner can also run on Anthropic instead of OpenAI (both are API-key backends) — see [LLM providers](llm_providers.md) for how to switch backends and authenticate each one.
 
 On macOS and Linux, after publishing `web/install.sh` to your website:
 

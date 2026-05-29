@@ -2,6 +2,34 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## Unreleased — two API-key LLM providers (OpenAI default + Anthropic opt-in)
+
+The planner is driven by one of two **API-key** backends, both using standard
+function-calling over pure-stdlib `urllib` (no SDK, no subprocess): `openai`
+(the default, OpenAI Responses API) and `anthropic` (opt-in, native Anthropic
+Messages API). This supersedes the short-lived, never-released subscription
+design — routing through an agent SDK made Claude emit its own built-in tools
+instead of aiswmm's registered tools, so raw function-calling was chosen for
+robustness (accepting per-token cost). The provider/auth layer stays
+factory-only, so adding a backend is a `factory.SUPPORTED_PROVIDERS` +
+`make_provider` change.
+
+### Added
+
+- **Native Anthropic provider** (`agentic_swmm/providers/anthropic_api.py`) — hits `https://api.anthropic.com/v1/messages` with `anthropic-version: 2023-06-01`, translating aiswmm's OpenAI-shaped tool descriptors (`parameters` → `input_schema`) and Responses-style `input_items` (→ `messages` with `tool_use` / `tool_result` blocks). Reads `ANTHROPIC_API_KEY`; honours `AISWMM_ANTHROPIC_MOCK_RESPONSE` / `AISWMM_ANTHROPIC_MOCK_TOOL_CALLS` for offline tests. No new dependency.
+- **`aiswmm login --anthropic`** — stores `ANTHROPIC_API_KEY` in `~/.aiswmm/env` (mode 0600), pins `provider.default = anthropic` + `anthropic.model = claude-sonnet-4-6`. A bare `aiswmm login` targets the current default provider's key.
+
+### Changed
+
+- **Default provider is `openai`** (`DEFAULT_PROVIDER = "openai"`, model `gpt-5.5`). `anthropic` is the opt-in second backend (`DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"`); both providers require a model, supplied by per-provider config defaults.
+- **`SUPPORTED_PROVIDERS = ("openai", "anthropic")`** — the factory drops the subscription branch; an unknown provider (including the retired `claude_sdk`) raises `ValueError`.
+- **`aiswmm login` manages API keys** via a `provider → handler` registry; `--status` reports the default provider and which keys are present (no secrets).
+- Doctor / setup / welcome surface a two-API-key view (OpenAI default + Anthropic opt-in); the welcome tip and doctor key-row key on the default provider's key.
+
+### Removed
+
+- The `claude_sdk` provider, the `claude-agent-sdk` core dependency, the `[claude]` extra, and all subscription / macOS-Keychain detection logic.
+
 ## v0.7.1 - SWMManywhere natural-language integration + runtime hardening (2026-05-28)
 
 A single natural-language sentence referring only to a WGS84 bounding box now drives an end-to-end SWMM workflow: synthesise the drainage network from public OSM + DEM data, run SWMM, write a deterministic audit dossier, and render a spatial network map — all via the standard `runs/<date>/<id>/` layout. Synthesis comes from SWMManywhere (Imperial College London, BSD-3-Clause); aiswmm is the agent-side adapter. SWMM execution is byte-identical to v0.7.0 — Tecnopolo `model.out` SHA256 unchanged.

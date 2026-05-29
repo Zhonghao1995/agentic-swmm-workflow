@@ -72,7 +72,7 @@ VERB_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict(
         ("Case namespace", ["case"]),
         (
             "Setup",
-            ["setup", "mcp", "skill", "model", "config", "agent"],
+            ["login", "setup", "mcp", "skill", "model", "config", "agent"],
         ),
     ]
 )
@@ -101,6 +101,7 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     "memory": "Inspect or migrate memory stores.",
     "trace": "Pretty-print agent_trace.jsonl / memory_trace.jsonl from a run dir.",
     "case": "Case-level namespace operations (init, show).",
+    "login": "Store an LLM provider API key (OpenAI by default).",
     "setup": "First-run setup wizard (provider, MCP, memory).",
     "mcp": "Manage MCP server registration.",
     "skill": "Inspect bundled skills.",

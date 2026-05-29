@@ -663,62 +663,66 @@ def render_sessions_sqlite_row(status: MemoryStoreStatus) -> str:
 
 @dataclass(frozen=True)
 class LLMProviderStatus:
-    """Snapshot of the configured LLM backends for the doctor report.
+    """Snapshot of the two API-key LLM backends for the doctor report.
 
-    ``openai_key_present`` reflects only the ``OPENAI_API_KEY`` env var
-    (the env-file / config-file tiers are a preflight concern, not a
-    doctor row). ``claude_oauth_present`` is ``True`` when a parseable
-    Claude Code OAuth credentials file exists — the same signal the
-    provider preflight uses. ``default_provider`` is the configured
-    ``provider.default``.
+    ``openai_key_present`` / ``anthropic_key_present`` reflect whether
+    each provider's API key is reachable (env var, ``~/.aiswmm/env``, or
+    the ``[<provider>]`` config section — the same tiers the preflight
+    uses). ``default_provider`` is the configured ``provider.default``.
     """
 
     default_provider: str
     openai_key_present: bool
-    claude_oauth_present: bool
+    anthropic_key_present: bool
 
 
 def collect_llm_provider_status() -> LLMProviderStatus:
     """Return a :class:`LLMProviderStatus` for the doctor report.
 
-    Read-only: probes the ``OPENAI_API_KEY`` env var, the Claude Code
-    OAuth credentials file, and ``provider.default`` from config. Any
-    failure resolving the config falls back to ``"openai"`` so the
-    doctor row always renders.
+    Read-only: probes whether each provider's API key is reachable and
+    reads ``provider.default`` from config. Any failure resolving the
+    config falls back to :data:`DEFAULT_PROVIDER` so the row always
+    renders.
     """
-    from agentic_swmm.agent.provider_preflight import detect_claude_oauth
+    from agentic_swmm.agent.provider_preflight import provider_key_present
 
     try:
-        from agentic_swmm.config import load_config
+        from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 
-        default_provider = str(load_config().get("provider.default", "openai"))
+        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
     except Exception:  # pragma: no cover - defensive; config is shallow
-        default_provider = "openai"
+        from agentic_swmm.config import DEFAULT_PROVIDER
+
+        default_provider = DEFAULT_PROVIDER
     return LLMProviderStatus(
         default_provider=default_provider,
-        openai_key_present=bool(os.environ.get("OPENAI_API_KEY")),
-        claude_oauth_present=detect_claude_oauth(),
+        openai_key_present=provider_key_present("openai"),
+        anthropic_key_present=provider_key_present("anthropic"),
     )
 
 
 def render_llm_provider_section(status: LLMProviderStatus) -> str:
     """Produce the printable "LLM provider" doctor section.
 
-    Output shape::
+    Two API-key rows — OpenAI (default) and Anthropic (opt-in). Output
+    shape::
 
         LLM provider (default: openai):
-          OpenAI API key      OPENAI_API_KEY    - present
-          Claude Code OAuth   ~/.claude         - absent (run `claude login` to enable claude_sdk)
+          OpenAI API key        OPENAI_API_KEY      - present
+          Anthropic API key     ANTHROPIC_API_KEY   - absent (opt-in: aiswmm login --anthropic)
     """
-    openai_state = "present" if status.openai_key_present else "absent"
-    if status.claude_oauth_present:
-        oauth_state = "present"
-    else:
-        oauth_state = "absent (run `claude login` to enable claude_sdk)"
+    openai_state = (
+        "present" if status.openai_key_present else "absent (set it: aiswmm login --openai)"
+    )
+    anthropic_state = (
+        "present"
+        if status.anthropic_key_present
+        else "absent (opt-in: aiswmm login --anthropic)"
+    )
     lines = [
         f"LLM provider (default: {status.default_provider}):",
-        f"  {'OpenAI API key':19} {'OPENAI_API_KEY':17} - {openai_state}",
-        f"  {'Claude Code OAuth':19} {'~/.claude':17} - {oauth_state}",
+        f"  {'OpenAI API key':21} {'OPENAI_API_KEY':19} - {openai_state}",
+        f"  {'Anthropic API key':21} {'ANTHROPIC_API_KEY':19} - {anthropic_state}",
     ]
     return "\n".join(lines)
 
@@ -740,7 +744,7 @@ class OptOutFlagStatus:
 _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
     (
         "ANTHROPIC_API_KEY",
-        "raw Anthropic API key the claude_sdk provider falls back to when no OAuth subscription is present",
+        "API key for the opt-in anthropic provider (Anthropic Messages API)",
     ),
     (
         "AISWMM_DISABLE_MEMORY_INFORMED",
@@ -1249,7 +1253,7 @@ def llm_provider_status_to_dict(s: LLMProviderStatus) -> dict:
     return {
         "default_provider": s.default_provider,
         "openai_key_present": s.openai_key_present,
-        "claude_oauth_present": s.claude_oauth_present,
+        "anthropic_key_present": s.anthropic_key_present,
     }
 
 

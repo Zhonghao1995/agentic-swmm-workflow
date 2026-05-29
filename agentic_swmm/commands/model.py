@@ -7,7 +7,7 @@ from agentic_swmm.agent.experimental_providers import (
     provider_help_text,
 )
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.config import load_config, set_config_value
+from agentic_swmm.config import DEFAULT_PROVIDER, load_config, set_config_value
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -26,11 +26,11 @@ def main(args: argparse.Namespace) -> int:
     if args.provider:
         set_config_value("provider.default", args.provider)
     if args.model:
-        provider = args.provider or load_config().get("provider.default", "openai")
+        provider = args.provider or load_config().get("provider.default", DEFAULT_PROVIDER)
         set_config_value(f"{provider}.model", args.model)
 
     config = load_config()
-    provider = config.get("provider.default", "openai")
+    provider = config.get("provider.default", DEFAULT_PROVIDER)
     model = config.get(f"{provider}.model")
     print(f"provider: {provider}")
     print(f"model: {model}")

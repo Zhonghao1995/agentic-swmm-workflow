@@ -77,7 +77,7 @@ class RuntimeLoopDigestSummaryTests(unittest.TestCase):
                 "run_openai_plan",
                 return_value=_make_run_outcome(),
             ), mock.patch.object(
-                runtime_loop, "OpenAIProvider", return_value=mock.MagicMock()
+                runtime_loop, "make_provider", return_value=mock.MagicMock()
             ), mock.patch.object(
                 runtime_loop, "ensure_session_pool"
             ), mock.patch.object(

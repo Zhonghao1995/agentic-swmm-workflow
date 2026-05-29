@@ -103,7 +103,7 @@ class FinalReportSuppressedForChatTests(unittest.TestCase):
             fake_config = mock.MagicMock()
             fake_config.get.side_effect = _config_get
             with mock.patch.object(agent_cmd, "load_config", return_value=fake_config):
-                with mock.patch.object(agent_cmd, "OpenAIProvider", return_value=mock.MagicMock()):
+                with mock.patch.object(agent_cmd, "make_provider", return_value=mock.MagicMock()):
                     with mock.patch.object(agent_cmd, "run_openai_plan", return_value=fake_outcome):
                         with mock.patch.object(agent_cmd, "AgentExecutor", return_value=mock.MagicMock()):
                             rc = agent_cmd.run_openai_planner(

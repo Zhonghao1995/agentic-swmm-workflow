@@ -39,6 +39,8 @@ class SessionReportTemplateWiringTests(unittest.TestCase):
                     "agent",
                     "--planner",
                     "openai",
+                    "--provider",
+                    "openai",
                     "--model",
                     "gpt-test",
                     "--session-dir",

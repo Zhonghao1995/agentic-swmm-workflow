@@ -32,15 +32,11 @@ dependencies = [
   "SALib",
   "spotpy",
   "swmmtoolbox",
+  # Both LLM providers (openai default + anthropic opt-in) are pure-stdlib
+  # urllib clients, so no LLM SDK ships in core dependencies.
 ]
 
 [project.optional-dependencies]
-# PRD-09: the Claude Agent SDK provider routes the LLM planner through a
-# Claude Pro/Max subscription via the local `claude` CLI. It is an
-# OPTIONAL extra — the default OpenAI path stays pure-Python and pulls
-# none of this. Install with: pip install aiswmm[claude]
-claude = ["claude-agent-sdk>=0.2,<1.0"]
-
 # `swmm-anywhere` skill: synthesise a plausible SWMM model from a bbox
 # (OSM streets + DEM) via SWMManywhere — © Imperial College London,
 # BSD-3-Clause, https://github.com/ImperialCollegeLondon/SWMManywhere.

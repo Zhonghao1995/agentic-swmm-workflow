@@ -11,7 +11,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, map as map_cmd, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -25,6 +25,10 @@ COMMANDS = {
     "config",
     "capabilities",
     "setup",
+    # ``aiswmm login`` stores an LLM provider API key (OpenAI by
+    # default). Top-level so the default-router does not punt it to the
+    # agent planner.
+    "login",
     "mcp",
     "skill",
     "doctor",
@@ -151,6 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
     config.register(subparsers)
     capabilities.register(subparsers)
     setup.register(subparsers)
+    login.register(subparsers)
     mcp.register(subparsers)
     skill.register(subparsers)
     doctor.register(subparsers)
@@ -614,10 +619,10 @@ def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
     """Swap the planner to ``rule`` when no LLM provider is configured.
 
     The interactive shell currently hard-routes to
-    ``--planner openai``; if no key is set, the first prompt fails
-    mid-turn. We surface a guidance block on stderr and rewrite the
-    dispatched argv to use the rule planner so the user can still
-    discover the deterministic verbs without an API key.
+    ``--planner llm``; if no provider is configured at all, the first
+    prompt fails mid-turn. We surface a guidance block on stderr and
+    rewrite the dispatched argv to use the rule planner so the user can
+    still discover the deterministic verbs without a configured provider.
 
     Only ``--interactive`` dispatches trigger the preflight — a bare
     one-shot ``agent`` call that the user typed deliberately is left
@@ -628,10 +633,17 @@ def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
     from agentic_swmm.agent.provider_preflight import check_interactive_provider
 
     result = check_interactive_provider()
-    if result.has_configured_provider:
-        return argv
+    # Surface any guidance (a soft "no API key" warning when the
+    # selected provider has no detectable key, or the full no-provider
+    # block) before dispatch.
     if result.guidance_message:
         print(result.guidance_message, file=sys.stderr)
+    # A usable provider was selected — keep the LLM planner; the provider
+    # authenticates at call time.
+    if result.has_configured_provider:
+        return argv
+    # No usable provider: downgrade to the rule planner so the user still
+    # sees the deterministic verbs.
     rewritten: list[str] = []
     swap_next = False
     for item in argv:
@@ -708,17 +720,17 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
     if not argv:
         # PRD-08 A.3 (audit #6): when the user types bare ``aiswmm`` we
         # are about to drop them into the interactive shell with the
-        # OpenAI planner. If no provider is configured, print a stderr
+        # LLM planner. If no provider is configured, print a stderr
         # guidance block and downgrade to the rule planner so the user
         # at least sees the deterministic verbs.
         return _preflight_interactive_dispatch(
-            ["agent", "--planner", "openai", "--interactive"]
+            ["agent", "--planner", "llm", "--interactive"]
         )
     if argv[0] == "chat":
         dispatched = (
-            ["agent", "--planner", "openai", *argv[1:]]
+            ["agent", "--planner", "llm", *argv[1:]]
             if len(argv) > 1
-            else ["agent", "--planner", "openai", "--interactive"]
+            else ["agent", "--planner", "llm", "--interactive"]
         )
         return _preflight_interactive_dispatch(dispatched)
     if argv[0] in COMMANDS:
@@ -736,15 +748,15 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
             # natural-language planner so the user can describe the
             # model in prose. ``--help``/``-h``/``--example`` short-
             # circuit this so each lands in the run subparser.
-            return ["agent", "--planner", "openai", *argv]
+            return ["agent", "--planner", "llm", *argv]
         return argv
     if argv[0] in {"-h", "--help", "--version"}:
         return argv
     if argv[0].startswith("-"):
         if _agent_options_without_goal(argv):
-            return ["agent", "--planner", "openai", "--interactive", *argv]
-        return ["agent", "--planner", "openai", *argv]
-    return ["agent", "--planner", "openai", *argv]
+            return ["agent", "--planner", "llm", "--interactive", *argv]
+        return ["agent", "--planner", "llm", *argv]
+    return ["agent", "--planner", "llm", *argv]
 
 
 def _agent_options_without_goal(argv: list[str]) -> bool:

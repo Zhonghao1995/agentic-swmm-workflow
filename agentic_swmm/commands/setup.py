@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +11,7 @@ from agentic_swmm.agent.experimental_providers import (
     provider_help_text,
 )
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.config import load_config, mcp_registry_path, setup_state_path, write_config
+from agentic_swmm.config import DEFAULT_PROVIDER, load_config, mcp_registry_path, setup_state_path, write_config
 from agentic_swmm.commands.doctor import _which_swmm5
 from agentic_swmm.runtime.registry import (
     discover_mcp_servers,
@@ -29,7 +28,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--provider",
         choices=available_provider_choices(),
-        default="openai",
+        default=DEFAULT_PROVIDER,
         help=provider_help_text("Default provider."),
     )
     parser.add_argument("--model", default=None, help="Default model for the provider.")
@@ -88,12 +87,28 @@ def _build_setup_state(*, config_file: Path, skills_file: Path, mcp_file: Path, 
     mcp_servers = discover_mcp_servers()
     memory_files = discover_memory_files()
     memory_counts = memory_layer_counts(memory_files)
+    from agentic_swmm.agent.provider_preflight import provider_key_present
+
+    openai_key = provider_key_present("openai")
+    anthropic_key = provider_key_present("anthropic")
     checks = [
         _check("repo resources", resource_root().exists(), str(resource_root()), required=True),
         _check("python package", True, "agentic_swmm importable", required=True),
         _check("node executable", shutil.which("node") is not None, shutil.which("node") or "missing; needed for MCP launchers", required=False),
         _check("swmm5 executable", _which_swmm5() is not None, _which_swmm5() or "missing; needed for SWMM execution", required=False),
-        _check("OPENAI_API_KEY", bool(os.environ.get("OPENAI_API_KEY")), "set" if os.environ.get("OPENAI_API_KEY") else "not set; needed for OpenAI agent planner mode", required=False),
+        # Two API-key providers: OpenAI is the default, Anthropic is opt-in.
+        _check(
+            "OPENAI_API_KEY",
+            openai_key,
+            "set" if openai_key else "not set; default provider — set via `aiswmm login --openai`",
+            required=False,
+        ),
+        _check(
+            "ANTHROPIC_API_KEY",
+            anthropic_key,
+            "set" if anthropic_key else "not set; opt-in via `aiswmm login --anthropic`",
+            required=False,
+        ),
         _check("skills", all(Path(record["path"]).exists() for record in skills), f"registered {len(skills)} skill(s)", required=True),
         _check("mcp servers", all(record["exists"] for record in mcp_servers), f"registered {len(mcp_servers)} MCP server(s)", required=True),
         _check("memory package", all(record["exists"] for record in memory_files), _format_memory_detail(memory_counts), required=True),
@@ -122,9 +137,9 @@ def _build_setup_state(*, config_file: Path, skills_file: Path, mcp_file: Path, 
         },
         "checks": checks,
         "next_commands": [
-            "export OPENAI_API_KEY=...",
+            "aiswmm login",
             "aiswmm doctor",
-            f"aiswmm --provider {provider} \"Explain what this Agentic SWMM installation can do\"",
+            "aiswmm \"Explain what this Agentic SWMM installation can do\"",
             "aiswmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo-cli --node OUT_0",
             "aiswmm audit --run-dir runs/tecnopolo-cli",
             "aiswmm memory --runs-dir runs --out-dir memory/modeling-memory",

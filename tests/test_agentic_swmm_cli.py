@@ -192,7 +192,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
             env["AISWMM_CONFIG_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
             proc = subprocess.run(
-                [sys.executable, "-m", "agentic_swmm.cli", "--model", "gpt-test"],
+                # ``--provider openai`` (the shipped default) makes the
+                # OpenAI mock-response env var drive the turn deterministically.
+                [sys.executable, "-m", "agentic_swmm.cli", "--provider", "openai", "--model", "gpt-test"],
                 cwd=REPO_ROOT,
                 env=env,
                 input="inspect project\n/exit\n",
@@ -222,6 +224,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--interactive",
                     "--model",
@@ -257,6 +261,12 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     sys.executable,
                     "-m",
                     "agentic_swmm.cli",
+                    # ``openai`` is the default provider; pinning it makes
+                    # the OpenAI mock-response env var drive the turn.
+                    "--provider",
+                    "openai",
+                    "--model",
+                    "gpt-test",
                     "inspect",
                     "the",
                     "project",
@@ -273,27 +283,29 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("mocked natural language agent", proc.stdout)
 
     def test_default_router_preserves_explicit_low_level_run(self) -> None:
-        # PRD-08 A.3's provider preflight downgrades the interactive
-        # ``--planner openai`` dispatch to ``--planner rule`` when no
-        # LLM provider is configured. Pin ``OPENAI_API_KEY`` so this
-        # test exercises the with-provider routing; the no-provider
-        # fallback is covered by tests/test_cli_provider_preflight.py.
+        # Provider-neutralization: the default router dispatches the
+        # provider-neutral ``--planner llm`` token (the backend is
+        # resolved from ``provider.default``, openai by default).
+        # Pin ``OPENAI_API_KEY`` so the interactive preflight treats a
+        # provider as configured and does not downgrade to ``rule``;
+        # the no-provider fallback is covered by
+        # tests/test_cli_provider_preflight.py.
         with mock.patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            self.assertEqual(_route_default_to_agent([]), ["agent", "--planner", "openai", "--interactive"])
-            self.assertEqual(_route_default_to_agent(["chat"]), ["agent", "--planner", "openai", "--interactive"])
+            self.assertEqual(_route_default_to_agent([]), ["agent", "--planner", "llm", "--interactive"])
+            self.assertEqual(_route_default_to_agent(["chat"]), ["agent", "--planner", "llm", "--interactive"])
             self.assertEqual(
                 _route_default_to_agent(["--model", "gpt-test"]),
-                ["agent", "--planner", "openai", "--interactive", "--model", "gpt-test"],
+                ["agent", "--planner", "llm", "--interactive", "--model", "gpt-test"],
             )
             self.assertEqual(_route_default_to_agent(["run", "--inp", "model.inp"]), ["run", "--inp", "model.inp"])
             self.assertEqual(_route_default_to_agent(["capabilities"]), ["capabilities"])
             self.assertEqual(
                 _route_default_to_agent(["--verbose", "--model", "gpt-test"]),
-                ["agent", "--planner", "openai", "--interactive", "--verbose", "--model", "gpt-test"],
+                ["agent", "--planner", "llm", "--interactive", "--verbose", "--model", "gpt-test"],
             )
             self.assertEqual(
                 _route_default_to_agent(["run", "tecnopolo_r1_199401.inp"]),
-                ["agent", "--planner", "openai", "run", "tecnopolo_r1_199401.inp"],
+                ["agent", "--planner", "llm", "run", "tecnopolo_r1_199401.inp"],
             )
 
     def test_default_router_preserves_run_help_flags(self) -> None:
@@ -478,6 +490,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agent",
                     "--planner",
                     "openai",
+                    "--provider",
+                    "openai",
                     "--model",
                     "gpt-test",
                     "--session-dir",
@@ -513,6 +527,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agent",
                     "--planner",
                     "openai",
+                    "--provider",
+                    "openai",
                     "--model",
                     "gpt-test",
                     "--session-dir",
@@ -547,6 +563,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--model",
                     "gpt-test",
@@ -588,6 +606,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--model",
                     "gpt-test",
@@ -673,6 +693,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agent",
                     "--planner",
                     "openai",
+                    "--provider",
+                    "openai",
                     "--model",
                     "gpt-test",
                     "--session-dir",
@@ -704,6 +726,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--model",
                     "gpt-test",
@@ -737,6 +761,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--model",
                     "gpt-test",
@@ -851,6 +877,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "agentic_swmm.cli",
                     "agent",
                     "--planner",
+                    "openai",
+                    "--provider",
                     "openai",
                     "--model",
                     "gpt-test",

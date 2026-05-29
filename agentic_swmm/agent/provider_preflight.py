@@ -1,120 +1,91 @@
-"""Provider preflight (PRD-08 Phase A.3, audit #6; widened in PRD-09).
+"""Provider preflight — API-key selection for the interactive shell.
 
 A first-run user typing ``aiswmm`` with no args lands in the
-interactive shell that requires an LLM provider. The shell prints the
-welcome banner, accepts a prompt, and then fails mid-turn with a
-credential error. The user never sees the underlying cause — that the
-provider was never configured.
+interactive shell that runs the LLM planner. The shell prints the
+welcome banner, accepts a prompt, and then drives the planner. This
+module is the boot-time diagnostic: before the shell hands control to
+the planner we resolve *which* provider to use and whether its API key
+is detectable.
 
-This module is the boot-time diagnostic: before the interactive shell
-hands control to the planner we check whether *some* provider is
-configured. When nothing is configured we surface a guidance block on
-stderr and the caller falls back to the rule planner so the user can
-still discover the deterministic verbs even without a key.
+Two API-key providers, both standard function-calling:
 
-The OpenAI check covers three locations:
+* ``openai`` (the shipped :data:`DEFAULT_PROVIDER`) — needs
+  ``OPENAI_API_KEY``.
+* ``anthropic`` (opt-in via ``provider.default = anthropic``) — needs
+  ``ANTHROPIC_API_KEY``.
 
-* ``OPENAI_API_KEY`` environment variable
-* ``~/.aiswmm/env`` (a shell-style env file the setup wizard writes)
-* ``~/.aiswmm/config.toml`` (the persistent config the wizard maintains)
+The resolved default is ``provider.default`` from
+``~/.aiswmm/config.toml`` when set, else :data:`DEFAULT_PROVIDER`. A
+provider is *configured* when its key is reachable from any of three
+tiers: the environment, ``~/.aiswmm/env``, or the ``[<provider>]``
+section of ``~/.aiswmm/config.toml``.
 
-PRD-09 adds a fourth tier: the Claude Agent SDK provider, which walks
-a Claude Pro/Max subscription through the locally installed ``claude``
-CLI's OAuth credentials. We treat the presence of a parseable
-credentials file (``~/.claude/.credentials.json``) as the OAuth
-signal. Because routing a modeler onto their subscription quota is a
-billing-relevant decision, the preflight only *reports*
-``provider_name="claude_sdk"`` when the user has explicitly opted in
-via ``provider.default = claude_sdk`` in ``~/.aiswmm/config.toml`` — a
-bare OAuth file is surfaced as *available* but never silently selected.
-
-A non-empty value in any of the OpenAI locations is enough to flip
-``has_configured_provider`` to ``True``. We deliberately do *not* try
-to validate the key (no network call) — the goal is to fail loud when
-nothing is set, not to second-guess a key the user explicitly chose.
+We deliberately do *not* validate the key (no network call) — the goal
+is to pick the right backend and fail loud only when the selected
+provider has no detectable key.
 """
 
 from __future__ import annotations
 
-import json
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentic_swmm.agent.experimental_providers import (
-    claude_sdk_enabled,
-    gate_notice_for_legacy_config,
+from agentic_swmm.config import DEFAULT_PROVIDER
+
+
+# Env-var name carrying each provider's API key. Single source of truth
+# so the detection tiers and the doctor / login surfaces agree.
+_PROVIDER_KEY_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+
+
+_GUIDANCE_NO_CREDENTIALS = (
+    "No LLM API key detected for the selected provider.\n"
+    "\n"
+    "OpenAI (default, billed per token):\n"
+    "  run `aiswmm login --openai` to store a key, or\n"
+    "  export OPENAI_API_KEY=\"sk-...\".\n"
+    "\n"
+    "Anthropic (opt-in, billed per token):\n"
+    "  run `aiswmm login --anthropic` to store a key, or\n"
+    "  export ANTHROPIC_API_KEY=\"sk-ant-...\".\n"
+    "\n"
+    "Continuing with the LLM planner; the first prompt will fail until a\n"
+    "key for the selected provider is set."
 )
 
 
-_GUIDANCE_TEMPLATE_OPENAI_ONLY = (
+_GUIDANCE_NOTHING_CONFIGURED = (
     "No LLM provider configured.\n"
     "\n"
-    "Quick fix — OpenAI API key:\n"
-    "  export OPENAI_API_KEY=\"sk-...\"\n"
-    "  or run `aiswmm setup --provider openai` to persist it.\n"
+    "OpenAI (default, billed per token):\n"
+    "  run `aiswmm login --openai` to store a key, or\n"
+    "  export OPENAI_API_KEY=\"sk-...\".\n"
+    "\n"
+    "Anthropic (opt-in, billed per token):\n"
+    "  run `aiswmm login --anthropic` to store a key, or\n"
+    "  export ANTHROPIC_API_KEY=\"sk-ant-...\".\n"
     "\n"
     "Continuing in rule-planner mode (no LLM, limited verbs available)."
 )
-
-
-_GUIDANCE_TEMPLATE_WITH_CLAUDE = (
-    "No LLM provider configured.\n"
-    "\n"
-    "Quick fix (option 1) — OpenAI API key:\n"
-    "  export OPENAI_API_KEY=\"sk-...\"\n"
-    "  or run `aiswmm setup --provider openai` to persist it.\n"
-    "\n"
-    "Quick fix (option 2) — Claude Pro/Max subscription:\n"
-    "  run `claude login` to authenticate the Claude Code CLI, then\n"
-    "  `aiswmm config set provider.default claude_sdk` to opt in.\n"
-    "\n"
-    "Continuing in rule-planner mode (no LLM, limited verbs available)."
-)
-
-
-# Issue #182: the legacy-config fallback notice prints exactly once
-# per process. A module-level boolean is the simplest contract — the
-# preflight is called only from CLI entry points, so we never need a
-# more sophisticated reset mechanism in production. Tests reset it
-# explicitly via the ``isolated_home`` fixture.
-_legacy_claude_sdk_notice_emitted = False
-
-
-def _guidance_template() -> str:
-    """Return the no-provider guidance banner appropriate for the gate state.
-
-    Issue #182: the "Quick fix (option 2) — Claude Pro/Max" block is
-    hidden when ``AISWMM_ENABLE_EXPERIMENTAL_PROVIDERS`` is not set.
-    Re-labels the remaining option (drops the "(option 1)" prefix) so
-    the rendered banner reads naturally with one quick-fix block.
-    """
-    if claude_sdk_enabled():
-        return _GUIDANCE_TEMPLATE_WITH_CLAUDE
-    return _GUIDANCE_TEMPLATE_OPENAI_ONLY
-
-
-def _maybe_emit_legacy_claude_sdk_notice() -> None:
-    """Print the legacy-config notice to stderr, at most once per process."""
-    global _legacy_claude_sdk_notice_emitted
-    if _legacy_claude_sdk_notice_emitted:
-        return
-    print(gate_notice_for_legacy_config(), file=sys.stderr)
-    _legacy_claude_sdk_notice_emitted = True
 
 
 @dataclass(frozen=True)
 class ProviderPreflightResult:
     """Outcome of :func:`check_interactive_provider`.
 
-    ``provider_name`` is the configured provider when one was found
-    (today only ``"openai"``); ``None`` when nothing is configured.
+    ``provider_name`` is the resolved provider (``"openai"`` or
+    ``"anthropic"``) when one was selected; ``None`` only in the
+    safety-net case where the resolved default is an unknown provider.
     ``fallback_planner`` is what the CLI should dispatch when the
     user-supplied planner is unavailable (always ``"rule"`` today).
     ``guidance_message`` is the multi-line block the caller writes to
-    stderr; it stays non-empty when ``has_configured_provider`` is
-    ``False`` and empty otherwise.
+    stderr: empty when the selected provider's key is present, a soft
+    warning when the provider is selected without a detectable key, and
+    the full no-provider block in the rule-fallback safety net.
     """
 
     has_configured_provider: bool
@@ -131,46 +102,6 @@ def _aiswmm_env_path() -> Path:
 def _aiswmm_config_path() -> Path:
     """Return ``~/.aiswmm/config.toml`` resolved from ``$HOME``."""
     return Path.home() / ".aiswmm" / "config.toml"
-
-
-def _claude_credentials_paths() -> tuple[Path, ...]:
-    """Return the candidate Claude Code OAuth credential file paths.
-
-    The Claude Code CLI stores OAuth credentials in
-    ``~/.claude/.credentials.json`` on Linux; ``~/.claude/auth.json``
-    is accepted as a forward-compatible alias. On macOS the CLI keeps
-    credentials in the Keychain — we do not parse the Keychain here;
-    a present credentials file is one positive signal, and the SDK
-    itself does the real auth at call time.
-    """
-    base = Path.home() / ".claude"
-    return (base / ".credentials.json", base / "auth.json")
-
-
-def detect_claude_oauth() -> bool:
-    """Return True when a parseable Claude Code OAuth credentials file exists.
-
-    A file that is missing, unreadable, empty, or not valid JSON is
-    treated as *absent* rather than crashing the preflight — the goal
-    is a best-effort availability signal, not strict validation. The
-    SDK and the ``claude`` CLI perform the authoritative auth check at
-    call time.
-    """
-    for path in _claude_credentials_paths():
-        if not path.is_file():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if not text.strip():
-            continue
-        try:
-            json.loads(text)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        return True
-    return False
 
 
 def _config_default_provider(path: Path) -> str | None:
@@ -205,8 +136,8 @@ def _config_default_provider(path: Path) -> str | None:
     return None
 
 
-def _env_file_has_openai_key(path: Path) -> bool:
-    """Return True when the env file declares a non-empty OPENAI_API_KEY.
+def _env_file_has_key(path: Path, var_name: str) -> bool:
+    """Return True when the env file declares a non-empty ``var_name``.
 
     Tolerant of ``export FOO=bar`` and ``FOO="bar"`` shapes; a malformed
     line is ignored rather than crashing the preflight.
@@ -226,7 +157,7 @@ def _env_file_has_openai_key(path: Path) -> bool:
         if "=" not in line:
             continue
         key, _, value = line.partition("=")
-        if key.strip() != "OPENAI_API_KEY":
+        if key.strip() != var_name:
             continue
         value = value.strip().strip("'\"")
         if value:
@@ -234,13 +165,13 @@ def _env_file_has_openai_key(path: Path) -> bool:
     return False
 
 
-def _config_file_has_openai_key(path: Path) -> bool:
-    """Return True when the config TOML declares an openai API key entry.
+def _config_file_has_key(path: Path, section: str) -> bool:
+    """Return True when the config TOML declares an API key for ``section``.
 
     We do not import a TOML parser to keep dependencies flat; the
     config is shallow and the wizard writes a stable shape. A literal
-    ``openai_api_key = "..."`` or ``api_key = "..."`` line under an
-    ``[openai]`` section counts as configured.
+    ``api_key = "..."`` (or ``<section>_api_key = "..."``) line under
+    the ``[<section>]`` section counts as configured.
     """
     if not path.is_file():
         return False
@@ -248,13 +179,14 @@ def _config_file_has_openai_key(path: Path) -> bool:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return False
-    in_openai_section = False
+    section_key = f"{section}_api_key"
+    in_section = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
         if line.startswith("[") and line.endswith("]"):
-            in_openai_section = line[1:-1].strip().lower() == "openai"
+            in_section = line[1:-1].strip().lower() == section
             continue
         if "=" not in line:
             continue
@@ -263,91 +195,77 @@ def _config_file_has_openai_key(path: Path) -> bool:
         value = value.strip().strip("'\"")
         if not value:
             continue
-        if key in {"openai_api_key", "api_key"} and (
-            in_openai_section or key == "openai_api_key"
-        ):
+        if key == section_key or (in_section and key == "api_key"):
             return True
     return False
 
 
+def provider_key_present(provider_name: str) -> bool:
+    """Return True when ``provider_name``'s API key is reachable.
+
+    Checks the provider's env var, then ``~/.aiswmm/env``, then the
+    ``[<provider>]`` section of ``~/.aiswmm/config.toml``. Unknown
+    providers (no key mapping) return ``False``.
+    """
+    var_name = _PROVIDER_KEY_ENV.get(provider_name)
+    if not var_name:
+        return False
+    if os.environ.get(var_name, "").strip():
+        return True
+    if _env_file_has_key(_aiswmm_env_path(), var_name):
+        return True
+    return _config_file_has_key(_aiswmm_config_path(), provider_name)
+
+
+def _openai_key_present() -> bool:
+    """Back-compat shim: True when an OpenAI key is reachable.
+
+    Retained because the login ``--status`` surface imports this name.
+    """
+    return provider_key_present("openai")
+
+
 def check_interactive_provider() -> ProviderPreflightResult:
-    """Return whether an interactive planner provider is configured.
+    """Resolve the interactive planner provider from the two API keys.
 
     Resolution order:
 
-    1. The user explicitly opted in to the Claude Agent SDK via
-       ``provider.default = claude_sdk`` — this wins outright (the
-       modeler asked for the subscription path), and OAuth presence
-       only refines the guidance, never the selection.
-    2. ``OPENAI_API_KEY`` env var → ``~/.aiswmm/env`` →
-       ``~/.aiswmm/config.toml`` OpenAI key. Any non-empty value
-       short-circuits to ``provider_name="openai"``.
-    3. A bare Claude Code OAuth file with no explicit opt-in is
-       surfaced as *available* (``has_configured_provider=True``,
-       ``provider_name="claude_sdk"``) so the runtime does not drop to
-       the rule planner — but only when no OpenAI key was found.
-
-    A fully-negative result populates ``guidance_message`` with the
-    two-option user-facing block.
+    1. The resolved default is the configured ``provider.default`` when
+       set, else :data:`DEFAULT_PROVIDER` (``openai``).
+    2. When the resolved default is a known provider (``openai`` /
+       ``anthropic``) it is selected. We keep the LLM planner even if no
+       key is detected — the provider authenticates at call time and a
+       user who just exported a key in another shell must not be dropped
+       to the rule planner. When the selected provider's key is not
+       detectable we attach a soft warning (``aiswmm login`` hint).
+    3. Safety net: if the resolved default is some unknown provider, we
+       fall back to the rule planner with the full no-provider guidance.
     """
     explicit_default = _config_default_provider(_aiswmm_config_path())
-    oauth_present = detect_claude_oauth()
-    env_value = os.environ.get("OPENAI_API_KEY", "").strip()
+    resolved_default = explicit_default or DEFAULT_PROVIDER
 
-    # Issue #182: gate guard wrapping the tier-1 ``claude_sdk`` path.
-    # When the experimental-providers env gate is OFF, a persisted
-    # ``provider.default = claude_sdk`` is silently downgraded — we
-    # emit the once-per-process notice and fall through to tier-2
-    # OpenAI resolution. The tier-1 body itself is unchanged.
-    if explicit_default == "claude_sdk" and not claude_sdk_enabled():
-        _maybe_emit_legacy_claude_sdk_notice()
-        explicit_default = None
-
-    # Tier 1: explicit claude_sdk opt-in wins regardless of OpenAI keys.
-    if explicit_default == "claude_sdk":
+    if resolved_default in _PROVIDER_KEY_ENV:
+        key_present = provider_key_present(resolved_default)
+        guidance = "" if key_present else _GUIDANCE_NO_CREDENTIALS
         return ProviderPreflightResult(
             has_configured_provider=True,
-            provider_name="claude_sdk",
+            provider_name=resolved_default,
             fallback_planner="rule",
-            guidance_message="",
+            guidance_message=guidance,
         )
 
-    # Tier 2: OpenAI key in env / env file / config.
-    if env_value or _env_file_has_openai_key(_aiswmm_env_path()) or _config_file_has_openai_key(
-        _aiswmm_config_path()
-    ):
-        return ProviderPreflightResult(
-            has_configured_provider=True,
-            provider_name="openai",
-            fallback_planner="rule",
-            guidance_message="",
-        )
-
-    # Tier 3: a Claude Code OAuth file is present even without an
-    # explicit opt-in — surface claude_sdk as available so the runtime
-    # does not needlessly drop to the rule planner.
-    #
-    # Issue #182: hidden from the surface when the experimental-providers
-    # env gate is OFF — exposing a provider the runtime cannot select
-    # would defeat the gate.
-    if oauth_present and claude_sdk_enabled():
-        return ProviderPreflightResult(
-            has_configured_provider=True,
-            provider_name="claude_sdk",
-            fallback_planner="rule",
-            guidance_message="",
-        )
-
+    # Safety net: an unknown configured default we cannot honour. Drop to
+    # the rule planner and surface the full guidance block.
     return ProviderPreflightResult(
         has_configured_provider=False,
         provider_name=None,
         fallback_planner="rule",
-        guidance_message=_guidance_template(),
+        guidance_message=_GUIDANCE_NOTHING_CONFIGURED,
     )
 
 
 __all__ = [
     "ProviderPreflightResult",
     "check_interactive_provider",
-    "detect_claude_oauth",
+    "provider_key_present",
 ]

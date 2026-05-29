@@ -72,8 +72,9 @@ def run_single_shot(args: argparse.Namespace) -> int:
     # cold-start cost every call. Lazy — pool only spawns on first use.
     ensure_session_pool()
     registry = AgentToolRegistry()
-    if args.planner == "openai":
-        # Delegate to runtime_loop's openai planner for the single-shot path.
+    if args.planner in ("llm", "openai"):
+        # Delegate to runtime_loop's LLM planner for the single-shot path.
+        # ``openai`` is the deprecated alias for ``llm``.
         from agentic_swmm.agent.runtime_loop import run_openai_planner
 
         return run_openai_planner(args, goal, session_dir, trace_path, registry)

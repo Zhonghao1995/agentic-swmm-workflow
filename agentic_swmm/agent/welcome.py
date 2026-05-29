@@ -235,25 +235,33 @@ def _tip_line() -> str:
 
 
 def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
-    """Return a "run aiswmm doctor" hint when the user looks un-onboarded.
+    """Return an ``aiswmm login`` hint when the user looks un-onboarded.
 
     The hint fires when *both* are true:
 
-    * No ``OPENAI_API_KEY`` is set (the planner has no provider, so
-      the interactive shell is going to be limited until they pick
-      one), AND
+    * The default provider's API key is not reachable (env /
+      ``~/.aiswmm/env`` / config) — so the interactive shell will be
+      limited until they authenticate, AND
     * The default ``memory/modeling-memory/`` directory is missing or
       empty (so transfer / cite-param / cite will all fail with
       empty-store errors).
 
-    A user in that state typed ``aiswmm`` and is about to discover
-    the limitations the hard way. Surfacing one proactive line —
-    "Tip: run `aiswmm doctor` to see what's set up." — costs nothing
-    and points at the single command that names every gap.
+    A user who has already set the default provider's key is never
+    nagged. A user genuinely without a key sees one proactive line
+    pointing at the auth command.
 
     Returns ``None`` when at least one signal is healthy.
     """
-    if os.environ.get("OPENAI_API_KEY"):
+    # Late import keeps welcome's import graph free of the preflight /
+    # config at module load; the probe is cheap (env + file scan).
+    from agentic_swmm.agent.provider_preflight import provider_key_present
+    from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+
+    try:
+        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
+    except Exception:  # pragma: no cover - defensive; config is shallow
+        default_provider = DEFAULT_PROVIDER
+    if provider_key_present(default_provider):
         return None
     target = memory_dir or (Path.cwd() / "memory" / "modeling-memory")
     try:
@@ -266,7 +274,7 @@ def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
     except OSError:
         # Filesystem error: do not pester the user with the tip.
         return None
-    return "Tip: run `aiswmm doctor` to see what's set up."
+    return "Tip: run `aiswmm login` to set your provider API key (or `aiswmm doctor` to see what's set up)."
 
 
 def render_returning_banner(
