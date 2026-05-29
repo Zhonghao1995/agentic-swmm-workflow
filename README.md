@@ -31,7 +31,7 @@
   </a>
 </p>
 
-> **Pre-1.0 — actively developed.** Latest stable: **v0.7.1** (LLM-driven dispatch + SWMManywhere natural-language integration). For reproducibility, pin a version: `pip install aiswmm==0.7.1` or `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.1` — v0.6.4 remains pinned for companion-paper runs. See [CHANGELOG.md](CHANGELOG.md).
+> **Pre-1.0** · stable **v0.7.1** · `pip install aiswmm==0.7.1` · [CHANGELOG](CHANGELOG.md)
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
