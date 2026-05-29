@@ -39,7 +39,7 @@
 
 **A five-minute, one-command Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
-** Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/) **
+**Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/)**
 
 ## Project Overview
 
