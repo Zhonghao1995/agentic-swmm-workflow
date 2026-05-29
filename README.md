@@ -5,6 +5,9 @@
 </p>
 
 <p align="center">
+  <a href="https://aiswmm.com/demo/">
+    <img src="https://img.shields.io/badge/▶_Live_Demo-aiswmm.com-FF4500" alt="Live demo at aiswmm.com/demo" />
+  </a>
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml">
     <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
   </a>
