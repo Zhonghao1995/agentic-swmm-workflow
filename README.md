@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://aiswmm.com/demo/">
-    <img src="https://img.shields.io/badge/demo-live-1a7f37" alt="demo live — aiswmm.com/demo" />
+    <img src="https://img.shields.io/badge/demo-live-1a7f37" alt="Demo Live — aiswmm.com/demo" />
   </a>
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml">
     <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
@@ -37,6 +37,9 @@
 **Agentic SWMM for reproducible stormwater modeling**<br>
 *[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
+**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+
+** Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/) **
 
 ## Project Overview
 
