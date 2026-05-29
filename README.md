@@ -37,7 +37,7 @@
 **Agentic SWMM for reproducible stormwater modeling**<br>
 *[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
 
-**A five-minute, one-command EPA SWMM workflow that is auditable, memory-informed, and agent-ready.**
+**A five-minute, one-command Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.**
 
 ** Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/) **
 
