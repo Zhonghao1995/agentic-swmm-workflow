@@ -43,11 +43,11 @@
 
 ## Project Overview
 
-Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It integrates QGIS-based preprocessing, SWMManywhere-based synthetic model generation, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
+Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, SWMManywhere-based synthetic model generation, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
 
-**The goal is not to replace SWMM or the modeller, but to build an agentic modelling layer that makes SWMM-based workflows easier to reproduce, audit, extend, remember, and trust.**  Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modelling goal in natural language, while model execution remains deterministic, inspectable, and artifact-based. The repository's MCP servers and Skills can also be used with other agent runtimes, including Codex, Claude, OpenClaw, and Hermes.
+**The goal is not to replace SWMM or the modeller, but to build an agentic modelling layer that makes stormwater-modelling workflows easier to reproduce, audit, extend, remember, and trust.**  Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modelling goal in natural language, while model execution remains deterministic, inspectable, and artifact-based. The repository's MCP servers and Skills can also be used with other agent runtimes, including Codex, Claude, OpenClaw, and Hermes.
 
-This is not a simple chat-to-SWMM wrapper. The aiswmm runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modeling memory remain visible as reusable artifacts. Modeling memory can summarize repeated problems and propose Skill refinements, but accepted changes still require human review and benchmark verification.
+This is not a simple chat-to-SWMM wrapper. The aiswmm runtime can help coordinate the workflow, but model files, SWMM runs, QA checks, plots, provenance records, audit notes, and modelling memory remain visible as reusable artifacts. Modelling memory can summarize repeated problems and propose Skill refinements, but accepted changes still require human review and benchmark verification.
 
 Authors: **Zhonghao Zhang** & **Caterina Valeo**  
 License: **MIT**
