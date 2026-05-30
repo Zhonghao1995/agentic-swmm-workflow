@@ -113,6 +113,13 @@ The workflow has three connected layers: execution, modeling memory, and control
 - audit records: `experiment_provenance.json`, `comparison.json`, and `experiment_note.md`
 - Obsidian-ready modelling notes and modelling-memory summaries
 
+<p align="center">
+  <a href="https://aiswmm.com/demo/">
+    <img src="docs/figs/aiswmm_demo_greenwich.png" alt="Agentic SWMM live demo — Greenwich Peninsula: synthesised network on a map, agent chat, artifacts (model.inp, model.rpt, subcatchments.geojson, graph.parquet, network_map.png), and a deterministic audit record" width="900" />
+  </a>
+</p>
+<p align="center"><sub><a href="https://aiswmm.com/demo/">▶ Try the live demo</a> — Greenwich Peninsula: SWMManywhere synthesis → swmm5 run → audit → render, end to end in the browser.</sub></p>
+
 ## Validation snapshot
 
 The repository includes runnable benchmarks and research previews with different evidence boundaries. The README keeps only the index; figures, commands, and boundary notes live in [Validation evidence](docs/validation-evidence.md).
