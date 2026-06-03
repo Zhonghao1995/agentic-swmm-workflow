@@ -505,6 +505,38 @@ def metadata_score(entry: dict[str, Any], query_tokens: list[str], project: str 
     return score
 
 
+def entry_confidence(entry: dict[str, Any]) -> float:
+    """Strongest pattern confidence for an entry, in [0, 1].
+
+    ``pattern_confidence`` (set by build_memory_corpus) is the decay-aware
+    lessons-lifecycle score, so reusing it makes retrieval recency-aware
+    without a second decay model. Returns the neutral 1.0 when an entry
+    carries no confidence annotation, so un-annotated corpora rank exactly as
+    before.
+    """
+    conf = entry.get("pattern_confidence")
+    if not isinstance(conf, dict) or not conf:
+        return 1.0
+    values = [
+        float(v)
+        for v in conf.values()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    ]
+    if not values:
+        return 1.0
+    return max(0.0, min(1.0, max(values)))
+
+
+def confidence_factor(confidence: float) -> float:
+    """Map confidence [0,1] to a gentle score multiplier [0.5, 1.0].
+
+    A low-confidence (stale / dormant) precedent is dampened up to 50% so it
+    ranks below a fresh, high-confidence one for the same textual match —
+    without erasing it (a weak precedent can still be the only match).
+    """
+    return 0.5 + 0.5 * max(0.0, min(1.0, confidence))
+
+
 def retrieve(
     entries: list[dict[str, Any]],
     query: str,
@@ -543,8 +575,14 @@ def retrieve(
             ) * 100.0
         else:
             final_score = keyword_score
+        # Recency-aware ranking: weight by the entry's pattern confidence so a
+        # stale/dormant precedent ranks below a fresh one for the same match.
+        # Neutral (1.0) when the entry carries no confidence annotation.
+        confidence = entry_confidence(entry)
+        final_score = final_score * confidence_factor(confidence)
         result = {key: value for key, value in entry.items() if key not in {"tokens", "text"}}
         result["score"] = round(final_score, 3)
+        result["confidence"] = round(confidence, 3)
         result["keyword_score"] = round(keyword_score, 3)
         result["semantic_score"] = round(semantic, 3)
         result["metadata_score"] = round(meta, 3)
