@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
 import urllib.request
 from typing import Any
 
+from agentic_swmm.providers._http import post_json_with_retry
 from agentic_swmm.providers.base import ProviderResult, ProviderToolCall, ProviderToolResponse
 
 
@@ -41,14 +41,9 @@ class OpenAIProvider:
                 "Content-Type": "application/json",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                raw = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenAI API request failed with HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"OpenAI API request failed: {exc.reason}") from exc
+        raw = post_json_with_retry(
+            request, timeout=self.timeout, provider_label="OpenAI"
+        )
 
         return ProviderResult(text=_extract_output_text(raw), model=self.model, raw=raw)
 
@@ -96,14 +91,9 @@ class OpenAIProvider:
                 "Content-Type": "application/json",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                raw = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenAI API request failed with HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"OpenAI API request failed: {exc.reason}") from exc
+        raw = post_json_with_retry(
+            request, timeout=self.timeout, provider_label="OpenAI"
+        )
 
         return ProviderToolResponse(
             text=_extract_output_text(raw),

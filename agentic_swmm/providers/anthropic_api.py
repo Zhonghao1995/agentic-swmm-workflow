@@ -68,10 +68,10 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
 import urllib.request
 from typing import Any
 
+from agentic_swmm.providers._http import post_json_with_retry
 from agentic_swmm.providers.base import ProviderResult, ProviderToolCall, ProviderToolResponse
 
 
@@ -178,14 +178,9 @@ class AnthropicProvider:
                 "content-type": "application/json",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"Anthropic API request failed with HTTP {exc.code}: {detail}") from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f"Anthropic API request failed: {exc.reason}") from exc
+        return post_json_with_retry(
+            request, timeout=self.timeout, provider_label="Anthropic"
+        )
 
 
 def _translate_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
