@@ -12,7 +12,7 @@ For inputs that include a `.shp`, `.csv`, or `network.json` of real pipes: route
 Given a bounding box (and optional region name), this skill:
 
 1. **Downloads public source data** via SWMManywhere: OpenStreetMap streets, a DEM tile (Planetary Computer by default), building footprints, river lines.
-2. **Snapshots the raw inputs** under `runs/<date>/<id>/00_raw/` with a SHA-256 manifest so the synthesized network is reproducible by snapshot (OSM/DEM otherwise drift continuously upstream).
+2. **Snapshots the raw inputs** under `runs/<date>/<id>/00_raw/` with a SHA-256 manifest that is **verified after capture** (the result lands in `synth_provenance.json` under `raw_snapshot_verified`), so the exact OSM/DEM inputs that produced this run are pinned and audited (OSM/DEM otherwise drift continuously upstream).
 3. **Runs SWMManywhere's 24-step graph pipeline** to infer subcatchment polygons, manhole nodes, pipe topology, pipe diameters, and outfall locations.
 4. **Writes a SWMM 5.2 `.inp`** under `runs/<date>/<id>/10_swmmanywhere/synth.inp`, post-processed so the aiswmm `swmm5` binary can run it directly (external `storm.dat` is copied next to the INP and its path is rewritten as relative, dodging the macOS path-with-spaces parsing bug).
 5. **Returns** the INP path, raw-snapshot manifest path, and a structured provenance record (which graphfcns ran, parameter overrides used, upstream tool versions).
@@ -26,7 +26,7 @@ The synthesized INP is **immediately runnable** through `swmm-runner` and **imme
 
 ## Optional inputs
 
-- `--refresh-raw`: re-download OSM/DEM even if a snapshot already exists. Default off — re-runs reuse the cached `00_raw/` snapshot.
+- `--refresh-raw`: reserved flag for a future cache-aware path. **Today every call re-downloads** OSM/DEM via SWMManywhere's own `prepare_data`; aiswmm does not yet replay a run *from* the `00_raw/` snapshot, so this flag has no effect at the aiswmm layer yet.
 - `--project-name`: human-readable label embedded in the manifest.
 
 ## Defaults — tuned for fewer, more useful outfalls
@@ -113,7 +113,7 @@ aiswmm plot --run-dir <run-dir>/swmm_run --link <conduit_id>
 ## Constraints and known limits
 
 - **Apple Silicon (macOS arm64)**: SWMManywhere's `pyswmm` dependency triggers a `SIGKILL` on import because its bundled `swmm.toolkit._solver.abi3.so` ships its own `libomp.dylib` that collides with the OS OpenMP runtime. The runner module stubs `pyswmm` before any SWMManywhere import; aiswmm runs the resulting INP through its own `swmm5` binary, so the stub is fully safe.
-- **OSM is mutable**: the same bbox tomorrow can produce a different street graph. The `00_raw/` snapshot pins inputs; treat re-runs without `--refresh-raw` as **byte-identical given the same snapshot**.
+- **OSM is mutable**: the same bbox tomorrow can produce a different street graph. The `00_raw/` snapshot pins and SHA-256-verifies the exact inputs each run used, so a run stays **auditable against upstream drift**. (Replaying a *new* run from an existing snapshot — true byte-identical re-synthesis — is reserved future work; today each call re-downloads, so two runs of the same bbox can differ if OSM changed between them.)
 - **Plausible ≠ real**: the synthesized network reflects *what a sewer system might look like under these streets and this DEM*. It is a starting point for calibration / sensitivity analysis, not a substitute for surveyed infrastructure data.
 - **Memory profile**: end-to-end requires ~1–2 GB free RAM at peak (raster ops + numba JIT). On a constrained machine, close other apps before running large bboxes (> 2×2 km).
 

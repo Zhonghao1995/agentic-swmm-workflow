@@ -16,6 +16,9 @@ Public surface:
   ``snapshot_dir/raw_manifest.json``, and returns the manifest.
 * ``verify_snapshot(manifest_path) -> VerifyResult`` — re-hashes every
   file recorded in the manifest and reports missing/mismatched paths.
+* ``summarize_snapshot_verification(manifest_path) -> dict`` — JSON-friendly
+  adapter over ``verify_snapshot`` for recording snapshot integrity in run
+  provenance.
 * ``should_refetch(manifest_path, *, refresh) -> bool`` — three-way
   decision helper for first-run / cached / explicit-refresh.
 
@@ -119,6 +122,21 @@ def verify_snapshot(manifest_path: Path) -> VerifyResult:
         missing=tuple(missing),
         mismatched=tuple(mismatched),
     )
+
+
+def summarize_snapshot_verification(manifest_path: Path) -> dict:
+    """Verify a raw snapshot and return a JSON-serialisable provenance summary.
+
+    A thin adapter over :func:`verify_snapshot` so the synth runner can record
+    snapshot integrity in its provenance and warn on drift. Returns lists (not
+    tuples) so the result drops straight into a JSON provenance record.
+    """
+    result = verify_snapshot(manifest_path)
+    return {
+        "ok": result.ok,
+        "missing": list(result.missing),
+        "mismatched": list(result.mismatched),
+    }
 
 
 def should_refetch(manifest_path: Path, *, refresh: bool) -> bool:

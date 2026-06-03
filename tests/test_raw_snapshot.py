@@ -23,6 +23,7 @@ from tempfile import TemporaryDirectory
 from agentic_swmm.integrations.raw_snapshot import (
     RawSource,
     snapshot_to,
+    summarize_snapshot_verification,
     verify_snapshot,
     should_refetch,
 )
@@ -145,6 +146,46 @@ class VerifySnapshotTests(unittest.TestCase):
             self.assertFalse(result.ok)
             self.assertEqual(result.missing, ())
             self.assertEqual(result.mismatched, ("incoming.txt",))
+
+
+class SummarizeSnapshotVerificationTests(unittest.TestCase):
+    """``summarize_snapshot_verification`` adapts ``verify_snapshot`` into a
+    JSON-serialisable provenance summary the synth runner records + warns on.
+    This is the wiring that makes ``verify_snapshot`` actually run on the
+    synth path (it was previously dead code)."""
+
+    def _make_snapshot(self, tmp_path: Path) -> Path:
+        src = tmp_path / "incoming.txt"
+        _write(src, b"hello world")
+        snap_dir = tmp_path / "00_raw"
+        snapshot_to(
+            snap_dir,
+            [RawSource(path=src, source_url="https://h.example", captured_at="2026-05-27T19:18:00Z")],
+        )
+        return snap_dir / "raw_manifest.json"
+
+    def test_clean_snapshot_summary_is_ok(self) -> None:
+        with TemporaryDirectory() as tmp:
+            manifest_path = self._make_snapshot(Path(tmp))
+            summary = summarize_snapshot_verification(manifest_path)
+            self.assertTrue(summary["ok"])
+            self.assertEqual(summary["missing"], [])
+            self.assertEqual(summary["mismatched"], [])
+
+    def test_tampered_snapshot_summary_reports_drift(self) -> None:
+        with TemporaryDirectory() as tmp:
+            manifest_path = self._make_snapshot(Path(tmp))
+            (manifest_path.parent / "incoming.txt").write_bytes(b"changed upstream")
+            summary = summarize_snapshot_verification(manifest_path)
+            self.assertFalse(summary["ok"])
+            self.assertEqual(summary["mismatched"], ["incoming.txt"])
+
+    def test_summary_is_json_serialisable(self) -> None:
+        with TemporaryDirectory() as tmp:
+            manifest_path = self._make_snapshot(Path(tmp))
+            summary = summarize_snapshot_verification(manifest_path)
+            # Must round-trip through json so it can land in provenance as-is.
+            self.assertEqual(json.loads(json.dumps(summary)), summary)
 
 
 class ShouldRefetchTests(unittest.TestCase):

@@ -16,7 +16,7 @@ This page is the *how-to* — installation, the natural-language prompts to driv
 
 * **Python 3.10 or newer** — verified on 3.11.14 (Homebrew, Apple Silicon). System `/usr/bin/python3` on macOS is 3.9 and will not work.
 * **aiswmm runtime + SWMM 5.2.4 binary** — install path described in [`installation.md`](installation.md). The `swmm-anywhere` skill expects the runtime's own `swmm5` binary at `/opt/homebrew/bin/swmm5` (macOS) or `/usr/local/bin/swmm5` (Linux/Docker), **not** the `pyswmm` Python wrapper.
-* **Network connectivity** — the SWMManywhere pipeline downloads OSM streets, building footprints, DEM tiles, and river lines on the first call for any given bounding box. Subsequent calls reuse the snapshot under `runs/<id>/00_raw/` and need no network.
+* **Network connectivity** — the SWMManywhere pipeline downloads OSM streets, building footprints, DEM tiles, and river lines on **every** call (it re-downloads per run today; cache-aware reuse of `00_raw/` is reserved future work). Each run's downloads are captured and SHA-256-verified under `runs/<id>/00_raw/`, pinning the exact inputs for the record — so plan for network access on every synth run.
 * **Disk space** — budget ~500 MB for the optional `[anywhere]` Python dependencies and ~50–200 MB per run-directory (OSM/DEM snapshot + SWMManywhere intermediate artefacts).
 * **Peak RAM** — 1–2 GB during the SWMManywhere 24-step graphfcn pipeline (numba JIT + WhiteboxTools flow accumulation). Close background applications on machines with < 8 GB total.
 

@@ -55,7 +55,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from agentic_swmm.integrations.raw_snapshot import RawSource, snapshot_to
+from agentic_swmm.integrations.raw_snapshot import (
+    RawSource,
+    snapshot_to,
+    summarize_snapshot_verification,
+)
 
 
 # Default outfall_derivation overrides — from spike 04 A/B testing.
@@ -447,6 +451,18 @@ def run_synth_from_bbox(
     except Exception as exc:
         raise SynthRunError("raw_snapshot", exc) from exc
 
+    # Verify the snapshot we just wrote so its integrity is a checked, recorded
+    # fact in provenance — not an unverified claim. (verify_snapshot was dead
+    # code before this.) A drift here means the captured 00_raw bytes do not
+    # match their recorded hashes; surface it rather than silently trusting it.
+    raw_snapshot_verified = summarize_snapshot_verification(raw_manifest_path)
+    if not raw_snapshot_verified["ok"]:
+        warnings.append(
+            "00_raw snapshot failed verification "
+            f"(missing={raw_snapshot_verified['missing']}, "
+            f"mismatched={raw_snapshot_verified['mismatched']})"
+        )
+
     provenance = {
         "tool": "swmmanywhere",
         "tool_version_attr": getattr(swmm_anywhere_mod, "__version__", "unknown"),
@@ -454,6 +470,7 @@ def run_synth_from_bbox(
         "project_name": project_name,
         "config_overrides_applied": dict(config.get("parameter_overrides") or {}),
         "captured_at": datetime.now(timezone.utc).isoformat(),
+        "raw_snapshot_verified": raw_snapshot_verified,
     }
     (synth_dir / "synth_provenance.json").write_text(
         __import__("json").dumps(provenance, indent=2, sort_keys=False)
