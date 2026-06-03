@@ -260,6 +260,13 @@ def main(args: argparse.Namespace) -> int:
 
     summary = {
         "ok": not result.errors,
+        # Honesty (audit #2): flag synthetic-ness in the machine-readable
+        # summary too, not just the human STUB_BANNER — an agent/script
+        # parsing this JSON must not mistake best_objective for a real
+        # calibration result. The real SCE-UA / DREAM-ZS solver lives in
+        # skills/swmm-calibration/scripts/swmm_calibrate.py.
+        "is_stub": True,
+        "engine": "synthetic_walker",
         "run_id": result.run_id,
         "algorithm": result.algorithm,
         "iterations_completed": result.iterations_completed,
