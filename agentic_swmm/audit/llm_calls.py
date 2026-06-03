@@ -328,4 +328,62 @@ def extract_usage_tokens(response: Any) -> tuple[int | None, int | None]:
     return _from_obj(usage)
 
 
-__all__ = ["record_llm_call", "extract_usage_tokens"]
+def aggregate_token_usage(run_dirs: list[Path | str]) -> dict[str, int] | None:
+    """Sum per-call token counts from each ``<dir>/09_audit/llm_calls.jsonl``.
+
+    The deep module owns the JSONL schema, so the aggregation lives here too.
+    Returns a deterministic summary dict, or ``None`` when no call carries a
+    token count (no ledger, or the provider never surfaced usage) — callers
+    treat ``None`` as "nothing to show" and render nothing, preserving the
+    no-run / chat-only empty-summary contract.
+
+    Booleans are rejected (``isinstance(True, int)`` is True in Python) so a
+    stray ``true`` cannot inflate a count.
+    """
+    total_in = 0
+    total_out = 0
+    calls = 0
+    calls_with_tokens = 0
+    for run_dir in run_dirs:
+        path = Path(run_dir) / "09_audit" / "llm_calls.jsonl"
+        if not path.exists():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            calls += 1
+            ti = rec.get("tokens_input")
+            to = rec.get("tokens_output")
+            has_tokens = False
+            if isinstance(ti, int) and not isinstance(ti, bool):
+                total_in += ti
+                has_tokens = True
+            if isinstance(to, int) and not isinstance(to, bool):
+                total_out += to
+                has_tokens = True
+            if has_tokens:
+                calls_with_tokens += 1
+
+    if calls_with_tokens == 0:
+        return None
+    return {
+        "calls": calls,
+        "calls_with_tokens": calls_with_tokens,
+        "tokens_input": total_in,
+        "tokens_output": total_out,
+        "tokens_total": total_in + total_out,
+    }
+
+
+__all__ = ["record_llm_call", "extract_usage_tokens", "aggregate_token_usage"]

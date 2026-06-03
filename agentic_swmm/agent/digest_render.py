@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.audit.llm_calls import aggregate_token_usage
 from agentic_swmm.agent.tui_chrome import (
     H_ASCII,
     H_LIGHT,
@@ -316,10 +317,33 @@ def render_final_summary(run_dirs: list[Path]) -> str:
         block = _block_for_run(run_dir)
         if block:
             rendered.append(block)
-    if not rendered:
+
+    # Per-token billing transparency: append one deterministic LLM-usage line
+    # when the session's llm_calls.jsonl carries token counts. Returns None
+    # (→ no line) when there is no token data, so the no-run / chat-only
+    # empty-summary contract is preserved for sessions that recorded none.
+    usage_line = _format_token_usage(aggregate_token_usage(run_dirs))
+
+    blocks = rendered + ([usage_line] if usage_line else [])
+    if not blocks:
         return ""
     separator = _summary_separator()
-    return separator + "\n" + ("\n" + separator + "\n").join(rendered)
+    return separator + "\n" + ("\n" + separator + "\n").join(blocks)
+
+
+def _format_token_usage(usage: dict[str, int] | None) -> str | None:
+    """One-line LLM token total for the session-end summary, or None."""
+    if not usage:
+        return None
+    line = (
+        f"LLM usage: {usage['calls']} call(s) · "
+        f"{usage['tokens_input']:,} in + {usage['tokens_output']:,} out = "
+        f"{usage['tokens_total']:,} tokens"
+    )
+    missing = usage["calls"] - usage["calls_with_tokens"]
+    if missing > 0:
+        line += f" ({missing} call(s) without counts)"
+    return line
 
 
 __all__ = ["brief_result", "render_step", "render_final_summary"]
