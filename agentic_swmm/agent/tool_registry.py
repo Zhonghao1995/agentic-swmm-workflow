@@ -317,6 +317,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
         ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
         ToolSpec("format_rainfall", "Format rainfall CSV into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill.", _object({"input_csv": {"type": "string"}, "out_json": {"type": "string"}, "out_timeseries": {"type": "string"}, "series_name": {"type": "string"}, "timestamp_column": {"type": "string"}, "value_column": {"type": "string"}, "value_units": {"type": "string"}, "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]}, "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]}}, ["input_csv", "out_json", "out_timeseries"]), _format_rainfall_tool),
+        ToolSpec("generate_design_storm", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) using the aiswmm storm engine. Writes a SWMM [TIMESERIES] .dat the downstream build_inp can consume. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4), and idf supplies an IDF spec (depth inferred).", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_design_storm_tool),
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool, is_read_only=True),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool, is_read_only=True),
@@ -1172,6 +1173,12 @@ from agentic_swmm.agent.tool_handlers.swmm_map import (  # noqa: E402,F401
 # handler late-imports ``_required_repo_file`` from this module.
 from agentic_swmm.agent.tool_handlers.swmm_rpt import (  # noqa: E402,F401
     _read_rpt_summary_tool,
+)
+# ``generate_design_storm`` is a thin CLI wrapper (``aiswmm storm``) — no
+# MCP, no late-import dance. Exposes the existing design-storm engine as a
+# first-class typed tool so the LLM dispatches it directly.
+from agentic_swmm.agent.tool_handlers.swmm_storm import (  # noqa: E402,F401
+    _generate_design_storm_tool,
 )
 
 

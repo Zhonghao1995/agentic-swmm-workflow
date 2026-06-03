@@ -31,6 +31,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "demo_acceptance": False,
     "doctor": False,
     "format_rainfall": False,
+    # aiswmm storm verb wrapped as a typed LLM-facing tool — writes a
+    # SWMM .dat timeseries, so not read-only.
+    "generate_design_storm": False,
     # v0.7.1: aiswmm map verb wrapped as a typed LLM-facing tool —
     # writes a PNG, so not read-only.
     "map_run": False,

@@ -97,6 +97,14 @@ _MIGRATED_FAMILIES = [
         ("_read_rpt_summary_tool",),
         ("read_rpt_summary",),
     ),
+    # Thin CLI wrapper (``aiswmm storm``) exposing the design-storm engine
+    # as a first-class typed tool so the LLM dispatches it directly instead
+    # of via run_allowed_command.
+    (
+        "swmm_storm",
+        ("_generate_design_storm_tool",),
+        ("generate_design_storm",),
+    ),
 ]
 
 
