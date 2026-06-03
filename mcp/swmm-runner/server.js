@@ -136,7 +136,10 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
         );
       }
     }
-    const args = ["run", "--inp", a.inp, "--run-dir", a.runDir, "--node", node];
+    // --gate: this is the agent path. runPy() rejects on a non-zero exit, so
+    // gating makes a solver ERROR / non-zero rc / timeout surface to the LLM
+    // as a tool failure instead of flowing back as a success.
+    const args = ["run", "--gate", "--inp", a.inp, "--run-dir", a.runDir, "--node", node];
     if (a.rptName) args.push("--rpt-name", a.rptName);
     if (a.outName) args.push("--out-name", a.outName);
     const stdout = await runPy(args);

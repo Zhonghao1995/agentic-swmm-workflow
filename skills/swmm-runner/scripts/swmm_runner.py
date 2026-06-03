@@ -19,8 +19,28 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
+
+
+# Reproducibility is pinned to this swmm5 build (Dockerfile SWMM_REF=v5.2.4;
+# docs/byte-identical-reproducibility.md). A mismatch is advisory only — it
+# never fails a run, it just warns the version-identical guarantee is off.
+EXPECTED_SWMM_VERSION = "5.2.4"
+
+# Default ceiling for a single swmm5 invocation. A pathological INP must not
+# hang the caller (interactive session / MCP pool) forever.
+DEFAULT_SWMM_TIMEOUT_S = 600.0
+
+# Sentinel return code for a timed-out swmm5 run (mirrors GNU ``timeout``).
+SWMM_TIMEOUT_RC = 124
+
+# Mirror of ``agentic_swmm.agent.honesty._RPT_ERROR_RE`` — kept inline so this
+# skill script stays import-free / portable. The ``\d+:`` after ERROR avoids
+# false-positives on the narrative word "error" in continuity summaries. Keep
+# the two patterns in sync.
+_RPT_ERROR_RE = re.compile(r"^\s*(ERROR\s+\d+:.*)$")
 
 
 def sha256_file(p: Path) -> str:
@@ -31,8 +51,67 @@ def sha256_file(p: Path) -> str:
     return h.hexdigest()
 
 
-def run_swmm(inp: Path, rpt: Path, out: Path, stdout_path: Path, stderr_path: Path) -> int:
-    p = subprocess.run(["swmm5", str(inp), str(rpt), str(out)], capture_output=True, text=True)
+def scan_rpt_for_errors(rpt_path: Path) -> list[str]:
+    """Return the verbatim ``ERROR <n>:`` lines in a SWMM ``.rpt``.
+
+    Empty list when the file is missing/unreadable or carries no canonical
+    error lines. swmm5 frequently exits 0 while writing these — they are the
+    real failure signal, not the process return code.
+    """
+    try:
+        if not rpt_path.exists():
+            return []
+        text = rpt_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    matches: list[str] = []
+    for raw in text.splitlines():
+        m = _RPT_ERROR_RE.match(raw)
+        if m:
+            matches.append(m.group(1).rstrip())
+    return matches
+
+
+def check_swmm_version(detected: str | None) -> tuple[bool, str | None]:
+    """Advisory version check. Returns ``(version_ok, warning_or_None)``."""
+    if detected == EXPECTED_SWMM_VERSION:
+        return True, None
+    if detected is None:
+        return False, (
+            f"could not detect swmm5 version; byte-identical reproducibility "
+            f"is pinned to {EXPECTED_SWMM_VERSION}"
+        )
+    return False, (
+        f"swmm5 version {detected} != pinned {EXPECTED_SWMM_VERSION}; "
+        f"byte-identical reproducibility is not guaranteed"
+    )
+
+
+def run_swmm(
+    inp: Path,
+    rpt: Path,
+    out: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    timeout: float = DEFAULT_SWMM_TIMEOUT_S,
+) -> int:
+    try:
+        p = subprocess.run(
+            ["swmm5", str(inp), str(rpt), str(out)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout_path.write_text(
+            exc.stdout or "" if isinstance(exc.stdout, str) else "",
+            encoding='utf-8',
+            errors='ignore',
+        )
+        stderr_path.write_text(
+            f"swmm5 timed out after {timeout}s\n", encoding='utf-8', errors='ignore'
+        )
+        return SWMM_TIMEOUT_RC
     stdout_path.write_text(p.stdout, encoding='utf-8', errors='ignore')
     stderr_path.write_text(p.stderr, encoding='utf-8', errors='ignore')
     return p.returncode
@@ -162,7 +241,17 @@ def cmd_run(args):
     stdout_path = run_dir / "stdout.txt"
     stderr_path = run_dir / "stderr.txt"
 
-    rc = run_swmm(inp, rpt, out, stdout_path, stderr_path)
+    timeout = getattr(args, "timeout", DEFAULT_SWMM_TIMEOUT_S)
+    rc = run_swmm(inp, rpt, out, stdout_path, stderr_path, timeout=timeout)
+
+    # Honesty verdict: swmm5 exits 0 even when it writes ``ERROR <n>:`` lines,
+    # so a clean exit is necessary but not sufficient. ``run_ok`` is the
+    # structured source of truth both the CLI and agent paths read.
+    solver_errors = scan_rpt_for_errors(rpt)
+    run_ok = rc == 0 and not solver_errors
+
+    detected_version = get_swmm5_version()
+    version_ok, version_warning = check_swmm_version(detected_version)
 
     peak = parse_peak_from_rpt(rpt, args.node)
     cont = parse_continuity_blocks(rpt.read_text(errors='ignore'))
@@ -172,17 +261,38 @@ def cmd_run(args):
         "created_at": datetime.now().isoformat(),
         "swmm5": {
             "cmd": "swmm5",
-            "version": get_swmm5_version(),
+            "version": detected_version,
+            "version_ok": version_ok,
+            "version_warning": version_warning,
         },
         "inp": str(inp),
         "inp_sha256": sha256_file(inp),
         "files": {"rpt": str(rpt), "out": str(out), "stdout": str(stdout_path), "stderr": str(stderr_path)},
         "metrics": {"peak": peak, "continuity": cont},
         "return_code": rc,
+        "run_ok": run_ok,
+        "solver_errors": solver_errors,
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding='utf-8')
 
+    # stdout stays pure JSON (``aiswmm run > result.json`` / MCP parse depend
+    # on it); failure detail goes to stderr.
     print(json.dumps(manifest, indent=2))
+
+    # ``--gate`` is passed by the swmm-runner MCP server (the agent path),
+    # which only rejects on a non-zero exit. The CLI verb does NOT pass it:
+    # it keeps the legacy exit-0 here and runs its own honesty scan, so the
+    # pure-JSON-stdout contract in test_run_swmm_error_stream_separation is
+    # untouched.
+    if getattr(args, "gate", False) and not run_ok:
+        if solver_errors:
+            detail = solver_errors[0]
+        elif rc == SWMM_TIMEOUT_RC:
+            detail = f"swmm5 timed out after {timeout}s"
+        else:
+            detail = f"swmm5 exited with return code {rc}"
+        print(f"swmm_run failed: {detail}", file=sys.stderr)
+        sys.exit(1)
 
 
 def cmd_peak(args):
@@ -217,6 +327,16 @@ def main():
     ap_run.add_argument('--node', default='O1')
     ap_run.add_argument('--rpt-name', default=None)
     ap_run.add_argument('--out-name', default=None)
+    ap_run.add_argument(
+        '--timeout', type=float, default=DEFAULT_SWMM_TIMEOUT_S,
+        help='Max seconds for the swmm5 subprocess before it is killed.',
+    )
+    ap_run.add_argument(
+        '--gate', action='store_true',
+        help='Exit non-zero when the run is not ok (solver ERROR lines, '
+             'non-zero return code, or timeout). The MCP server passes this '
+             'so the agent path surfaces failures; the CLI verb does not.',
+    )
     ap_run.set_defaults(func=cmd_run)
 
     ap_peak = sub.add_parser('peak')
