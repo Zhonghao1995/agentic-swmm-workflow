@@ -326,19 +326,41 @@ def _record_parametric_from_provenance(
     tools = provenance.get("tools") or {}
     swmm_version = tools.get("swmm5_version") or tools.get("swmm_version")
 
-    # Continuity values live under metrics.continuity_error.values
-    # in the existing v1.1 audit schema (see audit_run.py:984).
+    # Continuity values live under metrics.continuity_error.values in the
+    # v1.1 audit schema. audit_run.py writes the keys ``runoff_quantity`` /
+    # ``flow_routing`` (verified against a live tecnopolo provenance); older
+    # fixtures used ``runoff`` / ``flow``, so accept both. Reading the wrong
+    # key was why qa_metrics was always empty.
     metrics = provenance.get("metrics") or {}
     continuity = (metrics.get("continuity_error") or {}).get("values") or {}
     qa_metrics: dict[str, Any] = {}
-    if "runoff" in continuity:
+    runoff_val = continuity.get("runoff_quantity", continuity.get("runoff"))
+    flow_val = continuity.get("flow_routing", continuity.get("flow"))
+    if runoff_val is not None:
         try:
-            qa_metrics["runoff_continuity_pct"] = float(continuity["runoff"])
+            qa_metrics["runoff_continuity_pct"] = float(runoff_val)
         except (TypeError, ValueError):
             pass
-    if "flow" in continuity:
+    if flow_val is not None:
         try:
-            qa_metrics["flow_continuity_pct"] = float(continuity["flow"])
+            qa_metrics["flow_continuity_pct"] = float(flow_val)
+        except (TypeError, ValueError):
+            pass
+
+    # Peak flow is the run's primary hydraulic fingerprint — capture it as
+    # flat, queryable fields when the audit actually parsed a value (it is
+    # ``null`` when the target node could not be matched).
+    peak = metrics.get("peak_flow") or {}
+    peak_value = peak.get("value")
+    if peak_value is not None:
+        try:
+            qa_metrics["peak_flow_value"] = float(peak_value)
+            if peak.get("node"):
+                qa_metrics["peak_flow_node"] = str(peak["node"])
+            if peak.get("unit"):
+                qa_metrics["peak_flow_unit"] = str(peak["unit"])
+            if peak.get("time_hhmm"):
+                qa_metrics["peak_flow_time_hhmm"] = str(peak["time_hhmm"])
         except (TypeError, ValueError):
             pass
 
