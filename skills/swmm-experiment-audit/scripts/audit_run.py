@@ -555,6 +555,45 @@ def parse_flooding_diagnostics(rpt_path: Path | None) -> list[dict[str, Any]]:
     ] if rows else []
 
 
+# Canonical SWMM ``WARNING <n>:`` line (mirrors the ``ERROR <n>:`` pattern in
+# agentic_swmm.agent.honesty). Numbered form only, so the narrative word
+# "warning" in prose never false-positives.
+_RPT_WARNING_RE = re.compile(r"^\s*(WARNING\s+\d+:.*)$")
+
+
+def parse_rpt_warnings(rpt_path: Path | None) -> list[dict[str, Any]]:
+    """Collect SWMM's own ``WARNING <n>:`` lines as one info-level diagnostic.
+
+    These are SWMM's native advisories (time-step reductions, minimum
+    slope/elevation enforced, illegal aspect ratios) — what a modeller sees
+    first when opening the .rpt. Surfaced as **info** so the audit reports them
+    without ever gating: a warning is not a failure.
+    """
+    if not rpt_path or not rpt_path.exists():
+        return []
+    text = rpt_path.read_text(encoding="utf-8", errors="ignore")
+    warnings: list[str] = []
+    for raw in text.splitlines():
+        m = _RPT_WARNING_RE.match(raw)
+        if m:
+            warnings.append(m.group(1).rstrip())
+    if not warnings:
+        return []
+    return [
+        diagnostic(
+            "swmm_native_warnings",
+            "info",
+            f"SWMM report contains {len(warnings)} native WARNING line(s).",
+            evidence={"warnings": warnings[:50], "count": len(warnings)},
+            recommendation=(
+                "Review SWMM's own warnings (e.g. routing time-step reductions, "
+                "minimum slope/elevation enforced) — they often explain "
+                "continuity error or unexpected hydraulics."
+            ),
+        )
+    ]
+
+
 def build_model_diagnostics(
     *,
     inp_path: Path | None,
@@ -695,17 +734,21 @@ def build_model_diagnostics(
             )
 
     diagnostics.extend(parse_flooding_diagnostics(rpt_path))
+    diagnostics.extend(parse_rpt_warnings(rpt_path))
     errors = sum(1 for item in diagnostics if item.get("severity") == "error")
     warnings = sum(1 for item in diagnostics if item.get("severity") == "warning")
+    infos = sum(1 for item in diagnostics if item.get("severity") == "info")
     return {
         "schema_version": "1.1",
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "source_inp": relpath(inp_path, repo_root) if inp_path and inp_path.exists() else None,
         "source_rpt": relpath(rpt_path, repo_root) if rpt_path and rpt_path.exists() else None,
+        # info-level diagnostics (SWMM native warnings) never gate status.
         "status": "fail" if errors else ("warning" if warnings else "pass"),
         "error_count": errors,
         "warning_count": warnings,
+        "info_count": infos,
         "diagnostics": diagnostics,
     }
 
