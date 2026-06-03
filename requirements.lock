@@ -1,5 +1,6 @@
 # requirements.lock — fully pinned, byte-reproducible dependency set
-# for Agentic SWMM v0.6.4 (Python 3.11).
+# for Agentic SWMM v0.7.1 (Python 3.11). The pinned set is unchanged since
+# v0.6.4 (no LLM SDK ships in core deps — providers use pure-stdlib urllib).
 #
 # This lockfile is generated from `scripts/requirements.txt` and used by
 # the Dockerfile and CI to guarantee the same versions are installed on

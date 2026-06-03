@@ -1,6 +1,6 @@
 ---
 name: swmm-network
-description: Build, validate, and route SWMM pipe-network models for urban drainage from raw municipal shapefiles or structured CAD/GIS exports. Use when handling junctions, conduits, outfalls, xsections, network field-mapping configs, or wiring subcatchments to upstream nodes. Requires real pipe data (SHP / CAD / structured GeoJSON). For data-scarce areas where only a bbox is available and no pipe inventory exists, use `swmm-anywhere` instead.
+description: Build, validate, and route SWMM pipe-network models for urban drainage from raw municipal shapefiles or structured GIS/CAD exports. Use when handling junctions, conduits, outfalls, xsections, network field-mapping configs, or wiring subcatchments to upstream nodes. Requires real pipe data as SHP / GeoJSON / CSV — native CAD (DXF/DWG) is not parsed and must first be exported to one of these. For data-scarce areas where only a bbox is available and no pipe inventory exists, use `swmm-anywhere` instead.
 ---
 
 # SWMM Network (pipe-system layer)
