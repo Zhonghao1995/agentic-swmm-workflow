@@ -741,6 +741,12 @@ class OptOutFlagStatus:
     description: str
 
 
+# Knobs whose value is a secret and must never be echoed to stdout (doctor
+# prints presence only for these). Config flags below are NOT secret — seeing
+# their value (e.g. SET=1) is useful.
+_SECRET_KNOBS: frozenset[str] = frozenset({"ANTHROPIC_API_KEY"})
+
+
 _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
     (
         "ANTHROPIC_API_KEY",
@@ -952,7 +958,15 @@ def render_runtime_knobs_section(
         return "Runtime knobs: (none documented)"
     lines = ["Runtime knobs:"]
     for s in statuses:
-        if s.current_value is None:
+        if s.env_name in _SECRET_KNOBS:
+            # Never echo a secret's value to stdout. Show presence only.
+            if s.current_value is None:
+                state_col = "UNSET"
+            elif s.current_value == "":
+                state_col = "SET(empty)"
+            else:
+                state_col = "SET"
+        elif s.current_value is None:
             state_col = "UNSET"
         else:
             state_col = f"SET={s.current_value}"
