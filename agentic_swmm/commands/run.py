@@ -245,6 +245,22 @@ def main(args: argparse.Namespace) -> int:
             "swmm5_version": (runner_manifest.get("swmm5") or {}).get("version"),
         },
     }
+    # Stamp the case identity so this run groups with other runs of the same
+    # watershed in parametric memory (audit reads case_id -> case_name; the
+    # memory-informed read side resolves the same slug). Previously --case-id
+    # was accepted by argparse but dropped here, so runs never grouped.
+    case_id_raw = getattr(args, "case_id", None)
+    if case_id_raw:
+        from agentic_swmm.case.case_id import is_valid_case_id
+
+        case_id = str(case_id_raw).strip()
+        if case_id and is_valid_case_id(case_id):
+            top_manifest["case_id"] = case_id
+        elif case_id:
+            print(
+                f"warning: --case-id {case_id!r} is not a valid slug; not recorded",
+                file=sys.stderr,
+            )
     (run_dir / "manifest.json").write_text(json.dumps(top_manifest, indent=2), encoding="utf-8")
     # Audit #1 residual: ``stdout`` must carry *only* the JSON manifest so
     # ``aiswmm run > result.json`` yields a clean, parseable document.

@@ -282,6 +282,27 @@ def current_repo_state(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _derive_case_name(
+    case_name_arg: str | None, top_manifest: dict[str, Any], run_dir: Path
+) -> str:
+    """Case identity used to GROUP runs in parametric memory.
+
+    Precedence: an explicit ``--case-name`` > the manifest's ``case_name`` >
+    the manifest's ``case_id`` > the run-dir name. The ``case_id`` fallback is
+    the fix that lets runs linked via ``aiswmm run --case-id <slug>`` group
+    under one case (the memory-informed read side resolves the same slug), so
+    the parametric store accumulates >=2 rows per watershed instead of one
+    orphan row per unique run-dir name.
+    """
+    manifest = top_manifest if isinstance(top_manifest, dict) else {}
+    return (
+        case_name_arg
+        or manifest.get("case_name")
+        or manifest.get("case_id")
+        or run_dir.name
+    )
+
+
 def derive_status(qa: dict[str, Any], runner_manifest: dict[str, Any], files_exist: bool) -> str:
     if qa:
         fail_count = qa.get("fail_count")
@@ -1029,7 +1050,7 @@ def collect_run(
         "generated_by": "swmm-experiment-audit",
         "generated_at_utc": now_utc(),
         "run_id": top_manifest.get("run_id") or acceptance_report.get("run_id") or run_dir.name,
-        "case_name": case_name or top_manifest.get("case_name") or run_dir.name,
+        "case_name": _derive_case_name(case_name, top_manifest, run_dir),
         "objective": objective,
         "workflow_mode": workflow_mode or top_manifest.get("pipeline") or acceptance_report.get("pipeline"),
         "status": status,
