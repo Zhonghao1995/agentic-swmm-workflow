@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -134,9 +135,22 @@ def _available_next_actions(workflow_state: dict[str, Any]) -> list[str]:
     return actions
 
 
+# Run/session dirs follow runs/<date>/<session_id>_<slug>_<kind> (kind in
+# {run, chat}); the <slug> is the stable case anchor. Without this, the
+# timestamped session_id makes every run a unique "case" so memory never
+# groups. Keep in sync with the same rule in
+# skills/swmm-experiment-audit/scripts/audit_run.py:_derive_case_name.
+_CASE_DIR_RE = re.compile(r"^\d+_(.+)_(?:run|chat)$")
+
+
 def _case_id_from_run_dir(run_dir: str) -> str:
     name = Path(run_dir).name
-    return name or "active"
+    if not name:
+        return "active"
+    match = _CASE_DIR_RE.match(name)
+    if match:
+        return match.group(1)
+    return name
 
 
 def _compact_result(result: dict[str, Any]) -> dict[str, Any]:

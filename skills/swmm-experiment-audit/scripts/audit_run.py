@@ -295,12 +295,17 @@ def _derive_case_name(
     orphan row per unique run-dir name.
     """
     manifest = top_manifest if isinstance(top_manifest, dict) else {}
-    return (
-        case_name_arg
-        or manifest.get("case_name")
-        or manifest.get("case_id")
-        or run_dir.name
-    )
+    explicit = case_name_arg or manifest.get("case_name") or manifest.get("case_id")
+    if explicit:
+        return explicit
+    # Agent runs are named runs/<date>/<session_id>_<slug>_<kind> (kind in
+    # {run, chat}); extract the <slug> so they group by watershed instead of by
+    # the unique timestamped dir name. Keep in sync with the same rule in
+    # agentic_swmm/agent/state.py:_case_id_from_run_dir.
+    m = re.match(r"^\d+_(.+)_(?:run|chat)$", run_dir.name)
+    if m:
+        return m.group(1)
+    return run_dir.name
 
 
 def derive_status(qa: dict[str, Any], runner_manifest: dict[str, Any], files_exist: bool) -> str:

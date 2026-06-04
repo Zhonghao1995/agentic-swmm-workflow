@@ -61,6 +61,49 @@ class DeriveCaseNameTests(unittest.TestCase):
         self.assertEqual(out, "run1")
 
 
+class DeriveCaseNameSlugFromDirTests(unittest.TestCase):
+    """Agent-path: audit last-resort extracts the slug from a conventional
+    run-dir name so agent runs of one watershed group, even without --case-id.
+    """
+
+    def setUp(self) -> None:
+        self.audit = load_audit_module()
+
+    def test_extracts_slug_from_agent_run_dir(self) -> None:
+        out = self.audit._derive_case_name(None, {}, Path("runs/2026-05-28/003354_tecnopolo_run"))
+        self.assertEqual(out, "tecnopolo")
+
+    def test_extracts_hyphenated_slug(self) -> None:
+        out = self.audit._derive_case_name(None, {}, Path("runs/x/001215_tod-creek_run"))
+        self.assertEqual(out, "tod-creek")
+
+    def test_non_conventional_dir_keeps_full_name(self) -> None:
+        # A bare --run-dir like /tmp/run1 has no NNNNNN_<slug>_<kind> shape.
+        out = self.audit._derive_case_name(None, {}, Path("/tmp/run1"))
+        self.assertEqual(out, "run1")
+
+
+class CaseIdFromRunDirTests(unittest.TestCase):
+    """Agent read anchor: active_case_id must be the stable slug, not the
+    timestamped run-dir name (which made every run a unique 'case')."""
+
+    def setUp(self) -> None:
+        from agentic_swmm.agent.state import _case_id_from_run_dir
+        self._fn = _case_id_from_run_dir
+
+    def test_extracts_slug_from_run_dir(self) -> None:
+        self.assertEqual(self._fn("runs/2026-05-28/003354_tecnopolo_run"), "tecnopolo")
+
+    def test_extracts_slug_from_chat_dir(self) -> None:
+        self.assertEqual(self._fn("runs/x/013030_inspect-project_chat"), "inspect-project")
+
+    def test_non_conventional_keeps_name(self) -> None:
+        self.assertEqual(self._fn("run1"), "run1")
+
+    def test_empty_is_active(self) -> None:
+        self.assertEqual(self._fn(""), "active")
+
+
 @unittest.skipUnless(shutil.which("swmm5") and TECNOPOLO_INP.exists(), "needs swmm5 + tecnopolo INP")
 class RunStampsCaseIdTests(unittest.TestCase):
     def test_run_writes_case_id_into_manifest(self) -> None:
