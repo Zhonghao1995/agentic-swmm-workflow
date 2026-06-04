@@ -134,6 +134,50 @@ class SlashCommandsExitCleanlyTests(unittest.TestCase):
                 self.assertEqual(planner.calls, [])
 
 
+class HelpCommandTests(unittest.TestCase):
+    """``/help`` (and aliases) print the command list locally and never reach
+    the paid planner — the welcome banner advertises help, so it must work
+    without a billed LLM round-trip."""
+
+    def test_help_prints_locally_and_skips_planner(self) -> None:
+        for cmd in ("/help", "help", "?"):
+            with self.subTest(cmd=cmd):
+                with TemporaryDirectory() as tmp:
+                    args = _stub_args()
+                    planner = _RecordingPlanner()
+                    sink = _OutputSink()
+                    rc = run_repl(
+                        args,
+                        base_dir=Path(tmp),
+                        profile_name="quick",
+                        input_source=_QueueInput([cmd, "/exit"]),
+                        planner_runner=planner,
+                        output=sink,
+                    )
+                self.assertEqual(rc, 0)
+                self.assertEqual(planner.calls, [])  # never billed the planner
+                joined = "\n".join(sink.lines)
+                self.assertIn("/exit", joined)
+                self.assertIn("/new-session", joined)
+
+    def test_help_request_sentence_still_reaches_planner(self) -> None:
+        # Only the bare word is a command; "help me ..." is a real goal.
+        with TemporaryDirectory() as tmp:
+            args = _stub_args()
+            planner = _RecordingPlanner()
+            rc = run_repl(
+                args,
+                base_dir=Path(tmp),
+                profile_name="quick",
+                input_source=_QueueInput(["help me run a model", "/exit"]),
+                planner_runner=planner,
+                output=_OutputSink(),
+            )
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(planner.calls), 1)
+        self.assertEqual(planner.calls[0]["goal"], "help me run a model")
+
+
 class WarmIntroFiresOncePerSessionTests(unittest.TestCase):
     """Issue #108 regression — four ``hi`` prompts must emit the intro once.
 

@@ -44,6 +44,20 @@ class PlannerRunner(Protocol):
 
 _EXIT_COMMANDS = frozenset({"/exit", "/quit", "exit", "quit"})
 _NEW_SESSION_COMMANDS = frozenset({"/new-session", "/new session", "new session"})
+# Bare-word help only (matched against the whole stripped line) so "help me
+# run X" stays a real goal. The welcome banner advertises help, so it must be
+# answered locally — never billed to the planner.
+_HELP_COMMANDS = frozenset({"/help", "help", "/commands", "?"})
+_HELP_TEXT = (
+    "Commands:\n"
+    "  /help          show this help\n"
+    "  /new-session   start a fresh session (keeps the runtime running)\n"
+    "  /exit          quit (or press Ctrl-D)\n"
+    "\n"
+    "Anything else you type is sent to the agent as a modelling request,\n"
+    "e.g. \"run my model and audit it\". Start the runtime with --safe to\n"
+    "confirm every tool call before it runs."
+)
 
 
 def run_repl(
@@ -88,6 +102,9 @@ def run_repl(
                 on_new_session()
             else:
                 output("New session ready.")
+            continue
+        if prompt in _HELP_COMMANDS:
+            output(_HELP_TEXT)
             continue
         if not prompt:
             continue
