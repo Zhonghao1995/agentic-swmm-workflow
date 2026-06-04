@@ -341,7 +341,7 @@ if ($SkipPython) {
 if ($SkipMcp) {
     Write-Host "Step 3/${total}: MCP servers (skipped via -SkipMcp)"
 } else {
-    if (-not (Prompt-YN "Run Step 3/${total} (MCP servers ~2 min, 8 servers)?" 'Y')) {
+    if (-not (Prompt-YN "Run Step 3/${total} (MCP servers ~2 min, 11 servers)?" 'Y')) {
         Write-Host "Installation aborted at MCP step."
         exit 0
     }
@@ -353,12 +353,12 @@ if ($SkipMcp) {
     }
 }
 
-# Step 4: skill files
-if (-not (Prompt-YN "Run Step 4/${total} (Skill files copy ~10s)?" 'Y')) {
-    Write-Host "Installation aborted at skill copy step."
+# Step 4: initialize ~/.aiswmm/ (real skill deployment runs via `aiswmm setup`)
+if (-not (Prompt-YN "Run Step 4/${total} (Initialize ~/.aiswmm/ ~5s)?" 'Y')) {
+    Write-Host "Installation aborted at config-directory step."
     exit 0
 }
-if (-not (Run-Step 4 $total "Skill files copy to ~/.aiswmm" "10s" { Do-SkillCopy })) {
+if (-not (Run-Step 4 $total "Initialize ~/.aiswmm/ directory" "5s" { Do-SkillCopy })) {
     Fail-Step "Skill files copy failed" @(
         "Verify $HOME is writable and $AiswmmConfigDir can be created."
     )
