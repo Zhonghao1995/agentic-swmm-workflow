@@ -54,6 +54,23 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     promote.set_defaults(func=promote_facts_main)
 
+    show = sub.add_parser(
+        "show",
+        help="Print a plain-text memory card for one case (what aiswmm remembers about it).",
+    )
+    show.add_argument(
+        "case",
+        type=str,
+        help="Case id / slug to show the memory card for (the slug you ran with --case-id).",
+    )
+    show.add_argument(
+        "--memory-dir",
+        type=Path,
+        default=None,
+        help="Modeling-memory directory. Defaults to memory/modeling-memory.",
+    )
+    show.set_defaults(func=show_main)
+
     compact = sub.add_parser(
         "compact",
         help=(
@@ -144,6 +161,19 @@ def _dispatch(args: argparse.Namespace) -> int:
             "`promote-facts` is required."
         )
     return main(args)
+
+
+def show_main(args: argparse.Namespace) -> int:
+    """Print the per-case memory card. Thin verb -> ``memory.card`` renderer."""
+    from agentic_swmm.memory.card import render_case_card
+
+    memory_dir = (
+        args.memory_dir.expanduser().resolve()
+        if getattr(args, "memory_dir", None)
+        else repo_root() / "memory" / "modeling-memory"
+    )
+    print(render_case_card(memory_dir, args.case))
+    return 0
 
 
 def main(args: argparse.Namespace) -> int:
