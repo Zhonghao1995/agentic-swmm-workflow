@@ -216,12 +216,50 @@ do_swmm_engine() {
     echo "SWMM engine build skipped (test mode)."
     return 0
   fi
-  command -v git >/dev/null 2>&1   || { echo "git not found (needed to fetch SWMM source)."; return 1; }
-  command -v cmake >/dev/null 2>&1 || { echo "cmake not found (needed to build swmm5). Install cmake and re-run."; return 1; }
-  command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || { echo "no C compiler found (install Xcode CLT on macOS or build-essential on Linux)."; return 1; }
+  command -v git >/dev/null 2>&1 || { echo "git not found (needed to fetch SWMM source)."; return 1; }
 
   local src build os runswmm
   os="$(uname -s)"
+
+  # "Install all dependencies": best-effort auto-install of the build toolchain
+  # (compiler, cmake, OpenMP). Whatever a package manager can do silently, we
+  # do; the one piece that needs user confirmation — the macOS Command Line
+  # Tools — we trigger, then ask the user to finish the dialog and re-run.
+  if [[ "$os" == "Darwin" ]]; then
+    if ! xcode-select -p >/dev/null 2>&1; then
+      echo "Installing the Xcode Command Line Tools (C compiler)..."
+      xcode-select --install >/dev/null 2>&1 || true
+      echo "Finish the 'Command Line Tools' install dialog, then re-run the installer."
+      return 1
+    fi
+    if ! command -v brew >/dev/null 2>&1; then
+      echo "Installing Homebrew (needed for cmake + libomp)..."
+      if ! NONINTERACTIVE=1 /bin/bash -c \
+          "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; then
+        echo "Homebrew install failed; install it from https://brew.sh and re-run."; return 1
+      fi
+      if [[ -x /opt/homebrew/bin/brew ]]; then eval "$(/opt/homebrew/bin/brew shellenv)"
+      elif [[ -x /usr/local/bin/brew ]]; then eval "$(/usr/local/bin/brew shellenv)"; fi
+    fi
+    command -v cmake >/dev/null 2>&1 || brew install cmake || { echo "cmake install failed."; return 1; }
+    brew list libomp >/dev/null 2>&1 || brew install libomp || { echo "libomp install failed."; return 1; }
+  else
+    # Linux: a C compiler + cmake via the system package manager (needs sudo).
+    if ! { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; } \
+        || ! command -v cmake >/dev/null 2>&1; then
+      if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update && sudo apt-get install -y build-essential cmake || { echo "apt-get install failed."; return 1; }
+      elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y gcc gcc-c++ make cmake || { echo "dnf install failed."; return 1; }
+      elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y gcc gcc-c++ make cmake || { echo "yum install failed."; return 1; }
+      else
+        echo "Install a C compiler + cmake with your package manager, then re-run."; return 1
+      fi
+    fi
+  fi
+  command -v cmake >/dev/null 2>&1 || { echo "cmake still unavailable after the install attempt."; return 1; }
+
   src="$(mktemp -d)"; build="$src/build"
   if ! git clone --depth 1 --branch "v$SWMM_VERSION" \
       https://github.com/USEPA/Stormwater-Management-Model.git "$src/swmm"; then
@@ -230,11 +268,7 @@ do_swmm_engine() {
 
   local -a cmake_args=(-S "$src/swmm" -B "$build" -DCMAKE_BUILD_TYPE=Release)
   if [[ "$os" == "Darwin" ]]; then
-    # Apple clang ships no OpenMP runtime; build + link against Homebrew libomp.
-    if ! command -v brew >/dev/null 2>&1; then
-      rm -rf "$src"; echo "Homebrew required to supply libomp on macOS (https://brew.sh)."; return 1
-    fi
-    brew list libomp >/dev/null 2>&1 || brew install libomp || { rm -rf "$src"; echo "libomp install failed."; return 1; }
+    # Apple clang has no built-in OpenMP runtime; point CMake at Homebrew libomp.
     local libomp; libomp="$(brew --prefix libomp)"
     cmake_args+=(
       -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp -I$libomp/include"
