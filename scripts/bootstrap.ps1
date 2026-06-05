@@ -1,5 +1,7 @@
 param(
-    [string]$TargetDir = "agentic-swmm-workflow"
+    [string]$TargetDir = "agentic-swmm-workflow",
+    [string]$Provider = "openai",
+    [string]$Model = "gpt-5.5"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,11 +41,14 @@ function Refresh-ChocolateyEnvironment {
     }
 }
 
-Ensure-Admin
-Ensure-Chocolatey
-Refresh-ChocolateyEnvironment
-
+# Only escalate to admin + Chocolatey when git is actually missing. A user who
+# already has git (the common case) gets a non-admin one-click install, which
+# matches the documented design — Administrator is only needed for the explicit
+# -InstallSystemDeps Chocolatey path. The bash bootstrap is likewise non-admin.
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Ensure-Admin
+    Ensure-Chocolatey
+    Refresh-ChocolateyEnvironment
     Write-Step "Installing Git"
     choco upgrade git -y --no-progress
     Refresh-ChocolateyEnvironment
@@ -60,4 +65,4 @@ if (Test-Path (Join-Path $fullTarget '.git')) {
     git clone $repoUrl $fullTarget
 }
 
-& (Join-Path $fullTarget 'scripts\install.ps1') -Yes
+& (Join-Path $fullTarget 'scripts\install.ps1') -Yes -Provider $Provider -Model $Model

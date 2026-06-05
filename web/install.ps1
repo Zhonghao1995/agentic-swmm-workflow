@@ -42,16 +42,15 @@ Write-Host "[INFO] OpenAI model: $Model"
 $script = (New-Object System.Net.WebClient).DownloadString($url)
 $block = [scriptblock]::Create($script)
 
-$args = @{
+# Forward only what scripts/install.ps1 actually accepts. The legacy
+# Skip*/Swmm* switches targeted an older installer contract that no longer
+# exists, and splatting those unknown keys into bootstrap.ps1 is what crashed
+# the one-liner ("A parameter cannot be found that matches parameter name
+# 'Provider'"). $Ref is used above to fetch bootstrap.ps1; it is not a
+# bootstrap parameter, so it is not forwarded.
+$bootstrapArgs = @{
     Provider = $Provider
     Model = $Model
-    SourceRef = $Ref
 }
-if ($SkipSwmm) { $args.SkipSwmm = $true }
-if ($SkipMcp) { $args.SkipMcp = $true }
-if ($SkipSetup) { $args.SkipSetup = $true }
-if ($InstallSystemDeps) { $args.InstallSystemDeps = $true }
-if ($SwmmExe) { $args.SwmmExe = $SwmmExe }
-if ($SwmmVersion) { $args.SwmmVersion = $SwmmVersion }
 
-& $block @args
+& $block @bootstrapArgs
