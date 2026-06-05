@@ -395,12 +395,16 @@ Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
 Write-Host "  2. Run: aiswmm doctor"
 if ($Provider -ne 'openai') {
-    # Run-Step hides Step 5's output on success, so the login hint for a
-    # non-openai provider must live in this always-visible block.
+    # Run-Step hides Step 5's output on success, so the login hint must live in
+    # this always-visible block. Non-openai providers never get a key prompt.
     Write-Host "  3. Store your $Provider API key: aiswmm login --$Provider"
     Write-Host "  4. Run: aiswmm chat --provider $Provider"
+} elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {
+    # openai selected but no key saved or pre-existing (skipped, or no console).
+    Write-Host "  3. Add your OpenAI API key: aiswmm login --openai"
+    Write-Host "  4. Run: aiswmm chat --provider openai"
 } else {
-    Write-Host "  3. Run: aiswmm chat --provider $Provider"
+    Write-Host "  3. Run: aiswmm chat --provider openai"
 }
 Write-Host ""
 

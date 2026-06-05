@@ -31,6 +31,10 @@ assert_log_contains "Step 5/5"
 assert_log_contains "Install complete"
 # In --auto mode the prompt prefix must never appear.
 assert_log_not_contains "Continue with installation?"
+# Default provider is openai and --auto stores no key (the harness pins
+# OPENAI_API_KEY empty), so the always-visible Next steps must tell the user
+# how to add one — the in-step "skipped" hint is swallowed on success.
+assert_log_contains "aiswmm login --openai"
 harness_teardown
 
 # --- 2. Y at risk warning + Y at every step --------------------------------
@@ -74,7 +78,19 @@ assert_status 0
 assert_log_contains "aiswmm login --anthropic"
 harness_teardown
 
-# --- 6. npm install failure ------------------------------------------------
+# --- 6. openai with a pre-existing key gets no login nag ------------------
+# A user who already has a key (env file present) must NOT be told to log in
+# again; Next steps should just point at chat.
+harness_setup
+mkdir -p "$SANDBOX/home/.aiswmm"
+printf 'export OPENAI_API_KEY="sk-existing"\n' > "$SANDBOX/home/.aiswmm/env"
+run_install --auto
+assert_status 0
+assert_log_contains "Install complete"
+assert_log_not_contains "aiswmm login --openai"
+harness_teardown
+
+# --- 7. npm install failure ------------------------------------------------
 harness_setup
 harness_set_npm_fails 1
 run_install --auto

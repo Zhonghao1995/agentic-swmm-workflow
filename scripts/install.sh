@@ -316,14 +316,20 @@ Next steps
 SUMMARY
 
 # Provider key guidance lives here, not in Step 5: run_step hides a step's
-# output on success, so the non-openai login hint would otherwise never be
-# seen. OpenAI keys are handled by the Step 5 prompt; any other provider needs
-# an explicit `aiswmm login` to store its key.
+# output on success, so a login hint inside the step would never be seen. We
+# re-derive the key state at summary time (the same condition do_api_key uses):
+#   - non-openai: the installer never prompts for a key -> always point at login
+#   - openai with no key saved or pre-existing (user pressed Enter to skip, or
+#     no tty was available) -> tell them how to add it
+#   - openai with a key already configured -> just start chatting
 if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
   echo "  3. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
   echo "  4. Run: aiswmm chat --provider $AISWMM_PROVIDER"
+elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
+  echo "  3. Add your OpenAI API key: aiswmm login --openai"
+  echo "  4. Run: aiswmm chat --provider openai"
 else
-  echo "  3. Run: aiswmm chat --provider $AISWMM_PROVIDER"
+  echo "  3. Run: aiswmm chat --provider openai"
 fi
 echo ""
 

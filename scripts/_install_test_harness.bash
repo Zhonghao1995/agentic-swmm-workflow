@@ -80,6 +80,7 @@ run_install() {
       AISWMM_CONFIG_DIR="$SANDBOX/home/.aiswmm" \
       XDG_CACHE_HOME="$SANDBOX/cache" \
       AISWMM_SKIP_REAL_TOOLS=1 \
+      OPENAI_API_KEY= \
       bash "$SANDBOX/repo/scripts/install.sh" "$@" \
         <<<"$HARNESS_STDIN" >"$log_file" 2>&1 \
         || status=$?
@@ -89,6 +90,7 @@ run_install() {
       AISWMM_CONFIG_DIR="$SANDBOX/home/.aiswmm" \
       XDG_CACHE_HOME="$SANDBOX/cache" \
       AISWMM_SKIP_REAL_TOOLS=1 \
+      OPENAI_API_KEY= \
       bash "$SANDBOX/repo/scripts/install.sh" "$@" \
         </dev/null >"$log_file" 2>&1 \
         || status=$?
