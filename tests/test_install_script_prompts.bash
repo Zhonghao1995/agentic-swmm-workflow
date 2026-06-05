@@ -63,7 +63,18 @@ assert_log_contains "Installation aborted"
 assert_log_not_contains "Step 4/5"
 harness_teardown
 
-# --- 5. npm install failure ------------------------------------------------
+# --- 5. non-openai provider points the user at `aiswmm login` --------------
+# Installing with --provider anthropic must not dead-end at "OpenAI key
+# skipped"; it has to tell the user the next step for *their* provider.
+# This runs BEFORE the npm-failure case below: that case sets a sticky
+# MOCK_NPM_FAILS=1 which harness_setup does not reset between sandboxes.
+harness_setup
+run_install --auto --provider anthropic
+assert_status 0
+assert_log_contains "aiswmm login --anthropic"
+harness_teardown
+
+# --- 6. npm install failure ------------------------------------------------
 harness_setup
 harness_set_npm_fails 1
 run_install --auto

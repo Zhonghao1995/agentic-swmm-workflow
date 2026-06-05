@@ -228,7 +228,9 @@ function Do-SkillCopy {
 function Do-ApiKey {
     New-Item -ItemType Directory -Force -Path $AiswmmConfigDir | Out-Null
     if ($Provider -ne 'openai') {
-        Write-Host "Provider is $Provider; OpenAI API key step skipped."
+        # Other providers are pointed at `aiswmm login` from the always-visible
+        # Next steps block; Run-Step hides this step's output on success.
+        Write-Host "Provider is $Provider; the OpenAI key step does not apply."
         return
     }
     if ($env:OPENAI_API_KEY -or (Test-Path $AiswmmEnvFile)) {
@@ -392,7 +394,14 @@ Write-Host ""
 Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
 Write-Host "  2. Run: aiswmm doctor"
-Write-Host "  3. Run: aiswmm chat --provider $Provider"
+if ($Provider -ne 'openai') {
+    # Run-Step hides Step 5's output on success, so the login hint for a
+    # non-openai provider must live in this always-visible block.
+    Write-Host "  3. Store your $Provider API key: aiswmm login --$Provider"
+    Write-Host "  4. Run: aiswmm chat --provider $Provider"
+} else {
+    Write-Host "  3. Run: aiswmm chat --provider $Provider"
+}
 Write-Host ""
 
 exit 0

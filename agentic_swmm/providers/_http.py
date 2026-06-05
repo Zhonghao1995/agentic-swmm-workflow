@@ -21,8 +21,30 @@ from typing import Any, Callable
 
 # Transient HTTP statuses worth retrying: rate-limit + the standard 5xx set.
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
+# Authentication / authorization failures: the key is missing, invalid,
+# expired, or lacks access. Not transient (no retry) — but unlike a generic
+# 4xx we know exactly how the user fixes it, so we append a remediation hint
+# to the error the CLI surfaces verbatim as ``error: ...``.
+AUTH_STATUSES = frozenset({401, 403})
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_BASE_S = 0.5
+
+# provider_label (lower-cased) -> (env var name, the command that stores a key).
+_AUTH_REMEDIATION = {
+    "openai": ("OPENAI_API_KEY", "aiswmm login --openai"),
+    "anthropic": ("ANTHROPIC_API_KEY", "aiswmm login --anthropic"),
+}
+
+
+def _auth_hint(provider_label: str) -> str:
+    """Return a one-line ' — how to fix your key' suffix for a 401/403."""
+    env_var, login_cmd = _AUTH_REMEDIATION.get(
+        provider_label.lower(), ("the provider API key", "aiswmm login")
+    )
+    return (
+        f" — authentication failed; your {env_var} is missing, invalid, or "
+        f"expired. Run `{login_cmd}` to store a working key, then retry."
+    )
 
 
 def _retry_delay(exc: urllib.error.HTTPError, attempt: int, backoff_base: float) -> float:
@@ -75,9 +97,12 @@ def post_json_with_retry(
                 last_exc = exc
                 continue
             detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
+            message = (
                 f"{provider_label} API request failed with HTTP {exc.code}: {detail}"
-            ) from exc
+            )
+            if exc.code in AUTH_STATUSES:
+                message += _auth_hint(provider_label)
+            raise RuntimeError(message) from exc
         except urllib.error.URLError as exc:
             # Connection-level blip (DNS, refused, socket timeout) — transient.
             if attempt < max_attempts:

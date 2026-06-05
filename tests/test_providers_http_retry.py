@@ -113,6 +113,36 @@ class PostJsonWithRetryTests(unittest.TestCase):
         self.assertEqual(opener.calls, 1)  # no retry
         self.assertEqual(self.slept, [])
 
+    def test_auth_401_appends_login_remediation_openai(self) -> None:
+        # A 401 means the key is missing/invalid/expired — not transient and
+        # not a generic 4xx. The raised message is exactly what the CLI prints
+        # as ``error: ...`` to the user, so it must carry the fix, not just the
+        # raw provider body.
+        opener = _ScriptedOpener([_http_error(401, detail=b"Invalid Authentication")])
+        with self.assertRaises(RuntimeError) as cm:
+            post_json_with_retry(
+                object(), timeout=1, provider_label="OpenAI",
+                opener=opener, sleep=self._sleep,
+            )
+        msg = str(cm.exception)
+        self.assertIn("HTTP 401", msg)
+        self.assertIn("OPENAI_API_KEY", msg)
+        self.assertIn("aiswmm login --openai", msg)
+        self.assertEqual(opener.calls, 1)  # auth failure: no retry
+        self.assertEqual(self.slept, [])
+
+    def test_auth_403_appends_login_remediation_anthropic(self) -> None:
+        opener = _ScriptedOpener([_http_error(403, detail=b"forbidden")])
+        with self.assertRaises(RuntimeError) as cm:
+            post_json_with_retry(
+                object(), timeout=1, provider_label="Anthropic",
+                opener=opener, sleep=self._sleep,
+            )
+        msg = str(cm.exception)
+        self.assertIn("ANTHROPIC_API_KEY", msg)
+        self.assertIn("aiswmm login --anthropic", msg)
+        self.assertEqual(opener.calls, 1)
+
     def test_exhausts_retries_then_raises_original_message(self) -> None:
         opener = _ScriptedOpener([_http_error(500, detail=b"server down")] * 3)
         with self.assertRaises(RuntimeError) as cm:

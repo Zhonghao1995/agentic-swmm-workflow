@@ -155,7 +155,10 @@ do_skill_copy() {
 do_api_key() {
   mkdir -p "$AISWMM_CONFIG_DIR"
   if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
-    echo "Provider is $AISWMM_PROVIDER; OpenAI API key step skipped."
+    # Only OpenAI uses the interactive prompt below; other providers are
+    # pointed at `aiswmm login` from the always-visible Next steps block
+    # (run_step hides this step's stdout on success).
+    echo "Provider is $AISWMM_PROVIDER; the OpenAI key step does not apply."
     return 0
   fi
   if [[ -n "${OPENAI_API_KEY:-}" || -f "$AISWMM_ENV_FILE" ]]; then
@@ -310,8 +313,18 @@ Summary
 Next steps
   1. Open a new shell so PATH updates take effect.
   2. Run: aiswmm doctor
-  3. Run: aiswmm chat --provider $AISWMM_PROVIDER
-
 SUMMARY
+
+# Provider key guidance lives here, not in Step 5: run_step hides a step's
+# output on success, so the non-openai login hint would otherwise never be
+# seen. OpenAI keys are handled by the Step 5 prompt; any other provider needs
+# an explicit `aiswmm login` to store its key.
+if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
+  echo "  3. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
+  echo "  4. Run: aiswmm chat --provider $AISWMM_PROVIDER"
+else
+  echo "  3. Run: aiswmm chat --provider $AISWMM_PROVIDER"
+fi
+echo ""
 
 exit 0
