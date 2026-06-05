@@ -26,8 +26,8 @@ def add_lonlat_ticks(ax: plt.Axes, crs: str, extent: tuple[float, float, float, 
     lat_labels = [transformer.transform(left, float(y))[1] for y in ys]
     ax.set_xticks(xs)
     ax.set_yticks(ys)
-    ax.set_xticklabels([f"{lon:.3f}°" for lon in lon_labels], fontsize=11)
-    ax.set_yticklabels([f"{lat:.3f}°" for lat in lat_labels], fontsize=11)
+    ax.set_xticklabels([f"{lon:.3f}°".replace("-", "−") for lon in lon_labels], fontsize=11)
+    ax.set_yticklabels([f"{lat:.3f}°".replace("-", "−") for lat in lat_labels], fontsize=11)
     ax.tick_params(top=True, right=True, labeltop=False, labelright=False, direction="in", length=5, width=1.0)
     ax.set_xlabel("Longitude", fontsize=12)
     ax.set_ylabel("Latitude", fontsize=12)
