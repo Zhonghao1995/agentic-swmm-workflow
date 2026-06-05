@@ -17,7 +17,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -41,6 +43,34 @@ SWMM_TIMEOUT_RC = 124
 # false-positives on the narrative word "error" in continuity summaries. Keep
 # the two patterns in sync.
 _RPT_ERROR_RE = re.compile(r"^\s*(ERROR\s+\d+:.*)$")
+
+
+def resolve_swmm5() -> str:
+    """Locate the swmm5 executable.
+
+    The one-line installer drops a built (macOS/Linux) or downloaded (Windows)
+    SWMM 5.2.4 engine at ``$AISWMM_CONFIG_DIR/swmm/`` (default ``~/.aiswmm/swmm``).
+    We prefer that fixed location so a run works regardless of how the user's
+    shell PATH is configured, then fall back to PATH for users who installed
+    swmm5 themselves. ``AISWMM_SWMM5`` is an explicit override (also used by
+    tests). Returns the bare name ``"swmm5"`` as a last resort so the subprocess
+    call fails with a clear ``FileNotFoundError`` rather than this resolver
+    silently guessing.
+    """
+    override = os.environ.get("AISWMM_SWMM5")
+    if override and Path(override).exists():
+        return override
+    config_dir = Path(os.environ.get("AISWMM_CONFIG_DIR") or (Path.home() / ".aiswmm"))
+    names = ("swmm5", "swmm5.exe", "runswmm", "runswmm.exe")
+    for name in names:
+        candidate = config_dir / "swmm" / name
+        if candidate.exists():
+            return str(candidate)
+    for name in names:
+        hit = shutil.which(name)
+        if hit:
+            return hit
+    return "swmm5"
 
 
 def sha256_file(p: Path) -> str:
@@ -97,7 +127,7 @@ def run_swmm(
 ) -> int:
     try:
         p = subprocess.run(
-            ["swmm5", str(inp), str(rpt), str(out)],
+            [resolve_swmm5(), str(inp), str(rpt), str(out)],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -222,7 +252,7 @@ def parse_continuity_blocks(text: str) -> dict:
 
 def get_swmm5_version() -> str | None:
     try:
-        p = subprocess.run(["swmm5", "--version"], capture_output=True, text=True)
+        p = subprocess.run([resolve_swmm5(), "--version"], capture_output=True, text=True)
         # swmm5 may not support --version; fall back to parsing help output
         txt = (p.stdout + "\n" + p.stderr).strip()
         m = re.search(r"(\d+\.\d+\.\d+)", txt)

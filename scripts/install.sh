@@ -7,11 +7,12 @@
 #   1. Prerequisite checks  (python >=3.10, node >=18)
 #   2. Risk warning banner  -> Y/n
 #   3. Per-step Y/n:
-#        Step 1/5 -- Python venv creation        (~30s)
-#        Step 2/5 -- Python deps install         (~2 min)
-#        Step 3/5 -- MCP servers npm install     (~2 min, ~11 servers)
-#        Step 4/5 -- Initialize ~/.aiswmm/        (~5s)
-#        Step 5/5 -- OpenAI API key config       (skippable)
+#        Step 1/6 -- Python venv creation        (~30s)
+#        Step 2/6 -- Python deps install         (~2 min)
+#        Step 3/6 -- MCP servers npm install     (~2 min, ~11 servers)
+#        Step 4/6 -- Initialize ~/.aiswmm/        (~5s)
+#        Step 5/6 -- OpenAI API key config       (skippable)
+#        Step 6/6 -- Build SWMM 5.2.4 engine      (~2 min, skippable, non-fatal)
 #   4. Success summary + next-step hint.
 #
 # Failure at any step prints a clear remediation hint, not raw stderr,
@@ -37,6 +38,7 @@ Flags:
   --yes            Legacy alias for --auto (kept for compatibility).
   --skip-python    Skip Python venv + Python deps steps.
   --skip-mcp       Skip MCP server npm install step.
+  --skip-swmm      Skip building the local SWMM 5.2.4 solver engine.
   --provider NAME  LLM provider to register (default: openai).
   --model MODEL    LLM model to register (default: gpt-5.5).
   --help, -h       Show this help message.
@@ -50,6 +52,7 @@ USAGE
 INSTALL_AUTO=0
 SKIP_PYTHON=0
 SKIP_MCP=0
+SKIP_SWMM=0
 AISWMM_PROVIDER="${AISWMM_PROVIDER:-openai}"
 AISWMM_MODEL="${AISWMM_MODEL:-gpt-5.5}"
 
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --auto|--yes) INSTALL_AUTO=1 ;;
     --skip-python) SKIP_PYTHON=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
+    --skip-swmm) SKIP_SWMM=1 ;;
     --provider)
       [[ $# -ge 2 ]] || { print_failure "--provider requires a value"; exit 2; }
       AISWMM_PROVIDER="$2"; shift ;;
@@ -75,6 +79,9 @@ VENV_DIR="$REPO_ROOT/.venv"
 REQ_FILE="$SCRIPT_DIR/requirements.txt"
 AISWMM_CONFIG_DIR="${AISWMM_CONFIG_DIR:-$HOME/.aiswmm}"
 AISWMM_ENV_FILE="$AISWMM_CONFIG_DIR/env"
+# Pinned EPA SWMM engine (matches Dockerfile SWMM_REF + the runner's
+# EXPECTED_SWMM_VERSION). Built from source into $AISWMM_CONFIG_DIR/swmm/.
+SWMM_VERSION="5.2.4"
 
 # Are we running under the bash test harness? The harness sets a flag so the
 # install script can skip operations that would require real external state.
@@ -192,6 +199,79 @@ do_api_key() {
   echo "Saved OpenAI API key to $AISWMM_ENV_FILE"
 }
 
+do_swmm_engine() {
+  # Build the pinned EPA SWMM solver from source into $AISWMM_CONFIG_DIR/swmm/,
+  # mirroring the Dockerfile so a run uses the same 5.2.4 engine. A co-located
+  # `swmm5` wrapper sets the dynamic-lib path so runswmm finds libswmm5 wherever
+  # it is moved, and resolve_swmm5()/doctor look in this fixed directory.
+  local swmm_dir="$AISWMM_CONFIG_DIR/swmm"
+  local wrapper="$swmm_dir/swmm5"
+  mkdir -p "$swmm_dir"
+  # Idempotent: skip when a working pinned engine is already present.
+  if [[ -x "$wrapper" ]] && "$wrapper" --version 2>/dev/null | grep -q "$SWMM_VERSION"; then
+    echo "swmm5 $SWMM_VERSION already installed at $wrapper"
+    return 0
+  fi
+  if [[ "$TEST_MODE" == "1" ]]; then
+    echo "SWMM engine build skipped (test mode)."
+    return 0
+  fi
+  command -v git >/dev/null 2>&1   || { echo "git not found (needed to fetch SWMM source)."; return 1; }
+  command -v cmake >/dev/null 2>&1 || { echo "cmake not found (needed to build swmm5). Install cmake and re-run."; return 1; }
+  command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || { echo "no C compiler found (install Xcode CLT on macOS or build-essential on Linux)."; return 1; }
+
+  local src build os runswmm
+  os="$(uname -s)"
+  src="$(mktemp -d)"; build="$src/build"
+  if ! git clone --depth 1 --branch "v$SWMM_VERSION" \
+      https://github.com/USEPA/Stormwater-Management-Model.git "$src/swmm"; then
+    rm -rf "$src"; echo "failed to clone USEPA SWMM v$SWMM_VERSION."; return 1
+  fi
+
+  local -a cmake_args=(-S "$src/swmm" -B "$build" -DCMAKE_BUILD_TYPE=Release)
+  if [[ "$os" == "Darwin" ]]; then
+    # Apple clang ships no OpenMP runtime; build + link against Homebrew libomp.
+    if ! command -v brew >/dev/null 2>&1; then
+      rm -rf "$src"; echo "Homebrew required to supply libomp on macOS (https://brew.sh)."; return 1
+    fi
+    brew list libomp >/dev/null 2>&1 || brew install libomp || { rm -rf "$src"; echo "libomp install failed."; return 1; }
+    local libomp; libomp="$(brew --prefix libomp)"
+    cmake_args+=(
+      -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp -I$libomp/include"
+      -DOpenMP_C_LIB_NAMES=omp
+      -DOpenMP_omp_LIBRARY="$libomp/lib/libomp.dylib"
+      -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp -I$libomp/include"
+      -DOpenMP_CXX_LIB_NAMES=omp
+    )
+  fi
+  if ! cmake "${cmake_args[@]}"; then rm -rf "$src"; echo "cmake configure failed."; return 1; fi
+  if ! cmake --build "$build" --config Release -j "$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)"; then
+    rm -rf "$src"; echo "swmm5 build failed."; return 1
+  fi
+
+  runswmm="$(find "$build" -type f -name runswmm -print -quit)"
+  if [[ -z "$runswmm" ]]; then rm -rf "$src"; echo "build produced no runswmm binary."; return 1; fi
+  cp "$runswmm" "$swmm_dir/runswmm"
+  find "$build" -type f \( -name 'libswmm5.*' -o -name 'libswmm-output.*' \) -exec cp {} "$swmm_dir/" \; 2>/dev/null || true
+  # Wrapper: prepend its own dir to the dynamic-lib search path, then exec the
+  # real binary, so the co-located libs resolve regardless of rpath/PATH.
+  cat >"$wrapper" <<'WRAP'
+#!/usr/bin/env bash
+here="$(cd "$(dirname "$0")" && pwd)"
+export DYLD_LIBRARY_PATH="$here:${DYLD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="$here:${LD_LIBRARY_PATH:-}"
+exec "$here/runswmm" "$@"
+WRAP
+  chmod +x "$wrapper" "$swmm_dir/runswmm"
+  rm -rf "$src"
+  if "$wrapper" --version 2>/dev/null | grep -q "$SWMM_VERSION"; then
+    echo "Built swmm5 $SWMM_VERSION -> $wrapper"
+    return 0
+  fi
+  echo "swmm5 built but did not report version $SWMM_VERSION."
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # Prereq checks (top of the flow)
 # ---------------------------------------------------------------------------
@@ -223,7 +303,7 @@ fi
 # Stepped flow
 # ---------------------------------------------------------------------------
 
-total=5
+total=6
 fail_step() {
   local step_label="$1"; shift
   print_failure "$step_label failed." "$@"
@@ -295,9 +375,34 @@ if ! run_step 5 "$total" "OpenAI API key configuration" "10s" do_api_key; then
     "You can add the key later by editing $AISWMM_ENV_FILE."
 fi
 
+# Step 6: SWMM solver engine (NON-FATAL). The rest of the install stays usable
+# even if the build fails (no compiler, no libomp, offline); `aiswmm doctor`
+# reports a missing engine and how to fix it, so we warn and continue here.
+if [[ "$SKIP_SWMM" == "1" ]]; then
+  echo "Step 6/${total}: SWMM engine (skipped via --skip-swmm)"
+elif ! prompt_yn "Run Step 6/${total} (Build SWMM $SWMM_VERSION engine ~2 min; skippable)?" "Y"; then
+  echo "Skipped SWMM engine build. Install swmm5 yourself or re-run later; 'aiswmm doctor' confirms status."
+else
+  if ! run_step 6 "$total" "SWMM $SWMM_VERSION engine build" "2 min" do_swmm_engine; then
+    print_failure "SWMM engine build failed (non-fatal)." \
+      "The rest of the install is fine; this only affects running models locally." \
+      "Re-run the installer, or build/obtain swmm5 $SWMM_VERSION yourself; 'aiswmm doctor' shows status." \
+      "macOS note: the build needs Homebrew 'libomp' (brew install libomp)."
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 # Success summary + next steps
 # ---------------------------------------------------------------------------
+
+swmm5_bin="$AISWMM_CONFIG_DIR/swmm/swmm5"
+if [[ "$SKIP_SWMM" == "1" ]]; then
+  swmm_status="skipped"
+elif [[ -x "$swmm5_bin" ]] && "$swmm5_bin" --version 2>/dev/null | grep -q "$SWMM_VERSION"; then
+  swmm_status="installed ($SWMM_VERSION)"
+else
+  swmm_status="not installed (run 'aiswmm doctor')"
+fi
 
 cat <<SUMMARY
 
@@ -307,6 +412,7 @@ Summary
 - Repo root:    $REPO_ROOT
 - Python venv:  $([[ "$SKIP_PYTHON" == "1" ]] && echo "skipped" || echo "$VENV_DIR")
 - MCP servers:  $([[ "$SKIP_MCP" == "1" ]] && echo "skipped" || echo "installed")
+- SWMM engine:  $swmm_status
 - Config dir:   $AISWMM_CONFIG_DIR
 - Provider:     $AISWMM_PROVIDER ($AISWMM_MODEL)
 

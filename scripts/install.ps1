@@ -5,7 +5,7 @@
 #
 #   1. Prereq checks (Python >=3.10, Node >=18)
 #   2. Risk-warning banner -> Y/n confirm
-#   3. Per-step Y/n: venv, python deps, MCP npm, skill files, API key
+#   3. Per-step Y/n: venv, python deps, MCP npm, skill files, API key, SWMM engine
 #   4. Success summary + next-step hint
 #
 # Flags:
@@ -271,6 +271,47 @@ function Do-ApiKey {
     Write-Host "Saved OpenAI API key to $AiswmmEnvFile"
 }
 
+function Do-SwmmEngine {
+    # Download the pinned EPA SWMM 5.2.4 Windows solver into $AiswmmConfigDir\swmm
+    # so runs use the same 5.2.4 engine. The official release bundles its own
+    # MSVC + OpenMP runtime DLLs, and Windows searches the application directory
+    # first for DLLs, so co-locating them with runswmm.exe needs no wrapper.
+    # resolve_swmm5()/doctor look in this fixed directory.
+    $swmmDir = Join-Path $AiswmmConfigDir 'swmm'
+    $swmm5 = Join-Path $swmmDir 'swmm5.exe'
+    New-Item -ItemType Directory -Force -Path $swmmDir | Out-Null
+    if (Test-Path $swmm5) {
+        $existing = (& $swmm5 --version 2>$null | Out-String)
+        if ($existing -match '5\.2\.4') {
+            Write-Host "swmm5 5.2.4 already installed at $swmm5"
+            return
+        }
+    }
+    $url = 'https://github.com/USEPA/Stormwater-Management-Model/releases/download/v5.2.4/swmm-solver-5.2.4-win64.zip'
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('aiswmm-swmm-' + [System.IO.Path]::GetRandomFileName())
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $zip = Join-Path $work 'swmm.zip'
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+        Expand-Archive -Path $zip -DestinationPath $work -Force
+        $bin = Get-ChildItem -Path $work -Recurse -Directory -Filter 'bin' | Select-Object -First 1
+        if (-not $bin) { throw 'bin/ directory not found in the downloaded SWMM archive' }
+        Copy-Item -Path (Join-Path $bin.FullName '*') -Destination $swmmDir -Force
+        $runswmm = Join-Path $swmmDir 'runswmm.exe'
+        if (-not (Test-Path $runswmm)) { throw 'runswmm.exe not found in the downloaded SWMM archive' }
+        # Canonical name the runner/doctor look for first; keep runswmm.exe too.
+        Copy-Item -Path $runswmm -Destination $swmm5 -Force
+    } finally {
+        Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $ver = (& $swmm5 --version 2>$null | Out-String)
+    if ($ver -match '5\.2\.4') {
+        Write-Host "Installed swmm5 5.2.4 -> $swmm5"
+    } else {
+        throw "swmm5 installed but did not report version 5.2.4"
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Prereq gate
 # ---------------------------------------------------------------------------
@@ -299,7 +340,7 @@ if (-not (Prompt-YN "Continue with installation?" 'Y')) {
 # Stepped flow
 # ---------------------------------------------------------------------------
 
-$total = 5
+$total = 6
 
 function Fail-Step {
     param([string]$Label, [string[]]$Remediation)
@@ -377,9 +418,29 @@ if (-not (Run-Step 5 $total "OpenAI API key configuration" "10s" { Do-ApiKey }))
     )
 }
 
+# Step 6: SWMM solver engine (NON-FATAL). The rest of the install stays usable
+# even if the download fails (offline); `aiswmm doctor` reports a missing engine
+# with how to fix it, so we warn and continue here instead of aborting.
+if (-not (Prompt-YN "Run Step 6/${total} (Download SWMM 5.2.4 engine ~1 min)?" 'Y')) {
+    Write-Host "Skipped SWMM engine. Install swmm5 yourself or re-run later; 'aiswmm doctor' confirms status."
+} else {
+    if (-not (Run-Step 6 $total "SWMM 5.2.4 engine download" "1 min" { Do-SwmmEngine })) {
+        Print-Failure "SWMM engine install failed (non-fatal)." @(
+            "The rest of the install is fine; this only affects running models locally.",
+            "Re-run the installer, or download swmm5 5.2.4 yourself; 'aiswmm doctor' shows status."
+        )
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Success summary
 # ---------------------------------------------------------------------------
+
+$swmm5Bin = Join-Path (Join-Path $AiswmmConfigDir 'swmm') 'swmm5.exe'
+$swmmStatus = if (Test-Path $swmm5Bin) {
+    $v = (& $swmm5Bin --version 2>$null | Out-String)
+    if ($v -match '5\.2\.4') { 'installed (5.2.4)' } else { 'present (version unknown)' }
+} else { "not installed (run 'aiswmm doctor')" }
 
 Write-Host ""
 Write-Host "Install complete."
@@ -388,6 +449,7 @@ Write-Host "Summary"
 Write-Host "- Repo root:    $RepoRoot"
 Write-Host ("- Python venv:  " + $(if ($SkipPython) { 'skipped' } else { $VenvDir }))
 Write-Host ("- MCP servers:  " + $(if ($SkipMcp)    { 'skipped' } else { 'installed' }))
+Write-Host "- SWMM engine:  $swmmStatus"
 Write-Host "- Config dir:   $AiswmmConfigDir"
 Write-Host "- Provider:     $Provider ($Model)"
 Write-Host ""

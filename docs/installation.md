@@ -92,6 +92,8 @@ During setup, the installer asks for an OpenAI API key. Press Enter to do it lat
 
 The agent planner can also run on Anthropic instead of OpenAI (both are API-key backends) — see [LLM providers](llm_providers.md) for how to switch backends and authenticate each one.
 
+The installer also provisions the pinned EPA SWMM 5.2.4 solver engine into `~/.aiswmm/swmm/` so models run out of the box. On macOS and Linux it builds the engine from the USEPA `v5.2.4` source with CMake (macOS additionally needs Homebrew `libomp`, which the installer installs); on Windows it downloads the official prebuilt `swmm-solver-5.2.4-win64` release. The runner and `aiswmm doctor` look in `~/.aiswmm/swmm/` first, so no PATH change is required. This step is skippable (`--skip-swmm` on macOS/Linux) and non-fatal — if it fails (no compiler, offline), the rest of the install still completes and `aiswmm doctor` reports how to add the engine. For byte-identical reproducibility of cited results, use the Docker image, which pins the same `v5.2.4` build.
+
 On macOS and Linux, after publishing `web/install.sh` to your website:
 
 ```bash
@@ -104,7 +106,7 @@ On Windows PowerShell, after publishing `web/install.ps1`:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-The Windows entrypoint installs into the current user's local application directory by default instead of `C:\Windows\System32`. If Git is unavailable, it downloads a GitHub source archive. If Python 3.10+ is unavailable, it first tries a user-scope `winget` Python install. It creates a local `.venv`, installs Python requirements and the editable CLI package, installs MCP npm dependencies when Node.js is available, downloads the USEPA SWMM solver zip into `.local\swmm`, and creates a `swmm5` shim under `.local\bin`.
+The Windows entrypoint installs into the current user's local application directory by default instead of `C:\Windows\System32`. If Git is unavailable, it downloads a GitHub source archive. If Python 3.10+ is unavailable, it first tries a user-scope `winget` Python install. It creates a local `.venv`, installs Python requirements and the editable CLI package, installs MCP npm dependencies when Node.js is available, and downloads the official prebuilt USEPA SWMM `v5.2.4` solver into `~/.aiswmm\swmm` (exposed as `swmm5.exe`).
 
 The Windows installer also creates user-level `aiswmm` and `agentic-swmm` command shims in `%LOCALAPPDATA%\AgenticSWMM\bin` and adds that directory to the user PATH for new terminals. The current installer session can use the command immediately. Administrator PowerShell is only needed when you explicitly choose Chocolatey system dependency installation with `-InstallSystemDeps`.
 

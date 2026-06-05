@@ -19,15 +19,16 @@ source "$REPO_ROOT/scripts/_install_test_harness.bash"
 cleanup() { harness_teardown; }
 trap cleanup EXIT
 
-# --- 1. --auto: no prompts, all 5 steps run -------------------------------
+# --- 1. --auto: no prompts, all 6 steps run -------------------------------
 harness_setup
 run_install --auto
 assert_status 0
-assert_log_contains "Step 1/5"
-assert_log_contains "Step 2/5"
-assert_log_contains "Step 3/5"
-assert_log_contains "Step 4/5"
-assert_log_contains "Step 5/5"
+assert_log_contains "Step 1/6"
+assert_log_contains "Step 2/6"
+assert_log_contains "Step 3/6"
+assert_log_contains "Step 4/6"
+assert_log_contains "Step 5/6"
+assert_log_contains "Step 6/6"
 assert_log_contains "Install complete"
 # In --auto mode the prompt prefix must never appear.
 assert_log_not_contains "Continue with installation?"
@@ -39,11 +40,11 @@ harness_teardown
 
 # --- 2. Y at risk warning + Y at every step --------------------------------
 harness_setup
-HARNESS_STDIN=$'y\ny\ny\ny\ny\ny\n' run_install
+HARNESS_STDIN=$'y\ny\ny\ny\ny\ny\ny\n' run_install
 assert_status 0
 assert_log_contains "Continue with installation?"
-assert_log_contains "Step 1/5"
-assert_log_contains "Step 5/5"
+assert_log_contains "Step 1/6"
+assert_log_contains "Step 6/6"
 assert_log_contains "Install complete"
 harness_teardown
 
@@ -53,7 +54,7 @@ HARNESS_STDIN=$'n\n' run_install
 assert_status 0
 assert_log_contains "Continue with installation?"
 assert_log_contains "Installation aborted"
-assert_log_not_contains "Step 1/5"
+assert_log_not_contains "Step 1/6"
 harness_teardown
 
 # --- 4. N at the MCP step --------------------------------------------------
@@ -61,10 +62,10 @@ harness_setup
 # Y to continue, Y to venv, Y to deps, N to MCP step.
 HARNESS_STDIN=$'y\ny\ny\nn\n' run_install
 assert_status 0
-assert_log_contains "Step 3/5"
+assert_log_contains "Step 3/6"
 assert_log_contains "Installation aborted"
-# Steps 4 and 5 must not have run.
-assert_log_not_contains "Step 4/5"
+# Steps 4, 5, 6 must not have run.
+assert_log_not_contains "Step 4/6"
 harness_teardown
 
 # --- 5. non-openai provider points the user at `aiswmm login` --------------

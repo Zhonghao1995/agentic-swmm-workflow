@@ -53,6 +53,18 @@ def _swmm_version() -> str | None:
 
 
 def _which_swmm5() -> str | None:
+    # Prefer the explicit override and the installer's fixed location
+    # ($AISWMM_CONFIG_DIR/swmm, default ~/.aiswmm/swmm) so doctor agrees with the
+    # runner's resolve_swmm5() regardless of the user's shell PATH, then fall
+    # back to PATH and the legacy repo .local/bin slot.
+    override = os.environ.get("AISWMM_SWMM5")
+    if override and Path(override).exists():
+        return override
+    config_dir = Path(os.environ.get("AISWMM_CONFIG_DIR") or (Path.home() / ".aiswmm"))
+    for name in ("swmm5", "swmm5.exe", "runswmm", "runswmm.exe"):
+        candidate = config_dir / "swmm" / name
+        if candidate.exists():
+            return str(candidate)
     path_hit = shutil.which("swmm5")
     if path_hit:
         return path_hit
@@ -292,7 +304,8 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     swmm_detail = (
         f"{swmm}; {_swmm_version() or 'version unavailable'}"
         if swmm
-        else "not found on PATH or repo .local/bin"
+        else "not found in ~/.aiswmm/swmm, on PATH, or repo .local/bin; "
+        "re-run the installer or see docs/installation.md to install the engine"
     )
     checks.append(("swmm5 executable", swmm is not None, swmm_detail, True))
     for module in ("numpy", "matplotlib", "swmmtoolbox"):
