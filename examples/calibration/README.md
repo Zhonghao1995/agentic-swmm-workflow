@@ -72,8 +72,9 @@ python3 skills/swmm-calibration/scripts/swmm_calibrate.py search \
   --dry-run
 ```
 
-## Parameter scout example
-A minimal scout pass can rank one-parameter-at-a-time influence around a baseline parameter set.
+## OAT sensitivity example (one-at-a-time parameter screening)
+A minimal OAT pass can rank one-parameter-at-a-time influence around a baseline parameter set.
+This capability moved to the `swmm-uncertainty` skill in #49 (the legacy scout script was removed).
 
 Expected extra inputs:
 - `base_params.json` → baseline parameter object
@@ -81,21 +82,24 @@ Expected extra inputs:
 
 Example command:
 ```bash
-python3 skills/swmm-calibration/scripts/parameter_scout.py \
+python3 skills/swmm-uncertainty/scripts/sensitivity.py \
+  --method oat \
   --base-inp examples/todcreek/model_chicago5min.inp \
   --patch-map examples/calibration/patch_map.json \
   --base-params examples/calibration/base_params.json \
   --scan-spec examples/calibration/scan_spec.json \
   --observed examples/calibration/observed_flow.csv \
-  --run-root runs/parameter-scout \
-  --summary-json runs/parameter-scout/summary.json \
+  --run-root runs/sensitivity-oat \
+  --summary-json runs/sensitivity-oat/09_audit/sensitivity_indices.json \
   --swmm-node O1
 ```
+
+See `skills/swmm-uncertainty/SKILL.md` for Morris and Sobol' sensitivity examples.
 
 ## Current limitations
 - The mock CSV here is only for demonstration.
 - Internal search is bounded (`random` / `lhs` / simple adaptive LHS) and does not yet use advanced global optimizers.
-- The scout is one-parameter-at-a-time; it does not capture full parameter interaction.
+- OAT sensitivity is one-parameter-at-a-time; it does not capture full parameter interaction.
 - The current parser expects a timestamp column and a flow column; special SWMM timeseries formats may need light pre-cleaning or parser extension.
 
 ## New summary diagnostics
