@@ -184,6 +184,7 @@ A classified user goal extracted from a prompt. Categories: `wants_demo`, `wants
 4. **Modeling memory only mutates via explicit verbs.** No agent action writes to `memory/modeling-memory/` autonomously. (Auto-distillation is an open research direction — see private PRD-12.)
 5. **No `Co-Authored-By: Claude` trailer in any commit.** Forward-only — do not rewrite history. See global `~/.claude/CLAUDE.md`.
 6. **Reproducibility is byte-level for SWMM execution.** The same INP must produce the same `model.out` byte-for-byte across macOS / Linux / Docker. Validated via `aiswmm tecnopolo` benchmark + the `tecnopolo` Docker entrypoint. Do not introduce nondeterminism in the runner skill.
+7. **The convergence tools accept out-of-repo `run_dir` paths.** `run_swmm_inp`, `plot_run`, `map_run`, and `audit_run` all accept an arbitrary absolute `run_dir` — the synth path (`synth_swmm_from_bbox`) writes to user-chosen directories. The run manifest is the contract; the repo root is not. Do not re-introduce a repo-sandbox check on `run_dir` in these tools.
 
 ## Real-data path vs synth-data path
 

@@ -10,16 +10,16 @@ and the factory-built handler that pairs it with
 ``_make_mcp_routed_handler``.
 
 ``_make_mcp_routed_handler`` and the cross-family path/INP helpers
-(``_resolve_inp_for_run``, ``_optional_repo_output_dir``,
-``_node_suggestions``) still live in ``tool_registry`` (deferred per
-#211 and reused across other groups). They are imported lazily inside
-the body of ``_run_swmm_inp_args`` and ``_build_run_swmm_inp_tool``
-to break a load-time circular import — ``tool_registry`` imports this
-module near the end of its own load, so by the time these handlers
-actually run, every symbol they need is bound on ``tool_registry``.
+(``_resolve_inp_for_run``, ``_node_suggestions``) still live in
+``tool_registry`` (deferred per #211 and reused across other groups).
+They are imported lazily inside the body of ``_run_swmm_inp_args``
+and ``_build_run_swmm_inp_tool`` to break a load-time circular import
+— ``tool_registry`` imports this module near the end of its own load,
+so by the time these handlers actually run, every symbol they need is
+bound on ``tool_registry``.
 
-Cross-cutting helpers (``_safe_name``) come from
-``tool_handlers/_shared``.
+Cross-cutting helpers (``_safe_name``, ``_resolve_or_create_run_dir``)
+come from ``tool_handlers/_shared``.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _safe_name
+from agentic_swmm.agent.tool_handlers._shared import _resolve_or_create_run_dir, _safe_name
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 
@@ -43,14 +43,13 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     # Lazy import — see module docstring on the circular-load reasoning.
     from agentic_swmm.agent.tool_registry import (
         _node_suggestions,
-        _optional_repo_output_dir,
         _resolve_inp_for_run,
     )
 
     inp = _resolve_inp_for_run(call)
     if isinstance(inp, dict):
         return inp
-    run_dir = _optional_repo_output_dir(call, "run_dir")
+    run_dir = _resolve_or_create_run_dir(call, "run_dir")
     if isinstance(run_dir, dict):
         return run_dir
     if run_dir is None:
