@@ -65,7 +65,7 @@ const Common = z.object({
 });
 
 const SensitivityArgs = Common.extend({ parameterSets: z.string() });
-const CalibrateArgs = Common.extend({ parameterSets: z.string(), bestParamsOut: z.string().optional() });
+const CalibrateArgs = Common.extend({ parameterSets: z.string(), bestParamsOut: z.string().optional(), candidateRunDir: z.string().optional() });
 const SearchArgs = Common.extend({
   searchSpace: z.string(),
   strategy: z.enum(["random", "lhs", "adaptive"]).default("lhs"),
@@ -76,6 +76,7 @@ const SearchArgs = Common.extend({
   refineMargin: z.number().min(0).max(1).default(0.1),
   minSpanFraction: z.number().min(0.000001).max(1).default(0.1),
   bestParamsOut: z.string().optional(),
+  candidateRunDir: z.string().optional(),
 });
 const SceuaArgs = Common.extend({
   searchSpace: z.string(),
@@ -84,6 +85,7 @@ const SceuaArgs = Common.extend({
   sceuaNgs: z.number().int().positive().default(4),
   bestParamsOut: z.string().optional(),
   convergenceCsv: z.string().optional(),
+  candidateRunDir: z.string().optional(),
 });
 const DreamZsArgs = Common.extend({
   searchSpace: z.string(),
@@ -95,6 +97,7 @@ const DreamZsArgs = Common.extend({
   dreamRunsAfterConvergence: z.number().int().positive().default(50),
   dreamOutputDir: z.string().optional(),
   bestParamsOut: z.string().optional(),
+  candidateRunDir: z.string().optional(),
 });
 const ValidateArgs = Common.extend({ bestParams: z.string(), trialName: z.string().default("validation") });
 
@@ -159,7 +162,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           timestampCol: { type: "string" }, flowCol: { type: "string" }, timeFormat: { type: "string" },
           summaryJson: { type: "string" }, rankingJson: { type: "string" },
           printRanking: { type: "boolean", default: false }, rankingTop: { type: "integer", default: 10 },
-          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" }
+          dryRun: { type: "boolean", default: false }, bestParamsOut: { type: "string" },
+          candidateRunDir: { type: "string" }
         },
         required: ["baseInp", "patchMap", "parameterSets", "observed", "runRoot", "summaryJson"]
       }
@@ -185,7 +189,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           seed: { type: "integer", default: 42 },
           eliteFraction: { type: "number", default: 0.3 },
           refineMargin: { type: "number", default: 0.1 },
-          minSpanFraction: { type: "number", default: 0.1 }
+          minSpanFraction: { type: "number", default: 0.1 },
+          candidateRunDir: { type: "string" }
         },
         required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
       }
@@ -208,7 +213,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           convergenceCsv: { type: "string", description: "Where to write the per-iteration KGE trace (default: alongside summaryJson)." },
           iterations: { type: "integer", default: 200, description: "SCE-UA budget (total function evaluations)." },
           seed: { type: "integer", default: 42 },
-          sceuaNgs: { type: "integer", default: 4, description: "Number of complexes (spotpy default heuristic is 2*p+1)." }
+          sceuaNgs: { type: "integer", default: 4, description: "Number of complexes (spotpy default heuristic is 2*p+1)." },
+          candidateRunDir: { type: "string" }
         },
         required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
       }
@@ -234,7 +240,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           dreamChains: { type: "integer", default: 4, minimum: 2, description: "Number of MCMC chains (>=2 for Rhat)." },
           dreamSigma: { type: "number", default: 0.1, description: "Likelihood width sigma on (1-KGE)." },
           dreamRhatThreshold: { type: "number", default: 1.2, description: "Gelman-Rubin Rhat convergence threshold." },
-          dreamRunsAfterConvergence: { type: "integer", default: 50, description: "Extra samples to draw after convergence is detected." }
+          dreamRunsAfterConvergence: { type: "integer", default: 50, description: "Extra samples to draw after convergence is detected." },
+          candidateRunDir: { type: "string" }
         },
         required: ["baseInp", "patchMap", "searchSpace", "observed", "runRoot", "summaryJson"]
       }
@@ -276,6 +283,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     fs.mkdirSync(path.dirname(a.summaryJson), { recursive: true });
     const pyArgs = ["calibrate", ...commonArgs(a), "--parameter-sets", a.parameterSets];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    if (a.candidateRunDir) pyArgs.push("--candidate-run-dir", a.candidateRunDir);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
@@ -295,6 +303,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       "--min-span-fraction", String(a.minSpanFraction),
     ];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    if (a.candidateRunDir) pyArgs.push("--candidate-run-dir", a.candidateRunDir);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
@@ -312,6 +321,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     ];
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
     if (a.convergenceCsv) pyArgs.push("--convergence-csv", a.convergenceCsv);
+    if (a.candidateRunDir) pyArgs.push("--candidate-run-dir", a.candidateRunDir);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
@@ -332,6 +342,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     ];
     if (a.dreamOutputDir) pyArgs.push("--dream-output-dir", a.dreamOutputDir);
     if (a.bestParamsOut) pyArgs.push("--best-params-out", a.bestParamsOut);
+    if (a.candidateRunDir) pyArgs.push("--candidate-run-dir", a.candidateRunDir);
     const stdout = await runPy(calibratePy, pyArgs);
     return { content: [{ type: "text", text: stdout }] };
   }
