@@ -26,7 +26,7 @@ Do **NOT** silently pick defaults. The user needs control — different plots an
   - rainfall on the top axis, **inverted** (depth grows downward);
   - flow on the bottom axis;
   - inward ticks, Arial, no auto title;
-  - optional `windowStart`/`windowEnd` or `focusDay` to crop the time axis.
+  - optional `focusDay` to crop to a single day; optional `windowStart`/`windowEnd` (**HH:MM**, only together with `focusDay`) for a sub-day window.
 
 ## When to use this skill
 
@@ -50,7 +50,7 @@ Do **not** use this skill for multi-node ensemble plots, exceedance curves, or s
      - `nodeAttr` (default `"Total_inflow"`): which `swmmtoolbox` attribute (e.g. `Total_inflow`, `Lateral_inflow`, `Flow_lost_flooding`).
      - `dpi` (default `300`).
      - `focusDay` (optional, `YYYY-MM-DD`): crop axis to a single day plus padding.
-     - `windowStart` / `windowEnd` (optional ISO timestamps): explicit time window.
+     - `windowStart` / `windowEnd` (optional, `HH:MM`; only valid together with `focusDay`): sub-day time window within the focus day. Rejected with a clear error if used without `focusDay`.
      - `padHours` (default `2`).
 
 ## Recommended orchestration

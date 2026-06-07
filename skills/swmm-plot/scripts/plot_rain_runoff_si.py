@@ -288,6 +288,16 @@ def main():
             "inspect_plot_options; this error only appears in manual CLI use.)"
         )
 
+    # Bug #236: windowStart/windowEnd are only honoured together with
+    # focusDay (they are HH:MM offsets within that day). Supplying them
+    # without focusDay was previously a silent no-op. Raise a clear error
+    # so the user knows exactly what is missing.
+    if (args.window_start or args.window_end) and not args.focus_day:
+        raise SystemExit(
+            "--window-start/--window-end require --focus-day (YYYY-MM-DD) "
+            "and use HH:MM format. They cannot be used without --focus-day."
+        )
+
     # Matplotlib styling: Arial 12, ticks inward
     plt.rcParams.update({
         'font.family': 'Arial',

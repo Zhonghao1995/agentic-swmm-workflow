@@ -172,6 +172,15 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     pyArgs.push("--node", a.node, "--node-attr", a.nodeAttr);
   }
 
+  // Bug #236: windowStart/windowEnd are HH:MM offsets within focusDay.
+  // Reject them without focusDay instead of silently dropping them.
+  if ((a.windowStart || a.windowEnd) && !a.focusDay) {
+    throw new Error(
+      "windowStart/windowEnd require focusDay (YYYY-MM-DD) and use HH:MM format. " +
+      "They cannot be used without focusDay."
+    );
+  }
+
   if (a.focusDay) {
     pyArgs.push("--focus-day", a.focusDay);
     if (a.windowStart && a.windowEnd) {
