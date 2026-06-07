@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+#
+# Supplementary "fat" image = the thin Agentic SWMM image + the optional
+# `[anywhere]` extra (SWMManywhere, (c) Imperial College London, BSD-3-Clause,
+# https://github.com/ImperialCollegeLondon/SWMManywhere).
+#
+# This file LAYERS DIRECTLY on a published thin image, so swmm5, the repo at
+# the pinned ref, the locked Python deps, the MCP node deps, and the
+# entrypoint are all reused untouched. The only thing added on top is the
+# SWMManywhere synthesis engine and its geo dependency stack.
+#
+# Pick which thin image to extend with the BASE_IMAGE build arg, e.g.:
+#   docker build -f Dockerfile.anywhere \
+#     --build-arg BASE_IMAGE=ghcr.io/zhonghao1995/agentic-swmm-workflow:0.7.1 \
+#     -t ghcr.io/zhonghao1995/agentic-swmm-workflow:0.7.1-anywhere .
+#
+# NOTE on reproducibility: unlike the thin image, this image deliberately does
+# NOT claim SHA-256 byte-reproducibility. SWMManywhere outputs depend on live
+# OSM/DEM data that drifts over time (documented in docs/swmm-anywhere-*.md),
+# so pinning the build alone cannot make synthesis runs byte-identical.
+
+ARG BASE_IMAGE=ghcr.io/zhonghao1995/agentic-swmm-workflow:0.7.1
+FROM ${BASE_IMAGE}
+
+LABEL org.opencontainers.image.title="Agentic SWMM Workflow (anywhere)"
+LABEL org.opencontainers.image.description="Thin Agentic SWMM image plus the SWMManywhere [anywhere] extra for bbox-to-SWMM synthesis"
+
+# Install the SWMManywhere synthesis engine on top of the thin image. The
+# version range matches pyproject.toml [project.optional-dependencies].anywhere
+# so the container and `pip install aiswmm[anywhere]` resolve the same package.
+# pip's default upgrade strategy is only-if-needed, so already-satisfied locked
+# deps from the thin image are left in place; only what SWMManywhere strictly
+# requires is added/adjusted.
+RUN python -m pip install --no-cache-dir "swmmanywhere>=0.2.2,<0.3" \
+    && python -c "import importlib.metadata as m; print('swmmanywhere ==', m.version('swmmanywhere'))"
