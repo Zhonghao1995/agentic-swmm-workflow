@@ -36,7 +36,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path
+from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path, _resolve_run_dir
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.commands.plot import (
     DEFAULT_NODE_ATTR,
@@ -52,13 +52,12 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     from agentic_swmm.agent.tool_registry import (
         _node_attribute_options,
         _node_suggestions,
-        _required_repo_dir,
         _resolve_existing_inp,
     )
 
     run_dir: Path | None = None
     if call.args.get("run_dir"):
-        resolved_run_dir = _required_repo_dir(call, "run_dir")
+        resolved_run_dir = _resolve_run_dir(call, "run_dir")
         if isinstance(resolved_run_dir, dict):
             return resolved_run_dir
         run_dir = resolved_run_dir
@@ -119,10 +118,7 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     internally. We do the same resolution here so the planner can keep
     passing just ``run_dir``.
     """
-    # Lazy import — see module docstring on the circular-load reasoning.
-    from agentic_swmm.agent.tool_registry import _required_repo_dir
-
-    run_dir = _required_repo_dir(call, "run_dir")
+    run_dir = _resolve_run_dir(call, "run_dir")
     if isinstance(run_dir, dict):
         return run_dir
     manifest = _read_manifest(run_dir)

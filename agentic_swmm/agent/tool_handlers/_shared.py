@@ -79,6 +79,54 @@ def _repo_output_path(value: str) -> Path | None:
     return path
 
 
+def _resolve_run_dir(call: ToolCall, key: str) -> Path | dict[str, Any]:
+    """Resolve a run-directory argument without a repo-sandbox check.
+
+    The convergence tools (``run_swmm_inp``, ``plot_run``, ``map_run``,
+    ``audit_run``) accept out-of-repo run dirs — the synth path
+    (``synth_swmm_from_bbox``) writes to arbitrary user directories and
+    the whole chain must work end-to-end.  The manifest is the contract;
+    the repo root is not.
+
+    Relative paths are resolved against ``repo_root()`` for consistency
+    with existing in-repo paths (e.g. ``runs/agent/my-run`` resolves the
+    same way it always did).  Absolute paths (including out-of-repo ones)
+    are used directly.
+
+    Returns a ``Path`` that exists and is a directory, or a fail-soft
+    ``_failure(...)`` dict when the argument is missing or the directory
+    does not exist.
+    """
+    value = call.args.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return _failure(call, f"missing required directory argument: {key}")
+    raw = Path(value).expanduser()
+    resolved = raw.resolve() if raw.is_absolute() else (repo_root() / raw).resolve()
+    if not resolved.exists() or not resolved.is_dir():
+        return _failure(call, f"directory not found: {resolved}")
+    return resolved
+
+
+def _resolve_or_create_run_dir(call: ToolCall, key: str) -> Path | dict[str, Any] | None:
+    """Resolve or create an optional output run-directory argument.
+
+    Like ``_resolve_run_dir`` but the argument is optional (returns
+    ``None`` when absent) and the directory is created when it does not
+    yet exist.  Used by ``run_swmm_inp`` where the caller may supply a
+    ``run_dir`` for the output, or leave it unset to get an auto-named
+    directory under ``runs/agent/``.
+    """
+    value = call.args.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return _failure(call, f"{key} must be a non-empty string")
+    raw = Path(value).expanduser()
+    resolved = raw.resolve() if raw.is_absolute() else (repo_root() / raw).resolve()
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
 def _strip_html(text: str) -> str:
     text = re.sub(r"(?is)<script.*?</script>|<style.*?</style>", " ", text)
     text = re.sub(r"(?s)<[^>]+>", " ", text)
@@ -163,6 +211,8 @@ __all__ = [
     "_failure",
     "_repo_path",
     "_repo_output_path",
+    "_resolve_run_dir",
+    "_resolve_or_create_run_dir",
     "_strip_html",
     "_try_json",
     "_tail",
