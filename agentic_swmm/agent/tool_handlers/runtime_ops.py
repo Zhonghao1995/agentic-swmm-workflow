@@ -69,7 +69,14 @@ def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if path is None or not path.exists() or not path.is_file():
         return _failure(call, f"skill not found: {skill_name}")
     text = path.read_text(encoding="utf-8", errors="replace")
-    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read skill {skill_name}"}
+    # SKILL.md is the LLM's dispatch surface; a silent 4000-char cut hid the
+    # tool list / "when to use" routing sections of the largest skills the
+    # planner dispatches on. Return the whole file up to a generous cap
+    # (largest current SKILL.md ~22 KB) and mark overflow explicitly,
+    # mirroring the "[truncated]" convention in prompts.py.
+    cap = 40000
+    excerpt = text if len(text) <= cap else text[:cap].rstrip() + "\n[truncated]"
+    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": excerpt, "summary": f"read skill {skill_name}"}
 
 
 def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

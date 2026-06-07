@@ -1,13 +1,13 @@
 ---
 name: swmm-gis
-description: GIS/DEM preprocessing for SWMM experiments using the user's own QGIS/GRASS layers. Use when Zhonghao asks to (1) delineate subcatchments through QGIS/GRASS (standard or entropy-guided), (2) preprocess QGIS-derived subcatchment polygons into builder-ready CSV, (3) identify high-entropy hotspot subcatchments, or (4) expose QGIS/GRASS-backed preprocessing as MCP tools for reproducible workflows. For bbox-only inputs WITHOUT real pipe data, use `swmm-anywhere` instead (it synthesises a plausible network from OSM streets + DEM).
+description: GIS/DEM preprocessing for SWMM experiments using the user's own QGIS/GRASS layers. Use when the user asks to (1) delineate subcatchments through QGIS/GRASS (standard or entropy-guided), (2) preprocess QGIS-derived subcatchment polygons into builder-ready CSV, (3) identify high-entropy hotspot subcatchments, or (4) expose QGIS/GRASS-backed preprocessing as MCP tools for reproducible workflows. For bbox-only inputs WITHOUT real pipe data, use `swmm-anywhere` instead (it synthesises a plausible network from OSM streets + DEM).
 ---
 
 # SWMM GIS / Preprocess
 
 ## Before calling any watershed delineation tool — ask the user
 
-When Zhonghao triggers watershed delineation (`qgis_raw_to_entropy_partition` or equivalent), **always ask these questions first** before making the tool call:
+When the user triggers watershed delineation (`qgis_raw_to_entropy_partition` or equivalent), **always ask these questions first** before making the tool call:
 
 1. **Delineation mode** — Standard (fast, direct GRASS basins, no entropy) or Entropy-guided (paper WJE/NWJE/WFJS split-lump with sensitivity figures)?
 2. **Stream threshold** — How many upslope cells define a stream? Default 100. Smaller = more streams = finer subcatchments.
@@ -48,7 +48,7 @@ After an entropy run, `audit/entropy_hotspot_ranking.json` ranks subcatchments b
   - export standard Agentic SWMM intermediates under `runs/<case>/01_gis/`, `02_params/`, and `04_network/`
 - Clean final layer packaging:
   - keep detailed audit artifacts in `00_raw/`, `01_gis/`, `02_params/`, `audit/`, and `memory/`
-  - also create a user-facing `final_layers/` folder with the SWMM/GIS layers Zhonghao needs next
+  - also create a user-facing `final_layers/` folder with the SWMM/GIS layers the user needs next
   - include `subcatchments.shp`, `flow.shp`, `slope_percent.tif`, `outfall.shp`, `overview.png`, and `manifest.json`
 
 ## Scripts

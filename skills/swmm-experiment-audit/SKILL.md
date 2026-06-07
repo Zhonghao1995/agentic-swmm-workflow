@@ -31,11 +31,12 @@ Do not use this skill as a substitute for `swmm-runner`, `swmm-builder`, or cali
 
 ## Output contract
 
-For every audited run, write these files into the run directory unless explicit output paths are provided:
+For every audited run, write these files into the run's `09_audit/` directory unless explicit output paths are provided:
 
-- `experiment_provenance.json`
-- `comparison.json`
-- `experiment_note.md`
+- `experiment_provenance.json` — machine-readable provenance (immutable).
+- `experiment_note.md` — human-readable Obsidian digest.
+- `model_diagnostics.json` — deterministic SWMM screening checks.
+- `comparison.json` — run-to-run comparison (only when `--compare-to` is given).
 
 `experiment_provenance.json` is the machine-readable source for:
 
