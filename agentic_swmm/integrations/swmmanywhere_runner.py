@@ -293,6 +293,71 @@ def _build_config(
     return config
 
 
+def _resolve_download_dir(run_dir: Path, project_name: str, bbox: list[float]) -> Path:
+    """Return the actual ``bbox_N/download`` path created by SWMManywhere.
+
+    SWMManywhere increments the ``bbox_N`` index when a project directory
+    already contains a subdirectory for a *different* bbox. Hardcoding
+    ``bbox_1`` silently captures nothing when the upstream engine chose
+    ``bbox_2``, ``bbox_3``, etc.
+
+    Resolution strategy:
+    1. Glob ``<project>/bbox_*/download`` for directories that exist.
+    2. If exactly one exists, return it.
+    3. If several exist, prefer the one whose sibling
+       ``bounding_box_info.json`` matches *bbox* (coordinate comparison).
+    4. Fallback: return ``<project>/bbox_1/download`` (original behaviour)
+       so callers still get the warning from ``_snapshot_raw_downloads`` on
+       an absent dir rather than a confusing path.
+
+    This function is pure (no I/O side effects) and never imports
+    ``swmmanywhere.*`` so it works even when the optional extra is absent.
+    """
+    import json as _json
+
+    proj_dir = run_dir / project_name
+    candidates = sorted(proj_dir.glob("bbox_*/download"))
+    candidates = [c for c in candidates if c.is_dir()]
+
+    if not candidates:
+        # No bbox_* dir at all — return the legacy default so _snapshot_raw_downloads
+        # can emit its "dir absent" warning path.
+        return proj_dir / "bbox_1" / "download"
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    # Multiple bbox dirs — match by bounding_box_info.json.
+    # SWMManywhere stores coordinates as {"bbox": {"x_min":…, "y_min":…, "x_max":…, "y_max":…}}.
+    target_coords = set(round(v, 8) for v in bbox)
+    for dl_dir in candidates:
+        info_path = dl_dir.parent / "bounding_box_info.json"
+        if not info_path.exists():
+            continue
+        try:
+            info = _json.loads(info_path.read_text())
+            stored_bbox = info.get("bbox", {})
+            stored_coords = set(
+                round(float(v), 8)
+                for v in (
+                    stored_bbox.get("x_min"),
+                    stored_bbox.get("y_min"),
+                    stored_bbox.get("x_max"),
+                    stored_bbox.get("y_max"),
+                )
+                if v is not None
+            )
+            if stored_coords == target_coords:
+                return dl_dir
+        except Exception:
+            # Unreadable or malformed info file — skip this candidate.
+            continue
+
+    # No bbox info matched — fall back to the first candidate rather than bbox_1
+    # (the first candidate is at least a real directory).
+    return candidates[0]
+
+
 def _snapshot_raw_downloads(download_dir: Path, snapshot_dir: Path) -> Path:
     """Take every file SWMManywhere wrote under ``<project>/bbox_N/download/``
     into our run-aware ``00_raw/`` snapshot via raw_snapshot."""
@@ -445,7 +510,7 @@ def run_synth_from_bbox(
 
     try:
         t0 = time.time()
-        download_dir = run_dir / project_name / "bbox_1" / "download"
+        download_dir = _resolve_download_dir(run_dir, project_name, bbox)
         raw_manifest_path = _snapshot_raw_downloads(download_dir, raw_dir)
         stage_durations["raw_snapshot"] = round(time.time() - t0, 2)
     except Exception as exc:
