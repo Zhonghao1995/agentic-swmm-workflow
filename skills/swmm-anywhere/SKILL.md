@@ -1,3 +1,8 @@
+---
+name: swmm-anywhere
+description: Synthesize a plausible SWMM drainage network from public data (OSM streets + DEM) when NO real pipe-network data exists — input is just a bbox. Use ONLY when the user has no pipe shapefile/CAD/GIS data, or to establish a baseline before real data arrives; if real pipe data exists, route to swmm-network or swmm-gis instead.
+---
+
 # swmm-anywhere
 
 **Synthesize a plausible SWMM drainage network from public data (OSM streets + DEM) when no real pipe-network data exists.**

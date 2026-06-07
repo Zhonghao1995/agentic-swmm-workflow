@@ -68,7 +68,7 @@ Temporal validation:
 
 ## MCP
 MCP wrapper location:
-- `scripts/mcp/server.js`
+- `mcp/swmm-climate/server.js`
 
 Exposed tools:
 - `format_rainfall`
