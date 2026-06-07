@@ -269,7 +269,7 @@ The case study's *evidence boundary* section enumerates the limits in full. To r
 * It does **not** validate against real measurements. No observed flows are compared with the synth output here; doing so requires a real reference network, which by definition does not exist for the workflow's target use cases.
 * It does **not** guarantee cross-environment byte-identical results (unlike the v0.6.4 Tecnopolo run). OSM drift is a permanent source of non-determinism; snapshot pinning under `00_raw/` is a best-effort defence.
 * It does **not** auto-calibrate. If you have observed flows for the bbox, the synth INP becomes a *starting point* for `aiswmm calibrate`, not a final model.
-* It does **not** ship in the default Docker image; the `[anywhere]` extra is a separate variant build (`ghcr.io/zhonghao1995/agentic-swmm-workflow:<tag>-anywhere`, planned for v0.7.1).
+* It does **not** ship in the default (thin) Docker image. The `[anywhere]` extra ships as a separate **companion image**, `ghcr.io/zhonghao1995/agentic-swmm-workflow:<tag>-anywhere`. The `0.7.1-anywhere` variant is **published** — `docker pull ghcr.io/zhonghao1995/agentic-swmm-workflow:0.7.1-anywhere`. Companion images are built manually per release (GitHub Actions → "Docker (anywhere variant)"), so a given tag has an `-anywhere` image only if it was explicitly built.
 
 ## Where the case study run lives
 
