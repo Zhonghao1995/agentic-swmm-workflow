@@ -26,6 +26,8 @@ from agentic_swmm.integrations.swmmanywhere_runner import (
     _check_anywhere_extra_installed,
     _coerce_base_dir,
     _install_pyswmm_stub,
+    _resolve_download_dir,
+    _snapshot_raw_downloads,
     normalize_external_paths,
     override_rain_file,
     run_synth_from_bbox,
@@ -405,6 +407,96 @@ class DataStructureTests(unittest.TestCase):
         self.assertEqual(err.stage, "config_build")
         self.assertIs(err.original_exc, original)
         self.assertIn("config_build", str(err))
+
+
+class ResolveDowloadDirTests(unittest.TestCase):
+    """Bug #234: hardcoded bbox_1 silently captures nothing when upstream
+    SWMManywhere uses bbox_2, bbox_3, etc. for a reused project directory.
+
+    _resolve_download_dir must find the actual bbox_N directory that matches
+    the current run's bbox — not blindly pick bbox_1.
+    """
+
+    def _write_bbox_info(self, path: Path, bbox: list[float]) -> None:
+        """Write a minimal bounding_box_info.json in SWMManywhere's format."""
+        import json
+        data = {
+            "crs": "EPSG:4326",
+            "bbox": {"x_min": bbox[0], "y_min": bbox[1], "x_max": bbox[2], "y_max": bbox[3]},
+        }
+        path.write_text(json.dumps(data))
+
+    def test_finds_bbox_2_when_that_dir_matches(self) -> None:
+        """The core regression: upstream used bbox_2 but we were hardcoding bbox_1."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            proj = tmp_path / "proj"
+            bbox = [0.0, 51.0, 0.01, 51.01]
+
+            # Create bbox_1 WITHOUT a download dir (stale from a previous run).
+            (proj / "bbox_1").mkdir(parents=True, exist_ok=True)
+
+            # Create bbox_2 WITH a download dir and matching bbox info.
+            dl2 = proj / "bbox_2" / "download"
+            dl2.mkdir(parents=True, exist_ok=True)
+            (dl2 / "streets.json").write_text('{"type":"FeatureCollection"}')
+            (dl2 / "elevation.tif").write_bytes(b"\x00" * 8)
+            self._write_bbox_info(proj / "bbox_2" / "bounding_box_info.json", bbox)
+
+            result = _resolve_download_dir(tmp_path, "proj", bbox)
+            self.assertEqual(result, dl2)
+
+    def test_finds_single_bbox_dir_without_bbox_info(self) -> None:
+        """If only one bbox_* dir exists (and has a download subdir), use it."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            proj = tmp_path / "proj"
+            dl = proj / "bbox_1" / "download"
+            dl.mkdir(parents=True, exist_ok=True)
+            (dl / "data.json").write_text("{}")
+
+            result = _resolve_download_dir(tmp_path, "proj", [0.0, 51.0, 0.01, 51.01])
+            self.assertEqual(result, dl)
+
+    def test_falls_back_to_bbox_1_when_no_bbox_dir_exists(self) -> None:
+        """Fallback: project dir missing entirely → return bbox_1/download path."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result = _resolve_download_dir(tmp_path, "proj", [0.0, 51.0, 0.01, 51.01])
+            self.assertEqual(result, tmp_path / "proj" / "bbox_1" / "download")
+
+
+class SnapshotRawDownloadsTests(unittest.TestCase):
+    """_snapshot_raw_downloads: happy path captures both files with correct sha256."""
+
+    def test_manifest_lists_both_files_with_sha256(self) -> None:
+        import hashlib
+        import json
+
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            dl_dir = tmp_path / "dl"
+            dl_dir.mkdir()
+            file_a = dl_dir / "streets.json"
+            file_b = dl_dir / "elevation.tif"
+            file_a.write_bytes(b"streets-payload")
+            file_b.write_bytes(b"tif-payload")
+
+            raw_dir = tmp_path / "00_raw"
+            manifest_path = _snapshot_raw_downloads(dl_dir, raw_dir)
+
+            self.assertTrue(manifest_path.exists())
+            manifest = json.loads(manifest_path.read_text())
+            # The manifest must record exactly 2 sources.
+            sources = manifest.get("sources", [])
+            self.assertEqual(len(sources), 2)
+            paths = {s["path"] for s in sources}
+            self.assertIn("streets.json", paths)
+            self.assertIn("elevation.tif", paths)
+            # Verify sha256 for streets.json.
+            expected_sha = hashlib.sha256(b"streets-payload").hexdigest()
+            streets_entry = next(s for s in sources if s["path"] == "streets.json")
+            self.assertEqual(streets_entry["sha256"], expected_sha)
 
 
 if __name__ == "__main__":
