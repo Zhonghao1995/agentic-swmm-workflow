@@ -42,7 +42,7 @@ This skill backs three LLM-facing tools. `plot_rain_runoff_si` is routed through
 
 2. **`map_run`** — render the spatial network layout (subcatchments + conduits + outfalls) as a PNG. Reads the INP from the run directory automatically; pass `inp` to override. Required arg: `run_dir`. Optional: `out_png`, `dpi`, `no_subcatchments`, `no_vertices`.
 
-3. **`plot_run`** (proxies to `plot_rain_runoff_si` on the MCP server) — create a paired rainfall + node-flow figure from a run directory. Required arg: `run_dir`. Supply either `node` or `link` (mutually exclusive) to select the lower panel. Optional: `rain_ts`, `rain_kind`, `node_attr`, `out_png`. Day-window cropping (`focusDay` / `windowStart` / `windowEnd`) exists only on the underlying MCP tool — `plot_run` does not forward it.
+3. **`plot_run`** (proxies to `plot_rain_runoff_si` on the MCP server) — create a paired rainfall + node-flow figure from a run directory. Required arg: `run_dir`. Supply either `node` or `link` (mutually exclusive) to select the lower panel. Optional: `rain_ts`, `rain_kind`, `node_attr`, `out_png`. Day-window cropping: pass `focus_day` (`YYYY-MM-DD`) to crop the axis to one calendar day; pass `window_start` and `window_end` (both `HH:MM`) to further narrow to a sub-day window — both require `focus_day` (the server rejects `window_start`/`window_end` without `focus_day`).
 
 **`mcp/swmm-plot/server.js` exposes one underlying tool:**
 

@@ -32,10 +32,15 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 _DETERMINISTIC_BINDINGS: dict[str, str] = {
     "audit_run": "swmm-experiment-audit",
     "build_inp": "swmm-builder",
+    # C1 (issue #246): build_raingage_section registered under swmm-climate
+    "build_raingage_section": "swmm-climate",
     "format_rainfall": "swmm-climate",
     "network_qa": "swmm-network",
     "network_to_inp": "swmm-network",
     "plot_run": "swmm-plot",
+    # C5 (issue #246): retrieve_memory skill binding — handler is direct-subprocess
+    # (not MCP-routed via pool), so no EXPECTED_BINDINGS row needed.
+    "retrieve_memory": "swmm-rag-memory",
     "run_swmm_inp": "swmm-runner",
     "summarize_memory": "swmm-modeling-memory",
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools

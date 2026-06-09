@@ -38,6 +38,10 @@ def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         args["workflowMode"] = str(call.args["workflow_mode"])
     if call.args.get("objective"):
         args["objective"] = str(call.args["objective"])
+    # C4 (issue #246): expose --compare-to so the agent can trigger
+    # side-by-side comparison in a single audit_run call.
+    if call.args.get("compare_to"):
+        args["compareTo"] = str(call.args["compare_to"])
     return args
 
 

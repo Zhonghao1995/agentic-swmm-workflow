@@ -176,6 +176,16 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         args["rainTs"] = str(call.args["rain_ts"])
     if call.args.get("rain_kind"):
         args["rainKind"] = str(call.args["rain_kind"])
+    # C6 (issue #246): window-cropping plumb-through. The MCP server
+    # validates that windowStart/windowEnd require focusDay and rejects
+    # them alone; we mirror the constraint in the description only and
+    # forward whatever the agent supplies — the server is the authority.
+    if call.args.get("focus_day"):
+        args["focusDay"] = str(call.args["focus_day"])
+    if call.args.get("window_start"):
+        args["windowStart"] = str(call.args["window_start"])
+    if call.args.get("window_end"):
+        args["windowEnd"] = str(call.args["window_end"])
     return args
 
 
