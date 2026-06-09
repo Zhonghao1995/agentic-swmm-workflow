@@ -88,6 +88,43 @@ EXPECTED_BINDINGS: tuple[ExpectedBinding, ...] = (
         mcp_server="swmm-modeling-memory",
         mcp_tool_name="summarize_memory",
     ),
+    # dark-MCP registration (PR 1, issue #246): 6 calibration tools
+    ExpectedBinding(
+        tool_spec_name="swmm_calibrate",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_calibrate",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_calibrate_dream_zs",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_calibrate_dream_zs",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_calibrate_search",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_calibrate_search",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_calibrate_sceua",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_calibrate_sceua",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_sensitivity_scan",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_sensitivity_scan",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_validate",
+        script_relpath="skills/swmm-calibration/scripts/swmm_calibrate.py",
+        mcp_server="swmm-calibration",
+        mcp_tool_name="swmm_validate",
+    ),
 )
 
 

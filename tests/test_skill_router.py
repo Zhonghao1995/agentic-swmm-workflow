@@ -36,6 +36,7 @@ def test_list_skills_includes_agent_internal_and_each_mcp_skill(router: SkillRou
     # Every deterministic-SWMM skill named in the PRD coverage matrix.
     for expected in (
         "swmm-builder",
+        "swmm-calibration",
         "swmm-climate",
         "swmm-experiment-audit",
         "swmm-modeling-memory",
@@ -114,10 +115,34 @@ def test_agent_internal_does_not_contain_deterministic_swmm_tools(
         "run_swmm_inp",
         "audit_run",
         "summarize_memory",
+        # calibration tools (PR 1, issue #246)
+        "swmm_calibrate",
+        "swmm_calibrate_dream_zs",
+        "swmm_calibrate_search",
+        "swmm_calibrate_sceua",
+        "swmm_sensitivity_scan",
+        "swmm_validate",
     ):
         assert forbidden not in names, (
             f"{forbidden} must live under its own skill, not agent-internal"
         )
+
+
+def test_tools_for_swmm_calibration_returns_all_six_tools(router: SkillRouter) -> None:
+    """dark-MCP PR 1: all 6 calibration ToolSpecs must map to swmm-calibration."""
+    bundle = router.tools_for("swmm-calibration")
+    assert isinstance(bundle, SkillTools)
+    assert bundle.source == "mcp"
+    names = set(bundle.tool_names())
+    expected = {
+        "swmm_calibrate",
+        "swmm_calibrate_dream_zs",
+        "swmm_calibrate_search",
+        "swmm_calibrate_sceua",
+        "swmm_sensitivity_scan",
+        "swmm_validate",
+    }
+    assert names == expected, f"expected calibration tools {expected}; got {names}"
 
 
 def test_tools_for_unknown_skill_raises_keyerror(router: SkillRouter) -> None:
