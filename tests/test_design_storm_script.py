@@ -125,10 +125,9 @@ class TestMassConservation:
         depths = _read_ts_depths(out_ts, int(dt))
         total_depth = sum(depths)
 
-        # Chicago method: analytic total = IDF(r·T) + IDF((1-r)·T)
-        expected = _idf_generic_depth(r * duration, a, b, c) + _idf_generic_depth(
-            (1.0 - r) * duration, a, b, c
-        )
+        # Keifer-Chu defining property: the storm total equals the IDF
+        # cumulative depth for the design duration itself, D(T).
+        expected = _idf_generic_depth(duration, a, b, c)
         rel_err = abs(total_depth - expected) / expected
         assert rel_err < 0.005, (
             f"Chicago generic: total {total_depth:.4f} mm vs expected {expected:.4f} mm "
@@ -136,7 +135,7 @@ class TestMassConservation:
         )
 
     def test_chicago_cn_form(self, tmp_path: Path) -> None:
-        """Chicago CN form: mass = IDF(r·T) + IDF((1-r)·T), rel tol < 0.5%."""
+        """Chicago CN form: mass = IDF(T) (Keifer-Chu property), rel tol < 0.5%."""
         A1, C, b, n = 4.0, 0.7, 8.0, 0.65
         P, duration, dt, r = 5.0, 60.0, 5.0, 0.4
         lgP = math.log10(P)
@@ -162,9 +161,7 @@ class TestMassConservation:
         depths = _read_ts_depths(out_ts, int(dt))
         total_depth = sum(depths)
 
-        expected = _idf_cn_depth(r * duration, A1, C, lgP, b, n) + _idf_cn_depth(
-            (1.0 - r) * duration, A1, C, lgP, b, n
-        )
+        expected = _idf_cn_depth(duration, A1, C, lgP, b, n)
         rel_err = abs(total_depth - expected) / expected
         assert rel_err < 0.005, (
             f"Chicago CN: total {total_depth:.4f} mm vs expected {expected:.4f} mm "
@@ -208,16 +205,17 @@ class TestMassConservation:
         """Document the exact mass-conservation numbers (referenced in PR body).
 
         Chicago generic: a=1000, b=10, c=0.7, T=120min, r=0.4
-          pre-peak depth  = IDF(48 min)  ≈ 46.63 mm
-          post-peak depth = IDF(72 min)  ≈ 54.89 mm
+          storm total      = IDF depth(120 min) ≈ 66.26 mm
+          rising-limb share  = r · D(T)         ≈ 26.50 mm
+          falling-limb share = (1-r) · D(T)     ≈ 39.76 mm
 
         Alternating-block: T=60min ≈ 51.10 mm
         """
         a, b, c, T, r = 1000.0, 10.0, 0.7, 120.0, 0.4
-        pre = _idf_generic_depth(r * T, a, b, c)
-        post = _idf_generic_depth((1.0 - r) * T, a, b, c)
-        assert abs(pre - 46.63) < 0.01, f"pre-peak depth {pre}"
-        assert abs(post - 54.89) < 0.01, f"post-peak depth {post}"
+        total = _idf_generic_depth(T, a, b, c)
+        assert abs(total - 66.26) < 0.01, f"storm total {total}"
+        assert abs(r * total - 26.50) < 0.01, f"rising-limb share {r * total}"
+        assert abs((1.0 - r) * total - 39.76) < 0.01, f"falling-limb share {(1.0 - r) * total}"
 
         ab_expected = _idf_generic_depth(60.0, a, b, c)
         assert abs(ab_expected - 51.10) < 0.01, f"alt-block expected {ab_expected}"

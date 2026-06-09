@@ -65,9 +65,15 @@ def chicago_hyetograph(
     The peak block lands at index ``floor(r * n_steps)`` or ``floor(r * n_steps) + 1``,
     which is within one dt of ``r * duration_min`` (standard Chicago convention).
 
-    **Mass conservation**: the sum of all depth increments equals
-    ``IDF_depth(r * duration_min) + IDF_depth((1 - r) * duration_min)``
-    (pre-peak branch + post-peak branch), to within discretisation error.
+    **Mass conservation (Keifer-Chu defining property)**: the sum of all
+    depth increments equals ``IDF_depth(duration_min)`` — the IDF cumulative
+    depth for the design duration itself. The limbs carry r-weighted shares:
+    the rising limb totals ``r * IDF_depth(T)`` and the falling limb
+    ``(1 - r) * IDF_depth(T)``, because any window of duration tau centred
+    on the peak (r*tau before, (1-r)*tau after) must accumulate exactly
+    ``IDF_depth(tau)``. Limb cumulatives are therefore
+    ``C_pre(s) = r * IDF_depth(s / r)`` and
+    ``C_post(s) = (1 - r) * IDF_depth(s / (1 - r))``.
 
     Parameters
     ----------
@@ -125,14 +131,25 @@ def chicago_hyetograph(
             raise ValueError(f"Unknown IDF form '{form}'. Use 'CN' or 'generic'.")
         return i_t * t_branch / 60.0  # mm
 
-    # Storm split: rising branch duration = r*T; falling branch = (1-r)*T.
+    # Keifer-Chu limb cumulatives. A window of duration tau centred on the
+    # peak (r*tau before, (1-r)*tau after) must accumulate exactly D(tau),
+    # so the limb cumulative at distance s from the peak is the r-weighted
+    # share of the window it closes: C_pre(s) = r * D(s/r) and
+    # C_post(s) = (1-r) * D(s/(1-r)). Telescoping the block differences
+    # makes the storm total exactly C_pre(rT) + C_post((1-r)T) = D(T).
+    def limb_pre(s: float) -> float:
+        return r * idf_depth(s / r)
+
+    def limb_post(s: float) -> float:
+        return (1.0 - r) * idf_depth(s / (1.0 - r))
+
     # Rising limb block k (0-indexed left to right, k in 0..i_peak):
-    #   branch time at block END (nearer peak)  = t_pre - k * dt
-    #   branch time at block START (farther)    = t_pre - (k+1) * dt
-    #   depth = D(ta_end) - D(ta_start)
+    #   distance from peak at block END (nearer peak)  = t_pre - k * dt
+    #   distance from peak at block START (farther)    = t_pre - (k+1) * dt
+    #   depth = C_pre(s_end) - C_pre(s_start)
     # Falling limb block k (i_peak+1..n_steps-1):
     #   branch offset j = k - (i_peak+1)
-    #   depth = D((j+1)*dt) - D(j*dt)
+    #   depth = C_post((j+1)*dt) - C_post(j*dt)
 
     t_pre = r * duration_min
     i_peak = int(r * n_steps)
@@ -146,11 +163,11 @@ def chicago_hyetograph(
         ta_start = t_pre - (k + 1) * dt_min
         if ta_start < 0.0:
             ta_start = 0.0
-        depths[k] = max(0.0, idf_depth(ta_end) - idf_depth(ta_start))
+        depths[k] = max(0.0, limb_pre(ta_end) - limb_pre(ta_start))
 
     # Falling limb
     # The last block extends to exactly t_post = (1-r)*duration_min so that
-    # sum(depths) == idf_depth(t_pre) + idf_depth(t_post) exactly.
+    # sum(depths) == limb_pre(t_pre) + limb_post(t_post) == idf_depth(T) exactly.
     t_post = (1.0 - r) * duration_min
     n_fall = n_steps - i_peak - 1
     for j in range(n_fall):
@@ -161,7 +178,7 @@ def chicago_hyetograph(
             tb_end = t_post
         else:
             tb_end = (j + 1) * dt_min
-        depths[k] = max(0.0, idf_depth(tb_end) - idf_depth(tb_start))
+        depths[k] = max(0.0, limb_post(tb_end) - limb_post(tb_start))
 
     return depths
 
