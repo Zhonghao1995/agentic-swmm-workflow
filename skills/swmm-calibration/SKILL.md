@@ -3,7 +3,7 @@ name: swmm-calibration
 description: Calibration and validation scaffold for EPA SWMM. Use when an agent needs to (1) compare simulated vs observed flow, (2) evaluate candidate parameter sets, (3) rank explicit candidates by an objective, (4) run a bounded random / LHS / adaptive search for the best-fitting parameters, (5) run a publication-grade SCE-UA calibration with KGE as the primary objective and (r, alpha, beta) decomposition reported, or (6) run a DREAM-ZS Bayesian calibration producing a posterior over parameters with Gelman-Rubin convergence checks. Dedicated sensitivity-analysis methods (OAT, Morris, Sobol') now live on the `swmm-uncertainty` skill.
 ---
 
-# SWMM Calibration / Validation (MVP scaffold)
+# SWMM Calibration / Validation
 
 ## What this skill provides
 - A practical calibration scaffold around the existing SWMM runner workflow.

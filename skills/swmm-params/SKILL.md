@@ -48,6 +48,22 @@ The merge script writes:
 - `by_subcatchment` (combined record per subcatchment ID)
 - `incomplete_ids` (IDs missing one or more sections)
 
+## CLI flags
+
+All three scripts share these optional flags:
+
+- `--strict` — fail instead of using the `DEFAULT` fallback row when an input key is missing from the lookup table. Useful for auditable production runs where silent fallback would mask a data gap.
+
+`landuse_to_swmm_params.py` also accepts:
+
+- `--subcatchment-column <col>` — override the CSV column used as the subcatchment ID (default: `subcatchment_id`).
+- `--landuse-column <col>` — override the CSV column used as the land use class (default: `landuse_class`).
+
+`soil_to_greenampt.py` also accepts:
+
+- `--subcatchment-column <col>` — override the CSV column used as the subcatchment ID (default: `subcatchment_id`).
+- `--soil-column <col>` — override the CSV column used as the soil texture/type (default: `soil_texture`).
+
 ## MCP
 MCP wrapper location:
 - `mcp/swmm-params/server.js`

@@ -61,7 +61,9 @@ python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
   --out-dir memory/modeling-memory
 ```
 
-To refresh only the aggregate output without writing run-level cards:
+To refresh only the aggregate output without writing run-level cards (only
+available via direct script invocation — `aiswmm memory` does not expose
+this flag):
 
 ```bash
 python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
@@ -90,6 +92,28 @@ python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
 - Treat skill update proposals as proposals only.
 - Accept real skill refinements only after human review and benchmark verification.
 
+## Audit-end auto-trigger (M2)
+
+`aiswmm audit` fires an auto-trigger after every successful audit that calls
+`summarize_memory.py` in the background to refresh `lessons_learned.md` and
+(unless `--no-rag` is given) rebuild the RAG corpus. This means
+`lessons_learned.md` can be written by two paths:
+
+1. **Automatic** — `agentic_swmm/memory/audit_hook.py` via the M2 hook
+   after `aiswmm audit` succeeds.
+2. **Manual** — `aiswmm memory --runs-dir runs` or direct
+   `python3 skills/swmm-modeling-memory/scripts/summarize_memory.py`.
+
+Set `AISWMM_SKIP_MEMORY=1` in the environment to suppress the auto-trigger
+(useful for CI or benchmark runs where memory mutation is unwanted). Pass
+`--no-memory` to `aiswmm audit` for the same effect on a single run.
+
+The auto-trigger uses `add_negative_lesson` / `NegativeLessonMd.update` from
+`agentic_swmm/memory/negative_lessons_markdown.py`, which increments
+`evidence_count` and updates `last_seen_utc` on duplicate lesson names rather
+than clobbering the existing entry. Manual `summarize_memory.py` runs use the
+same merge logic.
+
 ## Relationship to `swmm-experiment-audit`
 
 `swmm-experiment-audit` records evidence for one run.
@@ -99,9 +123,9 @@ python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
 The intended controlled loop is:
 
 1. Run SWMM or attempt a workflow.
-2. Audit the run.
+2. Audit the run (`aiswmm audit`); the M2 hook refreshes `lessons_learned.md` automatically.
 3. Preserve an Obsidian-compatible experiment note.
-4. Summarize modeling memory across audited runs.
+4. Summarize modeling memory across audited runs (manual `aiswmm memory` call when a full refresh is needed).
 5. Extract recurring failure patterns.
 6. Generate a skill update proposal.
 7. Review the proposal as a human.

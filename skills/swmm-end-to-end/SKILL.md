@@ -1,6 +1,6 @@
 ---
 name: swmm-end-to-end
-description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. Use when a repository user wants one agent-facing skill that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
+description: Top-level orchestration skill for agentic SWMM modelling. Use when an agent needs one entrypoint that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
 ---
 
 # SWMM End-to-End Orchestration
@@ -150,17 +150,20 @@ inputs are referenced.
    - `swmm-calibration-mcp.swmm_sensitivity_scan`
    - `swmm-calibration-mcp.swmm_calibrate`
    - `swmm-calibration-mcp.swmm_calibrate_search`
+   - `swmm-calibration-mcp.swmm_calibrate_sceua`
+   - `swmm-calibration-mcp.swmm_calibrate_dream_zs`
    - `swmm-calibration-mcp.swmm_validate`
-   - `swmm-calibration-mcp.swmm_parameter_scout`
-15. optional uncertainty scripts:
-   - `python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py ...`
-   - `python3 skills/swmm-uncertainty/scripts/monte_carlo_propagate.py ...`
+15. optional uncertainty / sensitivity analysis tools (use instead of or in addition to calibration):
+   - `swmm-uncertainty-mcp.swmm_sensitivity_oat` — one-at-a-time sensitivity (parameter ranking)
+   - `swmm-uncertainty-mcp.swmm_sensitivity_morris` — Morris elementary-effects screening
+   - `swmm-uncertainty-mcp.swmm_sensitivity_sobol` — Sobol' first-order + total-effect indices
+   - `swmm-uncertainty-mcp.swmm_uncertainty_source_decomposition` — integrate raw ensemble outputs
 16. optional LID scripts:
    - `python3 skills/swmm-lid-optimization/scripts/entropy_lid_priority.py ...`
    - `python3 skills/swmm-lid-optimization/scripts/lid_scenario_builder.py ...`
 17. `swmm-experiment-audit` via CLI:
-   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
-   - By default this also writes the audit note into `~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits` and updates `Experiment Audit Index.md`.
+   - `aiswmm audit --run-dir runs/<case>` — canonical path; adds backup/MOC/memory-hook. Pass `--obsidian` to also copy the note to the local Obsidian vault.
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>` — direct script path; Obsidian export is on by default (suppress with `--no-obsidian`).
 
 ### Mode B: Prepared-input build
 Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
@@ -182,8 +185,8 @@ Exact MCP call chain for prepared inputs:
 6. optional calibration tools
 7. optional uncertainty / LID scripts where a runnable base INP exists
 8. `swmm-experiment-audit` via CLI:
-   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
-   - By default this also writes the audit note into the local Obsidian audit vault and updates the audit index.
+   - `aiswmm audit --run-dir runs/<case>` — canonical path; adds backup/MOC/memory-hook. Pass `--obsidian` to also copy the note to the local Obsidian vault.
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>` — direct script path; Obsidian export is on by default.
 
 ### Mode C: Minimal real-data Tod Creek fallback
 Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
@@ -192,7 +195,7 @@ Script:
 - `scripts/real_cases/run_todcreek_minimal.py`
 
 Audit command after the script returns:
-- `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"`
+- `aiswmm audit --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"` — canonical path with backup/MOC/memory-hook.
 
 Characteristics:
 - one subcatchment
