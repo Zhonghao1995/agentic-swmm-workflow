@@ -41,6 +41,8 @@
 
 **Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/)**
 
+**Great news: Our paper has been officially published in AI for Engineering, an MDPI journal, on June 9, 2026. [Paper](https://doi.org/10.3390/aieng1010005)**
+
 ## Project Overview
 
 Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, SWMManywhere-based synthetic model generation, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
