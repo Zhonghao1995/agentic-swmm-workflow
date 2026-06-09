@@ -81,7 +81,7 @@
       "keywords": ["bbox", "osm", "synthesize", "synthesise", "synth", "no pipe data", "data-scarce", "无管道", "没有管道", "自动建模", "data scarce"],
       "required_inputs": ["bbox"],
       "optional_inputs": ["run_dir", "project_name", "refresh_raw"],
-      "preferred_tools": ["synth_from_bbox"],
+      "preferred_tools": ["synth_swmm_from_bbox"],
       "stop_conditions": ["missing bbox", "swmmanywhere upstream failure"],
       "next_user_prompt": "Please provide a bbox as four numbers (min_lon min_lat max_lon max_lat) for the area you want to synthesise a network for.",
       "exclusive_when": "user has not provided any .shp/.csv/network.json/.inp file — only use this intent when the user lacks real pipe-network data"

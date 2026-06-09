@@ -18,13 +18,15 @@ description, the CLI subcommand path, the workflow mode it belongs to
 :class:`MemoryVerb` row here — the planner, the HITL surface, and the
 docs scripts all read from this registry.
 
-Why not the existing ``workflow_modes`` registry
+Why a separate registry and not the tool registry
 -------------------------------------------------
-That registry models SWMM *workflow types* — prepared INP execution,
-calibration runs, etc. The memory verbs are CLI surfaces, not
-workflow types, and conflating them would re-introduce the drift bug
-in a different shape. Keeping the two registries side-by-side is
-cheaper than overloading either.
+The tool registry (``AgentToolRegistry`` in ``tool_registry.py``) models
+the LLM-facing flat tool surface — the planner picks tools by name from
+the schemas the registry exposes. The memory verbs are CLI-level mutation
+surfaces, not planner-callable tools, and conflating them would mix two
+unrelated dispatch concerns. The tool registry's LLM-driven flat-dispatch
+shape (see *Dispatch architecture* in ``CONTEXT.md``) is also the wrong
+shape for the stakes-aware HITL routing that memory verbs require.
 
 Failure mode
 ------------

@@ -19,60 +19,12 @@ from agentic_swmm.cli import (
 )
 from agentic_swmm.commands.agent import _find_repo_inp
 from agentic_swmm.agent.intent_classifier import load_intent_map
-from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_mcp_servers, _select_relevant_skills
+from agentic_swmm.agent.planner import _select_relevant_mcp_servers, _select_relevant_skills
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-class FakePreparedInpExecutor:
-    def __init__(self, route: dict[str, object]):
-        self.route = route
-        self.results: list[dict[str, object]] = []
-        self.dry_run = False
-
-    def execute(self, call: ToolCall, *, index: int | None = None) -> dict[str, object]:
-        if call.name == "list_skills":
-            result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "summary": "12 skills available"}
-        elif call.name == "read_skill":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": f"read skill {call.args.get('skill_name')}"}
-        elif call.name == "list_mcp_servers":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "8 configured MCP server(s)"}
-        elif call.name == "list_mcp_tools":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": f"1 MCP tool(s) on {call.args.get('server')}", "mapped_tools": []}
-        elif call.name == "select_workflow_mode":
-            result: dict[str, object] = {"tool": call.name, "args": call.args, "ok": True, "results": self.route, "summary": "mode=prepared_inp_cli missing=0"}
-        elif call.name == "run_swmm_inp":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "standard layout: 00_inputs/, 04_builder/, 05_runner/, 06_qa/, manifest.json, command_trace.json"}
-        elif call.name == "audit_run":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "audit_note=/tmp/run/experiment_note.md"}
-        elif call.name == "inspect_plot_options":
-            result = {
-                "tool": call.name,
-                "args": call.args,
-                "ok": True,
-                "summary": "rain=1 nodes=2 attrs=4",
-                "results": {
-                    "rainfall_options": [{"name": "MACAO_94_23", "rain_kind": "cumulative_depth_mm"}],
-                    "node_options": ["OU2", "OUT_0", "J2"],
-                    "node_attribute_options": [
-                        {"name": "Total_inflow"},
-                        {"name": "Depth_above_invert"},
-                        {"name": "Volume_stored_ponded"},
-                        {"name": "Flow_lost_flooding"},
-                    ],
-                    "defaults": {"rain_ts": "MACAO_94_23", "node": "OU2", "node_attr": "Total_inflow"},
-                    "selections_needed": ["node", "node_attr"],
-                },
-            }
-        elif call.name == "plot_run":
-            result = {"tool": call.name, "args": call.args, "ok": True, "summary": "plot: /tmp/run/07_plots/fig_rain_runoff.png"}
-        else:
-            result = {"tool": call.name, "args": call.args, "ok": False, "summary": f"unexpected tool: {call.name}"}
-        self.results.append(result)
-        return result
 
 
 class AgenticSwmmCliTests(unittest.TestCase):
