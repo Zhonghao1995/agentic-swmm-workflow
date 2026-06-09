@@ -201,6 +201,18 @@ A new orthogonal axis introduced by the `swmm-anywhere` skill (PRD `swmmanywhere
 
 The orchestrator (`swmm-end-to-end`) picks the entry based on user inputs: any pipe file → real-data; bbox-only → synth-data. Output structure under `runs/<date>/<id>/` is intentionally identical from `swmm_run/` downward so audit / plot / calibration treat both paths symmetrically.
 
+## swmm-gis and swmm-params: call_mcp_tool-only by design
+
+`swmm-gis` (11 tools) and `swmm-params` (3 tools) are intentionally **not** registered as typed `ToolSpec` entries in `AgentToolRegistry`. The planner reaches them exclusively via `call_mcp_tool` after a `list_mcp_tools` introspection step.
+
+**Why swmm-gis stays unregistered.** Seven of the eleven tools (`qgis_normalize_layers`, `qgis_load_layers`, `qgis_validate_crs`, `qgis_overlay_landuse_soil`, `qgis_extract_slope_area_width`, `qgis_import_drainage_assets`, `qgis_export_swmm_intermediates`, `qgis_package_final_layers`) invoke `qgis_prepare_swmm_inputs.py`, which shells out to QGIS Processing (hardcoded default: `QGIS-final-4_0_2.app`) and optionally GRASS (`GRASS-8.4.app`). Registering typed ToolSpecs for tools that require a desktop GIS installation would add significant schema surface to the LLM's flat tool registry for tools that fail in a standard Python environment. The two light-path tools — `qgis_area_weighted_params` (uses `geopandas`) and `basin_shp_to_subcatchments` (stdlib-only) — are pure-Python and are **hot-path candidates for typed promotion** if agent flows start using them frequently; see the promotion path below.
+
+**Why swmm-params stays unregistered.** The three tools (`map_landuse`, `map_soil`, `merge_params`) are mid-pipeline glue: they convert GIS overlay CSV outputs into SWMM parameter JSON before `build_inp`. A user rarely calls them directly; the planner reaches them after resolving the GIS layer context. Registering three thin converters as typed ToolSpecs would add noise to the registry without meaningful discoverability benefit.
+
+**Discoverability gate.** Both skills must remain in `intent_map.json`'s `mcp_enabled_skills` list (currently at `agent/config/intent_map.json` lines 68–75). This ensures `_select_relevant_mcp_servers` warms the `swmm-gis` and `swmm-params` servers and calls `list_mcp_tools` when a GIS or parameter-mapping goal arrives. The `gis` and `params` intents in `intent_map.json` already set `preferred_tools: ["call_mcp_tool"]` — do not change these to a specific tool name, as that would incorrectly steer the planner toward a single tool when the correct tool depends on where the user is in the GIS pipeline.
+
+**Promotion path.** If `basin_shp_to_subcatchments` or `gis_preprocess_subcatchments` appear frequently in `agent_trace.jsonl` as `call_mcp_tool` calls, promote them to typed ToolSpecs in a follow-up PR — the schema is already defined in `mcp/swmm-gis/server.js` and neither script requires QGIS.
+
 ## Dispatch architecture: LLM-driven over hardcoded mode enum
 
 ### Decision
