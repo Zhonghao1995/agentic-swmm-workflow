@@ -183,7 +183,7 @@ python3 skills/swmm-experiment-audit/scripts/audit_run.py \
 
 `swmm-experiment-audit` is the recorder and auditor.
 
-OpenClaw should run this audit skill after every build/run/QA attempt, even when the workflow stops early or fails. The audit output should reference whatever artifacts exist in the run directory and clearly mark missing or incomplete evidence.
+The agent should run this audit skill after every build/run/QA attempt, even when the workflow stops early or fails. The audit output should reference whatever artifacts exist in the run directory and clearly mark missing or incomplete evidence.
 
 ## Obsidian support
 

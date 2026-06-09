@@ -42,7 +42,7 @@ This skill backs three LLM-facing tools. `plot_rain_runoff_si` is routed through
 
 2. **`map_run`** — render the spatial network layout (subcatchments + conduits + outfalls) as a PNG. Reads the INP from the run directory automatically; pass `inp` to override. Required arg: `run_dir`. Optional: `out_png`, `dpi`, `no_subcatchments`, `no_vertices`.
 
-3. **`plot_run`** (proxies to `plot_rain_runoff_si` on the MCP server) — create a paired rainfall + node-flow figure from a run directory. Required arg: `run_dir`. Supply either `node` or `link` (mutually exclusive) to select the lower panel. Optional: `rain_ts`, `rain_kind`, `node_attr`, `out_png`, `focus_day`, `window_start`, `window_end`.
+3. **`plot_run`** (proxies to `plot_rain_runoff_si` on the MCP server) — create a paired rainfall + node-flow figure from a run directory. Required arg: `run_dir`. Supply either `node` or `link` (mutually exclusive) to select the lower panel. Optional: `rain_ts`, `rain_kind`, `node_attr`, `out_png`. Day-window cropping (`focusDay` / `windowStart` / `windowEnd`) exists only on the underlying MCP tool — `plot_run` does not forward it.
 
 **`mcp/swmm-plot/server.js` exposes one underlying tool:**
 
@@ -51,10 +51,10 @@ This skill backs three LLM-facing tools. `plot_rain_runoff_si` is routed through
      - `inp` (required): path to the SWMM .inp (the rainfall TIMESERIES is read from here).
      - `out` (required): path to the SWMM .out binary.
      - `outPng` (required): where to write the PNG.
-     - `rainTs` (required — no literal default; supply the actual series name from the .inp `[TIMESERIES]` section; use `inspect_plot_options` to list available names): name of the rainfall TIMESERIES inside the .inp.
+     - `rainTs` (no usable default — the schema ships the self-documenting placeholder `<rainfall-series-name>`, which fails at render time if not replaced; always supply the actual series name from the .inp `[TIMESERIES]` section via `inspect_plot_options`): name of the rainfall TIMESERIES inside the .inp.
      - `rainKind` (default `"depth_mm_per_dt"`): one of `intensity_mm_per_hr`, `depth_mm_per_dt`, `cumulative_depth_mm`.
      - `dtMin` (default `5`): timestep of the rainfall series in minutes.
-     - `node` (required — no literal default; supply an outfall or junction name from the model; use `inspect_plot_options` to list candidates): node ID to plot from the .out.
+     - `node` (no usable default — the schema ships the self-documenting placeholder `<outfall-or-junction>`, which fails at render time if not replaced; always supply a real outfall or junction name via `inspect_plot_options`): node ID to plot from the .out.
      - `nodeAttr` (default `"Total_inflow"`): which `swmmtoolbox` attribute (e.g. `Total_inflow`, `Lateral_inflow`, `Flow_lost_flooding`).
      - `dpi` (default `300`).
      - `focusDay` (optional, `YYYY-MM-DD`): crop axis to a single day plus padding.

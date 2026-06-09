@@ -28,7 +28,7 @@ description: Calibration and validation scaffold for EPA SWMM. Use when an agent
   - `search --strategy sceua` — Shuffled Complex Evolution (SCE-UA); recommended for publication-grade point-estimate calibration. Minimises `(1 - KGE)` via `spotpy.algorithms.sceua` and emits a `calibration_summary.json` with KGE decomposition + secondary metrics.
   - `search --strategy dream-zs` — DREAM-ZS Bayesian calibration with a KGE-based likelihood `exp(-0.5 * (1 - KGE) / sigma^2)`. Produces a posterior over parameters via `spotpy.algorithms.dream`, writes 5 audit artefacts (`posterior_samples.csv`, `best_params.json`, `chain_convergence.json`, `posterior_<param>.png`, `posterior_correlation.png`) plus a Slice 1 -compatible `calibration_summary.json` with a `posterior_summary` block (Gelman-Rubin Rhat per parameter + per-parameter quantiles).
 - Dedicated sensitivity-analysis methods (OAT, Morris elementary-effects, Sobol' indices) have moved to the **swmm-uncertainty** skill — see `skills/swmm-uncertainty/scripts/sensitivity.py` and the `swmm_sensitivity_oat` / `swmm_sensitivity_morris` / `swmm_sensitivity_sobol` MCP tools.
-- MCP wrapper so OpenClaw can call the workflow as tools.
+- MCP wrapper so the agent runtime can call the workflow as tools.
 
 ### Strategy guidance
 
