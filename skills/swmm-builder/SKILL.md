@@ -85,15 +85,6 @@ Validation behavior:
 ## Scripts
 - `scripts/build_swmm_inp.py`
   - single entrypoint that reads all inputs and writes INP + manifest.
-- `scripts/subcatchments_shp_to_csv.py`
-  - converts a SWMM-attributed subcatchment shapefile (id / outlet /
-    area_ha / width_m / slope_pct fields) into the builder's CSV
-    contract. Use when a basin shapefile already carries SWMM
-    subcatchment attributes and per-feature width/slope rebuilds are
-    unnecessary. For raw municipal basin shapefiles without SWMM
-    attribute columns, prefer `swmm-gis-mcp.basin_shp_to_subcatchments`,
-    which derives the same CSV from polygon area + a configurable
-    width/slope strategy.
 
 ## MCP
 MCP wrapper location:
@@ -112,16 +103,39 @@ Exposed tools:
   points to the literal outfall).
 
 ## Smoke example
+
+The builder requires upstream outputs from `swmm-params` and `swmm-climate`.
+Generate them first, then call `build_swmm_inp.py`:
+
 ```bash
+# 1. Generate merged params from the bundled examples
+mkdir -p /tmp/builder-smoke
+python3 skills/swmm-params/scripts/landuse_to_swmm_params.py \
+  --input skills/swmm-params/examples/landuse_input.csv \
+  --output /tmp/builder-smoke/landuse.json
+python3 skills/swmm-params/scripts/soil_to_greenampt.py \
+  --input skills/swmm-params/examples/soil_input.csv \
+  --output /tmp/builder-smoke/soil.json
+python3 skills/swmm-params/scripts/merge_swmm_params.py \
+  --landuse-json /tmp/builder-smoke/landuse.json \
+  --soil-json /tmp/builder-smoke/soil.json \
+  --output /tmp/builder-smoke/merged_params.json
+
+# 2. Format rainfall from the bundled climate example
+python3 skills/swmm-climate/scripts/format_rainfall.py \
+  --input skills/swmm-climate/examples/rainfall_event.csv \
+  --out-json /tmp/builder-smoke/rainfall.json \
+  --out-timeseries /tmp/builder-smoke/rainfall_timeseries.txt
+
+# 3. Build the INP
 python3 skills/swmm-builder/scripts/build_swmm_inp.py \
   --subcatchments-csv skills/swmm-builder/examples/subcatchments_input.csv \
-  --params-json runs/swmm-params/example_builder_params.json \
+  --params-json /tmp/builder-smoke/merged_params.json \
   --network-json skills/swmm-network/examples/basic-network.json \
-  --rainfall-json runs/swmm-climate/example_rainfall.json \
-  --raingage-json runs/swmm-climate/example_raingage.json \
+  --rainfall-json /tmp/builder-smoke/rainfall.json \
   --config-json skills/swmm-builder/examples/options_config.json \
-  --out-inp runs/swmm-builder/example_model.inp \
-  --out-manifest runs/swmm-builder/example_manifest.json
+  --out-inp /tmp/builder-smoke/example_model.inp \
+  --out-manifest /tmp/builder-smoke/example_manifest.json
 ```
 
 ## MVP limitations

@@ -1,6 +1,6 @@
 ---
 name: swmm-experiment-audit
-description: Consolidate Agentic SWMM run artifacts into auditable provenance, comparison records, and local Obsidian audit notes. Use after any SWMM build/run/QA attempt, successful or failed, when OpenClaw or a CLI workflow needs a traceable record of inputs, commands, artifacts, metrics, QA checks, run-to-run differences, and first-user-friendly Obsidian visualization.
+description: Consolidate Agentic SWMM run artifacts into auditable provenance, comparison records, and local Obsidian audit notes. Use after any SWMM build/run/QA attempt, successful or failed, when an agent or CLI workflow needs a traceable record of inputs, commands, artifacts, metrics, QA checks, run-to-run differences, and first-user-friendly Obsidian visualization.
 ---
 
 # SWMM Experiment Audit
@@ -54,19 +54,73 @@ For every audited run, write these files into the run's `09_audit/` directory un
 
 `experiment_note.md` is Obsidian-compatible Markdown with YAML frontmatter. It should stay readable in GitHub as plain Markdown.
 
-By default, the CLI also writes a copy of the audit note into:
+The direct script (`audit_run.py`) writes a copy of the audit note to the
+Obsidian vault by default; pass `--no-obsidian` to suppress it. The
+canonical CLI (`aiswmm audit`) does **not** export to Obsidian by default;
+pass `--obsidian` to enable it.
+
+When Obsidian export is active, the note is written into:
 
 ```text
 ~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits
 ```
 
-and updates:
+and the index is updated at:
 
 ```text
 ~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment Audit Index.md
 ```
 
 ## CLI
+
+The canonical CLI is `aiswmm audit`. It wraps the underlying script with
+backup of prior audit files, MOC regeneration (`runs/INDEX.md`), and the
+M2 audit → memory auto-trigger. The direct script path is also supported
+and is the primary option for MCP / Mode-0 calls.
+
+### Canonical CLI (`aiswmm audit`)
+
+Obsidian export is **opt-in** with `aiswmm audit` — pass `--obsidian` to
+copy the note to the default vault. Without `--obsidian` the note is written
+only into `09_audit/` inside the run directory.
+
+```bash
+aiswmm audit --run-dir runs/acceptance/latest
+```
+
+With comparison:
+
+```bash
+aiswmm audit --run-dir runs/acceptance/codex-check-peakfix \
+  --compare-to runs/acceptance/codex-check
+```
+
+With explicit metadata and Obsidian export:
+
+```bash
+aiswmm audit --run-dir runs/real-todcreek-minimal \
+  --case-name "Tod Creek minimal" \
+  --workflow-mode "minimal real-data fallback" \
+  --objective "Verify real-data SWMM execution and preserve provenance." \
+  --obsidian
+```
+
+Skip the M2 memory auto-trigger (useful for acceptance / benchmark runs):
+
+```bash
+aiswmm audit --run-dir runs/acceptance/latest --no-memory
+```
+
+Run-to-run comparison with the standalone verb:
+
+```bash
+aiswmm compare --run-a runs/baseline --run-b runs/scenario
+```
+
+### Direct script path (`python3 scripts/audit_run.py`)
+
+Use when calling from MCP or when the full `aiswmm` install is unavailable.
+Obsidian export is **on by default** in the script; disable with `--no-obsidian`.
 
 Initialize a first-user Obsidian vault:
 
@@ -76,7 +130,8 @@ python3 skills/swmm-experiment-audit/scripts/init_obsidian_vault.py
 
 ```bash
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
-  --run-dir runs/acceptance/latest
+  --run-dir runs/acceptance/latest \
+  --no-obsidian
 ```
 
 With comparison:
@@ -84,17 +139,21 @@ With comparison:
 ```bash
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
   --run-dir runs/acceptance/codex-check-peakfix \
-  --compare-to runs/acceptance/codex-check
+  --compare-to runs/acceptance/codex-check \
+  --no-obsidian
 ```
 
-With explicit metadata:
+With explicit metadata including `--case-id` (records the case slug in
+`experiment_provenance.json` for cross-session memory recall):
 
 ```bash
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
   --run-dir runs/real-todcreek-minimal \
+  --case-id tod-creek \
   --case-name "Tod Creek minimal" \
   --workflow-mode "minimal real-data fallback" \
-  --objective "Verify real-data SWMM execution and preserve provenance."
+  --objective "Verify real-data SWMM execution and preserve provenance." \
+  --no-obsidian
 ```
 
 With an Obsidian vault folder:
@@ -103,14 +162,6 @@ With an Obsidian vault folder:
 python3 skills/swmm-experiment-audit/scripts/audit_run.py \
   --run-dir runs/acceptance/latest \
   --obsidian-dir "/path/to/Obsidian/Agentic SWMM/04_Experiments"
-```
-
-Disable Obsidian export when only repo-local files are wanted:
-
-```bash
-python3 skills/swmm-experiment-audit/scripts/audit_run.py \
-  --run-dir runs/acceptance/latest \
-  --no-obsidian
 ```
 
 ## Audit rules
@@ -132,7 +183,7 @@ python3 skills/swmm-experiment-audit/scripts/audit_run.py \
 
 `swmm-experiment-audit` is the recorder and auditor.
 
-OpenClaw should run this audit skill after every build/run/QA attempt, even when the workflow stops early or fails. The audit output should reference whatever artifacts exist in the run directory and clearly mark missing or incomplete evidence.
+The agent should run this audit skill after every build/run/QA attempt, even when the workflow stops early or fails. The audit output should reference whatever artifacts exist in the run directory and clearly mark missing or incomplete evidence.
 
 ## Obsidian support
 
@@ -163,11 +214,10 @@ It is organized for first-time Obsidian use:
 90_Templates/
 ```
 
-Default behavior:
+The direct script always writes canonical outputs into the run directory and
+copies the note to the Obsidian vault unless `--no-obsidian` is given. The
+canonical CLI (`aiswmm audit`) writes canonical outputs only; add `--obsidian`
+to also copy to the vault.
 
-- write the canonical audit outputs into the run directory,
-- copy the human-readable note into `20_Audit_Layer/Experiment_Audits`,
-- update `20_Audit_Layer/Experiment Audit Index.md`,
-- keep repo-local JSON files as the machine-readable source of truth.
-
-Use `--obsidian-dir` and `--obsidian-index` to target another vault. Use `--no-obsidian` to disable the local Obsidian export.
+In both paths, use `--obsidian-dir` and `--obsidian-index` to target a vault
+location other than the default `~/Documents/Agentic-SWMM-Obsidian-Vault`.

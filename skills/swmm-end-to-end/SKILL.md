@@ -1,12 +1,12 @@
 ---
 name: swmm-end-to-end
-description: Top-level orchestration skill for OpenClaw-driven SWMM modelling. Use when a repository user wants one agent-facing skill that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
+description: Top-level orchestration skill for agentic SWMM modelling. Use when an agent needs one entrypoint that decides which module tools to run, in what order, and when to stop, for example to build, run, QA, and optionally calibrate a SWMM case from prepared or partially prepared inputs.
 ---
 
 # SWMM End-to-End Orchestration
 
 ## What this skill provides
-- A top-level orchestration contract for OpenClaw.
+- A top-level orchestration contract for the agent runtime.
 - A stable handoff point for Agentic AI project memory in `agent/memory/`.
 - A deterministic execution order across the existing module skills:
   - `swmm-anywhere` (entry skill for data-scarce regions — no real pipe data)
@@ -35,7 +35,7 @@ The orchestrator MUST inspect the user's inputs before choosing the entry skill:
 
 ## When to use this skill
 Use this skill when the user asks for:
-- one OpenClaw-facing entrypoint for SWMM modelling,
+- one agent-facing entrypoint for SWMM modelling,
 - end-to-end build + run + QA,
 - an agent to decide which SWMM module comes next,
 - a real-data dry run before full automation is ready, or
@@ -150,17 +150,23 @@ inputs are referenced.
    - `swmm-calibration-mcp.swmm_sensitivity_scan`
    - `swmm-calibration-mcp.swmm_calibrate`
    - `swmm-calibration-mcp.swmm_calibrate_search`
+   - `swmm-calibration-mcp.swmm_calibrate_sceua`
+   - `swmm-calibration-mcp.swmm_calibrate_dream_zs`
    - `swmm-calibration-mcp.swmm_validate`
-   - `swmm-calibration-mcp.swmm_parameter_scout`
-15. optional uncertainty scripts:
-   - `python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py ...`
-   - `python3 skills/swmm-uncertainty/scripts/monte_carlo_propagate.py ...`
+15. optional uncertainty / sensitivity analysis tools (use instead of or in addition to calibration):
+   - `swmm-uncertainty-mcp.swmm_sensitivity_oat` — one-at-a-time sensitivity (parameter ranking)
+   - `swmm-uncertainty-mcp.swmm_sensitivity_morris` — Morris elementary-effects screening
+   - `swmm-uncertainty-mcp.swmm_sensitivity_sobol` — Sobol' first-order + total-effect indices
+   - `swmm-uncertainty-mcp.swmm_uncertainty_source_decomposition` — integrate raw ensemble outputs
+   - uncertainty **propagation** (hydrograph envelopes, not parameter ranking) has no MCP tool; use the scripts:
+     - `python3 skills/swmm-uncertainty/scripts/uncertainty_propagate.py ...` (fuzzy alpha-cut)
+     - `python3 skills/swmm-uncertainty/scripts/monte_carlo_propagate.py ...` (Monte Carlo)
 16. optional LID scripts:
    - `python3 skills/swmm-lid-optimization/scripts/entropy_lid_priority.py ...`
    - `python3 skills/swmm-lid-optimization/scripts/lid_scenario_builder.py ...`
 17. `swmm-experiment-audit` via CLI:
-   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
-   - By default this also writes the audit note into `~/Documents/Agentic-SWMM-Obsidian-Vault/20_Audit_Layer/Experiment_Audits` and updates `Experiment Audit Index.md`.
+   - `aiswmm audit --run-dir runs/<case>` — canonical path; adds backup/MOC/memory-hook. Pass `--obsidian` to also copy the note to the local Obsidian vault.
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>` — direct script path; Obsidian export is on by default (suppress with `--no-obsidian`).
 
 ### Mode B: Prepared-input build
 Use this when `subcatchments.csv`, `network.json`, params JSON, and rainfall references already exist.
@@ -182,8 +188,8 @@ Exact MCP call chain for prepared inputs:
 6. optional calibration tools
 7. optional uncertainty / LID scripts where a runnable base INP exists
 8. `swmm-experiment-audit` via CLI:
-   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>`
-   - By default this also writes the audit note into the local Obsidian audit vault and updates the audit index.
+   - `aiswmm audit --run-dir runs/<case>` — canonical path; adds backup/MOC/memory-hook. Pass `--obsidian` to also copy the note to the local Obsidian vault.
+   - `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/<case>` — direct script path; Obsidian export is on by default.
 
 ### Mode C: Minimal real-data Tod Creek fallback
 Use this only when the user wants a real-data run but the full modular path is not ready because there is no trustworthy multi-subcatchment + network input yet.
@@ -192,7 +198,7 @@ Script:
 - `scripts/real_cases/run_todcreek_minimal.py`
 
 Audit command after the script returns:
-- `python3 skills/swmm-experiment-audit/scripts/audit_run.py --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"`
+- `aiswmm audit --run-dir runs/real-todcreek-minimal --workflow-mode "minimal real-data fallback"` — canonical path with backup/MOC/memory-hook.
 
 Characteristics:
 - one subcatchment
@@ -201,7 +207,7 @@ Characteristics:
 - useful as a real-data smoke test, not as the final watershed architecture
 
 This fallback is a script path, not a module-MCP path.
-OpenClaw should choose it only when:
+The agent should choose it only when:
 - the user explicitly accepts a simplified real-data smoke test, or
 - full modular inputs are incomplete and the goal is to verify the repo can run with real data.
 
@@ -342,8 +348,8 @@ error output (a dedicated `--list-tools` flag is on the framework backlog).
 - The default Obsidian vault is `~/Documents/Agentic-SWMM-Obsidian-Vault`, with `10_Memory_Layer` for durable lessons and `20_Audit_Layer` for run-level evidence.
 - Do not include chat transcripts or conversational content in audit outputs.
 
-## OpenClaw prompt-level instruction
-When OpenClaw uses this skill, it should:
+## Agent prompt-level instruction
+When an agent uses this skill, it should:
 - choose one operating mode first,
 - announce the chosen mode,
 - create a case run directory,
@@ -382,7 +388,7 @@ If calibration is requested, also produce:
 - ranking / summary JSON
 - chosen parameter set or best-params output
 
-## Recommended OpenClaw behavior
+## Recommended agent behavior
 - Use this skill as the **only top-level SWMM skill**.
 - Treat module skills as subordinate implementation skills.
 - Keep reasoning at the orchestration layer and calculations at the script layer.

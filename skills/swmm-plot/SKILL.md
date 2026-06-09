@@ -36,17 +36,25 @@ Do **not** use this skill for multi-node ensemble plots, exceedance curves, or s
 
 ## MCP tools
 
-`mcp/swmm-plot/server.js` exposes one tool.
+This skill backs three LLM-facing tools. `plot_rain_runoff_si` is routed through the MCP server; `inspect_plot_options` and `map_run` are direct Python handlers in the tool registry (`agentic_swmm/agent/tool_handlers/swmm_plot.py` and `swmm_map.py`).
 
-1. **`plot_rain_runoff_si`** — render the paired figure to PNG.
+1. **`inspect_plot_options`** — inspect a run directory (or an explicit `.inp` / `.out` path) and return the available rainfall series names, node IDs, and node output attributes. Call this before `plot_run` so you can pass real names instead of placeholders. Required args: `run_dir` (or `inp_path` + `out_file`). Read-only; auto-approved under the QUICK permission profile.
+
+2. **`map_run`** — render the spatial network layout (subcatchments + conduits + outfalls) as a PNG. Reads the INP from the run directory automatically; pass `inp` to override. Required arg: `run_dir`. Optional: `out_png`, `dpi`, `no_subcatchments`, `no_vertices`.
+
+3. **`plot_run`** (proxies to `plot_rain_runoff_si` on the MCP server) — create a paired rainfall + node-flow figure from a run directory. Required arg: `run_dir`. Supply either `node` or `link` (mutually exclusive) to select the lower panel. Optional: `rain_ts`, `rain_kind`, `node_attr`, `out_png`. Day-window cropping (`focusDay` / `windowStart` / `windowEnd`) exists only on the underlying MCP tool — `plot_run` does not forward it.
+
+**`mcp/swmm-plot/server.js` exposes one underlying tool:**
+
+4. **`plot_rain_runoff_si`** — low-level render call used by `plot_run`. Prefer `plot_run` (which accepts `run_dir`) over calling this directly.
    - Args:
      - `inp` (required): path to the SWMM .inp (the rainfall TIMESERIES is read from here).
      - `out` (required): path to the SWMM .out binary.
      - `outPng` (required): where to write the PNG.
-     - `rainTs` (default `"TS_RAIN"`): name of the rainfall TIMESERIES inside the .inp.
+     - `rainTs` (no usable default — the schema ships the self-documenting placeholder `<rainfall-series-name>`, which fails at render time if not replaced; always supply the actual series name from the .inp `[TIMESERIES]` section via `inspect_plot_options`): name of the rainfall TIMESERIES inside the .inp.
      - `rainKind` (default `"depth_mm_per_dt"`): one of `intensity_mm_per_hr`, `depth_mm_per_dt`, `cumulative_depth_mm`.
      - `dtMin` (default `5`): timestep of the rainfall series in minutes.
-     - `node` (default `"O1"`): node ID to plot from the .out.
+     - `node` (no usable default — the schema ships the self-documenting placeholder `<outfall-or-junction>`, which fails at render time if not replaced; always supply a real outfall or junction name via `inspect_plot_options`): node ID to plot from the .out.
      - `nodeAttr` (default `"Total_inflow"`): which `swmmtoolbox` attribute (e.g. `Total_inflow`, `Lateral_inflow`, `Flow_lost_flooding`).
      - `dpi` (default `300`).
      - `focusDay` (optional, `YYYY-MM-DD`): crop axis to a single day plus padding.
@@ -56,11 +64,12 @@ Do **not** use this skill for multi-node ensemble plots, exceedance curves, or s
 ## Recommended orchestration
 
 ```
-swmm-runner.swmm_run            → model.inp + model.out
-swmm-plot.plot_rain_runoff_si   → outfall_flow.png  (or junction_flow.png)
+inspect_plot_options  →  list available series + node names
+swmm-runner.run_swmm_inp  →  model.inp + model.out
+plot_run              →  outfall_flow.png  (or junction_flow.png)
 ```
 
-If multiple basins / nodes need to be plotted, call `plot_rain_runoff_si` once per node with a different `outPng` path.
+Call `inspect_plot_options` first to get the real rainfall series name and outfall node name, then pass those to `plot_run`. If multiple nodes need to be plotted, call `plot_run` once per node with a different `out_png` path.
 
 ## Conventions
 
@@ -70,5 +79,4 @@ If multiple basins / nodes need to be plotted, call `plot_rain_runoff_si` once p
 
 ## Known limitations
 
-- For long simulations (many days), the x-axis tick labels overlap because the plotter writes one tick per timestep. `BACKLOG.md F14` covers a future fix using `matplotlib.dates.AutoDateLocator`.
 - Only one rainfall series is plotted at a time (`rainTs` is a single name); multi-gauge inputs need separate figures.
