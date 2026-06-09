@@ -105,6 +105,34 @@ _MIGRATED_FAMILIES = [
         ("_generate_design_storm_tool",),
         ("generate_design_storm",),
     ),
+    # dark-MCP registration (PR 1, issue #246): 6 calibration tools registered
+    # as first-class typed ToolSpecs.
+    (
+        "swmm_calibration",
+        (
+            "_swmm_calibrate_common_schema",
+            "_sensitivity_scan_args",
+            "_calibrate_args",
+            "_calibrate_search_args",
+            "_calibrate_sceua_args",
+            "_calibrate_dream_zs_args",
+            "_validate_args",
+            "_swmm_sensitivity_scan_tool",
+            "_swmm_calibrate_tool",
+            "_swmm_calibrate_search_tool",
+            "_swmm_calibrate_sceua_tool",
+            "_swmm_calibrate_dream_zs_tool",
+            "_swmm_validate_tool",
+        ),
+        (
+            "swmm_sensitivity_scan",
+            "swmm_calibrate",
+            "swmm_calibrate_search",
+            "swmm_calibrate_sceua",
+            "swmm_calibrate_dream_zs",
+            "swmm_validate",
+        ),
+    ),
 ]
 
 

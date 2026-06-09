@@ -132,7 +132,7 @@
       "keywords": ["calibration", "calibrate", "validation", "sensitivity", "observed", "nse", "kge", "校准", "率定", "敏感性", "观测"],
       "required_inputs": ["inp_path", "observed_flow", "node"],
       "optional_inputs": ["parameter_sets", "search_space", "metric"],
-      "preferred_tools": ["run_swmm_inp", "audit_run"],
+      "preferred_tools": ["swmm_calibrate_search", "swmm_calibrate_sceua", "swmm_validate"],
       "stop_conditions": ["missing observed data", "no simulated-observed overlap"],
       "next_user_prompt": "Provide observed flow data, target node, and parameter/search settings."
     },

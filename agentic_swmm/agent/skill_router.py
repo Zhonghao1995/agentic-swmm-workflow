@@ -38,6 +38,13 @@ _DETERMINISTIC_BINDINGS: dict[str, str] = {
     "plot_run": "swmm-plot",
     "run_swmm_inp": "swmm-runner",
     "summarize_memory": "swmm-modeling-memory",
+    # dark-MCP registration (PR 1, issue #246): 6 calibration tools
+    "swmm_calibrate": "swmm-calibration",
+    "swmm_calibrate_dream_zs": "swmm-calibration",
+    "swmm_calibrate_search": "swmm-calibration",
+    "swmm_calibrate_sceua": "swmm-calibration",
+    "swmm_sensitivity_scan": "swmm-calibration",
+    "swmm_validate": "swmm-calibration",
 }
 
 
