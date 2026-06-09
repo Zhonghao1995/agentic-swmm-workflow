@@ -2,8 +2,9 @@
 
 Covers ``is_new_case``, ``should_offer_transfer``,
 ``maybe_offer_onboarding``, ``format_onboarding_chat_block``, and the
-parse/apply helpers. The end-to-end integration with the runnable
-adapters lives in ``test_onboarding_workflow_modes.py``.
+parse/apply helpers. The LLM-driven dispatch refactor removed the
+per-mode adapter layer (``workflow_modes/``); onboarding now integrates
+directly with the planner's flat tool-pick loop.
 """
 
 from __future__ import annotations
