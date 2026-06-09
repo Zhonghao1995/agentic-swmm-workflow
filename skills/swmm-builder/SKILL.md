@@ -124,7 +124,8 @@ python3 skills/swmm-params/scripts/merge_swmm_params.py \
 # 2. Format rainfall from the bundled climate example
 python3 skills/swmm-climate/scripts/format_rainfall.py \
   --input skills/swmm-climate/examples/rainfall_event.csv \
-  --output /tmp/builder-smoke/rainfall.json
+  --out-json /tmp/builder-smoke/rainfall.json \
+  --out-timeseries /tmp/builder-smoke/rainfall_timeseries.txt
 
 # 3. Build the INP
 python3 skills/swmm-builder/scripts/build_swmm_inp.py \
