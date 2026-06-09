@@ -3,8 +3,10 @@
 Covers ``is_new_case``, ``should_offer_transfer``,
 ``maybe_offer_onboarding``, ``format_onboarding_chat_block``, and the
 parse/apply helpers. The LLM-driven dispatch refactor removed the
-per-mode adapter layer (``workflow_modes/``); onboarding now integrates
-directly with the planner's flat tool-pick loop.
+per-mode adapter layer (``workflow_modes/``) that used to call
+``maybe_offer_onboarding``; the surface currently has no production
+caller and these tests pin its behavior until it is re-wired (tracked
+in the #246 follow-ups).
 """
 
 from __future__ import annotations

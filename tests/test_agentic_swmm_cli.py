@@ -19,7 +19,7 @@ from agentic_swmm.cli import (
 )
 from agentic_swmm.commands.agent import _find_repo_inp
 from agentic_swmm.agent.intent_classifier import load_intent_map
-from agentic_swmm.agent.planner import OpenAIPlanner, _looks_like_swmm_request, _select_relevant_mcp_servers, _select_relevant_skills
+from agentic_swmm.agent.planner import _select_relevant_mcp_servers, _select_relevant_skills
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
 

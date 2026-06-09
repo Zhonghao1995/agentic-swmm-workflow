@@ -178,17 +178,6 @@ def load_memory_registry() -> list[dict[str, Any]]:
     return records if isinstance(records, list) else []
 
 
-def enabled_skill_files() -> list[Path]:
-    files = []
-    for record in load_skill_registry():
-        if not record.get("enabled", True):
-            continue
-        path = Path(str(record.get("path", ""))).expanduser()
-        if path.exists() and path.is_file():
-            files.append(path)
-    return files
-
-
 def enabled_startup_memory_files() -> list[Path]:
     files = []
     for record in load_memory_registry():
