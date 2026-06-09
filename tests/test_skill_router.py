@@ -122,6 +122,12 @@ def test_agent_internal_does_not_contain_deterministic_swmm_tools(
         "swmm_calibrate_sceua",
         "swmm_sensitivity_scan",
         "swmm_validate",
+        # uncertainty tools (PR 2, issue #246)
+        "swmm_rainfall_ensemble",
+        "swmm_sensitivity_morris",
+        "swmm_sensitivity_oat",
+        "swmm_sensitivity_sobol",
+        "swmm_uncertainty_source_decomposition",
     ):
         assert forbidden not in names, (
             f"{forbidden} must live under its own skill, not agent-internal"
@@ -143,6 +149,22 @@ def test_tools_for_swmm_calibration_returns_all_six_tools(router: SkillRouter) -
         "swmm_validate",
     }
     assert names == expected, f"expected calibration tools {expected}; got {names}"
+
+
+def test_tools_for_swmm_uncertainty_returns_all_five_tools(router: SkillRouter) -> None:
+    """dark-MCP PR 2: all 5 uncertainty ToolSpecs must map to swmm-uncertainty."""
+    bundle = router.tools_for("swmm-uncertainty")
+    assert isinstance(bundle, SkillTools)
+    assert bundle.source == "mcp"
+    names = set(bundle.tool_names())
+    expected = {
+        "swmm_rainfall_ensemble",
+        "swmm_sensitivity_morris",
+        "swmm_sensitivity_oat",
+        "swmm_sensitivity_sobol",
+        "swmm_uncertainty_source_decomposition",
+    }
+    assert names == expected, f"expected uncertainty tools {expected}; got {names}"
 
 
 def test_tools_for_unknown_skill_raises_keyerror(router: SkillRouter) -> None:

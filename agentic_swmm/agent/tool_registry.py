@@ -755,6 +755,82 @@ def _build_tools() -> dict[str, ToolSpec]:
         ),
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
+        # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
+        # All is_read_only=False — each writes artefacts.
+        ToolSpec(
+            "swmm_sensitivity_oat",
+            "OAT sensitivity: perturb each parameter around a baseline and rank by RMSE+peak-error spread.",
+            _object(
+                {
+                    **_swmm_uncertainty_common_schema(),
+                    "base_params": {"type": "string", "description": "JSON object of baseline parameter values."},
+                    "scan_spec": {"type": "string", "description": "JSON object: parameter -> list of trial values."},
+                },
+                _SENSITIVITY_COMMON_REQUIRED + ["base_params", "scan_spec"],
+            ),
+            _swmm_sensitivity_oat_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "swmm_sensitivity_morris",
+            "Morris elementary-effects screening via SALib; budget = r*(k+1) SWMM runs.",
+            _object(
+                {
+                    **_swmm_uncertainty_common_schema(),
+                    "parameter_space": {"type": "string", "description": "JSON: parameter -> {min, max} bounds."},
+                    "morris_r": {"type": "integer", "description": "Trajectory count; budget = r*(k+1)."},
+                    "morris_levels": {"type": "integer"},
+                },
+                _SENSITIVITY_COMMON_REQUIRED + ["parameter_space"],
+            ),
+            _swmm_sensitivity_morris_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "swmm_sensitivity_sobol",
+            "Sobol' variance-decomposition (S_i + S_T_i) via SALib Saltelli sampling; budget = N*(2k+2) runs.",
+            _object(
+                {
+                    **_swmm_uncertainty_common_schema(),
+                    "parameter_space": {"type": "string", "description": "JSON: parameter -> {min, max} bounds."},
+                    "sobol_n": {"type": "integer", "description": "Saltelli base sample size; budget = N*(2k+2)."},
+                },
+                _SENSITIVITY_COMMON_REQUIRED + ["parameter_space"],
+            ),
+            _swmm_sensitivity_sobol_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "swmm_rainfall_ensemble",
+            "Generate a rainfall ensemble (perturbation of observed series or IDF design storms); optionally run swmm5 per realisation.",
+            _object(
+                {
+                    "method": {"type": "string", "enum": ["perturbation", "idf"], "description": "Ensemble generation method."},
+                    "config": {"type": "string", "description": "Path to JSON config (see skills/swmm-uncertainty/examples/)."},
+                    "run_root": {"type": "string", "description": "Output root; summary at <run_root>/09_audit/rainfall_ensemble_summary.json."},
+                    "base_inp": {"type": "string", "description": "If provided, each realisation is patched into this INP and run through swmm5."},
+                    "series_name": {"type": "string"},
+                    "swmm_node": {"type": "string"},
+                    "seed": {"type": "integer"},
+                    "dry_run": {"type": "boolean", "description": "Generate realisations but skip swmm5."},
+                },
+                ["method", "config", "run_root"],
+            ),
+            _swmm_rainfall_ensemble_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "swmm_uncertainty_source_decomposition",
+            "Integrate existing 09_audit/ artefacts (Sobol'/Morris/DREAM-ZS/SCE-UA/ensemble) into uncertainty_source_summary.md.",
+            _object(
+                {
+                    "run_dir": {"type": "string", "description": "Run directory containing 09_audit/."},
+                },
+                ["run_dir"],
+            ),
+            _swmm_uncertainty_source_decomposition_tool,
+            is_read_only=False,
+        ),
     ]
     return {spec.name: spec for spec in specs}
 
@@ -1381,6 +1457,23 @@ from agentic_swmm.agent.tool_handlers.swmm_calibration import (  # noqa: E402,F4
     _swmm_calibrate_tool,
     _swmm_sensitivity_scan_tool,
     _swmm_validate_tool,
+)
+# dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
+from agentic_swmm.agent.tool_handlers.swmm_uncertainty import (  # noqa: E402,F401
+    _swmm_uncertainty_common_schema,
+    _SENSITIVITY_REQUIRED as _SENSITIVITY_COMMON_REQUIRED,
+    # args mappers
+    _sensitivity_oat_args,
+    _sensitivity_morris_args,
+    _sensitivity_sobol_args,
+    _rainfall_ensemble_args,
+    _source_decomposition_args,
+    # handler objects
+    _swmm_sensitivity_oat_tool,
+    _swmm_sensitivity_morris_tool,
+    _swmm_sensitivity_sobol_tool,
+    _swmm_rainfall_ensemble_tool,
+    _swmm_uncertainty_source_decomposition_tool,
 )
 
 

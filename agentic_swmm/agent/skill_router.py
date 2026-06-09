@@ -45,6 +45,12 @@ _DETERMINISTIC_BINDINGS: dict[str, str] = {
     "swmm_calibrate_sceua": "swmm-calibration",
     "swmm_sensitivity_scan": "swmm-calibration",
     "swmm_validate": "swmm-calibration",
+    # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools
+    "swmm_rainfall_ensemble": "swmm-uncertainty",
+    "swmm_sensitivity_morris": "swmm-uncertainty",
+    "swmm_sensitivity_oat": "swmm-uncertainty",
+    "swmm_sensitivity_sobol": "swmm-uncertainty",
+    "swmm_uncertainty_source_decomposition": "swmm-uncertainty",
 }
 
 

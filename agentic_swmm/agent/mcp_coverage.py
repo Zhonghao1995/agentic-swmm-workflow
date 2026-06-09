@@ -125,6 +125,37 @@ EXPECTED_BINDINGS: tuple[ExpectedBinding, ...] = (
         mcp_server="swmm-calibration",
         mcp_tool_name="swmm_validate",
     ),
+    # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools
+    ExpectedBinding(
+        tool_spec_name="swmm_rainfall_ensemble",
+        script_relpath="skills/swmm-uncertainty/scripts/rainfall_ensemble.py",
+        mcp_server="swmm-uncertainty",
+        mcp_tool_name="swmm_rainfall_ensemble",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_sensitivity_morris",
+        script_relpath="skills/swmm-uncertainty/scripts/sensitivity.py",
+        mcp_server="swmm-uncertainty",
+        mcp_tool_name="swmm_sensitivity_morris",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_sensitivity_oat",
+        script_relpath="skills/swmm-uncertainty/scripts/sensitivity.py",
+        mcp_server="swmm-uncertainty",
+        mcp_tool_name="swmm_sensitivity_oat",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_sensitivity_sobol",
+        script_relpath="skills/swmm-uncertainty/scripts/sensitivity.py",
+        mcp_server="swmm-uncertainty",
+        mcp_tool_name="swmm_sensitivity_sobol",
+    ),
+    ExpectedBinding(
+        tool_spec_name="swmm_uncertainty_source_decomposition",
+        script_relpath="skills/swmm-uncertainty/scripts/source_decomposition.py",
+        mcp_server="swmm-uncertainty",
+        mcp_tool_name="swmm_uncertainty_source_decomposition",
+    ),
 )
 
 
