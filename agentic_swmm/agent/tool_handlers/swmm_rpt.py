@@ -51,10 +51,14 @@ planner sees the same shape as every other handler.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+from agentic_swmm.agent.swmm_runtime.rpt_summary import (
+    SECTIONS as _CANONICAL_SECTIONS,
+    SectionSchema as _SectionSchema,
+    parse_section as _parse_section,
+)
 from agentic_swmm.agent.tool_handlers._shared import _failure
 from agentic_swmm.agent.types import ToolCall
 
@@ -63,195 +67,15 @@ from agentic_swmm.agent.types import ToolCall
 # Section schemas
 # ---------------------------------------------------------------------------
 #
-# Each entry pins:
+# The canonical section schemas and ``_parse_section`` implementation live in
+# ``agentic_swmm.agent.swmm_runtime.rpt_summary``.  We re-export them under
+# the historic private names so the tool-handler code below is unchanged and
+# any callers that imported ``_SectionSchema`` or ``_parse_section`` directly
+# from this module continue to work.
 #
-# * ``raw_columns`` — the count of whitespace-separated tokens in a
-#   real data row. Used to detect end-of-section (token-count mismatch
-#   terminates parsing). The Node Inflow row has nine tokens because
-#   SWMM splits "Time of Max" into ``days`` and ``hh:mm`` fields; we
-#   parse all nine and then drop the two time fields when emitting
-#   the row dict (the prompt-pinned schema does not surface them).
-#
-# * ``parse(tokens)`` — turns the raw token list into the public dict.
-#   Each parser must raise on bad input so the row gets skipped.
-#
-# * ``default_sort`` — the column name used when the caller did not
-#   pass ``sort_by``. Always descending.
+# ``_SECTIONS`` is the lookup dict used by ``_read_rpt_summary_tool`` below.
 
-
-@dataclass(frozen=True)
-class _SectionSchema:
-    title: str
-    raw_columns: int
-    parse: Callable[[list[str]], dict[str, Any]]
-    default_sort: str
-    numeric_fields: tuple[str, ...]
-
-
-def _parse_link_flow_row(tokens: list[str]) -> dict[str, Any]:
-    # link, type, peak_flow, days, hh:mm, max_velocity, max_full_flow, max_full_depth
-    return {
-        "link": tokens[0],
-        "type": tokens[1],
-        "peak_flow": float(tokens[2]),
-        "time_days": int(tokens[3]),
-        "time_hhmm": tokens[4],
-        "max_velocity": float(tokens[5]),
-        "max_full_flow_ratio": float(tokens[6]),
-        "max_full_depth_ratio": float(tokens[7]),
-    }
-
-
-def _parse_outfall_row(tokens: list[str]) -> dict[str, Any]:
-    # node, freq%, avg_flow, max_flow, total_volume
-    # ``System`` totals row also has 5 tokens — we filter it in the
-    # main loop by checking the first token literal.
-    return {
-        "node": tokens[0],
-        "flow_freq_pct": float(tokens[1]),
-        "avg_flow": float(tokens[2]),
-        "max_flow": float(tokens[3]),
-        "total_volume_10_6_ltr": float(tokens[4]),
-    }
-
-
-def _parse_node_inflow_row(tokens: list[str]) -> dict[str, Any]:
-    # node, type, max_lat_inflow, max_total_inflow, days, hh:mm,
-    # lat_vol, tot_vol, error_pct  -> 9 tokens. ``days`` and ``hh:mm``
-    # are dropped from the returned dict (not in the prompt's schema).
-    return {
-        "node": tokens[0],
-        "type": tokens[1],
-        "max_lateral_inflow": float(tokens[2]),
-        "max_total_inflow": float(tokens[3]),
-        # tokens[4] = days, tokens[5] = hh:mm — dropped on purpose.
-        "lateral_inflow_volume_10_6_ltr": float(tokens[6]),
-        "total_inflow_volume_10_6_ltr": float(tokens[7]),
-        "flow_balance_error_pct": float(tokens[8]),
-    }
-
-
-_SECTIONS: dict[str, _SectionSchema] = {
-    "Link Flow Summary": _SectionSchema(
-        title="Link Flow Summary",
-        raw_columns=8,
-        parse=_parse_link_flow_row,
-        default_sort="peak_flow",
-        numeric_fields=(
-            "peak_flow",
-            "time_days",
-            "max_velocity",
-            "max_full_flow_ratio",
-            "max_full_depth_ratio",
-        ),
-    ),
-    "Outfall Loading Summary": _SectionSchema(
-        title="Outfall Loading Summary",
-        raw_columns=5,
-        parse=_parse_outfall_row,
-        default_sort="max_flow",
-        numeric_fields=(
-            "flow_freq_pct",
-            "avg_flow",
-            "max_flow",
-            "total_volume_10_6_ltr",
-        ),
-    ),
-    "Node Inflow Summary": _SectionSchema(
-        title="Node Inflow Summary",
-        raw_columns=9,
-        parse=_parse_node_inflow_row,
-        default_sort="max_total_inflow",
-        numeric_fields=(
-            "max_lateral_inflow",
-            "max_total_inflow",
-            "lateral_inflow_volume_10_6_ltr",
-            "total_inflow_volume_10_6_ltr",
-            "flow_balance_error_pct",
-        ),
-    ),
-}
-
-
-# ---------------------------------------------------------------------------
-# Parsing
-# ---------------------------------------------------------------------------
-
-
-def _parse_section(rpt_text: str, schema: _SectionSchema) -> list[dict[str, Any]]:
-    """Locate ``schema.title`` in ``rpt_text`` and return its data rows.
-
-    The SWMM writer formats each section as::
-
-        <leading whitespace>***** ... *****
-        <leading whitespace><Section Title>
-        <leading whitespace>***** ... *****
-        <blank>
-        <leading whitespace>---- ... ----     (top dashes)
-        <wrapped column headers, 1 or more lines>
-        <leading whitespace>---- ... ----     (bottom dashes)
-        data row 1
-        ...
-        data row N
-        <blank line, or ``---`` then ``System`` totals row, or next banner>
-
-    We anchor on the exact title line, then advance past the
-    column-header block by counting dash rows: the **second** dash row
-    after the title is the start-of-data delimiter. From there each
-    line is tokenised; the section ends when:
-
-    * the line is blank,
-    * the line starts with ``---`` (Outfall closing rule),
-    * the token count diverges from ``schema.raw_columns``,
-    * the line starts with another section's asterisk banner.
-    """
-
-    lines = rpt_text.splitlines()
-    title_line_idx = -1
-    for idx, line in enumerate(lines):
-        if line.strip() == schema.title:
-            title_line_idx = idx
-            break
-    if title_line_idx < 0:
-        return []
-
-    # Skip past the trailing asterisk banner and any blank lines.
-    cursor = title_line_idx + 1
-    # First dash row = top of column header block.
-    while cursor < len(lines) and not lines[cursor].lstrip().startswith("---"):
-        cursor += 1
-    cursor += 1  # past the top dash row
-    # Second dash row = bottom of column header block (data starts next).
-    while cursor < len(lines) and not lines[cursor].lstrip().startswith("---"):
-        cursor += 1
-    cursor += 1  # past the bottom dash row
-
-    rows: list[dict[str, Any]] = []
-    while cursor < len(lines):
-        line = lines[cursor]
-        stripped = line.strip()
-        if not stripped:
-            break
-        if stripped.startswith("---") or stripped.startswith("***"):
-            break
-        tokens = stripped.split()
-        if len(tokens) != schema.raw_columns:
-            # End-of-section marker — most often blank line / next
-            # section / System totals row with a different shape.
-            break
-        # Outfall ``System`` totals row matches the 5-token shape but
-        # is a totals roll-up, not an outfall node. Skip it.
-        if tokens[0] == "System":
-            cursor += 1
-            continue
-        try:
-            rows.append(schema.parse(tokens))
-        except (ValueError, IndexError):
-            # Malformed row — skip and keep parsing the rest of the
-            # section. One bad line must not fail the whole call.
-            pass
-        cursor += 1
-    return rows
+_SECTIONS: dict[str, _SectionSchema] = _CANONICAL_SECTIONS
 
 
 # ---------------------------------------------------------------------------
