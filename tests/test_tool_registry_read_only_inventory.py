@@ -27,6 +27,8 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "apply_patch": False,
     "audit_run": False,
     "build_inp": False,
+    # C1 (issue #246): build_raingage_section writes text + JSON files.
+    "build_raingage_section": False,
     "call_mcp_tool": False,
     "demo_acceptance": False,
     "doctor": False,

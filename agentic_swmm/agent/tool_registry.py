@@ -317,13 +317,66 @@ _CALIBRATION_COMMON_REQUIRED = [
 
 def _build_tools() -> dict[str, ToolSpec]:
     specs = [
-        ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}}, ["run_dir"]), _audit_run_tool),
+        ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}}, ["run_dir"]), _audit_run_tool),
         ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
+        # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
+        # snippet that pairs with a formatted timeseries.
+        ToolSpec(
+            "build_raingage_section",
+            "Build the SWMM [RAINGAGES] section snippet that pairs with a formatted timeseries produced by format_rainfall. "
+            "Writes a text fragment (.txt) and a metadata JSON (.json) consumed by build_inp's raingage_json / timeseries_text inputs.",
+            _object(
+                {
+                    "out_text_path": {"type": "string", "description": "Repository-relative path for the output [RAINGAGES] text snippet."},
+                    "out_json_path": {"type": "string", "description": "Repository-relative path for the output raingage metadata JSON."},
+                    "gage_id": {"type": "string", "description": "SWMM gage ID (default: derived from series_name or station_id)."},
+                    "series_name": {"type": "string", "description": "Name of the SWMM TIMESERIES to reference (from format_rainfall output)."},
+                    "station_id": {"type": "string", "description": "Station ID; used to resolve the series name from a multi-station JSON."},
+                    "rainfall_json_path": {"type": "string", "description": "Path to the rainfall metadata JSON produced by format_rainfall; used to auto-detect series_name and interval."},
+                    "rain_format": {"type": "string", "enum": ["INTENSITY", "VOLUME", "CUMULATIVE"], "description": "SWMM rainfall format type."},
+                    "interval_min": {"type": "integer", "description": "Rainfall recording interval in minutes."},
+                    "scf": {"type": "number", "description": "Snow catch factor (default 1.0)."},
+                },
+                ["out_text_path", "out_json_path"],
+            ),
+            _build_raingage_section_tool,
+            is_read_only=False,
+        ),
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
         ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
         ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
-        ToolSpec("format_rainfall", "Format rainfall CSV into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill.", _object({"input_csv": {"type": "string"}, "out_json": {"type": "string"}, "out_timeseries": {"type": "string"}, "series_name": {"type": "string"}, "timestamp_column": {"type": "string"}, "value_column": {"type": "string"}, "value_units": {"type": "string"}, "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]}, "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]}}, ["input_csv", "out_json", "out_timeseries"]), _format_rainfall_tool),
+        ToolSpec(
+            "format_rainfall",
+            "Format rainfall CSV or SWMM .dat files into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill. "
+            "Supply exactly one input mode: a single CSV (input_csv), a glob pattern for multiple CSVs (input_glob_patterns), or .dat files (input_dat_paths). "
+            "Use input_glob_patterns to batch-convert a directory of per-station CSVs; use station_column/series_name_template for multi-station inputs.",
+            _object(
+                {
+                    "input_csv": {"type": "string", "description": "Path to a single rainfall CSV (mutually exclusive with input_glob_patterns and input_dat_paths)."},
+                    "input_glob_patterns": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns matching multiple rainfall CSVs (e.g. ['data/rain_*.csv']). Use to batch-convert a directory."},
+                    "input_dat_paths": {"type": "array", "items": {"type": "string"}, "description": "Paths to SWMM .dat timeseries files. Cannot be combined with CSV inputs."},
+                    "additional_input_csv_paths": {"type": "array", "items": {"type": "string"}, "description": "Additional CSV paths to merge alongside input_csv."},
+                    "dat_value_units": {"type": "string", "description": "Units for .dat file values (required when using input_dat_paths)."},
+                    "out_json": {"type": "string"},
+                    "out_timeseries": {"type": "string"},
+                    "series_name": {"type": "string", "description": "Override series name for single-station outputs."},
+                    "series_name_template": {"type": "string", "description": "Template for multi-station series names, e.g. '{station_id}_rainfall'."},
+                    "timestamp_column": {"type": "string"},
+                    "value_column": {"type": "string"},
+                    "station_column": {"type": "string", "description": "Column name identifying per-station rows in a wide-format CSV."},
+                    "default_station_id": {"type": "string", "description": "Station ID to use when station_column is absent."},
+                    "timestamp_format": {"type": "string", "description": "strptime-compatible timestamp format string."},
+                    "window_start": {"type": "string", "description": "ISO datetime string; crop input timeseries to start at this time."},
+                    "window_end": {"type": "string", "description": "ISO datetime string; crop input timeseries to end at this time."},
+                    "value_units": {"type": "string"},
+                    "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]},
+                    "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]},
+                },
+                ["out_json", "out_timeseries"],
+            ),
+            _format_rainfall_tool,
+        ),
         ToolSpec("generate_design_storm", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) using the aiswmm storm engine. Writes a SWMM [TIMESERIES] .dat the downstream build_inp can consume. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4), and idf supplies an IDF spec (depth inferred).", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_design_storm_tool),
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool, is_read_only=True),
@@ -335,7 +388,33 @@ def _build_tools() -> dict[str, ToolSpec]:
         ToolSpec("map_run", "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.", _object({"run_dir": {"type": "string"}, "inp": {"type": "string"}, "out_png": {"type": "string"}, "dpi": {"type": "integer"}, "no_subcatchments": {"type": "boolean"}, "no_vertices": {"type": "boolean"}}, ["run_dir"]), _map_run_tool),
         ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
         ToolSpec("network_to_inp", "Export a SWMM network JSON to INP section text using the swmm-network script.", _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]), _network_to_inp_tool),
-        ToolSpec("plot_run", "Create a rainfall + flow hydrograph plot from a run directory. The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). 'node' and 'link' are mutually exclusive; pass one. Pick conduit IDs from the .rpt Link Flow Summary; pick node IDs from inspect_plot_options.", _object({"run_dir": {"type": "string"}, "node": {"type": "string"}, "node_attr": {"type": "string"}, "link": {"type": "string"}, "rain_ts": {"type": "string"}, "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]}, "out_png": {"type": "string"}}, ["run_dir"]), _plot_run_tool),
+        ToolSpec(
+            "plot_run",
+            "Create a rainfall + flow hydrograph plot from a run directory. "
+            "The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) "
+            "OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). "
+            "'node' and 'link' are mutually exclusive; pass one. "
+            "Pick conduit IDs from the .rpt Link Flow Summary; pick node IDs from inspect_plot_options. "
+            "Optional day-window cropping: supply focus_day (YYYY-MM-DD) to crop to one day; "
+            "window_start and window_end (HH:MM) further narrow to a sub-day window — "
+            "both require focus_day (the server rejects window_start/window_end without focus_day).",
+            _object(
+                {
+                    "run_dir": {"type": "string"},
+                    "node": {"type": "string"},
+                    "node_attr": {"type": "string"},
+                    "link": {"type": "string"},
+                    "rain_ts": {"type": "string"},
+                    "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]},
+                    "out_png": {"type": "string"},
+                    "focus_day": {"type": "string", "description": "Crop plot axis to this day (YYYY-MM-DD format)."},
+                    "window_start": {"type": "string", "description": "Sub-day window start (HH:MM). Only valid together with focus_day; rejected without it."},
+                    "window_end": {"type": "string", "description": "Sub-day window end (HH:MM). Only valid together with focus_day; rejected without it."},
+                },
+                ["run_dir"],
+            ),
+            _plot_run_tool,
+        ),
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt (capped at 4000 chars). NOTE: for SWMM .rpt summary sections (Link Flow / Outfall Loading / Node Inflow), use read_rpt_summary instead — read_file's 4000-char cap cannot reach summary sections, which sit past the rpt header in 300+ KB files.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
         ToolSpec(
             "read_rpt_summary",
@@ -562,7 +641,7 @@ def _build_tools() -> dict[str, ToolSpec]:
         # pick the right tool directly; the hardcoded mode enum was a
         # GPT-4-era guardrail that re-introduced keyword-matching
         # brittleness on top of the LLM's own classifier.
-        ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}}, ["runs_dir"]), _summarize_memory_tool),
+        ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}, "obsidian_dir": {"type": "string", "description": "Optional path to an Obsidian vault directory; when present, the skill writes a Markdown summary there in addition to the standard output."}}, ["runs_dir"]), _summarize_memory_tool),
         ToolSpec(
             "retrieve_memory",
             "Retrieve relevant audited-run memory cards for a query using the swmm-rag-memory skill's hybrid keyword/embedding retriever. Returns source-cited matches that the planner can synthesize into a grounded answer.",
@@ -913,13 +992,19 @@ def _summarize_memory_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     The MCP server requires both ``runsDir`` and ``outDir``; if the caller
     omits ``out_dir`` we default to ``memory/modeling-memory`` (the same
     default the CLI used).
+
+    C2 (issue #246): ``obsidian_dir`` is now forwarded as ``obsidianDir``
+    when present so the Obsidian vault export path reaches the skill.
     """
 
     runs_dir = call.args.get("runs_dir")
     if not isinstance(runs_dir, str) or not runs_dir.strip():
         return _failure(call, "missing required argument: runs_dir")
     out_dir = call.args.get("out_dir") or "memory/modeling-memory"
-    return {"runsDir": str(runs_dir), "outDir": str(out_dir)}
+    args: dict[str, Any] = {"runsDir": str(runs_dir), "outDir": str(out_dir)}
+    if call.args.get("obsidian_dir"):
+        args["obsidianDir"] = str(call.args["obsidian_dir"])
+    return args
 
 
 _summarize_memory_tool = _make_mcp_routed_handler(
@@ -1055,7 +1140,10 @@ from agentic_swmm.agent.tool_handlers.swmm_network import (  # noqa: E402,F401
 # PRD #128 Phase 2 Group B: ``_format_rainfall_args`` / ``_format_rainfall_tool``
 # moved to ``tool_handlers/swmm_climate.py``. Re-exported here so import
 # paths stay stable for ``_build_tools`` and downstream code.
+# C1 (issue #246): ``_build_raingage_section_tool`` also imported here.
 from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
+    _build_raingage_section_args,
+    _build_raingage_section_tool,
     _format_rainfall_args,
     _format_rainfall_tool,
 )

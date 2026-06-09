@@ -107,13 +107,17 @@ def test_agent_internal_does_not_contain_deterministic_swmm_tools(
     # not in the agent-internal bucket — otherwise the planner could
     # invoke them without first committing to a skill.
     for forbidden in (
+        "audit_run",
+        # C1 (issue #246): build_raingage_section → swmm-climate
+        "build_raingage_section",
         "build_inp",
         "format_rainfall",
         "network_qa",
         "network_to_inp",
         "plot_run",
+        # C5 (issue #246): retrieve_memory → swmm-rag-memory
+        "retrieve_memory",
         "run_swmm_inp",
-        "audit_run",
         "summarize_memory",
         # calibration tools (PR 1, issue #246)
         "swmm_calibrate",
@@ -165,6 +169,24 @@ def test_tools_for_swmm_uncertainty_returns_all_five_tools(router: SkillRouter) 
         "swmm_uncertainty_source_decomposition",
     }
     assert names == expected, f"expected uncertainty tools {expected}; got {names}"
+
+
+def test_tools_for_swmm_climate_contains_both_tools(router: SkillRouter) -> None:
+    """C1 (issue #246): build_raingage_section must join format_rainfall in swmm-climate."""
+    bundle = router.tools_for("swmm-climate")
+    names = set(bundle.tool_names())
+    assert "format_rainfall" in names
+    assert "build_raingage_section" in names, (
+        "build_raingage_section must be bound to swmm-climate in _DETERMINISTIC_BINDINGS"
+    )
+
+
+def test_tools_for_swmm_rag_memory_contains_retrieve_memory(router: SkillRouter) -> None:
+    """C5 (issue #246): retrieve_memory must be bound to swmm-rag-memory."""
+    bundle = router.tools_for("swmm-rag-memory")
+    assert "retrieve_memory" in bundle.tool_names(), (
+        "retrieve_memory must be bound to swmm-rag-memory in _DETERMINISTIC_BINDINGS"
+    )
 
 
 def test_tools_for_unknown_skill_raises_keyerror(router: SkillRouter) -> None:
