@@ -142,7 +142,7 @@
       "keywords": ["uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊"],
       "required_inputs": ["inp_path", "fuzzy_config", "node"],
       "optional_inputs": ["alpha_levels", "sample_policy", "output_metric"],
-      "preferred_tools": ["run_swmm_inp", "audit_run"],
+      "preferred_tools": ["swmm_sensitivity_oat", "swmm_sensitivity_morris", "swmm_sensitivity_sobol", "swmm_rainfall_ensemble"],
       "stop_conditions": ["missing fuzzy parameter bounds", "baseline outside membership bounds"],
       "next_user_prompt": "Provide fuzzy parameter bounds, alpha levels, target node, and output metric."
     },

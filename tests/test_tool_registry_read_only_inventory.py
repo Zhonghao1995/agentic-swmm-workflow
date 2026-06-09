@@ -61,6 +61,13 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "swmm_calibrate_sceua": False,
     "swmm_sensitivity_scan": False,
     "swmm_validate": False,
+    # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
+    # All is_read_only=False — each writes artefacts.
+    "swmm_rainfall_ensemble": False,
+    "swmm_sensitivity_morris": False,
+    "swmm_sensitivity_oat": False,
+    "swmm_sensitivity_sobol": False,
+    "swmm_uncertainty_source_decomposition": False,
     # Pure read / inspect.
     "capabilities": True,
     "git_diff": True,
