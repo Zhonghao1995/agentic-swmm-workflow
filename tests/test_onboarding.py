@@ -2,11 +2,21 @@
 
 Covers ``is_new_case``, ``should_offer_transfer``,
 ``maybe_offer_onboarding``, ``format_onboarding_chat_block``, and the
-parse/apply helpers. The LLM-driven dispatch refactor removed the
-per-mode adapter layer (``workflow_modes/``) that used to call
-``maybe_offer_onboarding``; the surface currently has no production
-caller and these tests pin its behavior until it is re-wired (tracked
-in the #246 follow-ups).
+parse/apply helpers.
+
+As of the #246 follow-up rewire the surface has two production callers:
+
+1. ``OpenAIPlanner._consult_onboarding`` — the pre-LLM hook that
+   evaluates the gate for a new case, injects the chat block into
+   ``system_prompt_extras``, and emits the ``onboarding_offer`` trace
+   event.  Mirror of ``_consult_memory_informed_policy`` in placement
+   and fail-soft discipline.
+
+2. ``tool_handlers/swmm_onboarding._apply_onboarding_tool`` — the
+   typed LLM-facing tool registered as ``apply_onboarding`` in
+   ``AgentToolRegistry``.  The LLM calls it after the user replies to
+   the onboarding offer.  Integration tests live in
+   ``tests/test_onboarding_wiring.py``.
 """
 
 from __future__ import annotations

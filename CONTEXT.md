@@ -238,6 +238,7 @@ Frontier 2026-era LLMs (GPT-5.5 / Claude Opus 4.7+) pick the right tool from a f
 - **The LLM's tool-pick decision is auditable as a single event** — `planner_response.tool_calls` in `agent_trace.jsonl` — instead of a tool-call chain (`select_workflow_mode` → adapter → real tool) that hid which classifier made the decision.
 - **Two-level select_skill flow stays.** The `select_skill` tool that exposes deterministic-SWMM skills is unchanged; the LLM picks the skill, then picks the tool within it. That's a *help-the-LLM* surface, not a routing gate.
 - **Memory-informed-policy hook stays.** The pre-LLM consult (`_consult_memory_informed_policy`) that escalates high-stakes goals to HITL is orthogonal to dispatch and survives unchanged.
+- **Onboarding hook added.** `_consult_onboarding` sits beside `_consult_memory_informed_policy` in the same pre-LLM placement family. When the goal resolves to a new case (no parametric history yet), the hook calls `maybe_offer_onboarding`, injects the formatted chat block into `system_prompt_extras`, and emits an `onboarding_offer` trace event. The LLM relays the block to the user; the user replies; the LLM calls `apply_onboarding` (registered typed tool, `is_read_only=False`) which classifies the reply and applies transferred parameters from a similar watershed on accept. Known case or no case → strict no-op. Any exception is swallowed so a corrupt memory directory cannot block dispatch.
 
 The decision record lives at `.claude/prds/PRD_llm_driven_dispatch.md`.
 
