@@ -98,8 +98,30 @@ class ResolveRunDirTests(unittest.TestCase):
     def test_default_run_dir_uses_safe_project_name(self) -> None:
         call = ToolCall("synth_swmm_from_bbox", {"bbox": VALID_BBOX, "project_name": "my run/v1"})
         path = _resolve_run_dir(call)
-        # ``_safe_name`` collapses path separators and spaces into ``-``.
-        self.assertEqual(path.name, "my-run-v1")
+        # ``_safe_name`` collapses path separators and spaces into ``-``;
+        # the default dir is timestamped, so the safe name is a prefix.
+        self.assertTrue(path.name.startswith("my-run-v1-"), path.name)
+        self.assertEqual(path.parent.name, "agent")
+
+    def test_default_run_dir_never_reuses_an_existing_run_dir(self) -> None:
+        """Issue #246/#234: re-running the same project name must never
+        resolve to a directory that already holds a previous run —
+        a collision silently overwrites the earlier results."""
+        import tempfile
+
+        from agentic_swmm.agent.tool_handlers import swmm_anywhere as mod
+
+        call = ToolCall("synth_swmm_from_bbox", {"bbox": VALID_BBOX, "project_name": "todcreek"})
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(mod, "repo_root", return_value=Path(tmp)):
+                first = _resolve_run_dir(call)
+                first.mkdir(parents=True)
+                second = _resolve_run_dir(call)
+                self.assertNotEqual(first, second)
+                # And the bumped path itself is also respected once taken.
+                second.mkdir(parents=True)
+                third = _resolve_run_dir(call)
+                self.assertNotIn(third, {first, second})
 
 
 class SynthSwmmFromBboxToolTests(unittest.TestCase):
