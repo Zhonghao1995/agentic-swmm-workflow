@@ -208,11 +208,16 @@ class ReadRptSummaryValidationTests(unittest.TestCase):
             result = _read_rpt_summary_tool(call, Path("/tmp"))
             self.assertFalse(result["ok"])
             self.assertIn("unsupported section", result["summary"].lower())
-            # The error must list the three supported names so the LLM
+            # The error must list supported section names so the LLM
             # can immediately retry with one of them.
             self.assertIn("Link Flow Summary", result["summary"])
             self.assertIn("Outfall Loading Summary", result["summary"])
             self.assertIn("Node Inflow Summary", result["summary"])
+            # WQ sections also registered.
+            self.assertIn("Runoff Quality Continuity", result["summary"])
+            self.assertIn("Quality Routing Continuity", result["summary"])
+            self.assertIn("Subcatchment Washoff Summary", result["summary"])
+            self.assertIn("Link Pollutant Load Summary", result["summary"])
         finally:
             rpt.unlink(missing_ok=True)
 
@@ -416,12 +421,16 @@ class ReadRptSummaryOutfallLoadingTests(unittest.TestCase):
             result = _read_rpt_summary_tool(call, Path("/tmp"))
             self.assertTrue(result["ok"], result.get("summary"))
             first = result["rows"][0]
+            # ``pollutant_loads`` is always present (empty dict for non-WQ runs,
+            # populated dict for WQ runs).  The 5 core hydraulic fields are
+            # unchanged from before the WQ extension.
             expected_keys = {
                 "node",
                 "flow_freq_pct",
                 "avg_flow",
                 "max_flow",
                 "total_volume_10_6_ltr",
+                "pollutant_loads",
             }
             self.assertEqual(set(first.keys()), expected_keys)
             self.assertIsInstance(first["node"], str)
@@ -429,6 +438,9 @@ class ReadRptSummaryOutfallLoadingTests(unittest.TestCase):
             self.assertIsInstance(first["avg_flow"], float)
             self.assertIsInstance(first["max_flow"], float)
             self.assertIsInstance(first["total_volume_10_6_ltr"], float)
+            # Non-WQ fixture: pollutant_loads must be an empty dict.
+            self.assertIsInstance(first["pollutant_loads"], dict)
+            self.assertEqual(first["pollutant_loads"], {})
         finally:
             rpt.unlink(missing_ok=True)
 
@@ -554,7 +566,15 @@ class ReadRptSummaryRegistryTests(unittest.TestCase):
         self.assertEqual(set(params["required"]), {"rpt_path", "section"})
         self.assertEqual(
             set(params["properties"]["section"]["enum"]),
-            {"Link Flow Summary", "Outfall Loading Summary", "Node Inflow Summary"},
+            {
+                "Link Flow Summary",
+                "Outfall Loading Summary",
+                "Node Inflow Summary",
+                "Runoff Quality Continuity",
+                "Quality Routing Continuity",
+                "Subcatchment Washoff Summary",
+                "Link Pollutant Load Summary",
+            },
         )
 
     def test_description_signals_why_to_use_this_over_read_file(self) -> None:

@@ -1,0 +1,122 @@
+[TITLE]
+swmm-builder minimal assembled model
+
+[OPTIONS]
+;;Option             Value
+FLOW_UNITS           CMS
+INFILTRATION         GREEN_AMPT
+FLOW_ROUTING         DYNWAVE
+LINK_OFFSETS         DEPTH
+MIN_SLOPE            0
+ALLOW_PONDING        NO
+SKIP_STEADY_STATE    NO
+START_DATE           06/01/2025
+START_TIME           00:00:00
+REPORT_START_DATE    06/01/2025
+REPORT_START_TIME    00:00:00
+END_DATE             06/01/2025
+END_TIME             01:00:00
+SWEEP_START          01/01
+SWEEP_END            12/31
+DRY_DAYS             0
+REPORT_STEP          00:05:00
+WET_STEP             00:01:00
+DRY_STEP             01:00:00
+ROUTING_STEP         00:00:30
+
+[RAINGAGES]
+;;Name             Format     Interval   SCF      Source
+RG1                INTENSITY  0:05       1        TIMESERIES TS_RAIN
+
+[SUBCATCHMENTS]
+;;Name             Rain Gage          Outlet             Area     %Imperv  Width    %Slope   CurbLen  SnowPack
+S1                 RG1                J1                 2.1      85       150      1.2      0        
+S2                 RG1                J1                 1.8      15       120      0.9      0        
+S3                 RG1                J2                 2.4      80       165      1.5      0        
+S4                 RG1                OF1                1.2      25       90       0.7      0        
+
+[SUBAREAS]
+;;Subcatchment      N-Imperv  N-Perv    S-Imperv S-Perv    PctZero  RouteTo  PctRouted
+S1                 0.013     0.25      0.05      0.1       30       OUTLET   100
+S2                 0.015     0.3       0.05      0.12      10       OUTLET   100
+S3                 0.013     0.25      0.05      0.1       30       OUTLET   100
+S4                 0.015     0.3       0.05      0.12      10       OUTLET   100
+
+[INFILTRATION]
+;;Subcatchment      Suction   Ksat      IMDmax
+S1                 90        13        0.3
+S2                 130       2.5       0.2
+S3                 110       5         0.25
+S4                 110       5         0.25
+
+[POLLUTANTS]
+;;Name             Units  Cppt   Cgw    Crdii  Kdecay SnowOnly CoPollutant  CoFraction InitConc
+TSS                MG/L   0      0      0      0      NO       *            0          0
+
+[LANDUSES]
+;;Name             SweepInterval Availability LastSweep
+Residential        0             0            0
+
+[COVERAGES]
+;;Subcatchment     LandUse          Percent
+S1                 Residential      100
+S2                 Residential      100
+S3                 Residential      100
+S4                 Residential      100
+
+[BUILDUP]
+;;LandUse          Pollutant        FuncType  C1         C2         C3         Normalizer
+Residential        TSS              EXP       15         0.5        0          AREA
+
+[WASHOFF]
+;;LandUse          Pollutant        FuncType  C1         C2         SweepRemoval BMPRemoval
+Residential        TSS              EMC       50         0          0            0
+
+[JUNCTIONS]
+;;Name             Elevation      MaxDepth       InitDepth      SurDepth       Aponded
+J1                 100            3              0              0              0
+J2                 99.2           3              0              0              0
+
+[OUTFALLS]
+;;Name             Elevation      Type           Stage Data      Gated          Route To
+OF1                98.5           FREE                           NO             
+
+[CONDUITS]
+;;Name             From Node         To Node           Length   Roughness InOffset OutOffset InitFlow  MaxFlow
+C1                 J1                J2                100      0.013     0        0         0         
+C2                 J2                OF1               100      0.013     0        0         0         
+
+[XSECTIONS]
+;;Link             Shape          Geom1    Geom2    Geom3    Geom4    Barrels
+C1                 CIRCULAR       0.6      0        0        0        1
+C2                 CIRCULAR       0.75     0        0        0        1
+
+[COORDINATES]
+;;Node             X-Coord        Y-Coord
+J1                 0              0
+J2                 100            0
+OF1                200            0
+
+[VERTICES]
+;;Link             X-Coord        Y-Coord
+C1                 50             10
+
+[TIMESERIES]
+;;Name             Date         Time       Value
+TS_RAIN            06/01/2025 00:00 0
+TS_RAIN            06/01/2025 00:05 1.2
+TS_RAIN            06/01/2025 00:10 6.5
+TS_RAIN            06/01/2025 00:15 9.4
+TS_RAIN            06/01/2025 00:20 7
+TS_RAIN            06/01/2025 00:25 3.1
+TS_RAIN            06/01/2025 00:30 1
+TS_RAIN            06/01/2025 00:35 0.3
+TS_RAIN            06/01/2025 00:40 0
+
+[REPORT]
+;;Option             Value
+INPUT                NO
+CONTROLS             NO
+SUBCATCHMENTS        ALL
+NODES                ALL
+LINKS                ALL
