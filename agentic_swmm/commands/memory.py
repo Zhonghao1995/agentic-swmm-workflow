@@ -113,6 +113,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     migrate_neg.set_defaults(func=migrate_negative_lessons_md_main)
 
+    # PR-3 Phase 1: application outcome log viewer.
+    from agentic_swmm.commands.memory_health import add_subparser as _add_health
+
+    _add_health(sub)
+
     # Issue #204: non-destructive repair for runs/sessions.sqlite.
     repair = sub.add_parser(
         "repair-sessions",

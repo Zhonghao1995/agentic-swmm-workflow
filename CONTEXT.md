@@ -82,6 +82,7 @@ aiswmm has four memory stores; understand the difference before writing into any
 | --- | --- | --- | --- |
 | Session history | `runs/sessions.sqlite` | **Automatic** on every interactive event | `recall_session_history` lookups across past Sessions |
 | Modeling memory (parametric / lessons / citations / storms / benchmarks) | `memory/modeling-memory/*.{jsonl,yaml}` | **Manual** — only via explicit verbs: `aiswmm gap promote-to-case`, `aiswmm cite`, `aiswmm calibration accept` | Cross-Session domain knowledge |
+| Application outcome log | `memory/modeling-memory/memory_outcome_events.jsonl` | **Automatic** — append-only, written only by the M2 post-audit hook | Application outcome provenance: which memory entries produced good runs and which did not; source for per-entry health scores (`aiswmm memory health`) |
 | RAG memory | `memory/rag-memory/` | **Manual** — explicit add | Research-style retrieval (PRD-07) |
 | Run-local memory | inside each `runs/<date>/<id>/` | **Automatic** per Run | Provenance and audit artifacts for one Run |
 
