@@ -15,6 +15,26 @@ scope for the Memory PRD. The wrapper adds three things on top of
 3. A clean return shape: every dict carries ``text``, ``run_id``,
    ``source_path``, ``case_name``, ``score``, ``matched_terms``,
    ``schema_version`` so the planner sees a stable contract.
+
+Recency weighting (P0-2)
+------------------------
+An optional multiplicative recency factor can be applied to each result's
+``score`` after retrieval.  When ``half_life_days`` > 0, the score is
+multiplied by ``0.5 ** (age_days / half_life_days)`` so older entries rank
+lower.  When ``half_life_days == 0`` (the default), the code path is a
+no-op: scores and ordering are byte-identical to the pre-P0-2 behaviour.
+
+Age is computed as days since the entry's most recent timestamp field.
+For RAG corpus entries the field used is (in priority order):
+  1. ``last_seen_utc`` — updated whenever the lesson is reinforced.
+  2. ``recorded_utc`` — the run record timestamp.
+  3. ``created_utc`` — fallback for entries that predate later fields.
+When none of these fields is present or parseable, the entry is treated as
+age 0 (no weighting applied) so missing timestamps never penalise an entry.
+
+The ``now_fn`` parameter (default: ``time.time``) accepts an alternative
+callable returning a POSIX timestamp.  Tests inject a fixed value via this
+seam — the live runtime never passes it explicitly.
 """
 
 from __future__ import annotations
@@ -22,11 +42,90 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 _STALENESS_THRESHOLD_SECONDS = 60.0
+
+# Field names checked (in priority order) when computing entry age.
+# For RAG entries: last_seen_utc is preferred because it reflects the
+# most recent reinforcement of a lesson.  recorded_utc is the run-record
+# timestamp.  created_utc is a rarely-set fallback.
+_AGE_TIMESTAMP_FIELDS = ("last_seen_utc", "recorded_utc", "created_utc")
+
+
+def _parse_iso_to_posix(iso_str: str) -> float | None:
+    """Parse an ISO-8601 timestamp string into a POSIX float, or ``None``."""
+    if not iso_str:
+        return None
+    # Normalise the common ``+00:00`` / ``Z`` variants.
+    normalised = iso_str.strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalised)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def _age_days_for_entry(
+    entry: dict[str, Any],
+    now_posix: float,
+) -> float | None:
+    """Return age in days for ``entry``, or ``None`` when not determinable.
+
+    Checks :data:`_AGE_TIMESTAMP_FIELDS` in priority order and returns
+    the age of the first parseable field.  Returns ``None`` when no
+    timestamp is available so callers can distinguish "unknown age"
+    from "age 0".
+    """
+    for field in _AGE_TIMESTAMP_FIELDS:
+        raw = entry.get(field)
+        if not raw:
+            continue
+        ts = _parse_iso_to_posix(str(raw))
+        if ts is not None:
+            age_seconds = max(0.0, now_posix - ts)
+            return age_seconds / 86400.0
+    return None
+
+
+def _apply_recency_weight(
+    results: list[dict[str, Any]],
+    *,
+    half_life_days: float,
+    now_fn: Callable[[], float] = time.time,
+) -> list[dict[str, Any]]:
+    """Apply an optional recency weighting to ``results`` in-place and re-sort.
+
+    When ``half_life_days <= 0``, this function is a no-op: the input list
+    is returned unmodified.  This preserves byte-identical ranking and
+    scores compared to the pre-weighting behaviour.
+
+    For ``half_life_days > 0``, each result's ``score`` is multiplied by
+    ``0.5 ** (age_days / half_life_days)``.  Entries with unknown age are
+    left at their original score (no penalty for missing timestamps).
+    After adjustment the list is re-sorted by score descending so higher-
+    recency entries bubble up.
+    """
+    if half_life_days <= 0:
+        return results
+
+    now_posix = now_fn()
+    for entry in results:
+        age = _age_days_for_entry(entry, now_posix)
+        if age is None:
+            continue
+        original_score = entry.get("score") or 0.0
+        weight = 0.5 ** (age / half_life_days)
+        entry["score"] = original_score * weight
+
+    results.sort(key=lambda e: (e.get("score") or 0.0), reverse=True)
+    return results
 
 
 def _rag_scripts_dir() -> Path:
@@ -117,6 +216,8 @@ def recall_search(
     lessons_path: Path,
     project: str | None = None,
     retriever: str = "hybrid",
+    half_life_days: float = 0.0,
+    now_fn: Callable[[], float] = time.time,
 ) -> list[dict[str, Any]]:
     """Return up to ``top_k`` similar historical entries for ``query``.
 
@@ -137,6 +238,17 @@ def recall_search(
     retriever:
         ``"keyword"`` or ``"hybrid"``. Defaults to ``"hybrid"`` to use
         the existing hashed embedding alongside the keyword score.
+    half_life_days:
+        Optional recency weighting.  When > 0, each result's ``score``
+        is multiplied by ``0.5 ** (age_days / half_life_days)`` and the
+        list is re-sorted.  When 0 (default), scores and ordering are
+        unchanged — identical to the pre-weighting behaviour.  Read from
+        config key ``memory.recall_half_life_days``; the caller is
+        responsible for passing the configured value.
+    now_fn:
+        Callable returning the current POSIX time.  Defaults to
+        ``time.time``.  Pass a fixed lambda in tests to get
+        deterministic age calculations.
 
     Returns
     -------
@@ -192,9 +304,11 @@ def recall_search(
     stale = _corpus_is_stale(corpus_path, lessons_path)
     warning = _format_stale_warning(corpus_path, lessons_path) if stale else None
 
+    # Build the cleaned list before optional recency weighting so that we
+    # also carry through the raw timestamp fields needed for age computation.
     cleaned: list[dict[str, Any]] = []
-    for index, entry in enumerate(raw):
-        result = {
+    for entry in raw:
+        result: dict[str, Any] = {
             "run_id": entry.get("run_id"),
             "source_path": entry.get("source_path"),
             "case_name": entry.get("case_name"),
@@ -206,7 +320,19 @@ def recall_search(
             "layer": "raw" if entry.get("source_type") in {"experiment_note", "chat_note"} else "curated",
             "text": entry.get("excerpt") or "",
         }
-        if warning and index == 0:
-            result["warning"] = warning
+        # Carry timestamp fields through so _apply_recency_weight can read
+        # them for age calculation.  They are not part of the public contract
+        # but harmless to keep — callers that do not need them ignore them.
+        for ts_field in _AGE_TIMESTAMP_FIELDS:
+            if ts_field in entry:
+                result[ts_field] = entry[ts_field]
         cleaned.append(result)
+
+    # Apply the optional recency weighting (no-op when half_life_days <= 0).
+    cleaned = _apply_recency_weight(cleaned, half_life_days=half_life_days, now_fn=now_fn)
+
+    # Attach staleness warning to the (now re-ranked) first entry.
+    if warning and cleaned:
+        cleaned[0]["warning"] = warning
+
     return cleaned
