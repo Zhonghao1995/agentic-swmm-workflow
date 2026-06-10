@@ -105,6 +105,12 @@ _MIGRATED_FAMILIES = [
         ("_generate_design_storm_tool",),
         ("generate_storm_shape",),
     ),
+    # New-case onboarding rewire (#246 follow-up): apply_onboarding tool.
+    (
+        "swmm_onboarding",
+        ("_apply_onboarding_tool",),
+        ("apply_onboarding",),
+    ),
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools registered
     # as first-class typed ToolSpecs.
     (

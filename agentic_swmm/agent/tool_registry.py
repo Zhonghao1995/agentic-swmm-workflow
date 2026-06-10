@@ -319,6 +319,45 @@ def _build_tools() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}}, ["run_dir"]), _audit_run_tool),
         ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
+        # New-case onboarding (#246 follow-up rewire): typed tool that applies the
+        # user's reply to the onboarding offer the planner hook surfaced.
+        # is_read_only=False — acceptance writes transferred parameters to the
+        # session context (explicit-flow action per CONTEXT.md invariant 4).
+        ToolSpec(
+            "apply_onboarding",
+            (
+                "Apply a user's reply to the new-case onboarding offer. "
+                "CALL WHEN: the planner has surfaced an onboarding offer (via the "
+                "<onboarding_offer> system-prompt block) and the user has replied. "
+                "Pass the user's exact reply as 'response'; the tool classifies it "
+                "as accept / decline / customize and returns the applied parameters "
+                "and source memory ids. "
+                "On accept, transferred parameters from a similar watershed are "
+                "applied to the session and reported so you can stamp "
+                "memories_applied on the run."
+            ),
+            _object(
+                {
+                    "case_name": {
+                        "type": "string",
+                        "description": "The case name the onboarding offer was made for.",
+                    },
+                    "response": {
+                        "type": "string",
+                        "description": (
+                            "The user's natural-language reply: "
+                            "Y / yes / empty to accept, "
+                            "n / no to decline, "
+                            "'customize' or 'c' to enter custom mode, "
+                            "or any free-form text."
+                        ),
+                    },
+                },
+                ["case_name", "response"],
+            ),
+            _apply_onboarding_tool,
+            is_read_only=False,
+        ),
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "water_quality_json": {"type": "string", "description": "Optional path to a WQ config JSON enabling pollutant buildup/washoff simulation ([POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/[LOADINGS] sections)."}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
         # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
         # snippet that pairs with a formatted timeseries.
@@ -1692,6 +1731,14 @@ from agentic_swmm.agent.tool_handlers.swmm_uncertainty import (  # noqa: E402,F4
     _swmm_sensitivity_sobol_tool,
     _swmm_rainfall_ensemble_tool,
     _swmm_uncertainty_source_decomposition_tool,
+)
+
+
+# New-case onboarding rewire (#246 follow-up).
+# apply_onboarding is an in-process handler (not MCP-routed) — it
+# calls onboarding.py internals directly.
+from agentic_swmm.agent.tool_handlers.swmm_onboarding import (  # noqa: E402,F401
+    _apply_onboarding_tool,
 )
 
 

@@ -24,6 +24,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 # False = writes a file, runs a subprocess, mutates external state.
 EXPECTED_INVENTORY: dict[str, bool] = {
     # Writes / runs / mutations.
+    "apply_onboarding": False,
     "apply_patch": False,
     "audit_run": False,
     "build_inp": False,

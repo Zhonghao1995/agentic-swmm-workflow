@@ -326,6 +326,11 @@ class OpenAIPlanner:
                 session_dir=session_dir,
                 prior_session_state=prior_state,
             )
+            self._consult_onboarding(
+                goal=goal,
+                trace_path=trace_path,
+                prior_session_state=prior_state,
+            )
 
         input_items: list[dict[str, Any]] = [
             {
@@ -590,6 +595,114 @@ class OpenAIPlanner:
             )
 
         return decision
+
+    def _consult_onboarding(
+        self,
+        *,
+        goal: str,
+        trace_path: Path,
+        prior_session_state: dict[str, Any],
+    ) -> None:
+        """Surface a new-case onboarding offer before the first LLM call.
+
+        Mirrors :meth:`_consult_memory_informed_policy` in placement and
+        discipline:
+
+        * **Gating**: only fires when the goal resolves to a case name AND
+          ``is_new_case(case_name, ...)`` returns True.  Known case or
+          unresolvable case → strict no-op, zero added latency beyond the
+          ``is_new_case`` check.
+        * **Output**: when the gate fires, appends the formatted onboarding
+          chat block to ``self.system_prompt_extras`` so the LLM relays it
+          verbatim to the user, and emits an ``onboarding_offer`` trace
+          event.
+        * **Fail-soft**: any I/O or store-shape exception is swallowed so a
+          corrupt memory directory cannot block dispatch.
+        * **No LLM calls**: the hook is deterministic (parametric-store
+          read + similarity scoring).  It never calls the provider.
+
+        The injected chat block includes a one-line instruction telling the
+        planner to call ``apply_onboarding`` once the user replies, so the
+        tool advertisement is in-context at the moment it is relevant.
+        """
+        case_name = _resolve_case_name_for_memory(goal, prior_session_state)
+        if not case_name:
+            return
+
+        try:
+            memory_dir = _resolve_memory_dir_for_planner()
+            parametric_store = memory_dir / "parametric_memory.jsonl"
+
+            from agentic_swmm.agent.onboarding import is_new_case
+
+            if not is_new_case(case_name, parametric_store=parametric_store):
+                return
+
+            calibration_store = memory_dir / "calibration_memory.jsonl"
+            negative_store = memory_dir / "negative_lessons.jsonl"
+            storm_library = memory_dir / "storm_library.yaml"
+            benchmarks = memory_dir / "reference_benchmarks.yaml"
+
+            # Locate the target INP using the same conventions as the old
+            # adapter hook.
+            from agentic_swmm.utils.paths import repo_root as _repo_root
+            from agentic_swmm.memory.cross_watershed_transfer import (
+                _candidate_inp_locations,
+            )
+            target_inp = None
+            for candidate in _candidate_inp_locations(case_name, _repo_root()):
+                if candidate.is_file():
+                    target_inp = candidate
+                    break
+
+            from agentic_swmm.agent.onboarding import maybe_offer_onboarding
+
+            decision = maybe_offer_onboarding(
+                case_name=case_name,
+                utterance=goal,
+                target_inp=target_inp,
+                parametric_store=parametric_store,
+                calibration_store=calibration_store,
+                negative_lessons_store=negative_store,
+                storm_library_path=storm_library,
+                benchmarks_path=benchmarks,
+                top_k=3,
+            )
+        except Exception:  # pragma: no cover - defensive: onboarding must never break dispatch
+            return
+
+        if not decision.triggered or not decision.chat_block:
+            return
+
+        # Append the chat block + tool advertisement to the system-prompt
+        # extras so the LLM sees it before the first tool call.
+        tool_hint = (
+            "Once the user answers this onboarding prompt, call the "
+            "apply_onboarding tool with case_name and their response."
+        )
+        block_with_hint = decision.chat_block + "\n\n" + tool_hint
+        self.system_prompt_extras.append(
+            "<onboarding_offer>\n" + block_with_hint + "\n</onboarding_offer>"
+        )
+
+        try:
+            write_event(
+                trace_path,
+                {
+                    "event": "onboarding_offer",
+                    "case_name": decision.target_case,
+                    "triggered": decision.triggered,
+                    "reason": decision.reason,
+                    "recommendation_count": len(decision.recommendations),
+                    "memory_ids": [
+                        rec.memory_id
+                        for rec in decision.recommendations
+                        if getattr(rec, "memory_id", None)
+                    ],
+                },
+            )
+        except Exception:  # pragma: no cover - audit must never break dispatch
+            pass
 
     def _consult_workflow_skills(
         self,
