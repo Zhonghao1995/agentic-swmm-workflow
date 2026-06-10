@@ -113,6 +113,81 @@ python3 skills/swmm-climate/scripts/build_raingage_section.py \
   --out-json runs/swmm-climate/example_raingage.json
 ```
 
+## Design storms
+
+Use `design_storm.py` to synthesise a hyetograph from a return period and IDF coefficients
+when no measured rainfall data exists. The output format matches `format_rainfall.py` so
+`build_inp --rainfall-json` consumes it unchanged.
+
+### Methods
+
+| Method | When to use | Required inputs |
+|--------|-------------|-----------------|
+| `chicago` (Keifer-Chu) | IDF formula coefficients available | `--form`, coefficient flags, `--return-period`, `--duration` |
+| `alternating_block` | Explicit IDF table (duration → intensity) | `--idf-csv` or `--idf-json`, `--duration` |
+
+### IDF formula forms (chicago method)
+
+**CN form** (`--form CN`): `q = 167·A1·(1+C·lgP)/(t+b)^n` [L/s/ha → converted to mm/hr]
+Flags: `--a1`, `--C`, `--b`, `--n`
+
+**Generic form** (`--form generic`): `i = a/(t+b)^c` [mm/hr]
+Flags: `--a-coeff`, `--b`, `--c-exp`
+
+### Example — 2-year Chicago hyetograph (CN form, 120 min, 5-min timestep)
+
+```bash
+python3 skills/swmm-climate/scripts/design_storm.py \
+  --method chicago \
+  --form CN \
+  --a1 10.0 \
+  --C 0.811 \
+  --b 11.0 \
+  --n 0.711 \
+  --return-period 2 \
+  --duration 120 \
+  --dt 5 \
+  --out-json runs/swmm-climate/storm_p2y.json \
+  --out-timeseries runs/swmm-climate/storm_p2y.txt
+```
+
+Executed output:
+
+```json
+{
+  "ok": true,
+  "out_json": "/tmp/design_storm_test/storm_p2y.json",
+  "out_timeseries": "/tmp/design_storm_test/storm_p2y.txt",
+  "series_name": "TS_DESIGN_P2Y_120MIN",
+  "series_names": [
+    "TS_DESIGN_P2Y_120MIN"
+  ],
+  "rows": 24,
+  "stations": 1,
+  "interval_minutes": 5
+}
+```
+
+### Example — alternating-block from an IDF table (inline JSON)
+
+```bash
+python3 skills/swmm-climate/scripts/design_storm.py \
+  --method alternating_block \
+  --idf-json '[{"duration_min":5,"intensity_mm_per_hr":60},{"duration_min":10,"intensity_mm_per_hr":45},{"duration_min":30,"intensity_mm_per_hr":28},{"duration_min":60,"intensity_mm_per_hr":18},{"duration_min":120,"intensity_mm_per_hr":11}]' \
+  --duration 120 \
+  --dt 5 \
+  --return-period 2 \
+  --out-json runs/swmm-climate/storm_ab_p2y.json \
+  --out-timeseries runs/swmm-climate/storm_ab_p2y.txt
+```
+
+### MCP tool
+
+`generate_design_storm` on the `swmm-climate` MCP server (third tool after `format_rainfall`
+and `build_raingage_section`). Pass camelCase equivalents: `method`, `duration`, `outJson`,
+`outTimeseries`, `form`, `returnPeriod`, `dt`, `r`, `a1`, `cCoeff`, `b`, `n`, `aCoeff`,
+`cExp`, `idfCsv`, `idfJson`, `seriesName`.
+
 ## MVP limitations
 - MVP focuses on rainfall intensity and raingage section helper only.
 - No temperature/evaporation/wind climatology conversion in this pass.

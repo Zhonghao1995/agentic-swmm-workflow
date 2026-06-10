@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const scriptsDir = path.resolve(__dirname, '../../skills/swmm-climate/scripts');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
+const designStormScript = path.join(scriptsDir, 'design_storm.py');
 
 const PY = process.env.PYTHON || 'python3';
 
@@ -152,6 +153,85 @@ server.tool(
         { type: 'text', text: out },
         { type: 'text', text: `WROTE:${outTextPath}` },
         { type: 'text', text: `WROTE:${outJsonPath}` },
+      ],
+    };
+  }
+);
+
+server.tool(
+  'generate_design_storm',
+  'Synthesise a design-storm hyetograph (Chicago/Keifer-Chu or alternating-block) from return period and IDF coefficients when no measured rainfall exists. Writes SWMM [TIMESERIES] text and metadata JSON matching format_rainfall output contract.',
+  {
+    // Required
+    method: z.enum(['chicago', 'alternating_block']),
+    duration: z.number().positive(),
+    outJson: z.string(),
+    outTimeseries: z.string(),
+    // Chicago IDF form
+    form: z.enum(['CN', 'generic']).optional(),
+    // CN form coefficients
+    a1: z.number().optional(),
+    cCoeff: z.number().optional(),
+    b: z.number().optional(),
+    n: z.number().optional(),
+    // Generic form coefficients
+    aCoeff: z.number().optional(),
+    cExp: z.number().optional(),
+    // Alternating-block IDF table
+    idfCsv: z.string().optional(),
+    idfJson: z.string().optional(),
+    // Storm parameters
+    returnPeriod: z.number().positive().optional(),
+    dt: z.number().positive().optional(),
+    r: z.number().positive().optional(),
+    // Output
+    seriesName: z.string().optional(),
+  },
+  async ({
+    method,
+    duration,
+    outJson,
+    outTimeseries,
+    form,
+    a1,
+    cCoeff,
+    b,
+    n,
+    aCoeff,
+    cExp,
+    idfCsv,
+    idfJson,
+    returnPeriod,
+    dt,
+    r,
+    seriesName,
+  }) => {
+    const args = [
+      '--method', method,
+      '--duration', String(duration),
+      '--out-json', outJson,
+      '--out-timeseries', outTimeseries,
+    ];
+    if (form) args.push('--form', form);
+    if (a1 != null) args.push('--a1', String(a1));
+    if (cCoeff != null) args.push('--C', String(cCoeff));
+    if (b != null) args.push('--b', String(b));
+    if (n != null) args.push('--n', String(n));
+    if (aCoeff != null) args.push('--a-coeff', String(aCoeff));
+    if (cExp != null) args.push('--c-exp', String(cExp));
+    if (idfCsv) args.push('--idf-csv', idfCsv);
+    if (idfJson) args.push('--idf-json', idfJson);
+    if (returnPeriod != null) args.push('--return-period', String(returnPeriod));
+    if (dt != null) args.push('--dt', String(dt));
+    if (r != null) args.push('--r', String(r));
+    if (seriesName) args.push('--series-name', seriesName);
+
+    const out = runPython(designStormScript, args);
+    return {
+      content: [
+        { type: 'text', text: out },
+        { type: 'text', text: `WROTE:${outJson}` },
+        { type: 'text', text: `WROTE:${outTimeseries}` },
       ],
     };
   }

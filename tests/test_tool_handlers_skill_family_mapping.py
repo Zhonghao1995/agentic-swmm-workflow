@@ -103,7 +103,7 @@ _MIGRATED_FAMILIES = [
     (
         "swmm_storm",
         ("_generate_design_storm_tool",),
-        ("generate_design_storm",),
+        ("generate_storm_shape",),
     ),
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools registered
     # as first-class typed ToolSpecs.
