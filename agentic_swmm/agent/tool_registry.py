@@ -670,6 +670,10 @@ def _build_tools() -> dict[str, ToolSpec]:
                         "type": "string",
                         "description": "Optional absolute path to a SWMM-format DAT rainfall file to replace the bundled storm.dat.",
                     },
+                    "config_overrides": {
+                        "type": "object",
+                        "description": "Per-call SWMManywhere parameter overrides merged onto the resolved config; keys per the SWMManywhere parameter schema.",
+                    },
                 },
                 ["bbox"],
             ),

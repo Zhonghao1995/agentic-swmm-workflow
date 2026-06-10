@@ -190,6 +190,71 @@ class SynthSwmmFromBboxToolTests(unittest.TestCase):
         self.assertEqual(captured["project_name"], "case-x")
 
 
+class ConfigOverridesTests(unittest.TestCase):
+    """config_overrides is the per-call parameter knob surfaced to the LLM.
+    It must be passed through to the runner as a dict, rejected when non-dict,
+    and passed as None when absent."""
+
+    def _make_fake_result(self) -> "swmmanywhere_runner.SynthRunResult":
+        from agentic_swmm.integrations import swmmanywhere_runner
+
+        return swmmanywhere_runner.SynthRunResult(
+            inp_path=Path("/tmp/synth.inp"),
+            run_dir=Path("/tmp/run"),
+            raw_manifest_path=Path("/tmp/run/00_raw/raw_manifest.json"),
+            provenance={"tool": "swmmanywhere", "bbox_wgs84": VALID_BBOX},
+            stage_durations={},
+            warnings=(),
+        )
+
+    def test_dict_config_overrides_passed_to_runner(self) -> None:
+        overrides = {"outfall_derivation": {"method": "separate"}}
+        call = ToolCall(
+            "synth_swmm_from_bbox",
+            {"bbox": VALID_BBOX, "config_overrides": overrides},
+        )
+        from agentic_swmm.integrations import swmmanywhere_runner
+
+        captured: dict = {}
+
+        def _ok(**kwargs):
+            captured.update(kwargs)
+            return self._make_fake_result()
+
+        with mock.patch.object(swmmanywhere_runner, "run_synth_from_bbox", _ok), TemporaryDirectory() as tmp:
+            result = _synth_swmm_from_bbox_tool(call, Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(captured["config_overrides"], overrides)
+
+    def test_non_dict_config_overrides_returns_failure(self) -> None:
+        for bad_value in ("not-a-dict", 42, ["a", "list"], True):
+            call = ToolCall(
+                "synth_swmm_from_bbox",
+                {"bbox": VALID_BBOX, "config_overrides": bad_value},
+            )
+            with TemporaryDirectory() as tmp:
+                result = _synth_swmm_from_bbox_tool(call, Path(tmp))
+            self.assertFalse(result["ok"], f"expected failure for {bad_value!r}")
+            self.assertIn("config_overrides", result["summary"])
+
+    def test_absent_config_overrides_passes_none_to_runner(self) -> None:
+        call = ToolCall("synth_swmm_from_bbox", {"bbox": VALID_BBOX})
+        from agentic_swmm.integrations import swmmanywhere_runner
+
+        captured: dict = {}
+
+        def _ok(**kwargs):
+            captured.update(kwargs)
+            return self._make_fake_result()
+
+        with mock.patch.object(swmmanywhere_runner, "run_synth_from_bbox", _ok), TemporaryDirectory() as tmp:
+            result = _synth_swmm_from_bbox_tool(call, Path(tmp))
+
+        self.assertTrue(result["ok"])
+        self.assertIsNone(captured.get("config_overrides"))
+
+
 class ToolRegistrationTests(unittest.TestCase):
     """Lock the registry-visible surface for the LLM so a future refactor
     cannot silently drop the tool."""
@@ -209,6 +274,17 @@ class ToolRegistrationTests(unittest.TestCase):
         bbox_schema = spec.parameters["properties"]["bbox"]
         self.assertEqual(bbox_schema["minItems"], 4)
         self.assertEqual(bbox_schema["maxItems"], 4)
+
+    def test_schema_contains_config_overrides_property(self) -> None:
+        from agentic_swmm.agent.tool_registry import AgentToolRegistry
+
+        registry = AgentToolRegistry()
+        spec = registry._tools["synth_swmm_from_bbox"]
+        props = spec.parameters["properties"]
+        self.assertIn("config_overrides", props)
+        self.assertEqual(props["config_overrides"]["type"], "object")
+        # Must not be in required — it's optional.
+        self.assertNotIn("config_overrides", spec.parameters.get("required", []))
 
 
 if __name__ == "__main__":  # pragma: no cover
