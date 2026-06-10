@@ -58,6 +58,7 @@ from agentic_swmm.agent.swmm_runtime.rpt_summary import (
     SECTIONS as _CANONICAL_SECTIONS,
     SectionSchema as _SectionSchema,
     parse_section as _parse_section,
+    parse_variable_section as _parse_variable_section,
 )
 from agentic_swmm.agent.tool_handlers._shared import _failure
 from agentic_swmm.agent.types import ToolCall
@@ -141,6 +142,29 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         top_n = _MAX_TOP_N
 
     rpt_text = rpt_path.read_text(encoding="utf-8", errors="replace")
+
+    if schema.variable_columns:
+        # WQ continuity + load-summary sections: dynamic pollutant columns.
+        # top_n / sort_by do not apply — return all rows.
+        rows = _parse_variable_section(rpt_text, schema)
+        wq_present = bool(rows)
+        summary = (
+            f"section={section_key} total={len(rows)} "
+            f"wq_present={wq_present}"
+        )
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": True,
+            "section": section_key,
+            "total_rows": len(rows),
+            "shown": len(rows),
+            "sort_by": None,
+            "rows": rows,
+            "wq_present": wq_present,
+            "summary": summary,
+        }
+
     rows = _parse_section(rpt_text, schema)
 
     # Resolve sort column. Unknown ``sort_by`` falls back silently.
@@ -172,4 +196,4 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-__all__ = ["_read_rpt_summary_tool"]
+__all__ = ["_read_rpt_summary_tool", "_parse_variable_section"]
