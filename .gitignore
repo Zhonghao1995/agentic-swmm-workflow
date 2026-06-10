@@ -67,6 +67,9 @@ data/Todcreek/**/*.png
 !docs/framework-validation/**/*.out
 !docs/framework-validation/**/*.pdf
 
+# Test fixtures that are purpose-built .rpt files (not real run outputs)
+!tests/fixtures/design_review/*.rpt
+
 # Caches (pip, pytest, generic tool caches)
 .cache/
 cache/

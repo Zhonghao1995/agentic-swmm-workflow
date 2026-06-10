@@ -1,0 +1,31 @@
+{
+  "manifest_version": "1.0",
+  "created_at": "2026-01-01T00:00:00Z",
+  "swmm5": {
+    "cmd": "swmm5",
+    "version": "5.2.4"
+  },
+  "inp": "/tmp/sample/model.inp",
+  "inp_sha256": "abc123",
+  "files": {
+    "rpt": "/tmp/sample/model.rpt",
+    "out": "/tmp/sample/model.out",
+    "stdout": "/tmp/sample/stdout.txt",
+    "stderr": "/tmp/sample/stderr.txt"
+  },
+  "metrics": {
+    "peak": {
+      "node": "OUT1",
+      "peak": 0.5,
+      "time_hhmm": "01:00",
+      "source": "Node Inflow Summary"
+    },
+    "continuity": {
+      "continuity_error_percent": {
+        "runoff_quantity": -0.15,
+        "flow_routing": 0.0
+      }
+    }
+  },
+  "return_code": 0
+}

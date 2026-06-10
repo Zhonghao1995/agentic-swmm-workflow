@@ -1,0 +1,208 @@
+rulebook_id: gb50014_template
+version: "0.1"
+standard: "GB 50014 Outdoor Drainage Standard (template — thresholds unverified)"
+disclaimer: |
+  THIS RULEBOOK IS A TEMPLATE FOR ILLUSTRATIVE USE ONLY. Numeric thresholds
+  are NOT authoritative. All values marked verify:true MUST be confirmed
+  against your applicable edition of the standard before relying on any
+  review finding for design acceptance. aiswmm makes NO representation of
+  legal or regulatory compliance.
+
+  This file was generated as a template inspired by GB 50014-class drainage
+  checks. The clause numbers cited are indicative; users must verify against
+  their locally applicable edition of the standard and applicable local
+  regulations. Every threshold carries verify:true — the tool reports findings
+  and never certifies compliance.
+created_at: "2026-06-09"
+units: SI
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Velocity checks
+  # ---------------------------------------------------------------------------
+  - id: VELOCITY_MAX
+    title: "Peak conduit velocity must not exceed maximum allowable"
+    metric: link.max_velocity
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 3.0
+    units: SI
+    severity: FAIL
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Reduce peak flow or increase pipe diameter. Check slope steepness (adverse hydraulics
+      can produce high velocity on steep grades). Consider energy dissipation structures.
+
+  - id: VELOCITY_MIN
+    title: "Peak conduit velocity must meet self-cleaning minimum"
+    metric: link.max_velocity
+    scope:
+      link_type: CONDUIT
+    operator: gte
+    threshold: 0.6
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Increase slope or reduce pipe diameter to raise velocity. Check that the pipe
+      is receiving runoff — zero flow at the design storm may indicate upstream
+      drainage area assumptions need review.
+
+  # ---------------------------------------------------------------------------
+  # Pipe capacity checks
+  # ---------------------------------------------------------------------------
+  - id: PIPE_FULL_RATIO
+    title: "Pipe must not exceed design capacity (Q/Qfull ≤ 1.0)"
+    metric: link.max_full_flow_ratio
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 1.0
+    units: SI
+    severity: FAIL
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Increase pipe diameter or reduce the contributing drainage area. Verify
+      that upstream routing is correct — a Q/Qfull > 1.0 may indicate
+      the pipe is undersized for the design storm.
+
+  - id: PIPE_CAPACITY_MARGIN
+    title: "Pipe should have ≥ 10% capacity headroom before full (Q/Qfull ≤ 0.9)"
+    metric: link.max_full_flow_ratio
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 0.9
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Consider upsizing the pipe to provide a safety margin. A pipe at 0.90–1.00
+      of full capacity is within design tolerance but leaves no headroom for
+      rainfall intensity variability or future impervious cover increases.
+
+  # ---------------------------------------------------------------------------
+  # Slope checks (INP-derived — available in PR1)
+  # ---------------------------------------------------------------------------
+  - id: MIN_SLOPE_SMALL
+    title: "Small pipes (diameter ≤ 0.5 m) must meet minimum slope for self-cleaning"
+    metric: conduit.slope_pct
+    scope:
+      link_type: CONDUIT
+      max_diameter_m: 0.5
+    operator: gte
+    threshold: 0.3
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Increase the elevation drop between manholes to achieve the minimum slope.
+      For pipes with diameter ≤ 0.5 m, a slope < 0.3% risks sediment accumulation
+      under low-flow conditions.
+
+  - id: MIN_SLOPE_LARGE
+    title: "Large pipes (diameter > 0.5 m) must meet minimum slope for self-cleaning"
+    metric: conduit.slope_pct
+    scope:
+      link_type: CONDUIT
+      min_diameter_m: 0.5
+    operator: gte
+    threshold: 0.15
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Increase the elevation drop between manholes to achieve the minimum slope.
+      For pipes with diameter > 0.5 m, a slope < 0.15% risks sediment accumulation
+      under low-flow conditions.
+
+  # ---------------------------------------------------------------------------
+  # Continuity error check (manifest-derived)
+  # ---------------------------------------------------------------------------
+  - id: CONTINUITY_ERROR
+    title: "Flow routing continuity error must be within ±1% of total inflow"
+    metric: run.continuity_error_pct
+    operator: between
+    threshold_low: -1.0
+    threshold_high: 1.0
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      A continuity error outside ±1% indicates potential numerical instability
+      or model setup issues. Reduce the routing time step, check for negative
+      volumes in the SWMM error log, and verify that initial conditions are
+      correct. Results from this run may not be reliable for design acceptance.
+
+  # ---------------------------------------------------------------------------
+  # Node / surcharge / flooding checks (needs-data until PR2 rpt extensions)
+  # ---------------------------------------------------------------------------
+  - id: NODE_SURCHARGE_DURATION
+    title: "Surcharge duration must not exceed 1 hour at any junction"
+    metric: node.surcharge_hours
+    operator: lte
+    threshold: 1.0
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Surcharge exceeding 1 hour may indicate undersized pipes or a hydraulic
+      constriction downstream. Increase pipe capacity or add storage upstream.
+      This check requires the Node Surcharge Summary rpt section (PR2).
+
+  - id: NODE_FLOODING
+    title: "No junction may experience surface flooding during the design storm"
+    metric: node.flooding_hours
+    operator: lte
+    threshold: 0.0
+    units: SI
+    severity: FAIL
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Flooding at a junction indicates the drainage system cannot contain the
+      design storm. Increase upstream pipe capacity, add storage, or raise
+      the surcharge elevation of the junction.
+      This check requires the Node Flooding Summary rpt section (PR2).
+
+  - id: FREEBOARD
+    title: "Minimum freeboard of 0.5 m must be maintained at all junctions"
+    metric: junction.freeboard_m
+    operator: gte
+    threshold: 0.5
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Increase the rim elevation of the junction or reduce the hydraulic grade
+      line through upstream capacity improvements. Freeboard < 0.5 m risks
+      surface inundation during peak storm events.
+      This check requires Node Depth Summary rpt extension (PR2).
+
+  # ---------------------------------------------------------------------------
+  # Return-period adequacy (needs-data until storm provenance wired)
+  # ---------------------------------------------------------------------------
+  - id: RETURN_PERIOD_ADEQUACY
+    title: "Design storm must meet minimum return period (≥ 2 years for minor drainage)"
+    metric: run.return_period_yr
+    operator: gte
+    threshold: 2
+    units: SI
+    severity: WARN
+    citation: "TODO: cite local standard"
+    verify: true
+    remediation: |
+      Re-run with a design storm generated by 'aiswmm generate_design_storm' with
+      the target return period. The return period must be propagated to the manifest
+      via --storm-return-period-yr (swmm-runner PR2 wiring).
+      Until then this check returns needs-data.

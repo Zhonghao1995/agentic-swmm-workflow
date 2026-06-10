@@ -1,0 +1,47 @@
+# Minimal 3-rule rulebook for fast design_review unit tests.
+# Not a real standard — purely for test coverage.
+rulebook_id: test_sample
+version: "0.1"
+standard: "Test-only rulebook (not a real standard)"
+disclaimer: |
+  This is a test fixture. It is not a real rulebook and must never be used
+  for design acceptance.
+created_at: "2026-01-01"
+units: SI
+
+rules:
+  - id: VELOCITY_MAX_TEST
+    title: "Test: peak velocity must be ≤ 3.0 m/s"
+    metric: link.max_velocity
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 3.0
+    units: SI
+    severity: FAIL
+    citation: "test only"
+    verify: true
+    remediation: "Reduce flow or enlarge pipe."
+
+  - id: CONTINUITY_TEST
+    title: "Test: continuity error within ±1%"
+    metric: run.continuity_error_pct
+    operator: between
+    threshold_low: -1.0
+    threshold_high: 1.0
+    units: SI
+    severity: WARN
+    citation: "test only"
+    verify: true
+    remediation: "Reduce routing step or fix model setup."
+
+  - id: SURCHARGE_TEST
+    title: "Test: surcharge duration ≤ 1 hr (needs-data in PR1)"
+    metric: node.surcharge_hours
+    operator: lte
+    threshold: 1.0
+    units: SI
+    severity: WARN
+    citation: "test only"
+    verify: true
+    remediation: "Upsize pipes. (Needs PR2 rpt extension.)"
