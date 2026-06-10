@@ -860,6 +860,35 @@ def trigger_memory_refresh(
     except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
         result["errors"].append(f"lessons decay pass failed: {exc}")
 
+    # PR-3 Phase 1: append outcome events to the application outcome ledger.
+    # Fires after the parametric/calibration bridges so provenance is complete.
+    # Soft-fail: a broken write must never block the rest of the pipeline.
+    # Skipped when AISWMM_SKIP_MEMORY=1 (is_skip_memory_run would have
+    # short-circuited above, but guard here too for defensive clarity).
+    try:
+        from agentic_swmm.memory.memory_outcomes import (
+            OUTCOME_LEDGER_FILENAME,
+            classify_and_record_outcome,
+        )
+
+        outcome_store = memory_dir / OUTCOME_LEDGER_FILENAME
+        provenance_for_outcomes = _read_provenance(run_dir)
+        if provenance_for_outcomes.get("memories_applied") is not None:
+            # Look for the manifest in the run dir (standard layout).
+            manifest_candidate = run_dir / "manifest.json"
+            manifest_path = manifest_candidate if manifest_candidate.is_file() else None
+            event_ids = classify_and_record_outcome(
+                run_dir=run_dir,
+                provenance=provenance_for_outcomes,
+                manifest_path=manifest_path,
+                memory_dir=memory_dir,
+                store_path=outcome_store,
+            )
+            if event_ids:
+                result["outcome_events"] = event_ids
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        result["errors"].append(f"outcome log write failed: {exc}")
+
     if no_rag:
         return result
 
