@@ -97,10 +97,12 @@ Exposed tools:
   `subcatchmentsCsvPath`, `paramsJsonPath`, `networkJsonPath`,
   `outInpPath`, `outManifestPath`. Optional: `rainfallJsonPath`,
   `raingageJsonPath`, `timeseriesTextPath`, `configJsonPath`,
-  `defaultGageId`. The subcatchments CSV must carry `outlet` values
-  that point to real upstream junctions (use
-  `swmm-network-mcp.assign_subcatchment_outlets` first if it currently
-  points to the literal outfall).
+  `defaultGageId`, `waterQualityJsonPath` (path to a WQ config JSON —
+  enables [POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/
+  [LOADINGS] sections for pollutant buildup/washoff simulation).
+  The subcatchments CSV must carry `outlet` values that point to real
+  upstream junctions (use `swmm-network-mcp.assign_subcatchment_outlets`
+  first if it currently points to the literal outfall).
 
 ## Smoke example
 
@@ -138,7 +140,27 @@ python3 skills/swmm-builder/scripts/build_swmm_inp.py \
   --out-manifest /tmp/builder-smoke/example_manifest.json
 ```
 
+## Water quality sections
+
+Pass `--water-quality-json <path>` to enable pollutant buildup/washoff
+simulation.  The JSON must satisfy the schema in
+`skills/swmm-water-quality/SKILL.md`.  Omit the flag for pure hydrology runs
+(Water Quality: NO in the INP).
+
+```bash
+# Build an INP with water quality (TSS, 1 landuse, executed example):
+python3 skills/swmm-builder/scripts/build_swmm_inp.py \
+  --subcatchments-csv skills/swmm-builder/examples/subcatchments_input.csv \
+  --params-json /tmp/builder-smoke/merged_params.json \
+  --network-json skills/swmm-network/examples/basic-network.json \
+  --water-quality-json /tmp/wq_example.json \
+  --out-inp /tmp/wq_model.inp \
+  --out-manifest /tmp/wq_manifest.json
+```
+
+The builder validates all cross-references (pollutant/landuse/subcatchment
+consistency) before writing the INP.
+
 ## MVP limitations
-- Generates core hydrology/hydraulics sections only.
-- No automatic polygon export, LID controls, snowpack, RTC rules, or pollutant quality in this pass.
+- No automatic polygon export, LID controls, snowpack, or RTC rules.
 - Assumes one raingage source for all subcatchments unless `rain_gage` is explicitly set per row.

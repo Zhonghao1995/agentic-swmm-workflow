@@ -57,6 +57,9 @@ def _build_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         "raingage_json": ("raingageJsonPath", ".json"),
         "timeseries_text": ("timeseriesTextPath", None),
         "config_json": ("configJsonPath", ".json"),
+        # PRD_water_quality.md PR3: optional WQ config JSON for
+        # pollutant buildup/washoff simulation.
+        "water_quality_json": ("waterQualityJsonPath", ".json"),
     }
     for snake, (camel, suffix) in optional_paths.items():
         if call.args.get(snake):

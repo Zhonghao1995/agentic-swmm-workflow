@@ -41,6 +41,7 @@ server.tool(
     timeseriesTextPath: z.string().optional(),
     configJsonPath: z.string().optional(),
     defaultGageId: z.string().optional(),
+    waterQualityJsonPath: z.string().optional(),
   },
   async ({
     subcatchmentsCsvPath,
@@ -53,6 +54,7 @@ server.tool(
     timeseriesTextPath,
     configJsonPath,
     defaultGageId,
+    waterQualityJsonPath,
   }) => {
     const args = [
       '--subcatchments-csv', subcatchmentsCsvPath,
@@ -66,6 +68,7 @@ server.tool(
     if (timeseriesTextPath) args.push('--timeseries-text', timeseriesTextPath);
     if (configJsonPath) args.push('--config-json', configJsonPath);
     if (defaultGageId) args.push('--default-gage-id', defaultGageId);
+    if (waterQualityJsonPath) args.push('--water-quality-json', waterQualityJsonPath);
 
     const out = runPython(buildScript, args);
     return {
