@@ -123,6 +123,69 @@ def _build_raingage_section_args(call: ToolCall, session_dir: Path) -> dict[str,
     return args
 
 
+def _generate_design_storm_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Map ``generate_design_storm`` args to ``swmm-climate.generate_design_storm`` MCP."""
+
+    from agentic_swmm.agent.tool_registry import _repo_output_path
+
+    method = call.args.get("method")
+    if not isinstance(method, str) or method not in ("chicago", "alternating_block"):
+        return _failure(call, "method must be 'chicago' or 'alternating_block'")
+    duration = call.args.get("duration_min")
+    if duration is None:
+        return _failure(call, "missing required argument: duration_min")
+    out_json = call.args.get("out_json")
+    if not out_json:
+        return _failure(call, "missing required argument: out_json")
+    out_ts = call.args.get("out_timeseries")
+    if not out_ts:
+        return _failure(call, "missing required argument: out_timeseries")
+
+    out_json_path = _repo_output_path(str(out_json))
+    out_ts_path = _repo_output_path(str(out_ts))
+    if out_json_path is None or out_json_path.suffix.lower() != ".json":
+        return _failure(call, "out_json must be a repository-relative .json path")
+    if out_ts_path is None or out_ts_path.suffix.lower() not in {".txt", ".dat"}:
+        return _failure(call, "out_timeseries must be a repository-relative .txt or .dat path")
+
+    args: dict[str, Any] = {
+        "method": method,
+        "duration": float(duration),
+        "outJson": str(out_json_path),
+        "outTimeseries": str(out_ts_path),
+    }
+
+    # Optional scalar fields — snake_case → camelCase
+    _optfloat = {
+        "return_period": "returnPeriod",
+        "dt": "dt",
+        "r": "r",
+        "a1": "a1",
+        "b": "b",
+        "n": "n",
+        "a_coeff": "aCoeff",
+        "c_coeff": "cCoeff",
+        "c_exp": "cExp",
+    }
+    for snake, camel in _optfloat.items():
+        v = call.args.get(snake)
+        if v is not None:
+            args[camel] = float(v)
+
+    _optstr = {
+        "form": "form",
+        "idf_csv": "idfCsv",
+        "idf_json": "idfJson",
+        "series_name": "seriesName",
+    }
+    for snake, camel in _optstr.items():
+        v = call.args.get(snake)
+        if v is not None:
+            args[camel] = str(v)
+
+    return args
+
+
 def _build_handler() -> Any:
     from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
 
@@ -139,8 +202,17 @@ def _build_raingage_handler() -> Any:
     )
 
 
+def _build_design_storm_handler() -> Any:
+    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+
+    return _make_mcp_routed_handler(
+        "swmm-climate", "generate_design_storm", args_mapper=_generate_design_storm_args
+    )
+
+
 _format_rainfall_tool = _build_handler()
 _build_raingage_section_tool = _build_raingage_handler()
+_generate_design_storm_tool = _build_design_storm_handler()
 
 
 __all__ = [
@@ -148,4 +220,6 @@ __all__ = [
     "_build_raingage_section_tool",
     "_format_rainfall_args",
     "_format_rainfall_tool",
+    "_generate_design_storm_args",
+    "_generate_design_storm_tool",
 ]

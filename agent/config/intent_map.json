@@ -159,12 +159,12 @@
     {
       "id": "climate",
       "skills": ["swmm-climate"],
-      "keywords": ["rainfall", "raingage", "timeseries", "climate", "降雨", "雨量"],
+      "keywords": ["rainfall", "raingage", "timeseries", "climate", "design storm", "return period", "idf", "降雨", "雨量", "设计暴雨", "重现期"],
       "required_inputs": ["rainfall_input"],
       "optional_inputs": ["timestamp_column", "value_column", "units", "raingage_id"],
-      "preferred_tools": ["format_rainfall"],
-      "stop_conditions": ["missing rainfall file", "invalid timestamps or units"],
-      "next_user_prompt": "Provide rainfall timeseries, timestamp/value columns, units, and raingage id."
+      "preferred_tools": ["format_rainfall", "generate_design_storm"],
+      "stop_conditions": ["missing rainfall file or IDF coefficients", "invalid timestamps or units"],
+      "next_user_prompt": "Provide rainfall timeseries (format_rainfall) or return period + IDF coefficients (generate_design_storm)."
     },
     {
       "id": "network",

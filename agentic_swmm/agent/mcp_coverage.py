@@ -65,6 +65,13 @@ EXPECTED_BINDINGS: tuple[ExpectedBinding, ...] = (
         mcp_server="swmm-climate",
         mcp_tool_name="format_rainfall",
     ),
+    # PR #256 follow-up: generate_design_storm — MCP tool on swmm-climate.
+    ExpectedBinding(
+        tool_spec_name="generate_design_storm",
+        script_relpath="skills/swmm-climate/scripts/design_storm.py",
+        mcp_server="swmm-climate",
+        mcp_tool_name="generate_design_storm",
+    ),
     ExpectedBinding(
         tool_spec_name="network_qa",
         script_relpath="skills/swmm-network/scripts/network_qa.py",

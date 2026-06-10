@@ -377,7 +377,40 @@ def _build_tools() -> dict[str, ToolSpec]:
             ),
             _format_rainfall_tool,
         ),
-        ToolSpec("generate_design_storm", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) using the aiswmm storm engine. Writes a SWMM [TIMESERIES] .dat the downstream build_inp can consume. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4), and idf supplies an IDF spec (depth inferred).", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_design_storm_tool),
+        # PR #256 follow-up: generate_design_storm — MCP-routed via swmm-climate.
+        # Use when no measured rainfall exists and you need to synthesise a
+        # hyetograph from a return period + IDF coefficients.
+        # Contrast with format_rainfall (use when you HAVE measured rainfall data).
+        ToolSpec(
+            "generate_design_storm",
+            "Synthesise a design-storm hyetograph from return period and IDF coefficients when no measured rainfall exists. "
+            "Writes SWMM [TIMESERIES] text and metadata JSON that build_inp / build_raingage_section consume unchanged. "
+            "Use format_rainfall instead when you have measured rainfall data.",
+            _object(
+                {
+                    "method": {"type": "string", "enum": ["chicago", "alternating_block"], "description": "chicago = Keifer-Chu hyetograph from IDF formula; alternating_block = from explicit IDF table."},
+                    "duration_min": {"type": "number", "description": "Total storm duration in minutes."},
+                    "out_json": {"type": "string", "description": "Repository-relative path for output metadata JSON."},
+                    "out_timeseries": {"type": "string", "description": "Repository-relative path for output SWMM [TIMESERIES] text (.txt or .dat)."},
+                    "form": {"type": "string", "enum": ["CN", "generic"], "description": "IDF formula form (chicago only). CN: q=167·A1·(1+C·lgP)/(t+b)^n; generic: i=a/(t+b)^c."},
+                    "return_period": {"type": "number", "description": "Return period in years (default 2)."},
+                    "dt": {"type": "number", "description": "Timestep in minutes (default 5)."},
+                    "r": {"type": "number", "description": "Peak-position ratio for chicago method, 0<r<1 (default 0.4)."},
+                    "a1": {"type": "number", "description": "CN form coefficient A1."},
+                    "c_coeff": {"type": "number", "description": "CN form coefficient C."},
+                    "b": {"type": "number", "description": "Both forms: time-offset coefficient b (min)."},
+                    "n": {"type": "number", "description": "CN form exponent n."},
+                    "a_coeff": {"type": "number", "description": "Generic form coefficient a."},
+                    "c_exp": {"type": "number", "description": "Generic form exponent c."},
+                    "idf_csv": {"type": "string", "description": "CSV path with columns duration_min,intensity_mm_per_hr for alternating_block method."},
+                    "idf_json": {"type": "string", "description": "Inline JSON list of {duration_min, intensity_mm_per_hr} objects for alternating_block method."},
+                    "series_name": {"type": "string", "description": "Override series name token (default TS_DESIGN_P<P>Y_<duration>MIN)."},
+                },
+                ["method", "duration_min", "out_json", "out_timeseries"],
+            ),
+            _generate_design_storm_tool,
+            is_read_only=False,
+        ),
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool, is_read_only=True),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool, is_read_only=True),
@@ -1141,11 +1174,13 @@ from agentic_swmm.agent.tool_handlers.swmm_network import (  # noqa: E402,F401
 # moved to ``tool_handlers/swmm_climate.py``. Re-exported here so import
 # paths stay stable for ``_build_tools`` and downstream code.
 # C1 (issue #246): ``_build_raingage_section_tool`` also imported here.
+# PR #256 follow-up: ``_generate_design_storm_tool`` MCP-routed via swmm-climate.
 from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
     _build_raingage_section_args,
     _build_raingage_section_tool,
     _format_rainfall_args,
     _format_rainfall_tool,
+    _generate_design_storm_tool,
 )
 
 
@@ -1520,12 +1555,7 @@ from agentic_swmm.agent.tool_handlers.swmm_map import (  # noqa: E402,F401
 from agentic_swmm.agent.tool_handlers.swmm_rpt import (  # noqa: E402,F401
     _read_rpt_summary_tool,
 )
-# ``generate_design_storm`` is a thin CLI wrapper (``aiswmm storm``) — no
-# MCP, no late-import dance. Exposes the existing design-storm engine as a
-# first-class typed tool so the LLM dispatches it directly.
-from agentic_swmm.agent.tool_handlers.swmm_storm import (  # noqa: E402,F401
-    _generate_design_storm_tool,
-)
+# Note: ``_generate_design_storm_tool`` imported above with swmm_climate tools.
 # dark-MCP registration (PR 1, issue #246): 6 calibration tools registered
 # as first-class typed ToolSpecs so the LLM planner can select them by name.
 # The handler module uses the same lazy-import dance as swmm_runner / swmm_plot.

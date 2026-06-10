@@ -35,6 +35,8 @@ _DETERMINISTIC_BINDINGS: dict[str, str] = {
     # C1 (issue #246): build_raingage_section registered under swmm-climate
     "build_raingage_section": "swmm-climate",
     "format_rainfall": "swmm-climate",
+    # PR #256 follow-up: generate_design_storm MCP-routed via swmm-climate
+    "generate_design_storm": "swmm-climate",
     "network_qa": "swmm-network",
     "network_to_inp": "swmm-network",
     "plot_run": "swmm-plot",
