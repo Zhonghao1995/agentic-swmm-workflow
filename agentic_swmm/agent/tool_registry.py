@@ -411,6 +411,10 @@ def _build_tools() -> dict[str, ToolSpec]:
             _generate_design_storm_tool,
             is_read_only=False,
         ),
+        # Legacy shape-library generator (PRD-06 B.4) — kept alongside the
+        # IDF-driven tool above because it covers shapes the IDF path does
+        # not (uniform/triangular/front/back/huff/scs) from an EXPLICIT depth.
+        ToolSpec("generate_storm_shape", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) scaled to an EXPLICIT total depth you already know. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4). Use generate_design_storm instead when you only have a return period + IDF coefficients and need the depth derived for you.", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_storm_shape_tool, is_read_only=False),
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool, is_read_only=True),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool, is_read_only=True),
@@ -1181,6 +1185,13 @@ from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
     _format_rainfall_args,
     _format_rainfall_tool,
     _generate_design_storm_tool,
+)
+
+# The legacy in-process shape-library generator (PRD-06 B.4, ``aiswmm storm``)
+# stays registered under ``generate_storm_shape`` — it covers explicit-depth
+# shapes (uniform/triangular/huff/scs) the IDF-driven tool does not.
+from agentic_swmm.agent.tool_handlers.swmm_storm import (  # noqa: E402,F401
+    _generate_design_storm_tool as _generate_storm_shape_tool,
 )
 
 

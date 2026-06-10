@@ -33,9 +33,12 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "demo_acceptance": False,
     "doctor": False,
     "format_rainfall": False,
-    # aiswmm storm verb wrapped as a typed LLM-facing tool — writes a
-    # SWMM .dat timeseries, so not read-only.
+    # IDF/return-period design-storm generator (MCP-routed via swmm-climate)
+    # — writes [TIMESERIES] text + JSON, so not read-only.
     "generate_design_storm": False,
+    # aiswmm storm verb (legacy shape library) wrapped as a typed LLM-facing
+    # tool — writes a SWMM .dat timeseries, so not read-only.
+    "generate_storm_shape": False,
     # v0.7.1: aiswmm map verb wrapped as a typed LLM-facing tool —
     # writes a PNG, so not read-only.
     "map_run": False,
