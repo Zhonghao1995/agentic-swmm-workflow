@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Iterable
 
 from agentic_swmm.runtime.registry import enabled_startup_memory_files
@@ -25,7 +26,25 @@ WARM_INTRO_TEMPLATE = (
 )
 
 
-def openai_planner_prompt(extras: Iterable[str] | None = None) -> str:
+def openai_planner_prompt(
+    extras: Iterable[str] | None = None,
+    *,
+    trace_path: Path | None = None,
+) -> str:
+    """Build the full system prompt for the OpenAI planner.
+
+    Parameters
+    ----------
+    extras:
+        Additional blocks to append after the base prompt and the
+        startup memory section (e.g. ``<project-facts>`` and
+        ``<previous-session>`` injected by :func:`bootstrap_system_prompt`).
+    trace_path:
+        Optional path to ``agent_trace.jsonl``.  When provided, a
+        ``memory_context_budget`` event is appended recording which
+        startup memory entries were excluded by the character budget.
+        Pass ``None`` (the default) to skip the event (e.g. in tests).
+    """
     base = (
         "You are the Agentic SWMM tool-calling planner. "
         "Plan and execute with only the provided function tools. "
@@ -61,7 +80,7 @@ def openai_planner_prompt(extras: Iterable[str] | None = None) -> str:
         "For final user-facing answers, do not dump the tool trace. Use a compact result card: outcome, key metrics or checks, main artifacts, evidence boundary, and next recommended action. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
-    memory = _startup_memory_context()
+    memory = _startup_memory_context(trace_path=trace_path)
     sections = [base]
     if memory:
         sections.append(memory)
@@ -73,21 +92,60 @@ def openai_planner_prompt(extras: Iterable[str] | None = None) -> str:
     return "\n\n".join(sections)
 
 
-def _startup_memory_context(max_chars: int = 6000) -> str:
-    sections: list[str] = []
-    remaining = max_chars
+def _startup_memory_context(
+    *,
+    trace_path: Path | None = None,
+) -> str:
+    """Load startup memory files and apply the context character budget.
+
+    The character budget is read from the user config
+    (``memory.context_budget_chars``, default 4,000).  Files that do
+    not fit within the budget are excluded from the injected block; a
+    one-line availability note is appended so the model knows on-demand
+    recall tools can fetch the rest.
+
+    A ``memory_context_budget`` event is written to ``trace_path``
+    (``agent_trace.jsonl``) when ``trace_path`` is not ``None`` and at
+    least one file was processed.
+    """
+    from agentic_swmm.config import load_config
+    from agentic_swmm.memory.context_budget import (
+        DEFAULT_CONTEXT_BUDGET_CHARS,
+        MemoryEntry,
+        apply_context_budget,
+        emit_budget_trace_event,
+    )
+
+    cfg = load_config()
+    raw_budget = cfg.get("memory.context_budget_chars", DEFAULT_CONTEXT_BUDGET_CHARS)
+    try:
+        budget = int(raw_budget)
+    except (TypeError, ValueError):
+        budget = DEFAULT_CONTEXT_BUDGET_CHARS
+
+    entries: list[MemoryEntry] = []
     for path in enabled_startup_memory_files():
         if not path.exists() or not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="ignore").strip()
         header = f"---\nStartup memory: {path.name}\n---\n"
         chunk = header + text
-        if len(chunk) > remaining:
-            if remaining > len(header) + 200:
-                sections.append(header + text[: remaining - len(header)].rstrip() + "\n[truncated]")
-            break
-        sections.append(chunk)
-        remaining -= len(chunk)
-    if not sections:
+        entries.append(MemoryEntry(id=f"startup/{path.name}", text=chunk))
+
+    if not entries:
         return ""
-    return "Use this startup memory as project identity and operating context:\n\n" + "\n\n".join(sections)
+
+    result = apply_context_budget(entries, budget=budget)
+
+    if trace_path is not None:
+        try:
+            emit_budget_trace_event(trace_path, result, budget_chars=budget)
+        except Exception:
+            pass  # best-effort: trace failure must not block the prompt
+
+    if not result.injected_text.strip():
+        return ""
+    return (
+        "Use this startup memory as project identity and operating context:\n\n"
+        + result.injected_text
+    )

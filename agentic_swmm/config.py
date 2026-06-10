@@ -80,6 +80,18 @@ def default_values() -> dict[str, Any]:
         "runtime": {
             "context_max_chars": 20000,
         },
+        "memory": {
+            # Hard character cap on the combined injected memory block at
+            # session start.  Entries that do not fit are excluded from the
+            # injection but remain accessible via on-demand recall tools.
+            # Set to 0 to disable the cap (unlimited).
+            "context_budget_chars": 4000,
+            # Optional recency weighting for recall ranking.  When > 0,
+            # each result's score is multiplied by 0.5 ** (age_days /
+            # half_life_days) so older entries rank lower.  Default 0
+            # means the weighting is disabled and ranking is unchanged.
+            "recall_half_life_days": 0,
+        },
     }
 
 

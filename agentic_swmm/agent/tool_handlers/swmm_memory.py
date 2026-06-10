@@ -122,6 +122,15 @@ def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     corpus_path = index_dir / "corpus.jsonl"
     lessons_path = _lessons_path()
 
+    # Read the optional recency weighting from config.  Default 0 = disabled.
+    try:
+        from agentic_swmm.config import load_config as _load_config
+
+        _cfg = _load_config()
+        _half_life = float(_cfg.get("memory.recall_half_life_days", 0) or 0)
+    except Exception:
+        _half_life = 0.0
+
     try:
         results = _recall_search(
             query,
@@ -129,6 +138,7 @@ def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             index_dir=index_dir,
             corpus_path=corpus_path,
             lessons_path=lessons_path,
+            half_life_days=_half_life,
         )
     except Exception as exc:
         return _failure(call, f"recall_memory_search failed: {exc}")
