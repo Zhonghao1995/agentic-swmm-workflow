@@ -91,6 +91,22 @@ python3 skills/swmm-report/scripts/generate_report.py \
 # Output: Report written to: /tmp/swmm_report_smoke.docx
 ```
 
+The generated `.docx` follows engineering-report conventions:
+
+- **Pure black text**: `Normal`, `Heading 1`, `Heading 2`, and `Title` styles all use
+  `RGB(0,0,0)` — no Word default blue or grey.
+- **Numbered body sections**: `1 Run Summary`, `2 Model Description`, … assigned
+  automatically from template order. The cover title is unnumbered.
+- **Table captions above each table**: `Table N — <text>` with bold `Table N` prefix,
+  numbering sequential across the whole document.
+- **Narrative paragraph below each table**: a short explanatory paragraph stating what
+  the table shows and where the numbers come from (text sourced from template).
+- **Figure captions below each figure**: `Figure N — <stem>`, with a separate counter
+  from the table counter.
+- **Page number in footer**: right-aligned Word `PAGE` field inserted via OOXML
+  (`fldChar begin` + `instrText " PAGE "` + `fldChar end`) so Word/LibreOffice renders
+  a live page number.
+
 ---
 
 ## Template override
