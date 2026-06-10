@@ -82,7 +82,7 @@ aiswmm has four memory stores; understand the difference before writing into any
 | --- | --- | --- | --- |
 | Session history | `runs/sessions.sqlite` | **Automatic** on every interactive event | `recall_session_history` lookups across past Sessions |
 | Modeling memory (parametric / lessons / citations / storms / benchmarks) | `memory/modeling-memory/*.{jsonl,yaml}` | **Manual** — only via explicit verbs: `aiswmm gap promote-to-case`, `aiswmm cite`, `aiswmm calibration accept` | Cross-Session domain knowledge |
-| Application outcome log | `memory/modeling-memory/memory_outcome_events.jsonl` | **Automatic** — append-only, written only by the M2 post-audit hook | Application outcome provenance: which memory entries produced good runs and which did not; source for per-entry health scores (`aiswmm memory health`) |
+| Application outcome log | `memory/modeling-memory/memory_outcome_events.jsonl` | **Automatic** — append-only, written only by the M2 post-audit hook; **also** appended by `aiswmm memory archive/restore` (source: "cli") | Application outcome provenance: which memory entries produced good runs and which did not; source for per-entry health scores (`aiswmm memory health`) and health tiers (active/watch/archived) |
 | RAG memory | `memory/rag-memory/` | **Manual** — explicit add | Research-style retrieval (PRD-07) |
 | Run-local memory | inside each `runs/<date>/<id>/` | **Automatic** per Run | Provenance and audit artifacts for one Run |
 
@@ -184,7 +184,7 @@ A classified user goal extracted from a prompt. Categories: `wants_demo`, `wants
 1. **No tool runs without a permission check.** The profile auto-approves read-only tools; everything else prompts the user. This is the user's primary safety surface.
 2. **Provenance is append-only.** `experiment_provenance.json` is written once per audit pass; never mutated. Schema changes require a new `schema_version`.
 3. **The runner manifest is the source of truth for a Run's metrics.** Anyone needing peak / continuity reads `manifest.json` — do not re-parse the `.rpt`.
-4. **Modeling memory only mutates via explicit verbs.** No agent action writes to `memory/modeling-memory/` autonomously. (Auto-distillation is an open research direction — see private PRD-12.)
+4. **Modeling memory only mutates via explicit verbs.** No agent action writes to `memory/modeling-memory/` autonomously. Explicit mutation verbs include: `aiswmm gap promote-to-case`, `aiswmm cite`, `aiswmm calibration accept`, `aiswmm memory archive`, `aiswmm memory restore`. Read-time health-tier filtering is NOT a mutation — the live store is unchanged until the user explicitly runs `archive`. (Auto-distillation is an open research direction — see private PRD-12.)
 5. **No `Co-Authored-By: Claude` trailer in any commit.** Forward-only — do not rewrite history. See global `~/.claude/CLAUDE.md`.
 6. **Reproducibility is byte-level for SWMM execution.** The same INP must produce the same `model.out` byte-for-byte across macOS / Linux / Docker. Validated via `aiswmm tecnopolo` benchmark + the `tecnopolo` Docker entrypoint. Do not introduce nondeterminism in the runner skill.
 7. **The convergence tools accept out-of-repo `run_dir` paths.** `run_swmm_inp`, `plot_run`, `map_run`, and `audit_run` all accept an arbitrary absolute `run_dir` — the synth path (`synth_swmm_from_bbox`) writes to user-chosen directories. The run manifest is the contract; the repo root is not. Do not re-introduce a repo-sandbox check on `run_dir` in these tools.

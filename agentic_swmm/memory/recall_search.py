@@ -47,6 +47,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+# Lazily imported: agentic_swmm.memory.health_tiers  (PR 4)
+# Lazily imported: agentic_swmm.memory.memory_outcomes  (PR 3)
+
 
 _STALENESS_THRESHOLD_SECONDS = 60.0
 
@@ -218,6 +221,8 @@ def recall_search(
     retriever: str = "hybrid",
     half_life_days: float = 0.0,
     now_fn: Callable[[], float] = time.time,
+    memory_dir: Path | None = None,
+    include_archived: bool = False,
 ) -> list[dict[str, Any]]:
     """Return up to ``top_k`` similar historical entries for ``query``.
 
@@ -249,13 +254,27 @@ def recall_search(
         Callable returning the current POSIX time.  Defaults to
         ``time.time``.  Pass a fixed lambda in tests to get
         deterministic age calculations.
+    memory_dir:
+        Optional path to ``memory/modeling-memory/``.  When provided,
+        health scores are looked up in the outcome ledger, scores are
+        multiplied by the entry's health score, and archived-tier entries
+        are excluded from results unless ``include_archived`` is True.
+        When ``None``, no health-tier filtering is applied (pre-PR-4
+        behaviour).
+    include_archived:
+        When True, archived-tier entries are included in results (labelled
+        with ``health_tier: "archived"``).  Only meaningful when
+        ``memory_dir`` is provided.  Defaults to False.
 
     Returns
     -------
     list[dict[str, Any]]
         Result dicts with at least ``text``, ``run_id``, ``source_path``,
         ``case_name``, ``score``, ``matched_terms``, ``schema_version``,
-        ``layer``, and (if the corpus is stale) ``warning``.
+        ``layer``, and (if the corpus is stale) ``warning``.  When
+        ``memory_dir`` is provided, each result also carries
+        ``health_score`` and ``health_tier``.  Watch-tier results carry a
+        ``health_caution`` field with a machine-readable message.
 
     Raises
     ------
@@ -331,8 +350,89 @@ def recall_search(
     # Apply the optional recency weighting (no-op when half_life_days <= 0).
     cleaned = _apply_recency_weight(cleaned, half_life_days=half_life_days, now_fn=now_fn)
 
+    # Health-tier integration (PR 4) — only when memory_dir is provided.
+    if memory_dir is not None:
+        cleaned = _apply_health_tiers(
+            cleaned,
+            memory_dir=Path(memory_dir),
+            include_archived=include_archived,
+        )
+
     # Attach staleness warning to the (now re-ranked) first entry.
     if warning and cleaned:
         cleaned[0]["warning"] = warning
 
     return cleaned
+
+
+def _apply_health_tiers(
+    results: list[dict[str, Any]],
+    *,
+    memory_dir: Path,
+    include_archived: bool,
+) -> list[dict[str, Any]]:
+    """Apply health-tier scoring, filtering, and caution labels.
+
+    For each result:
+    1. Derive the memory id from the result's ``run_id`` (``pm-<run_id>``).
+    2. Look up the health score and tier from the outcome ledger.
+    3. Multiply the result's ``score`` by the health score.
+    4. Exclude archived-tier results unless ``include_archived`` is True.
+    5. Add ``health_score``, ``health_tier`` fields; add
+       ``health_caution`` for watch-tier entries.
+
+    Entries with no ledger events carry the start score (0.70) as their
+    multiplier — equal multiplier preserves ordering among event-less
+    entries (neutrality lock-in).
+
+    Operates on ``results`` in-place and re-sorts by score descending.
+    """
+    try:
+        from agentic_swmm.memory.health_tiers import (
+            health_tier,
+            recall_score,
+            watch_caution_message,
+        )
+        from agentic_swmm.memory.memory_outcomes import (
+            OUTCOME_LEDGER_FILENAME,
+            events_for_memory,
+            load_outcome_events,
+        )
+    except Exception:
+        # If health_tiers is unavailable (e.g. during install), skip silently.
+        return results
+
+    ledger_path = memory_dir / OUTCOME_LEDGER_FILENAME
+    all_events = load_outcome_events(ledger_path)
+
+    filtered: list[dict[str, Any]] = []
+    for result in results:
+        run_id = result.get("run_id")
+        if run_id:
+            memory_id = f"pm-{run_id}"
+        else:
+            # No run_id — cannot derive health; keep the result unmodified.
+            filtered.append(result)
+            continue
+
+        ev = events_for_memory(all_events, memory_id)
+        tier = health_tier(memory_id, ev)
+        h_score = recall_score(1.0, memory_id, ev)  # normalised health multiplier
+
+        if tier == "archived" and not include_archived:
+            continue  # excluded from default recall
+
+        # Multiply existing score by health score.
+        original_score = result.get("score") or 0.0
+        result["score"] = original_score * h_score
+        result["health_score"] = round(h_score, 4)
+        result["health_tier"] = tier
+
+        if tier == "watch":
+            result["health_caution"] = watch_caution_message(memory_id, ev)
+
+        filtered.append(result)
+
+    # Re-sort by (updated) score descending.
+    filtered.sort(key=lambda e: (e.get("score") or 0.0), reverse=True)
+    return filtered
