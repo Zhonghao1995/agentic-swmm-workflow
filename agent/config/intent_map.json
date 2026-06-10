@@ -214,6 +214,36 @@
       "preferred_tools": ["retrieve_memory"],
       "stop_conditions": ["empty query"],
       "next_user_prompt": "What question should I ask the modeling memory?"
+    },
+    {
+      "id": "water-quality",
+      "skills": ["swmm-water-quality"],
+      "keywords": ["water quality", "pollutant", "washoff", "buildup", "wq", "loads", "tss", "water-quality-json", "pollutant load", "水质", "污染物", "冲刷", "积累"],
+      "required_inputs": ["rpt_path"],
+      "optional_inputs": ["water_quality_json"],
+      "preferred_tools": ["read_wq_loads"],
+      "stop_conditions": ["missing rpt_path"],
+      "next_user_prompt": "Provide the path to the .rpt file from a completed SWMM run."
+    },
+    {
+      "id": "design-review",
+      "skills": ["swmm-design-review"],
+      "keywords": ["review", "compliance", "规范", "合规", "审查", "design check", "code check", "velocity check", "surcharge", "pipe full", "freeboard", "gb50014", "gb 50014", "return period", "验收", "检查", "排水标准", "设计审查"],
+      "required_inputs": ["run_dir"],
+      "optional_inputs": ["rules", "out_dir"],
+      "preferred_tools": ["review_run"],
+      "stop_conditions": ["missing run_dir", "run has no manifest.json"],
+      "next_user_prompt": "Provide the run directory to review, and optionally a custom rulebook YAML."
+    },
+    {
+      "id": "report",
+      "skills": ["swmm-report"],
+      "keywords": ["report", "deliverable", "word", "docx", "报告", "交付", "export", "client", "导出"],
+      "required_inputs": ["run_dir"],
+      "optional_inputs": ["out", "template", "title"],
+      "preferred_tools": ["generate_report"],
+      "stop_conditions": ["missing run_dir", "run not yet audited (no 09_audit/)"],
+      "next_user_prompt": "Provide the audited run directory to generate the report from."
     }
   ]
 }

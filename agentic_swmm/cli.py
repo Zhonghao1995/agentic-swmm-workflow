@@ -11,7 +11,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, run, setup, skill, storm, trace, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, report, review, run, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -76,6 +76,10 @@ COMMANDS = {
     # Expert-only commands (PRD-Z). Listed here so the default-router
     # does not punt them to the agent; the agent itself has no
     # ToolSpec entries for these names.
+    # Design-review / code-compliance checker (PRD_design_review.md).
+    "review",
+    # Client-deliverable Word report (PRD_report_export.md).
+    "report",
     "calibration",
     "pour_point",
     "thresholds",
@@ -183,6 +187,10 @@ def build_parser() -> argparse.ArgumentParser:
     calibrate.register(subparsers)
     # PRD-08 Phase B (#31) — trace pretty-printer for a run directory.
     trace.register(subparsers)
+    # Design-review / code-compliance checker (PRD_design_review.md).
+    review.register(subparsers)
+    # Client-deliverable Word report (PRD_report_export.md).
+    report.register(subparsers)
     # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
     # so the help renders an "expert-only" grouping naturally; none of
     # them is registered as an agent ToolSpec or as an MCP tool.

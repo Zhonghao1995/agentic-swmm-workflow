@@ -319,7 +319,7 @@ def _build_tools() -> dict[str, ToolSpec]:
     specs = [
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}}, ["run_dir"]), _audit_run_tool),
         ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
-        ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
+        ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "water_quality_json": {"type": "string", "description": "Optional path to a WQ config JSON enabling pollutant buildup/washoff simulation ([POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/[LOADINGS] sections)."}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
         # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
         # snippet that pairs with a formatted timeseries.
         ToolSpec(
@@ -715,6 +715,60 @@ def _build_tools() -> dict[str, ToolSpec]:
             _retrieve_memory_tool,
             is_read_only=True,
         ),
+        # --- Water quality -----------------------------------------------
+        # PRD_water_quality.md PR3: read_wq_loads ToolSpec.
+        # Direct-subprocess handler (no MCP); mirrors retrieve_memory pattern.
+        # is_read_only=True: extract_wq_loads.py only reads the rpt and prints
+        # JSON to stdout — it never writes files in its default (no --out-json) mode.
+        ToolSpec(
+            "read_wq_loads",
+            "Read pollutant load summaries from a completed run's .rpt file; returns wq_present=false for non-WQ runs.",
+            _object(
+                {
+                    "rpt_path": {"type": "string", "description": "Path to the SWMM .rpt file from a completed run."},
+                },
+                ["rpt_path"],
+            ),
+            _read_wq_loads_tool,
+            is_read_only=True,
+        ),
+        # --- Design review -----------------------------------------------
+        # PRD_design_review.md PR2: review_run ToolSpec.
+        # Direct handler; writes 09_review/ artifacts → is_read_only=False.
+        ToolSpec(
+            "review_run",
+            "Run the deterministic design-review rule checklist against a completed SWMM run; reports findings, never certifies compliance.",
+            _object(
+                {
+                    "run_dir": {"type": "string", "description": "Absolute path to the run directory."},
+                    "rules": {"type": "string", "description": "Path to a custom YAML rulebook. Omit to use the bundled GB 50014 template."},
+                    "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/09_review/)."},
+                },
+                ["run_dir"],
+            ),
+            _review_run_tool,
+            is_read_only=False,
+        ),
+        # --- Report export -----------------------------------------------
+        # PRD_report_export.md PR2: generate_report ToolSpec.
+        # Direct handler; writes .docx deliverable → is_read_only=False.
+        ToolSpec(
+            "generate_report",
+            "Assemble a client-deliverable Word report (.docx) from an audited run directory. "
+            "Reads manifest.json, experiment_provenance.json, model_diagnostics.json, comparison.json, "
+            "and any PNG figures — never re-runs SWMM. Output path defaults to <run_dir>/report.docx.",
+            _object(
+                {
+                    "run_dir": {"type": "string", "description": "Absolute path to the audited run directory."},
+                    "out": {"type": "string", "description": "Output .docx path (default: <run_dir>/report.docx)."},
+                    "template": {"type": "string", "description": "Path to a template YAML; omit to use the default template."},
+                    "title": {"type": "string", "description": "Override the cover title text."},
+                },
+                ["run_dir"],
+            ),
+            _generate_report_tool,
+            is_read_only=False,
+        ),
         # ---------------------------------------------------------------
         # swmm-calibration tools (dark-MCP registration — PR 1, issue #246)
         # All is_read_only=False: calibration runs SWMM and writes files.
@@ -1017,6 +1071,20 @@ from agentic_swmm.agent.tool_handlers.runtime_ops import (  # noqa: E402,F401
 # Re-exported here so import paths stay stable.
 from agentic_swmm.agent.tool_handlers.demo import (  # noqa: E402,F401
     _demo_acceptance_tool,
+)
+
+
+# Water-quality / design-review / report-export handlers
+# (PRD_water_quality.md PR3, PRD_design_review.md PR2, PRD_report_export.md PR2).
+# All three are direct-subprocess handlers (not MCP-routed).
+from agentic_swmm.agent.tool_handlers.swmm_wq import (  # noqa: E402,F401
+    _read_wq_loads_tool,
+)
+from agentic_swmm.agent.tool_handlers.swmm_review import (  # noqa: E402,F401
+    _review_run_tool,
+)
+from agentic_swmm.agent.tool_handlers.swmm_report import (  # noqa: E402,F401
+    _generate_report_tool,
 )
 
 

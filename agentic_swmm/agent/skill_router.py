@@ -58,6 +58,11 @@ _DETERMINISTIC_BINDINGS: dict[str, str] = {
     "swmm_sensitivity_oat": "swmm-uncertainty",
     "swmm_sensitivity_sobol": "swmm-uncertainty",
     "swmm_uncertainty_source_decomposition": "swmm-uncertainty",
+    # PRD_water_quality.md PR3 / PRD_design_review.md PR2 / PRD_report_export.md PR2
+    # All three are direct-subprocess handlers (not MCP-routed).
+    "read_wq_loads": "swmm-water-quality",
+    "review_run": "swmm-design-review",
+    "generate_report": "swmm-report",
 }
 
 

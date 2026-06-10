@@ -73,6 +73,13 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "swmm_sensitivity_oat": False,
     "swmm_sensitivity_sobol": False,
     "swmm_uncertainty_source_decomposition": False,
+    # PRD_water_quality.md PR3: read_wq_loads shells out to extract_wq_loads.py
+    # (stdout-JSON mode only — no file writes). is_read_only=True.
+    "read_wq_loads": True,
+    # PRD_design_review.md PR2: review_run writes 09_review/ artifacts.
+    "review_run": False,
+    # PRD_report_export.md PR2: generate_report writes .docx deliverable.
+    "generate_report": False,
     # Pure read / inspect.
     "capabilities": True,
     "git_diff": True,
