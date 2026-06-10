@@ -100,6 +100,8 @@ Permission decisions are surfaced to the user as `[Y/n]` prompts in the digest o
 
 The immutable record of "what happened in a Run". Lives in `experiment_provenance.json` produced by the audit skill. Never mutated after writing — the file format carries a `schema_version` so older Runs remain readable when the schema evolves.
 
+The provenance includes a `memories_applied` field (P0-3) listing the ids of any modeling-memory entries whose parameters were **programmatically** applied to the run's inputs. Always present — empty list when no memory was applied. Ids use a namespaced scheme: `cm-<run_id>` for calibration-memory entries, `pm-<run_id>` for parametric-memory entries. When memory influences a run only through the LLM reading recalled content in context (no deterministic parameter injection), no id is stamped — that boundary is honest provenance, not a gap.
+
 ### Audit
 
 The post-run pipeline that consolidates a Run's artifacts (`rpt`, `out`, `manifest`, `stdout`, `stderr`) into:

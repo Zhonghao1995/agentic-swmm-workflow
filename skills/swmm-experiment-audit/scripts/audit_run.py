@@ -1085,6 +1085,24 @@ def collect_run(
     if status == "unknown":
         warnings.append("Run status is unknown because no complete QA or runner manifest was found.")
 
+    # P0-3: collect ``memories_applied`` from whichever manifest layer recorded
+    # it.  The swmm-runner script writes it into its ``manifest.json`` (the
+    # ``runner_manifest`` or ``top_manifest`` for simple direct runs).  We
+    # check the runner manifest first (most authoritative), then the top-level
+    # manifest as a fallback for pipeline runs where the top manifest
+    # aggregates the runner output.  An absent field is treated as ``[]`` so
+    # pre-existing runs (without the field) remain backward-compatible.
+    def _collect_memories_applied() -> list[str]:
+        for source in (runner_manifest, top_manifest):
+            if not isinstance(source, dict):
+                continue
+            value = source.get("memories_applied")
+            if isinstance(value, list):
+                return [str(v) for v in value if v]
+        return []
+
+    memories_applied = _collect_memories_applied()
+
     provenance = {
         "schema_version": "1.1",
         "generated_by": "swmm-experiment-audit",
@@ -1119,6 +1137,10 @@ def collect_run(
         "uncertainty_ensemble": uncertainty_ensemble,
         "qa": qa,
         "warnings": warnings,
+        # Additive field (P0-3): which memory entries were programmatically
+        # applied to this run's inputs.  Always present — ``[]`` means no
+        # memory was applied.  Never absent so Phase 1's ledger can rely on it.
+        "memories_applied": memories_applied,
         "raw_sources": {
             "top_manifest": relpath(top_manifest_path, repo_root) if top_manifest_path.exists() else None,
             "acceptance_report": relpath(acceptance_report_path, repo_root) if acceptance_report_path.exists() else None,

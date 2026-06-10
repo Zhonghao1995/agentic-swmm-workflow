@@ -497,6 +497,8 @@ class TransferRecommendationDataclassTests(unittest.TestCase):
                 "recommended_design_storm",
                 "recommended_manning_n",
                 "known_failure_patterns",
+                # P0-3 provenance field.
+                "memory_id",
             },
         )
         self.assertEqual(d["objective_name"], "NSE")

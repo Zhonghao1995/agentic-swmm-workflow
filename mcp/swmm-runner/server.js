@@ -43,6 +43,7 @@ const RunArgs = z.object({
   node: z.string().optional(),
   rptName: z.string().optional(),
   outName: z.string().optional(),
+  memoriesApplied: z.array(z.string()).optional(),
 });
 const RptNodeArgs = z.object({ rpt: z.string(), node: z.string() });
 
@@ -84,7 +85,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             runDir: { type: "string" },
             node: { type: "string", description: "Optional. If omitted, the first [OUTFALLS] entry of the .inp is used." },
             rptName: { type: "string" },
-            outName: { type: "string" }
+            outName: { type: "string" },
+            memoriesApplied: {
+              type: "array",
+              items: { type: "string" },
+              description: "Optional. List of modeling-memory entry ids whose parameters were programmatically applied to this run's inputs (e.g. [\"cm-abc123\"]). Recorded in manifest.json under 'memories_applied' for auditability. Omit when no memory was applied."
+            }
           },
           required: ["inp", "runDir"]
         }
@@ -142,6 +148,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const args = ["run", "--gate", "--inp", a.inp, "--run-dir", a.runDir, "--node", node];
     if (a.rptName) args.push("--rpt-name", a.rptName);
     if (a.outName) args.push("--out-name", a.outName);
+    if (a.memoriesApplied && a.memoriesApplied.length > 0) {
+      args.push("--memories-applied", JSON.stringify(a.memoriesApplied));
+    }
     const stdout = await runPy(args);
     return { content: [{ type: "text", text: stdout }] };
   }
