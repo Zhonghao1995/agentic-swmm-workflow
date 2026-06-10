@@ -139,6 +139,10 @@ def _synth_swmm_from_bbox_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         if isinstance(rain_file_raw, str) and rain_file_raw.strip()
         else None
     )
+    config_overrides_raw = call.args.get("config_overrides")
+    if config_overrides_raw is not None and not isinstance(config_overrides_raw, dict):
+        return _failure(call, "config_overrides must be a JSON object (dict), not a " + type(config_overrides_raw).__name__)
+    config_overrides = config_overrides_raw  # None or dict
 
     # Lazy import — keeps the agent's import graph light when the
     # [anywhere] extra is not installed. The integration wrapper itself
@@ -157,6 +161,7 @@ def _synth_swmm_from_bbox_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             refresh_raw=refresh_raw,
             use_upstream_defaults=upstream_defaults,
             rain_file=rain_file,
+            config_overrides=config_overrides,
         )
     except SynthRunError as exc:
         payload = _failure(
