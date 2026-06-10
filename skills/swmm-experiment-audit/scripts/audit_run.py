@@ -475,6 +475,40 @@ def normalize_continuity(
     }
 
 
+def parse_wq_loads_from_rpt(rpt_path: Path | None) -> dict[str, Any] | None:
+    """Extract water-quality load summaries from a SWMM .rpt file.
+
+    Uses ``skills/swmm-water-quality/scripts/extract_wq_loads.py`` via
+    importlib (same pattern as the source-decomposition hook) so the audit
+    script stays self-contained.  Returns ``None`` when the rpt is absent,
+    when WQ is not enabled, or when the helper script is unavailable.
+    """
+    if not rpt_path or not rpt_path.exists():
+        return None
+    helper = REPO_ROOT / "skills" / "swmm-water-quality" / "scripts" / "extract_wq_loads.py"
+    if not helper.is_file():
+        return None
+    import importlib.util as _ilu
+
+    spec = _ilu.spec_from_file_location("_extract_wq_loads_hook", helper)
+    if spec is None or spec.loader is None:
+        return None
+    module = _ilu.module_from_spec(spec)
+    sys.modules["_extract_wq_loads_hook"] = module
+    try:
+        spec.loader.exec_module(module)
+        rpt_text = rpt_path.read_text(encoding="utf-8", errors="replace")
+        result = module.extract_wq_loads(rpt_text)
+    except Exception as exc:  # noqa: BLE001
+        print(f"warning: extract_wq_loads hook failed: {exc}", file=sys.stderr)
+        return None
+    finally:
+        sys.modules.pop("_extract_wq_loads_hook", None)
+    if not isinstance(result, dict) or not result.get("wq_present"):
+        return None
+    return result
+
+
 def parse_inp_sections(inp_path: Path | None) -> dict[str, list[list[str]]]:
     if not inp_path or not inp_path.exists():
         return {}
@@ -1014,6 +1048,7 @@ def collect_run(
         runner_manifest=runner_manifest,
         continuity_json=continuity_qa,
     )
+    wq_loads = parse_wq_loads_from_rpt(rpt_path)
     model_diagnostics = build_model_diagnostics(
         inp_path=inp_path,
         rpt_path=rpt_path,
@@ -1078,6 +1113,7 @@ def collect_run(
             "continuity_error": continuity_metric,
             "swmm_return_code": runner_manifest.get("return_code"),
             "builder_counts": builder_manifest.get("counts"),
+            "wq_loads": wq_loads,
         },
         "model_diagnostics": model_diagnostics,
         "uncertainty_ensemble": uncertainty_ensemble,
@@ -1334,6 +1370,74 @@ def render_run_results_section(runner_manifest: dict[str, Any] | None) -> str:
     )
 
 
+def render_pollutant_loads_section(wq_loads: dict[str, Any] | None) -> str:
+    """Render the ``## Pollutant Loads`` markdown block for WQ-enabled runs.
+
+    Returns ``""`` for non-WQ runs (zero behavioral change for hydrology-only).
+    Surfaces:
+    - Continuity error per pollutant (from Runoff Quality Continuity and
+      Quality Routing Continuity sections).
+    - Top subcatchment washoff loads table.
+    - Outfall pollutant load table.
+    """
+    if not wq_loads or not wq_loads.get("wq_present"):
+        return ""
+
+    lines: list[str] = ["## Pollutant Loads", ""]
+    pollutants = wq_loads.get("pollutants") or []
+    lines.append(f"Water quality enabled. Pollutants: {', '.join(pollutants) or 'none'}.")
+    lines.append("")
+
+    # Continuity errors
+    runoff_cont = wq_loads.get("runoff_quality_continuity") or []
+    routing_cont = wq_loads.get("quality_routing_continuity") or []
+
+    def _get_continuity_error(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        for row in rows:
+            if row.get("metric") == "Continuity Error (%)":
+                return row.get("values") or {}
+        return {}
+
+    runoff_errors = _get_continuity_error(runoff_cont)
+    routing_errors = _get_continuity_error(routing_cont)
+
+    if runoff_errors or routing_errors:
+        lines.append("### WQ Continuity Errors")
+        lines.append("")
+        headers = ["Section"] + list(pollutants)
+        rows_cont: list[list[Any]] = []
+        if runoff_errors:
+            rows_cont.append(["Runoff Quality"] + [runoff_errors.get(p, "—") for p in pollutants])
+        if routing_errors:
+            rows_cont.append(["Quality Routing"] + [routing_errors.get(p, "—") for p in pollutants])
+        lines.append(md_table(headers, rows_cont))
+        lines.append("")
+
+    # Top subcatchment washoff loads
+    washoff = wq_loads.get("subcatchment_washoff") or []
+    if washoff:
+        lines.append("### Subcatchment Washoff Loads (kg)")
+        lines.append("")
+        lines.append(md_table(["Subcatchment"] + list(pollutants),
+                               [[r["name"]] + [r.get("loads", {}).get(p, 0.0) for p in pollutants]
+                                for r in washoff]))
+        lines.append("")
+
+    # Outfall pollutant loads
+    outfall_loads = wq_loads.get("outfall_loads") or []
+    if outfall_loads and any(r.get("pollutant_loads") for r in outfall_loads):
+        lines.append("### Outfall Pollutant Loads (kg)")
+        lines.append("")
+        lines.append(md_table(
+            ["Outfall"] + list(pollutants),
+            [[r["node"]] + [r.get("pollutant_loads", {}).get(p, 0.0) for p in pollutants]
+             for r in outfall_loads],
+        ))
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 def render_note(
     provenance: dict[str, Any],
     comparison: dict[str, Any],
@@ -1493,6 +1597,13 @@ def render_note(
                 "",
             ]
         )
+
+    # WQ pollutant loads — zero behavioral change for non-WQ runs.
+    wq_loads = (provenance.get("metrics") or {}).get("wq_loads")
+    wq_section = render_pollutant_loads_section(wq_loads)
+    if wq_section:
+        sections.extend(wq_section.splitlines())
+        sections.append("")
 
     diagnostic_rows = []
     for item in model_diagnostics.get("diagnostics") or []:

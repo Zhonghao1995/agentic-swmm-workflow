@@ -69,6 +69,8 @@ data/Todcreek/**/*.png
 
 # Test fixtures that are purpose-built .rpt files (not real run outputs)
 !tests/fixtures/design_review/*.rpt
+!tests/fixtures/wq/*.rpt
+!tests/fixtures/wq/*.inp
 
 # Caches (pip, pytest, generic tool caches)
 .cache/
