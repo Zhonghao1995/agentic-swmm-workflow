@@ -9,6 +9,116 @@ import json
 from pathlib import Path
 from typing import Any
 
+# ---------------------------------------------------------------------------
+# Water quality validation helpers (inline — no external deps)
+# ---------------------------------------------------------------------------
+
+_WQ_UNITS = {"MG/L", "UG/L", "#/L"}
+_BUILDUP_FUNCS = {"POW", "EXP", "SAT"}  # EXT excluded in v1 (see validate_wq_config)
+_WASHOFF_FUNCS = {"EXP", "RC", "EMC"}
+_NORMALIZERS = {"AREA", "CURBLENGTH"}
+
+
+def validate_wq_config(wq: dict[str, Any], *, known_subcatchment_ids: set[str] | None = None) -> None:
+    """Validate cross-references and enum/range constraints in the WQ JSON.
+
+    Raises ValueError with a descriptive message on the first constraint
+    violation found.  Designed so that ``build_swmm_inp.py`` and the
+    standalone ``validate_wq_config.py`` script share identical logic
+    (the script imports/duplicates this function).
+
+    Parameters
+    ----------
+    wq:
+        Parsed water-quality config object (the JSON root dict).
+    known_subcatchment_ids:
+        Optional set of subcatchment IDs for referential checks on
+        [COVERAGES] and [LOADINGS].  Pass ``None`` to skip those checks.
+    """
+    subs = known_subcatchment_ids or set()
+    # ---- collect defined names ----
+    pollutant_names: set[str] = set()
+    for i, p in enumerate(wq.get("pollutants", []), start=1):
+        name = require_non_blank_string(p.get("name"), field="name", context=f"[POLLUTANTS] entry {i}")
+        if " " in name:
+            raise ValueError(f"[POLLUTANTS] entry {i} 'name' must not contain spaces, got '{name}'")
+        if name in pollutant_names:
+            raise ValueError(f"[POLLUTANTS] duplicate pollutant name '{name}'")
+        pollutant_names.add(name)
+        units_raw = require_non_blank_string(p.get("units"), field="units", context=f"[POLLUTANTS] entry {i}")
+        if units_raw.upper() not in _WQ_UNITS:
+            raise ValueError(f"[POLLUTANTS] entry {i} 'units' must be one of {sorted(_WQ_UNITS)}, got '{units_raw}'")
+
+    landuse_names: set[str] = set()
+    for i, lu in enumerate(wq.get("landuses", []), start=1):
+        name = require_non_blank_string(lu.get("name"), field="name", context=f"[LANDUSES] entry {i}")
+        if name in landuse_names:
+            raise ValueError(f"[LANDUSES] duplicate land-use name '{name}'")
+        landuse_names.add(name)
+
+    # ---- coverages ----
+    coverage_sums: dict[str, float] = {}
+    for i, cov in enumerate(wq.get("coverages", []), start=1):
+        ctx = f"[COVERAGES] entry {i}"
+        sub = require_non_blank_string(cov.get("subcatchment"), field="subcatchment", context=ctx)
+        lu = require_non_blank_string(cov.get("landuse"), field="landuse", context=ctx)
+        pct = require_number(cov.get("percent"), field="percent", context=ctx, min_value=0.0, max_value=100.0)
+        if subs and sub not in subs:
+            raise ValueError(f"{ctx} 'subcatchment' '{sub}' not found in subcatchments")
+        if lu not in landuse_names:
+            raise ValueError(f"{ctx} 'landuse' '{lu}' not defined in [LANDUSES]")
+        coverage_sums[sub] = coverage_sums.get(sub, 0.0) + pct
+    for sub, total in coverage_sums.items():
+        if total > 100.0 + 1e-9:
+            raise ValueError(f"[COVERAGES] subcatchment '{sub}' coverage percents sum to {total:.2f}, must be <= 100")
+
+    # ---- buildup ----
+    for i, bu in enumerate(wq.get("buildup", []), start=1):
+        ctx = f"[BUILDUP] entry {i}"
+        lu = require_non_blank_string(bu.get("landuse"), field="landuse", context=ctx)
+        pol = require_non_blank_string(bu.get("pollutant"), field="pollutant", context=ctx)
+        ft = require_non_blank_string(bu.get("func_type"), field="func_type", context=ctx).upper()
+        norm = require_non_blank_string(bu.get("normalizer", "AREA"), field="normalizer", context=ctx).upper()
+        if lu not in landuse_names:
+            raise ValueError(f"{ctx} 'landuse' '{lu}' not defined in [LANDUSES]")
+        if pol not in pollutant_names:
+            raise ValueError(f"{ctx} 'pollutant' '{pol}' not defined in [POLLUTANTS]")
+        if ft == "EXT":
+            raise ValueError(
+                f"{ctx} FuncType 'EXT' (external time series) is not supported in v1. "
+                "Use POW, EXP, or SAT."
+            )
+        if ft not in _BUILDUP_FUNCS:
+            raise ValueError(f"{ctx} 'func_type' must be one of {sorted(_BUILDUP_FUNCS)}, got '{ft}'")
+        if norm not in _NORMALIZERS:
+            raise ValueError(f"{ctx} 'normalizer' must be AREA or CURBLENGTH, got '{norm}'")
+
+    # ---- washoff ----
+    for i, wo in enumerate(wq.get("washoff", []), start=1):
+        ctx = f"[WASHOFF] entry {i}"
+        lu = require_non_blank_string(wo.get("landuse"), field="landuse", context=ctx)
+        pol = require_non_blank_string(wo.get("pollutant"), field="pollutant", context=ctx)
+        ft = require_non_blank_string(wo.get("func_type"), field="func_type", context=ctx).upper()
+        if lu not in landuse_names:
+            raise ValueError(f"{ctx} 'landuse' '{lu}' not defined in [LANDUSES]")
+        if pol not in pollutant_names:
+            raise ValueError(f"{ctx} 'pollutant' '{pol}' not defined in [POLLUTANTS]")
+        if ft not in _WASHOFF_FUNCS:
+            raise ValueError(f"{ctx} 'func_type' must be one of {sorted(_WASHOFF_FUNCS)}, got '{ft}'")
+        require_number(wo.get("sweep_removal", 0.0), field="sweep_removal", context=ctx, min_value=0.0, max_value=1.0)
+        require_number(wo.get("bmp_removal", 0.0), field="bmp_removal", context=ctx, min_value=0.0, max_value=1.0)
+
+    # ---- loadings ----
+    for i, lo in enumerate(wq.get("loadings", []), start=1):
+        ctx = f"[LOADINGS] entry {i}"
+        sub = require_non_blank_string(lo.get("subcatchment"), field="subcatchment", context=ctx)
+        pol = require_non_blank_string(lo.get("pollutant"), field="pollutant", context=ctx)
+        if subs and sub not in subs:
+            raise ValueError(f"{ctx} 'subcatchment' '{sub}' not found in subcatchments")
+        if pol not in pollutant_names:
+            raise ValueError(f"{ctx} 'pollutant' '{pol}' not defined in [POLLUTANTS]")
+        require_number(lo.get("init_buildup"), field="init_buildup", context=ctx, min_value=0.0)
+
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -1077,6 +1187,154 @@ def emit_vertices(network: dict[str, Any]) -> list[str]:
     return lines if count > 0 else []
 
 
+def emit_pollutants(wq: dict[str, Any]) -> list[str]:
+    """Emit [POLLUTANTS] section.
+
+    Column order (SWMM 5.2.4 Reference Manual Table A-4):
+      Name  Units  Cppt  Cgw  Crdii  Kdecay  SnowOnly  CoPollutant  CoFraction  InitConc
+
+    Engine-confirmed (PR1 smoke): InitConc column present in 5.2.4; CoFraction=0
+    accepted when CoPollutant=*.
+    """
+    lines = [
+        "[POLLUTANTS]",
+        ";;Name             Units  Cppt   Cgw    Crdii  Kdecay SnowOnly CoPollutant  CoFraction InitConc",
+    ]
+    for p in wq.get("pollutants", []):
+        name = str(p["name"])
+        units = str(p.get("units", "MG/L")).upper()
+        cppt = format_num(float(p.get("c_rain", 0.0)))
+        cgw = format_num(float(p.get("c_gw", 0.0)))
+        crdii = format_num(float(p.get("c_ii", 0.0)))
+        kdecay = format_num(float(p.get("k_decay_per_day", 0.0)))
+        snow_only = "YES" if p.get("snow_only", False) else "NO"
+        co_pol = str(p.get("co_pollutant", "*") or "*")
+        co_frac = format_num(float(p.get("co_fraction", 0.0)))
+        init_conc = format_num(float(p.get("init_conc", 0.0)))
+        lines.append(
+            f"{name:<18} {units:<6} {cppt:<6} {cgw:<6} {crdii:<6} {kdecay:<6} {snow_only:<8} "
+            f"{co_pol:<12} {co_frac:<10} {init_conc}"
+        )
+    return lines
+
+
+def emit_landuses(wq: dict[str, Any]) -> list[str]:
+    """Emit [LANDUSES] section.
+
+    Column order (SWMM 5.2.4 Reference Manual Table A-5):
+      Name  SweepInterval  Availability  LastSweep
+
+    Engine-confirmed (PR1 smoke): LastSweep required even when SweepInterval=0;
+    SweepRemoval lives on [WASHOFF] rows (not here) per SWMM 5.2.4.
+    """
+    lines = [
+        "[LANDUSES]",
+        ";;Name             SweepInterval Availability LastSweep",
+    ]
+    for lu in wq.get("landuses", []):
+        name = str(lu["name"])
+        sweep_interval = format_num(float(lu.get("sweep_interval", 0.0)))
+        availability = format_num(float(lu.get("availability", 0.0)))
+        last_sweep = format_num(float(lu.get("last_sweep", 0.0)))
+        lines.append(f"{name:<18} {sweep_interval:<13} {availability:<12} {last_sweep}")
+    return lines
+
+
+def emit_coverages(wq: dict[str, Any]) -> list[str]:
+    """Emit [COVERAGES] section.
+
+    Column order: Subcatchment  LandUse  Percent
+    """
+    lines = [
+        "[COVERAGES]",
+        ";;Subcatchment     LandUse          Percent",
+    ]
+    for cov in wq.get("coverages", []):
+        sub = str(cov["subcatchment"])
+        lu = str(cov["landuse"])
+        pct = format_num(float(cov.get("percent", 0.0)))
+        lines.append(f"{sub:<18} {lu:<16} {pct}")
+    return lines
+
+
+def emit_buildup(wq: dict[str, Any]) -> list[str]:
+    """Emit [BUILDUP] section.
+
+    Column order (SWMM 5.2.4 Reference Manual Table A-7):
+      LandUse  Pollutant  FuncType  C1  C2  C3  Normalizer
+
+    EXT func type is rejected at validation time (not emitted here).
+    """
+    lines = [
+        "[BUILDUP]",
+        ";;LandUse          Pollutant        FuncType  C1         C2         C3         Normalizer",
+    ]
+    for bu in wq.get("buildup", []):
+        lu = str(bu["landuse"])
+        pol = str(bu["pollutant"])
+        ft = str(bu.get("func_type", "EXP")).upper()
+        c1 = format_num(float(bu.get("c1", 0.0)))
+        c2 = format_num(float(bu.get("c2", 0.0)))
+        c3 = format_num(float(bu.get("c3", 0.0)))
+        norm = str(bu.get("normalizer", "AREA")).upper()
+        lines.append(
+            f"{lu:<18} {pol:<16} {ft:<9} {c1:<10} {c2:<10} {c3:<10} {norm}"
+        )
+    return lines
+
+
+def emit_washoff(wq: dict[str, Any]) -> list[str]:
+    """Emit [WASHOFF] section.
+
+    Column order (SWMM 5.2.4 Reference Manual Table A-8):
+      LandUse  Pollutant  FuncType  C1  C2  SweepRemoval  BMPRemoval
+
+    Engine-confirmed (PR1 smoke): SweepRemoval is on [WASHOFF] rows (not
+    [LANDUSES]) in SWMM 5.2.4.  BMPRemoval accepted; included for grammar
+    correctness.
+    """
+    lines = [
+        "[WASHOFF]",
+        ";;LandUse          Pollutant        FuncType  C1         C2         SweepRemoval BMPRemoval",
+    ]
+    for wo in wq.get("washoff", []):
+        lu = str(wo["landuse"])
+        pol = str(wo["pollutant"])
+        ft = str(wo.get("func_type", "EMC")).upper()
+        c1 = format_num(float(wo.get("c1", 0.0)))
+        c2 = format_num(float(wo.get("c2", 0.0)))
+        sweep = format_num(float(wo.get("sweep_removal", 0.0)))
+        bmp = format_num(float(wo.get("bmp_removal", 0.0)))
+        lines.append(
+            f"{lu:<18} {pol:<16} {ft:<9} {c1:<10} {c2:<10} {sweep:<12} {bmp}"
+        )
+    return lines
+
+
+def emit_loadings(wq: dict[str, Any]) -> list[str]:
+    """Emit [LOADINGS] section (optional).
+
+    Column order: Subcatchment  Pollutant  InitBuildup
+
+    Returns an empty list when the loadings array is absent or empty —
+    the section is legally omitted from the INP when no initial buildup
+    is required.
+    """
+    rows = wq.get("loadings", [])
+    if not rows:
+        return []
+    lines = [
+        "[LOADINGS]",
+        ";;Subcatchment     Pollutant        InitBuildup",
+    ]
+    for lo in rows:
+        sub = str(lo["subcatchment"])
+        pol = str(lo["pollutant"])
+        init = format_num(float(lo.get("init_buildup", 0.0)))
+        lines.append(f"{sub:<18} {pol:<16} {init}")
+    return lines
+
+
 def render_inp(
     *,
     title: str,
@@ -1089,6 +1347,7 @@ def render_inp(
     params_subareas: dict[str, dict[str, Any]],
     params_infiltration: dict[str, dict[str, Any]],
     network: dict[str, Any],
+    wq: dict[str, Any] | None = None,
 ) -> str:
     blocks: list[list[str]] = [
         emit_title(title),
@@ -1108,6 +1367,25 @@ def render_inp(
     vertices = emit_vertices(network)
     if vertices:
         blocks.insert(11, vertices)
+
+    # Insert WQ sections after [INFILTRATION] (index 5) when present.
+    # Insertion order: POLLUTANTS, LANDUSES, COVERAGES, BUILDUP, WASHOFF,
+    # then LOADINGS only when non-empty.  Each is inserted after the
+    # previous so the final block order is correct.
+    if wq is not None:
+        wq_loadings = emit_loadings(wq)
+        wq_blocks: list[list[str]] = [
+            emit_pollutants(wq),
+            emit_landuses(wq),
+            emit_coverages(wq),
+            emit_buildup(wq),
+            emit_washoff(wq),
+        ]
+        if wq_loadings:
+            wq_blocks.append(wq_loadings)
+        # Insert after [INFILTRATION] at index 5
+        for offset, wb in enumerate(wq_blocks):
+            blocks.insert(6 + offset, wb)
 
     return "\n\n".join("\n".join(block) for block in blocks) + "\n"
 
@@ -1173,6 +1451,11 @@ def main() -> None:
     ap.add_argument("--raingage-json", type=Path, default=None)
     ap.add_argument("--timeseries-text", type=Path, default=None)
     ap.add_argument("--config-json", type=Path, default=None)
+    ap.add_argument("--water-quality-json", type=Path, default=None,
+                    help="Optional path to water-quality config JSON.  When supplied, "
+                         "[POLLUTANTS], [LANDUSES], [COVERAGES], [BUILDUP], [WASHOFF], "
+                         "and (optionally) [LOADINGS] sections are emitted.  "
+                         "Without this flag the INP runs with Water Quality: NO.")
     ap.add_argument("--default-gage-id", default="RG1")
     ap.add_argument("--out-inp", type=Path, required=True)
     ap.add_argument("--out-manifest", type=Path, required=True)
@@ -1217,6 +1500,15 @@ def main() -> None:
             f"{summary}. Details: {json.dumps(validation, ensure_ascii=True)}"
         )
 
+    # ---- optional water quality sections ----
+    wq: dict[str, Any] | None = None
+    if args.water_quality_json is not None:
+        wq_raw = load_json(args.water_quality_json)
+        if not isinstance(wq_raw, dict):
+            raise ValueError(f"--water-quality-json must be a JSON object: {args.water_quality_json}")
+        validate_wq_config(wq_raw, known_subcatchment_ids=set(subcatchments))
+        wq = wq_raw
+
     inp_text = render_inp(
         title=title,
         options=options,
@@ -1228,6 +1520,7 @@ def main() -> None:
         params_subareas=params_subareas,
         params_infiltration=params_infiltration,
         network=network,
+        wq=wq,
     )
     write_text(args.out_inp, inp_text)
 
@@ -1275,6 +1568,14 @@ def main() -> None:
                 if args.config_json is not None
                 else None
             ),
+            "water_quality_json": (
+                {
+                    "path": str(args.water_quality_json),
+                    "sha256": sha256_file(args.water_quality_json),
+                }
+                if args.water_quality_json is not None
+                else None
+            ),
         },
         "counts": {
             "subcatchments": len(subcatchments),
@@ -1293,21 +1594,48 @@ def main() -> None:
         "validation_diagnostics": {
             "ok": True,
             "issue_counts": validation_issue_counts(validation),
-            "checked_sections": [
-                "OPTIONS",
-                "RAINGAGES",
-                "TIMESERIES",
-                "SUBCATCHMENTS",
-                "SUBAREAS",
-                "INFILTRATION",
-                "JUNCTIONS",
-                "OUTFALLS",
-                "CONDUITS",
-                "XSECTIONS",
-                "COORDINATES",
-                "VERTICES",
-            ],
+            "checked_sections": (
+                [
+                    "OPTIONS",
+                    "RAINGAGES",
+                    "TIMESERIES",
+                    "SUBCATCHMENTS",
+                    "SUBAREAS",
+                    "INFILTRATION",
+                    "JUNCTIONS",
+                    "OUTFALLS",
+                    "CONDUITS",
+                    "XSECTIONS",
+                    "COORDINATES",
+                    "VERTICES",
+                ]
+                + (
+                    [
+                        "POLLUTANTS",
+                        "LANDUSES",
+                        "COVERAGES",
+                        "BUILDUP",
+                        "WASHOFF",
+                        "LOADINGS",
+                    ]
+                    if wq is not None
+                    else []
+                )
+            ),
         },
+        "water_quality": (
+            {
+                "enabled": True,
+                "pollutant_count": len(wq.get("pollutants", [])),
+                "landuse_count": len(wq.get("landuses", [])),
+                "coverage_rows": len(wq.get("coverages", [])),
+                "buildup_rows": len(wq.get("buildup", [])),
+                "washoff_rows": len(wq.get("washoff", [])),
+                "loading_rows": len(wq.get("loadings", [])),
+            }
+            if wq is not None
+            else {"enabled": False}
+        ),
         "outputs": {
             "inp": str(args.out_inp),
             "inp_sha256": sha256_file(args.out_inp),
