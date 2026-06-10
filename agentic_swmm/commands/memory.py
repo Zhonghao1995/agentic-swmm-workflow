@@ -118,6 +118,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
     _add_health(sub)
 
+    # PR-4 Phase 1: explicit archive/restore verbs.
+    from agentic_swmm.commands.memory_archive_cmd import add_subparser as _add_archive
+
+    _add_archive(sub)
+
     # Issue #204: non-destructive repair for runs/sessions.sqlite.
     repair = sub.add_parser(
         "repair-sessions",

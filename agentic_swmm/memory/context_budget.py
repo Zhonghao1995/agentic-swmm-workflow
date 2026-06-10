@@ -67,11 +67,18 @@ class MemoryEntry:
         Optional relevance score from a recall path (higher = more
         relevant).  When the store produces no score, pass ``0.0`` —
         entries with equal relevance preserve their input order.
+    health_tier:
+        Optional health tier string (``"active"``, ``"watch"``, or
+        ``"archived"``).  When ``"archived"``, the entry is excluded from
+        the budget pack unless the caller explicitly pre-filters.
+        ``None`` (default) means the tier is unknown — treated as
+        active for backward compatibility.
     """
 
     id: str
     text: str
     relevance: float = 0.0
+    health_tier: str | None = None
 
 
 @dataclass
@@ -142,13 +149,29 @@ def apply_context_budget(
     if not entries:
         return BudgetResult(injected_text="", injected_ids=[], excluded_ids=[], excluded_count=0)
 
+    # Exclude archived-tier entries before any budget calculation.
+    # They are excluded silently (not counted in excluded_count, not
+    # listed in excluded_ids) so the availability note does not inflate.
+    non_archived = [e for e in entries if e.health_tier != "archived"]
+    archived_entries = [e for e in entries if e.health_tier == "archived"]
+    entries = non_archived
+    archived_ids = [e.id for e in archived_entries]
+
+    if not entries:
+        return BudgetResult(
+            injected_text="",
+            injected_ids=[],
+            excluded_ids=archived_ids,
+            excluded_count=len(archived_ids),
+        )
+
     # Unlimited budget — passthrough, preserve order, no note.
     if budget <= 0:
         return BudgetResult(
             injected_text="\n\n".join(e.text for e in entries),
             injected_ids=[e.id for e in entries],
-            excluded_ids=[],
-            excluded_count=0,
+            excluded_ids=archived_ids,
+            excluded_count=len(archived_ids),
         )
 
     # Sort by relevance descending; Python sort is stable so equal-
@@ -207,11 +230,12 @@ def apply_context_budget(
     else:
         combined = "\n\n".join(selected_texts)
 
+    all_excluded = excluded_ids + archived_ids
     return BudgetResult(
         injected_text=combined,
         injected_ids=selected_ids,
-        excluded_ids=excluded_ids,
-        excluded_count=len(excluded_ids),
+        excluded_ids=all_excluded,
+        excluded_count=len(all_excluded),
         truncated_head=truncated_head,
     )
 
