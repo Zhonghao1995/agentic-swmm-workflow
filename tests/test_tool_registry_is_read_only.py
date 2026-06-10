@@ -41,6 +41,9 @@ EXPECTED_READ_ONLY: set[str] = {
     "select_skill",
     "web_fetch_url",
     "web_search",
+    # PRD_water_quality.md PR3: extract_wq_loads shells out in stdout-JSON
+    # mode only — no file writes. is_read_only=True.
+    "read_wq_loads",
 }
 
 
