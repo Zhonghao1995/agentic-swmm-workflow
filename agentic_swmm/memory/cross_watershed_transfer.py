@@ -46,6 +46,22 @@ line lands via :func:`log_memory_decision` with ``decision_point=
 ``run_dir=None`` is the explicit "no trace" mode used by the CLI's
 ``--json`` smoke surface so a one-shot inspection does not pollute
 the trace dir.
+
+Provenance (P0-3)
+-----------------
+Each :class:`TransferRecommendation` exposes a :attr:`memory_id`
+property that identifies the calibration-memory entry whose parameters
+are being transferred.  When the caller decides to apply a
+recommendation to a run, it should record this id in the run's
+``manifest.json`` under ``memories_applied`` — either by passing the id
+to the runner via ``--memories-applied``, or by calling
+:func:`agentic_swmm.memory.memory_provenance.stamp_memories_applied`
+after the manifest is written.
+
+This records *programmatic* application only.  When the LLM reads
+recalled memory in conversational context but no parameters are
+injected deterministically into run inputs, there is no id to stamp —
+that boundary is honest, not a gap.
 """
 
 from __future__ import annotations
@@ -142,6 +158,22 @@ class TransferRecommendation:
     recommended_manning_n: dict[str, float] = field(default_factory=dict)
     known_failure_patterns: list[dict[str, Any]] = field(default_factory=list)
 
+    @property
+    def memory_id(self) -> str:
+        """Stable provenance id for the source calibration-memory entry.
+
+        Derived from the source calibration record's ``run_id`` using the
+        ``cm-`` prefix (calibration memory).  Callers that decide to apply
+        this recommendation to a run should record this id in the run's
+        ``manifest.json`` under ``memories_applied`` for auditability.
+
+        This id is computed on read and is never stored in the on-disk
+        calibration-memory JSONL — the store is human-gated and must not
+        be mutated by agent code.
+        """
+        from agentic_swmm.memory.memory_provenance import calibration_memory_id
+        return calibration_memory_id(self.source_calibration_record.run_id)
+
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe shape for CLI / trace consumers.
 
@@ -154,6 +186,7 @@ class TransferRecommendation:
         return {
             "target_case": self.target_case,
             "source_case": self.source_case,
+            "memory_id": self.memory_id,
             "similarity": round(float(self.similarity), 6),
             "objective_name": rec.objective_name,
             "objective_value": rec.objective_value,
@@ -734,4 +767,31 @@ __all__ = [
     "DECISION_POINT",
     "TransferRecommendation",
     "recommend_parameters_for_new_case",
+    "transfer_recommendation_memory_ids",
 ]
+
+
+def transfer_recommendation_memory_ids(
+    recommendations: list["TransferRecommendation"],
+) -> list[str]:
+    """Return the deduplicated list of memory ids from a set of recommendations.
+
+    Convenience helper for callers that want to stamp all recommended
+    ids into a manifest at once.  The order matches the recommendation
+    order (highest similarity first, per the recommender's sort contract)
+    so the stamp is deterministic.
+
+    Example::
+
+        recs = recommend_parameters_for_new_case(...)
+        ids = transfer_recommendation_memory_ids(recs)
+        # ids == ["cm-<run_id_of_top_rec>", ...]
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for rec in recommendations:
+        mid = rec.memory_id
+        if mid not in seen:
+            out.append(mid)
+            seen.add(mid)
+    return out

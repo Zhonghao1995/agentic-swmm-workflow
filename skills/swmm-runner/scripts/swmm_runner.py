@@ -261,6 +261,25 @@ def get_swmm5_version() -> str | None:
         return None
 
 
+def _parse_memories_applied(raw: str | None) -> list[str]:
+    """Parse the ``--memories-applied`` JSON string into a list of ids.
+
+    Accepts a JSON array string (e.g. ``'["cm-abc", "pm-xyz"]'``) or
+    ``None`` / empty string (returns ``[]``).  Tolerant: any parse error
+    or non-list result also returns ``[]`` so a bad arg never aborts a
+    run.
+    """
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if item]
+    except (ValueError, TypeError):
+        pass
+    return []
+
+
 def cmd_run(args):
     inp = args.inp.resolve()
     run_dir = args.run_dir.resolve()
@@ -286,6 +305,14 @@ def cmd_run(args):
     peak = parse_peak_from_rpt(rpt, args.node)
     cont = parse_continuity_blocks(rpt.read_text(errors='ignore'))
 
+    # ``memories_applied`` records which modeling-memory entry ids were
+    # programmatically applied to this run's inputs (e.g. calibrated priors
+    # from cross-watershed transfer).  Always present — empty list means no
+    # memory was applied; the field must never be absent so the audit pipeline
+    # can rely on it unconditionally.  Ids are passed via ``--memories-applied``
+    # as a JSON array; the default is an empty list.
+    memories_applied = _parse_memories_applied(getattr(args, "memories_applied", None))
+
     manifest = {
         "manifest_version": "1.0",
         "created_at": datetime.now().isoformat(),
@@ -302,6 +329,7 @@ def cmd_run(args):
         "return_code": rc,
         "run_ok": run_ok,
         "solver_errors": solver_errors,
+        "memories_applied": memories_applied,
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding='utf-8')
 
@@ -366,6 +394,18 @@ def main():
         help='Exit non-zero when the run is not ok (solver ERROR lines, '
              'non-zero return code, or timeout). The MCP server passes this '
              'so the agent path surfaces failures; the CLI verb does not.',
+    )
+    ap_run.add_argument(
+        '--memories-applied',
+        default=None,
+        dest='memories_applied',
+        help=(
+            'JSON array of memory entry ids that were programmatically applied '
+            'to this run\'s inputs (e.g. \'["cm-abc", "pm-xyz"]\'). '
+            'Written verbatim into manifest.json under "memories_applied". '
+            'Omitting this arg records an empty list — the field is always '
+            'present in the manifest.'
+        ),
     )
     ap_run.set_defaults(func=cmd_run)
 
