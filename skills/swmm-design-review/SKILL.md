@@ -15,6 +15,7 @@ This skill is **decision-support only**. It never certifies regulatory complianc
 ## CLI usage
 
 ```bash
+# Standalone script
 python3 skills/swmm-design-review/scripts/design_review.py \
     --run-dir <path>         # required: directory with model.rpt, manifest.json, model.inp
     [--rpt <path>]           # override: explicit model.rpt path
@@ -23,9 +24,38 @@ python3 skills/swmm-design-review/scripts/design_review.py \
     [--rules <rulebook>]     # override rulebook YAML/JSON (repeatable for multiple books)
     [--out-dir <dir>]        # default: <run-dir>/09_review/
     [--no-inp]               # skip INP-derived metrics (slope, diameter)
+
+# CLI verb (registered in aiswmm CLI)
+aiswmm review --run-dir <path> [--rules <rulebook.yaml>] [--out-dir <dir>]
 ```
 
 Exit codes: `0` = pass/warn/needs-data only; `1` = any FAIL; `2` = script/input error.
+
+## Agent tool: `review_run`
+
+Registered in `AgentToolRegistry`. Direct handler (not MCP-routed) — writes
+`09_review/design_review.json` + `09_review/design_review.md` into the run dir.
+
+```
+review_run(run_dir="runs/my_run/")
+review_run(run_dir="runs/my_run/", rules="skills/swmm-design-review/rulebooks/gb50014_template.yaml")
+```
+
+`is_read_only=False` — QUICK profile prompts the user (tool writes files).
+
+## Executed example
+
+```bash
+python3 skills/swmm-design-review/scripts/design_review.py \
+    --run-dir tests/fixtures/design_review \
+    --manifest tests/fixtures/design_review/sample_manifest.json \
+    --rpt tests/fixtures/design_review/sample_mini.rpt \
+    --inp tests/fixtures/design_review/sample_mini.inp \
+    --rules tests/fixtures/design_review/sample_rules.yaml \
+    --out-dir /tmp/design_review_out
+# Exit 1 = FAIL (1 pass, 1 fail, 0 warn, 1 needs-data)
+# Report: /tmp/design_review_out/design_review.md
+```
 
 ---
 
