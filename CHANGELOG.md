@@ -2,7 +2,41 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
-## Unreleased — two API-key LLM providers (OpenAI default + Anthropic opt-in)
+## v0.7.2 - Agent-reachable calibration & sensitivity, three new skills, design storms, memory observability (2026-06-11)
+
+Released alongside our paper in *AI for Engineering* ([doi:10.3390/aieng1010005](https://doi.org/10.3390/aieng1010005)). 70 commits since v0.7.1: the planner's typed-tool surface grows from 38 to **55 tools**, the skill library from 15 to **18 skills**, and the test suite from 2,318 to **2,799 tests** — full suite green, SWMM execution byte-identical.
+
+### Added — calibration & sensitivity analysis become first-class typed tools (v0.7.2)
+
+- **6 calibration tools** (`swmm_sensitivity_scan`, `swmm_calibrate`, `swmm_calibrate_search`, `swmm_calibrate_sceua`, `swmm_calibrate_dream_zs`, `swmm_validate`) and **5 uncertainty tools** (`swmm_sensitivity_oat`, `swmm_sensitivity_morris`, `swmm_sensitivity_sobol`, `swmm_rainfall_ensemble`, `swmm_uncertainty_source_decomposition`) registered as typed ToolSpecs — the planner selects SCE-UA / DREAM-ZS calibration and Morris / Sobol' screening by name instead of via the generic `call_mcp_tool` escape hatch. Intent hints corrected to point at the real tools; a new parity test locks every `preferred_tools` entry to a registered tool name. `swmm-gis` and `swmm-params` stay `call_mcp_tool`-only by design (QGIS-desktop dependencies / pipeline glue) — recorded in CONTEXT.md.
+- **Smaller reachability fixes**: `build_raingage_section` registered; `audit_run` gains `compare_to`; `summarize_memory` gains `obsidian_dir`; `format_rainfall` exposes its full input surface (glob / .dat / multi-station); `plot_run` forwards `focus_day` / `window_start` / `window_end`; `synth_swmm_from_bbox` exposes `config_overrides`; `retrieve_memory` bound to its skill.
+
+### Added — three new skills (v0.7.2)
+
+- **`swmm-water-quality`** — completes SWMM engine coverage for pollutant buildup/washoff: the builder emits `[POLLUTANTS]`/`[LANDUSES]`/`[COVERAGES]`/`[BUILDUP]`/`[WASHOFF]`/`[LOADINGS]` from a `--water-quality-json` config (engine-smoke-verified on SWMM 5.2.4 at 0.000% quality continuity error), the canonical rpt parser gains the four water-quality summary sections, the audit note reports pollutant loads, and `read_wq_loads` exposes them to the planner.
+- **`swmm-design-review`** — deterministic rule-checklist engine over a completed run (INP + RPT + manifest): YAML rulebooks (rules are data, not code), `pass / fail / warn / needs-data` per rule with evidence pointers, `aiswmm review` CLI verb and `review_run` typed tool. Ships a GB 50014-class template rulebook in which **every threshold is marked `verify: true`** — the tool reports findings against a user-confirmed rulebook; it never certifies compliance.
+- **`swmm-report`** — assembles a run's audit artifacts, metrics tables, figures, and the provenance sha256 table into an engineering-formatted Word deliverable (numbered sections, table captions with explanatory narratives, page numbers): `aiswmm report` CLI verb, `generate_report` typed tool, nine-section user-overridable YAML template, deterministic content (timestamps from provenance, never the clock). Installs via the `aiswmm[report]` extra (python-docx).
+
+### Added — design storms (v0.7.2)
+
+- **`generate_design_storm`** — synthesise a Chicago (Keifer-Chu; CN 167-form or generic IDF form) or alternating-block hyetograph from a return period + IDF coefficients, writing the same `--out-json` / `--out-timeseries` contract `format_rainfall` produces, so `build_inp` consumes it unchanged. Storm total equals the IDF depth for the design duration exactly. The legacy explicit-depth shape library (uniform/triangular/huff/scs) remains available as `generate_storm_shape`.
+
+### Added — memory observability & application provenance (v0.7.2)
+
+- **`memories_applied`** — runs record which memory entries programmatically shaped their inputs, in `manifest.json` and `experiment_provenance.json`: a deliverable is now traceable to the memory entries behind it.
+- **Application outcome log** (`memory/modeling-memory/memory_outcome_events.jsonl`) — the post-audit hook appends one outcome event per applied memory (within band / below band / run failed / contradicted / reconfirmed); the derived per-entry **health score** is inspectable via `aiswmm memory health <id>`.
+- **Health-aware recall** — entries rank by health × relevance; *watch*-tier entries are recalled with an evidence-bearing caution; *archived*-tier entries are excluded by default, with explicit `aiswmm memory archive` / `restore` verbs (live stores remain human-gated; read-time filtering never mutates them).
+- **Memory context budget** — the session-start memory block is capped (default 4,000 chars, `memory.context_budget_chars`) with ranked packing and a trace event for exclusions; recall ranking gains an optional recency weighting (`memory.recall_half_life_days`, off by default).
+- **New-case onboarding re-wired** — starting a watershed the system has not seen offers transferred starter parameters from similar past cases (planner-side offer hook + `apply_onboarding` typed tool), restoring the surface orphaned by the dispatch refactor.
+
+### Fixed (v0.7.2)
+
+- **Agent default `run_dir` collision** — the `synth_swmm_from_bbox` default directory was non-timestamped, so re-running a project name silently overwrote the previous run's outputs; now `runs/agent/<safe>-<unix-ts>` with an exists-bump. Explicit `run_dir` passthrough (and the `00_raw/` snapshot-reuse workflow) unchanged.
+- **`Outfall Loading Summary` dropped rows in water-quality runs** — the parser's fixed column-count match excluded rows carrying pollutant columns; now a minimum-width match, byte-identical for non-WQ runs.
+- **`.rpt` parsing consolidated** — the canonical section parser (`rpt_summary.py`) absorbed the largest duplicate, and 23 parity tests pin all five historical parser implementations to identical numbers.
+- **SKILL.md drift sweep** — eight skills' runtime-read docs corrected against code (runnable smoke examples, real CLI flags, current tool lists); dispatch-refactor dead code removed.
+
+### Changed — two API-key LLM providers (OpenAI default + Anthropic opt-in)
 
 The planner is driven by one of two **API-key** backends, both using standard
 function-calling over pure-stdlib `urllib` (no SDK, no subprocess): `openai`
@@ -14,19 +48,19 @@ robustness (accepting per-token cost). The provider/auth layer stays
 factory-only, so adding a backend is a `factory.SUPPORTED_PROVIDERS` +
 `make_provider` change.
 
-### Added
+#### Added (provider layer)
 
 - **Native Anthropic provider** (`agentic_swmm/providers/anthropic_api.py`) — hits `https://api.anthropic.com/v1/messages` with `anthropic-version: 2023-06-01`, translating aiswmm's OpenAI-shaped tool descriptors (`parameters` → `input_schema`) and Responses-style `input_items` (→ `messages` with `tool_use` / `tool_result` blocks). Reads `ANTHROPIC_API_KEY`; honours `AISWMM_ANTHROPIC_MOCK_RESPONSE` / `AISWMM_ANTHROPIC_MOCK_TOOL_CALLS` for offline tests. No new dependency.
 - **`aiswmm login --anthropic`** — stores `ANTHROPIC_API_KEY` in `~/.aiswmm/env` (mode 0600), pins `provider.default = anthropic` + `anthropic.model = claude-sonnet-4-6`. A bare `aiswmm login` targets the current default provider's key.
 
-### Changed
+#### Changed (provider layer)
 
 - **Default provider is `openai`** (`DEFAULT_PROVIDER = "openai"`, model `gpt-5.5`). `anthropic` is the opt-in second backend (`DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"`); both providers require a model, supplied by per-provider config defaults.
 - **`SUPPORTED_PROVIDERS = ("openai", "anthropic")`** — the factory drops the subscription branch; an unknown provider (including the retired `claude_sdk`) raises `ValueError`.
 - **`aiswmm login` manages API keys** via a `provider → handler` registry; `--status` reports the default provider and which keys are present (no secrets).
 - Doctor / setup / welcome surface a two-API-key view (OpenAI default + Anthropic opt-in); the welcome tip and doctor key-row key on the default provider's key.
 
-### Removed
+#### Removed (provider layer)
 
 - The `claude_sdk` provider, the `claude-agent-sdk` core dependency, the `[claude]` extra, and all subscription / macOS-Keychain detection logic.
 
