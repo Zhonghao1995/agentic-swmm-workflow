@@ -31,7 +31,7 @@
   </a>
 </p>
 
-> **Pre-1.0** · stable **v0.7.1** · `pip install aiswmm==0.7.1` · [CHANGELOG](CHANGELOG.md)
+> **Pre-1.0** · stable **v0.7.2** · `pip install aiswmm==0.7.2` · [CHANGELOG](CHANGELOG.md)
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
