@@ -5,6 +5,8 @@ description: Top-level orchestration skill for agentic SWMM modelling. Use when 
 
 # SWMM End-to-End Orchestration
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 - A top-level orchestration contract for the agent runtime.
 - A stable handoff point for Agentic AI project memory in `agent/memory/`.

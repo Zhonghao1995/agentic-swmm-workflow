@@ -5,6 +5,8 @@ description: Publication-grade plotting for SWMM rainfall–runoff time-series f
 
 # SWMM Plot (publication spec)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## Before calling plot — ask the user
 
 When the user asks to plot, **always ask these questions first** before calling any plot tool:

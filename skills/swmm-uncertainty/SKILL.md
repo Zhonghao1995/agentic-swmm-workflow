@@ -5,6 +5,8 @@ description: Parameter and forcing uncertainty propagation and sensitivity analy
 
 # SWMM Uncertainty
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 
 - User-defined fuzzy membership functions for SWMM parameters.

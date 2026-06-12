@@ -5,6 +5,8 @@ description: GIS/DEM preprocessing for SWMM experiments using the user's own QGI
 
 # SWMM GIS / Preprocess
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## Before calling any watershed delineation tool — ask the user
 
 When the user triggers watershed delineation (`qgis_raw_to_entropy_partition` or equivalent), **always ask these questions first** before making the tool call:

@@ -5,6 +5,8 @@ description: Calibration and validation scaffold for EPA SWMM. Use when an agent
 
 # SWMM Calibration / Validation
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 - A practical calibration scaffold around the existing SWMM runner workflow.
 - A strict calibration boundary: calibration and validation require observed data. Without observed flow, depth, soil-moisture, or volume data, use `swmm-uncertainty` for prior uncertainty propagation instead of calling the run calibrated.

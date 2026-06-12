@@ -5,6 +5,8 @@ description: Assemble a runnable SWMM INP deterministically from subcatchment ge
 
 # SWMM Builder (INP assembly layer)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## Contract
 Build a runnable SWMM `.inp` using explicit file inputs:
 - `subcatchments.csv` (shape/area/outlet/routing basics)

@@ -5,6 +5,8 @@ description: Build, validate, and route SWMM pipe-network models for urban drain
 
 # SWMM Network (pipe-system layer)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 
 - A stable JSON schema for SWMM drainage-network structure.

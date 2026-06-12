@@ -5,6 +5,8 @@ description: Consolidate Agentic SWMM run artifacts into auditable provenance, c
 
 # SWMM Experiment Audit
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 
 - A standard audit layer for Agentic SWMM runs.
