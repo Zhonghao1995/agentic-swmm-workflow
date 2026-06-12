@@ -57,6 +57,11 @@ def _extract_preload_paths(markdown_path: Path) -> list[str]:
         # Skip shell prompt lines
         if candidate.startswith("$"):
             continue
+        # Skip command lines (e.g. ``npx skills add owner/repo``): a
+        # preload path is a single token, so anything with spaces is a
+        # command, not a path.
+        if " " in candidate:
+            continue
         # Accept any token that contains a slash
         if "/" in candidate:
             paths.append(candidate)
