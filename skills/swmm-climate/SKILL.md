@@ -5,6 +5,8 @@ description: Deterministic rainfall/climate formatting for SWMM. Use when conver
 
 # SWMM Climate (MVP rainfall layer)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 - Deterministic conversion from simple rainfall CSV to:
   - SWMM `[TIMESERIES]` text lines

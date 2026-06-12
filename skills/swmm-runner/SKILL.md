@@ -5,6 +5,8 @@ description: Run EPA SWMM (swmm5) simulations reproducibly and extract key metri
 
 # SWMM Runner (CLI-first)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 
 - Deterministic execution wrapper around the `swmm5` binary.

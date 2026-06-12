@@ -5,6 +5,8 @@ description: Deterministic mapping from land use and soil texture to SWMM runoff
 
 # SWMM Params (MVP mapping layer)
 
+Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 ## What this skill provides
 - Transparent CSV-to-JSON mapping for:
   - land use class -> SWMM `[SUBCATCHMENTS]` + `[SUBAREAS]` defaults
