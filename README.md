@@ -155,6 +155,14 @@ More details: [Experiment audit framework](docs/experiment-audit-framework.md) a
 
 Beyond its own aiswmm runtime, the Agentic SWMM workflow can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
 
+Install the skills into any skills-aware runtime (Claude Code, Codex, OpenCode, …) with one command:
+
+```bash
+npx skills add Zhonghao1995/agentic-swmm-workflow
+```
+
+The skills carry the workflow and evidence contracts; pair them with the [project install](docs/installation.md) for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
 More details: [Codex runtime path](docs/codex-runtime.md) · [OpenClaw execution path](docs/openclaw-execution-path.md) · [Skill installation](integrations/skills/README.md) · [MCP runtime integration](integrations/mcp/README.md).
 
 ## Documentation map
