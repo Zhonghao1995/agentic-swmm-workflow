@@ -2,6 +2,22 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.7.3 - One-command install on Windows, latest-release by default (2026-06-13)
+
+Reworks the one-line installers so a single command provisions the full toolchain on a fresh machine, and makes both platforms default to the latest published release.
+
+### Fixed — Windows one-line install
+
+- The Windows one-liner (`irm https://aiswmm.com/install.ps1 | iex`) failed on fresh machines. The bootstrap now clones into `%LOCALAPPDATA%` instead of the current directory (an elevated shell defaults to the write-protected `C:\Windows\System32`) and sets a process-scope `ExecutionPolicy Bypass` before running the cloned installer (the default `Restricted` policy blocked it).
+- The installer rejects the Microsoft Store `python.exe` / `python3.exe` App-execution-alias stubs and auto-installs Python 3.12 (required) and Node.js LTS (best-effort; MCP is skipped if Node is unavailable) via `winget`, refreshing PATH in the running session.
+- The venv's `Scripts` directory is added to the user PATH, so `aiswmm` resolves after install instead of reporting "not recognized".
+
+### Changed — installer entrypoints (both platforms)
+
+- `web/install.ps1` and `web/install.sh` now default to the **latest published release** (resolved via the GitHub API); set `AISWMM_INSTALL_REF` to pin a tag (e.g. `v0.7.2`) or `main`. The bootstrap honors that ref and clones the matching tag.
+- The upfront OpenAI-only model prompt is gone; the AI provider and model are chosen after install via the CLI (`aiswmm login` for OpenAI, `aiswmm login --anthropic` for Claude).
+- A CI job keeps `aiswmm.com/install.{ps1,sh}` in lockstep with `web/install.*`, so the website entrypoints never drift from this repo.
+
 ## v0.7.2 - Agent-reachable calibration & sensitivity, three new skills, design storms, memory observability (2026-06-11)
 
 Released alongside our paper in *AI for Engineering* ([doi:10.3390/aieng1010005](https://doi.org/10.3390/aieng1010005)). 70 commits since v0.7.1: the planner's typed-tool surface grows from 38 to **55 tools**, the skill library from 15 to **18 skills**, and the test suite from 2,318 to **2,799 tests** — full suite green, SWMM execution byte-identical.

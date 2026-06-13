@@ -1,0 +1,47 @@
+name: Sync installers to website
+
+# Keep aiswmm.com/install.ps1 and aiswmm.com/install.sh (served from the
+# Agentic-SWMM-Website repo) in lockstep with web/install.* here, so the
+# website "pointer" scripts never drift from this repo again. Fires only when
+# an installer entrypoint actually changes on main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - web/install.ps1
+      - web/install.sh
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout website repo
+        uses: actions/checkout@v4
+        with:
+          repository: Zhonghao1995/Agentic-SWMM-Website
+          ssh-key: ${{ secrets.WEBSITE_SYNC_DEPLOY_KEY }}
+          path: website
+
+      - name: Copy installer entrypoints to the website root
+        run: |
+          cp web/install.ps1 website/install.ps1
+          cp web/install.sh  website/install.sh
+
+      - name: Commit and push if changed
+        working-directory: website
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [[ -n "$(git status --porcelain install.ps1 install.sh)" ]]; then
+            git add install.ps1 install.sh
+            git commit -m "chore: sync installers from agentic-swmm-workflow@${GITHUB_SHA::7}"
+            git push
+            echo "Synced installer scripts to the website."
+          else
+            echo "Installers already in sync; nothing to push."
+          fi
