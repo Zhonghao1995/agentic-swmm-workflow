@@ -95,6 +95,27 @@ After installation, launch the runtime with `aiswmm`.
 
 One-line installers run a remote script — review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
 
+### Choosing an install path
+
+There look like four ways in, but they are **three strategies** — the two one-line installers are the same installer, shipped as a macOS/Linux build (`install.sh`) and a Windows build (`install.ps1`). Pick one strategy:
+
+| | One-line installer | Docker | PyPI (`pip`) |
+| --- | --- | --- | --- |
+| **Command** | `install.sh` (macOS/Linux) · `install.ps1` (Windows) | `docker run … ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.1` | `pip install aiswmm` |
+| **What you get** | Full stack: venv + `aiswmm` CLI + MCP servers + **swmm5 solver** + API-key prompt | Everything baked into the image — solver, Python env, and dependencies | The `aiswmm` CLI and its Python dependencies |
+| **swmm5 / Node / API key** | Provisioned for you | Already in the image | Bring your own |
+| **Reproducibility** | Tracks the current rolling build | **Strongest** — pinned and byte-identical across machines | As pinned as you make your own environment |
+| **Prerequisites** | Python ≥ 3.10 and Node ≥ 18 (plus a C/C++ toolchain on macOS/Linux to build the solver) | Docker only | Python — *and* Node and SWMM already on your system |
+| **Best for** | The fastest route to a complete local runtime | Reproducible, production, or paper-replication runs | Embedding the CLI in a Python environment you already manage |
+
+**One-line decision:**
+
+- **Just want it running fast** → the one-line installer for your OS (this is the complete, batteries-included path).
+- **Need reproducibility, production, or paper replication** → Docker, pinned (`:v0.7.1`; `:v0.6.4` for the companion paper).
+- **Already have SWMM and Node, and want `aiswmm` inside your own project** → `pip install aiswmm`, then run `aiswmm setup` and point it at your swmm5 solver and API key.
+
+Docker and PyPI commands in full: [runtime install options](docs/runtime-install-options.md). The `pip` path is intentionally the lightweight, bring-your-own-toolchain option — `aiswmm doctor` reports anything still missing.
+
 ## Workflow
 
 <p align="center">
