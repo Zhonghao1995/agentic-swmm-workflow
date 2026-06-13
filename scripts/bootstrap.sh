@@ -4,6 +4,7 @@ IFS=$'\n\t'
 
 REPO_URL="https://github.com/Zhonghao1995/agentic-swmm-workflow.git"
 TARGET_DIR="${AGENTIC_SWMM_DIR:-agentic-swmm-workflow}"
+REF="${AISWMM_INSTALL_REF:-main}"
 
 log() {
   printf '[INFO] %s\n' "$*"
@@ -49,11 +50,12 @@ install_git_if_needed() {
 install_git_if_needed
 
 if [[ -d "$TARGET_DIR/.git" ]]; then
-  log "Updating existing checkout in $TARGET_DIR"
-  git -C "$TARGET_DIR" pull --ff-only
+  log "Updating existing checkout in $TARGET_DIR ($REF)"
+  git -C "$TARGET_DIR" fetch --depth 1 origin "$REF"
+  git -C "$TARGET_DIR" checkout --detach FETCH_HEAD
 else
-  log "Cloning repository into $TARGET_DIR"
-  git clone "$REPO_URL" "$TARGET_DIR"
+  log "Cloning $REPO_URL ($REF) into $TARGET_DIR"
+  git clone --depth 1 --branch "$REF" "$REPO_URL" "$TARGET_DIR"
 fi
 
 exec bash "$TARGET_DIR/scripts/install.sh" --yes

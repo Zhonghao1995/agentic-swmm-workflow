@@ -1,11 +1,17 @@
 param(
     [string]$TargetDir = "agentic-swmm-workflow",
     [string]$Provider = "openai",
-    [string]$Model = "gpt-5.5"
+    [string]$Model = "gpt-5.5",
+    [string]$Ref = "main"
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+
+# Let this process run the cloned scripts\install.ps1 even when the machine
+# ExecutionPolicy is Restricted (the Windows client default), which otherwise
+# blocks the one-liner. Process scope only: no admin, reverts when the shell closes.
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
 function Write-Step {
     param([string]$Message)
@@ -55,14 +61,20 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
 }
 
 $repoUrl = 'https://github.com/Zhonghao1995/agentic-swmm-workflow.git'
-$fullTarget = Join-Path (Get-Location) $TargetDir
+# Clone into a fixed, user-writable location, NOT the current directory: an
+# elevated PowerShell defaults to C:\Windows\System32, which is write-protected
+# and broke the one-liner ("cannot open '.git/FETCH_HEAD': Permission denied").
+# LOCALAPPDATA matches the documented Windows install location.
+$installBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $HOME }
+$fullTarget = Join-Path $installBase $TargetDir
 
 if (Test-Path (Join-Path $fullTarget '.git')) {
-    Write-Step "Updating existing checkout in $fullTarget"
-    git -C $fullTarget pull --ff-only
+    Write-Step "Updating existing checkout in $fullTarget ($Ref)"
+    git -C $fullTarget fetch --depth 1 origin $Ref
+    git -C $fullTarget checkout --detach FETCH_HEAD
 } else {
-    Write-Step "Cloning repository into $fullTarget"
-    git clone $repoUrl $fullTarget
+    Write-Step "Cloning $repoUrl ($Ref) into $fullTarget"
+    git clone --depth 1 --branch $Ref $repoUrl $fullTarget
 }
 
 & (Join-Path $fullTarget 'scripts\install.ps1') -Yes -Provider $Provider -Model $Model

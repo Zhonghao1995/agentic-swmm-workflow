@@ -41,6 +41,9 @@ $AiswmmEnvFile = Join-Path $AiswmmConfigDir 'env.ps1'
 # -Auto and -Yes both disable interactive prompts.
 $script:AutoMode = $Auto.IsPresent -or $Yes.IsPresent
 
+# Set true when Node cannot be provisioned; Step 3 (MCP) is then skipped non-fatally.
+$script:SkipMcpAuto = $false
+
 # ---------------------------------------------------------------------------
 # Helpers (mirror of scripts/_install_helpers.bash)
 # ---------------------------------------------------------------------------
@@ -91,60 +94,84 @@ function Prompt-YN {
     return ($reply -in @('y', 'Y', 'yes', 'YES'))
 }
 
-function Check-PythonVersion {
-    param([string]$PythonExe = 'python')
-    if (-not (Get-Command $PythonExe -ErrorAction SilentlyContinue)) {
-        Print-Failure "Python 3.10+ not found on PATH." @(
-            "Windows: install Python 3.12 from https://www.python.org/downloads/ (or 'winget install Python.Python.3.12').",
-            "Then re-run: powershell -File scripts\install.ps1"
-        )
-        return $false
+function Update-SessionPath {
+    # winget writes the updated PATH to the registry but does not refresh the
+    # current process, so a freshly installed interpreter is invisible until a
+    # new shell. Re-read Machine+User PATH and add the well-known winget
+    # user-scope Python dir so Resolve-Python can find it in THIS session.
+    $parts = @(
+        [System.Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    )
+    $pyBase = Join-Path $env:LOCALAPPDATA 'Programs\Python'
+    if (Test-Path $pyBase) {
+        $pyDirs = Get-ChildItem -Path $pyBase -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName; Join-Path $_.FullName 'Scripts' }
+        $parts += $pyDirs
     }
-    & $PythonExe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
-    if ($LASTEXITCODE -ne 0) {
-        $ver = (& $PythonExe --version 2>&1 | Select-Object -First 1)
-        Print-Failure "Python 3.10+ required, found: $ver" @(
-            "Windows: install Python 3.12 from https://www.python.org/downloads/ (or 'winget install Python.Python.3.12').",
-            "Then re-run: powershell -File scripts\install.ps1"
-        )
-        return $false
-    }
-    return $true
+    $env:PATH = (($parts | Where-Object { $_ }) -join ';') + ';' + $env:PATH
 }
 
-function Check-NodeVersion {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-        Print-Failure "Node 18+ required for MCP servers, but 'node' is not on PATH." @(
-            "Windows: install Node LTS from https://nodejs.org/ (or 'winget install OpenJS.NodeJS.LTS').",
-            "Then re-run: powershell -File scripts\install.ps1"
-        )
+function Test-RealPython {
+    param([string]$Exe)
+    # Windows ships python.exe/python3.exe "App execution alias" stubs under
+    # WindowsApps that sit on PATH even with no Python installed; running one
+    # prints "Python was not found" and opens the Store. Reject those by their
+    # source path, then probe for a real Python >= 3.10.
+    $cmd = Get-Command $Exe -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $false }
+    if ($cmd.Source -and $cmd.Source -like '*\WindowsApps\*') { return $false }
+    try {
+        & $Exe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
         return $false
     }
-    $raw = (& node --version 2>$null)
-    if (-not $raw) { return $false }
-    $trim = $raw.TrimStart('v')
-    $major = ($trim -split '\.')[0]
-    if (-not ($major -as [int]) -or [int]$major -lt 18) {
-        Print-Failure "Node 18+ required for MCP servers, found: v$trim" @(
-            "Windows: install Node LTS from https://nodejs.org/ (or 'winget install OpenJS.NodeJS.LTS').",
-            "Then re-run: powershell -File scripts\install.ps1"
-        )
-        return $false
-    }
-    return $true
 }
 
 function Resolve-Python {
-    foreach ($candidate in @('python3.12', 'python3.11', 'python3.10', 'python3', 'python')) {
-        if (Get-Command $candidate -ErrorAction SilentlyContinue) {
-            & $candidate -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
-            if ($LASTEXITCODE -eq 0) {
-                $script:ResolvedPython = $candidate
-                return $true
-            }
+    foreach ($candidate in @('python3.12', 'python3.11', 'python3.10', 'python3', 'python', 'py')) {
+        if (Test-RealPython $candidate) {
+            $script:ResolvedPython = $candidate
+            return $true
         }
     }
     return $false
+}
+
+function Test-NodeOk {
+    $cmd = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $cmd) { return $false }
+    $raw = (& node --version 2>$null)
+    if (-not $raw) { return $false }
+    $major = (($raw.TrimStart('v')) -split '\.')[0]
+    return (($major -as [int]) -and [int]$major -ge 18)
+}
+
+function Install-PythonViaWinget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
+    Write-Host "Python 3.10+ not found; installing Python 3.12 via winget (user scope, no admin)..."
+    try {
+        & winget install -e --id Python.Python.3.12 --scope user --silent `
+            --accept-package-agreements --accept-source-agreements
+    } catch {
+        Write-Host "winget Python install raised: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    Update-SessionPath
+    return (Resolve-Python)
+}
+
+function Install-NodeViaWinget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
+    Write-Host "Node 18+ not found; installing Node.js LTS via winget..."
+    try {
+        & winget install -e --id OpenJS.NodeJS.LTS --silent `
+            --accept-package-agreements --accept-source-agreements
+    } catch {
+        Write-Host "winget Node install raised: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+    Update-SessionPath
+    return (Test-NodeOk)
 }
 
 function Run-Step {
@@ -317,12 +344,23 @@ function Do-SwmmEngine {
 # ---------------------------------------------------------------------------
 
 if (-not (Resolve-Python)) {
-    [void](Check-PythonVersion 'python')
-    exit 2
+    if (-not (Install-PythonViaWinget)) {
+        Print-Failure "Python 3.10+ is required and could not be installed automatically." @(
+            "Install Python 3.12 from https://www.python.org/downloads/ (check 'Add python.exe to PATH'),",
+            "or run: winget install -e --id Python.Python.3.12",
+            "If typing 'python' opens the Microsoft Store, turn off the python.exe / python3.exe",
+            "  App execution aliases (Settings > Apps > Advanced app settings), then re-run."
+        )
+        exit 2
+    }
 }
 
-if (-not (Check-NodeVersion)) {
-    exit 2
+if (-not (Test-NodeOk)) {
+    if (-not (Install-NodeViaWinget)) {
+        Write-Host "[WARN] Node 18+ unavailable and auto-install failed; MCP servers will be skipped." -ForegroundColor Yellow
+        Write-Host "       Core runtime (SWMM run/audit/plot) still installs. Add Node later and re-run for MCP." -ForegroundColor Yellow
+        $script:SkipMcpAuto = $true
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -381,8 +419,8 @@ if ($SkipPython) {
 }
 
 # Step 3: MCP node_modules
-if ($SkipMcp) {
-    Write-Host "Step 3/${total}: MCP servers (skipped via -SkipMcp)"
+if ($SkipMcp -or $script:SkipMcpAuto) {
+    Write-Host "Step 3/${total}: MCP servers (skipped)"
 } else {
     if (-not (Prompt-YN "Run Step 3/${total} (MCP servers ~2 min, 11 servers)?" 'Y')) {
         Write-Host "Installation aborted at MCP step."
@@ -448,26 +486,18 @@ Write-Host ""
 Write-Host "Summary"
 Write-Host "- Repo root:    $RepoRoot"
 Write-Host ("- Python venv:  " + $(if ($SkipPython) { 'skipped' } else { $VenvDir }))
-Write-Host ("- MCP servers:  " + $(if ($SkipMcp)    { 'skipped' } else { 'installed' }))
+Write-Host ("- MCP servers:  " + $(if ($SkipMcp -or $script:SkipMcpAuto) { 'skipped' } else { 'installed' }))
 Write-Host "- SWMM engine:  $swmmStatus"
 Write-Host "- Config dir:   $AiswmmConfigDir"
-Write-Host "- Provider:     $Provider ($Model)"
+Write-Host "- AI provider:  choose after install (OpenAI or Claude)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
 Write-Host "  2. Run: aiswmm doctor"
-if ($Provider -ne 'openai') {
-    # Run-Step hides Step 5's output on success, so the login hint must live in
-    # this always-visible block. Non-openai providers never get a key prompt.
-    Write-Host "  3. Store your $Provider API key: aiswmm login --$Provider"
-    Write-Host "  4. Run: aiswmm chat --provider $Provider"
-} elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {
-    # openai selected but no key saved or pre-existing (skipped, or no console).
-    Write-Host "  3. Add your OpenAI API key: aiswmm login --openai"
-    Write-Host "  4. Run: aiswmm chat --provider openai"
-} else {
-    Write-Host "  3. Run: aiswmm chat --provider openai"
-}
+Write-Host "  3. Choose your AI provider and store your key (the only manual step):"
+Write-Host "       OpenAI:  aiswmm login              (optional: pick a model with 'aiswmm model')"
+Write-Host "       Claude:  aiswmm login --anthropic"
+Write-Host "  4. Start: aiswmm chat"
 Write-Host ""
 
 exit 0
