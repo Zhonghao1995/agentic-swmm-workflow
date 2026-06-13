@@ -6,17 +6,24 @@ IFS=$'\n\t'
 #   curl -fsSL https://aiswmm.com/install.sh | bash
 #
 # Optional environment variables:
-#   AISWMM_INSTALL_REF=v0.6.4   # reproducible install from a specific tag
-#   AISWMM_MODEL=gpt-5.4        # override the default OpenAI model
+#   AISWMM_INSTALL_REF=v0.7.2   # pin a tag, or 'main' to track development
 
-REF="${AISWMM_INSTALL_REF:-main}"
 REPO="Zhonghao1995/agentic-swmm-workflow"
+
+# Default to the latest published release for a reproducible install; override
+# with AISWMM_INSTALL_REF to pin a tag or track 'main'.
+REF="${AISWMM_INSTALL_REF:-}"
+if [[ -z "$REF" ]]; then
+  REF="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null \
+    | grep -m1 '"tag_name"' \
+    | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')"
+  [[ -n "$REF" ]] || REF="main"
+fi
+export AISWMM_INSTALL_REF="$REF"
+
 URL="https://raw.githubusercontent.com/${REPO}/${REF}/scripts/bootstrap.sh"
 
-# Default OpenAI model. Locked to gpt-5.5 — override with AISWMM_MODEL if needed.
-export AISWMM_MODEL="${AISWMM_MODEL:-gpt-5.5}"
-
 printf '[INFO] Installing Agentic SWMM from %s (%s)\n' "$REPO" "$REF"
-printf '[INFO] OpenAI model: %s\n' "$AISWMM_MODEL"
+printf '[INFO] You will pick your AI provider (OpenAI or Claude) and model after install.\n'
 
 curl -fsSL "$URL" | bash -s -- "$@"

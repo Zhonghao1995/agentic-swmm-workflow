@@ -1,56 +1,38 @@
 param(
-    [string]$Ref = $env:AISWMM_INSTALL_REF,
-    [string]$Provider = "openai",
-    [string]$Model = $env:AISWMM_MODEL,
-    [switch]$SkipSwmm,
-    [switch]$SkipMcp,
-    [switch]$SkipSetup,
-    [switch]$InstallSystemDeps,
-    [string]$SwmmExe,
-    [string]$SwmmVersion = "5.2.4"
+    [string]$Ref = $env:AISWMM_INSTALL_REF
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$repo = 'Zhonghao1995/agentic-swmm-workflow'
+
+# Default to the latest published release for a reproducible install. Set
+# AISWMM_INSTALL_REF to pin a tag (e.g. 'v0.7.2') or 'main' to track development.
 if ([string]::IsNullOrWhiteSpace($Ref)) {
-    $Ref = 'main'
-}
-if ([string]::IsNullOrWhiteSpace($Model)) {
-    Write-Host ""
-    Write-Host "Choose the OpenAI model for Agentic SWMM:"
-    Write-Host "  1) gpt-5.5  strongest default"
-    Write-Host "  2) gpt-5.4  balanced cost/performance"
-    Write-Host "  3) gpt-5.2  older compatible frontier model"
-    Write-Host ""
-    $choice = Read-Host "Select model [1]"
-    switch ($choice) {
-        "2" { $Model = "gpt-5.4" }
-        "3" { $Model = "gpt-5.2" }
-        "gpt-5.4" { $Model = "gpt-5.4" }
-        "gpt-5.2" { $Model = "gpt-5.2" }
-        "gpt-5.5" { $Model = "gpt-5.5" }
-        default { $Model = "gpt-5.5" }
+    try {
+        $rel = Invoke-RestMethod -UseBasicParsing `
+            -Headers @{ 'User-Agent' = 'aiswmm-installer' } `
+            -Uri "https://api.github.com/repos/$repo/releases/latest"
+        $Ref = $rel.tag_name
+    } catch {
+        $Ref = 'main'
     }
+    if ([string]::IsNullOrWhiteSpace($Ref)) { $Ref = 'main' }
 }
 
-$repo = 'Zhonghao1995/agentic-swmm-workflow'
 $url = "https://raw.githubusercontent.com/$repo/$Ref/scripts/bootstrap.ps1"
 Write-Host "[INFO] Installing Agentic SWMM from $repo ($Ref)"
-Write-Host "[INFO] OpenAI model: $Model"
+Write-Host "[INFO] You'll pick your AI provider (OpenAI or Claude) and model after install."
 
-$script = (New-Object System.Net.WebClient).DownloadString($url)
-$block = [scriptblock]::Create($script)
+$scriptText = (New-Object System.Net.WebClient).DownloadString($url)
+$block = [scriptblock]::Create($scriptText)
 
-# Forward only what scripts/install.ps1 actually accepts. The legacy
-# Skip*/Swmm* switches targeted an older installer contract that no longer
-# exists, and splatting those unknown keys into bootstrap.ps1 is what crashed
-# the one-liner ("A parameter cannot be found that matches parameter name
-# 'Provider'"). $Ref is used above to fetch bootstrap.ps1; it is not a
-# bootstrap parameter, so it is not forwarded.
-$bootstrapArgs = @{
-    Provider = $Provider
-    Model = $Model
+# bootstrap.ps1 clones $Ref and runs scripts/install.ps1. Pass -Ref only when the
+# fetched bootstrap actually declares it: older release tags predate that param,
+# and binding an unknown parameter would crash the one-liner.
+if ($scriptText -match '(?m)^\s*\[string\]\$Ref') {
+    & $block -Ref $Ref
+} else {
+    & $block
 }
-
-& $block @bootstrapArgs
