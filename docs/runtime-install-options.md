@@ -7,7 +7,7 @@ There look like four ways in, but they are **three strategies** — the two one-
 | **Command** | `install.sh` (macOS/Linux) · `install.ps1` (Windows) | `docker run … ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.3` | `pip install aiswmm` |
 | **What you get** | Full stack: venv + `aiswmm` CLI + MCP servers + **swmm5 solver** + API-key prompt | Everything baked into the image — solver, Python env, and dependencies | The `aiswmm` CLI and its Python dependencies |
 | **swmm5 / Node / API key** | Provisioned for you | Already in the image | Bring your own |
-| **Reproducibility** | Tracks the current rolling build | **Strongest** — pinned and byte-identical across machines | As pinned as you make your own environment |
+| **Reproducibility** | Installs the latest release (pin a tag with `AISWMM_INSTALL_REF`) | **Strongest** — pinned and byte-identical across machines | As pinned as you make your own environment |
 | **Prerequisites** | Python ≥ 3.10 and Node ≥ 18 (plus a C/C++ toolchain on macOS/Linux to build the solver) | Docker only | Python — *and* Node and SWMM already on your system |
 | **Best for** | The fastest route to a complete local runtime | Reproducible, production, or paper-replication runs | Embedding the CLI in a Python environment you already manage |
 
