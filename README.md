@@ -12,7 +12,7 @@
     <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
   </a>
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
-    <img src="https://img.shields.io/badge/release-v0.7.1-1F6FEB" alt="latest release v0.7.1" />
+    <img src="https://img.shields.io/badge/release-v0.7.3-1F6FEB" alt="latest release v0.7.3" />
   </a>
   <a href="https://pypi.org/project/aiswmm/">
     <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
@@ -31,7 +31,7 @@
   </a>
 </p>
 
-> **Pre-1.0** · stable **v0.7.2** · `pip install aiswmm==0.7.2` · [CHANGELOG](CHANGELOG.md)
+> **Pre-1.0** · stable **v0.7.3** · `pip install aiswmm==0.7.3` · [CHANGELOG](CHANGELOG.md)
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
