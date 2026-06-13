@@ -77,8 +77,6 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 
 ## Meet your agent in about five minutes
 
-> **Quick try.** The one-line installer below installs the current development build — fine for kicking the tires. **For reproducible or production use, the pinned Docker image (`:v0.7.3`) is the recommended path** (`:v0.6.4` remains pinned for companion-paper reproducibility) — see [runtime install options](docs/runtime-install-options.md).
-
 macOS and Linux:
 
 ```bash
