@@ -32,8 +32,7 @@
 </p>
 
 > **Pre-1.0** · stable **v0.7.3** · `pip install aiswmm==0.7.3` · [CHANGELOG](CHANGELOG.md)
->
-> 🚧 **In active development:** a web UI that will become the primary interface, replacing today's CLI-first UX.
+> 🚧 **In active development:** a UI that will become the primary interface, replacing CLI-first UX.
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
