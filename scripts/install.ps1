@@ -224,6 +224,18 @@ function Do-PythonDeps {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
     & $venvPython -m pip install -e $RepoRoot
     if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+
+    # Put the venv's Scripts dir on PATH so `aiswmm` resolves. pip -e drops
+    # aiswmm.exe there, but nothing else adds it to PATH — without this the
+    # install finishes and `aiswmm` is "not recognized". Persist to the user
+    # PATH (new shells) and update this process (current shell works too).
+    $venvScripts = Join-Path $VenvDir 'Scripts'
+    $userPath = [System.Environment]::GetEnvironmentVariable('PATH', 'User')
+    if (($userPath -split ';') -notcontains $venvScripts) {
+        $combined = if ([string]::IsNullOrEmpty($userPath)) { $venvScripts } else { "$userPath;$venvScripts" }
+        [System.Environment]::SetEnvironmentVariable('PATH', $combined, 'User')
+    }
+    if (($env:PATH -split ';') -notcontains $venvScripts) { $env:PATH = "$env:PATH;$venvScripts" }
 }
 
 function Do-McpInstall {
