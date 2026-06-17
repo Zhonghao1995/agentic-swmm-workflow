@@ -1,0 +1,16 @@
+# Runs excluded from modeling-memory evidence.
+#
+# This is NON-DESTRUCTIVE: the run folders stay on disk and keep their
+# provenance/audit artifacts. They just do not count toward accumulated
+# modeling history or skill-evolution proposals.
+#
+# One identifier per line — a project key, case name, or run id.
+# Lines starting with '#' and blank lines are ignored.
+# Add a line to exclude a run; delete a line to let it count again.
+
+agent-1778818227
+agent-1778819330
+agent-gpt55-demo
+agent-nl-swmm-demo
+test-gis-entropy-20260512
+swmm_run
