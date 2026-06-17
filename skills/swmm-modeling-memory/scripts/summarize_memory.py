@@ -959,10 +959,51 @@ def proposal_for_pattern(pattern: str) -> tuple[str, str, list[str]]:
     return mapping.get(
         pattern,
         (
-            "Workflow review",
+            _UNRECOGNISED_PATTERN_STEP,
             "Inspect recurring evidence and decide whether a skill refinement is warranted.",
             ["swmm-end-to-end"],
         ),
+    )
+
+
+# Step label returned by ``proposal_for_pattern`` for any pattern not in its
+# explicit table. It is the signal that no existing skill recognises the
+# pattern, which routes it to a new-skill proposal instead of a refinement.
+_UNRECOGNISED_PATTERN_STEP = "Workflow review"
+
+# A pattern is surfaced as a proposal only after it has recurred across at
+# least this many distinct runs. Below the threshold it is tracked under
+# "Watching" so a single audit cannot trigger a skill change off weak, one-off
+# evidence — proposals must be earned by accumulated history.
+_MIN_EVIDENCE_RUNS = 3
+
+
+def _suggest_skill_name(pattern: str) -> str:
+    """Suggest a kebab-case skill name for an unrecognised failure pattern."""
+    slug = re.sub(r"[^a-z0-9]+", "-", pattern.lower()).strip("-")
+    return f"swmm-{slug}" if slug else "swmm-new-skill"
+
+
+def render_new_skill_proposal(pattern: str, runs: list[str]) -> str:
+    """Render a 'propose a new skill' block for a pattern no skill recognises.
+
+    The body deliberately carries no single-backtick tokens: the MOC
+    generator extracts backticked names as existing SKILL.md targets, and a
+    suggested-but-not-yet-existing skill must not leak into that index.
+    """
+    name = _suggest_skill_name(pattern)
+    evidence = ", ".join(runs) if runs else "(no run ids recorded)"
+    return "\n".join(
+        [
+            f"## `{pattern}`",
+            "",
+            "- No existing skill recognises this recurring pattern, so this is a candidate for a NEW skill rather than a refinement.",
+            f"- Suggested new skill name: {name} (rename as fits).",
+            f"- Evidence runs: {evidence}",
+            "- How to act: draft it with the skill-author skill (skills/skill-author/), review the draft, then add it under skills/ and re-run the benchmarks.",
+            "- Required control: human review plus benchmark verification before any new skill is added.",
+            "",
+        ]
     )
 
 
@@ -973,6 +1014,11 @@ def render_proposals(records: list[dict[str, Any]], generated_at: str) -> str:
             if pattern != "no_detected_failure":
                 pattern_to_runs[pattern].append(str(record["run_id"]))
 
+    # Evidence gate: only patterns that have recurred across >= _MIN_EVIDENCE_RUNS
+    # distinct runs earn a proposal; the rest are merely watched.
+    proposed = {p: sorted(set(r)) for p, r in pattern_to_runs.items() if len(set(r)) >= _MIN_EVIDENCE_RUNS}
+    watching = {p: sorted(set(r)) for p, r in pattern_to_runs.items() if 0 < len(set(r)) < _MIN_EVIDENCE_RUNS}
+
     lines = [
         "# Skill Update Proposals",
         "",
@@ -982,18 +1028,23 @@ def render_proposals(records: list[dict[str, Any]], generated_at: str) -> str:
         "",
         "This document is only a proposal. It is not an automatic skill update and it is not evidence of correctness.",
         "",
-        "The modeling-memory skill analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.",
+        f"A pattern is surfaced as a proposal only once it has recurred across at least {_MIN_EVIDENCE_RUNS} distinct runs, so a single audit cannot trigger a skill change off weak evidence. Patterns with less evidence are listed under \"Watching\" and tracked until they accumulate enough. When a well-evidenced pattern is not recognised by any existing skill, the proposal is to draft a NEW skill (via the skill-author skill) rather than force it onto an unrelated skill.",
         "",
-        "Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified.",
+        "Accepted skill changes require human review and benchmark verification before any existing `SKILL.md` is modified or any new skill is added.",
         "",
     ]
-    if not pattern_to_runs:
-        lines.extend(["No recurring failure-driven skill update proposal was generated.", ""])
-        return "\n".join(lines)
 
-    for pattern in sorted(pattern_to_runs):
+    if not proposed:
+        lines.extend([f"No pattern has reached the {_MIN_EVIDENCE_RUNS}-run evidence threshold for a skill proposal yet.", ""])
+    for pattern in sorted(proposed):
+        runs = proposed[pattern]
         step, reason, skills = proposal_for_pattern(pattern)
-        runs = sorted(pattern_to_runs[pattern])
+        # A pattern that falls through to the generic default is one no
+        # existing skill recognises. Rather than pin it on an unrelated
+        # skill, propose drafting a new skill for it.
+        if step == _UNRECOGNISED_PATTERN_STEP:
+            lines.append(render_new_skill_proposal(pattern, runs))
+            continue
         lines.extend(
             [
                 f"## `{pattern}`",
@@ -1001,11 +1052,21 @@ def render_proposals(records: list[dict[str, Any]], generated_at: str) -> str:
                 f"- Potential skill or workflow step: {step}",
                 f"- Relevant workflow skill(s): {', '.join(f'`{skill}`' for skill in skills)}",
                 f"- Why it may need improvement: {reason}",
-                f"- Evidence runs: {', '.join(f'`{run}`' for run in runs)}",
+                f"- Evidence runs ({len(runs)}): {', '.join(f'`{run}`' for run in runs)}",
                 "- Required control: human review plus benchmark verification before accepting any skill refinement.",
                 "",
             ]
         )
+
+    if watching:
+        lines.extend(["## Watching (not enough evidence yet)", ""])
+        for pattern in sorted(watching):
+            seen = len(watching[pattern])
+            lines.append(
+                f"- `{pattern}`: seen in {seen} run(s); needs {_MIN_EVIDENCE_RUNS} before a proposal is raised."
+            )
+        lines.append("")
+
     return "\n".join(lines)
 
 
@@ -1048,6 +1109,29 @@ def export_obsidian(out_dir: Path, obsidian_dir: Path) -> None:
         shutil.copy2(out_dir / name, obsidian_dir / name)
 
 
+def load_excluded_runs(out_dir: Path) -> set[str]:
+    """Read run identifiers to exclude from the evidence base.
+
+    One identifier per line in ``<out_dir>/excluded_runs.txt`` (``#`` comments
+    and blank lines ignored), matched against a record's ``project_key``,
+    ``case_name``, or ``run_id``. Non-destructive: the run folders stay on
+    disk; they just do not count toward accumulated modeling-memory evidence.
+    """
+    path = out_dir / "excluded_runs.txt"
+    if not path.is_file():
+        return set()
+    names: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            names.add(stripped)
+    return names
+
+
+def _is_excluded(record: dict[str, Any], excluded: set[str]) -> bool:
+    return any(str(record.get(key, "")) in excluded for key in ("project_key", "case_name", "run_id"))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Summarize Agentic SWMM experiment audit artifacts into modeling memory and controlled skill-update proposals."
@@ -1070,7 +1154,17 @@ def main() -> int:
     generated_at = now_utc()
 
     run_dirs = discover_run_dirs(runs_dir)
+    scanned_count = len(run_dirs)
     records = [build_record(run_dir, runs_dir) for run_dir in run_dirs]
+    # Non-destructive evidence filter: drop runs listed in excluded_runs.txt so
+    # demo/test runs do not pollute accumulated history. Runs stay on disk.
+    excluded = load_excluded_runs(out_dir)
+    excluded_count = 0
+    if excluded:
+        kept = [(rd, rec) for rd, rec in zip(run_dirs, records) if not _is_excluded(rec, excluded)]
+        excluded_count = len(records) - len(kept)
+        run_dirs = [rd for rd, _ in kept]
+        records = [rec for _, rec in kept]
     failure_count = sum(1 for record in records if has_detected_failure(record))
     run_summaries = [build_run_memory_summary(record, generated_at) for record in records]
     project_summaries = [
@@ -1122,8 +1216,9 @@ def main() -> int:
         export_obsidian(out_dir, args.obsidian_dir)
         obsidian_used = True
 
-    print(f"run folders scanned: {len(run_dirs)}")
+    print(f"run folders scanned: {scanned_count}")
     print(f"audit records found: {len(records)}")
+    print(f"runs excluded from evidence: {excluded_count}")
     print(f"runs with detected failures: {failure_count}")
     print(f"run memory summaries written: {'no' if args.no_run_summaries else len(run_summaries)}")
     print(f"project memory groups written: {len(project_summaries)}")
