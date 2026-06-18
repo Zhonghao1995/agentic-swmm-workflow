@@ -99,19 +99,33 @@ python skills/swmm-anywhere/scripts/synth_from_bbox.py \
 The skill produces a runnable SWMM .inp under `<run-dir>/10_swmmanywhere/synth.inp`. Chain it through aiswmm's standard audit pipeline:
 
 ```bash
-# 1. Run SWMM (aiswmm's own swmm5 binary, NOT pyswmm)
+# 1. Structural QA of the synthesized network (NO SWMM run needed) — flags
+#    orphan/isolated nodes, junctions with no downstream path to an outfall,
+#    and pipe/outfall counts straight off the synthesized INP. This is the
+#    signal for whether to adjust SWMManywhere parameter overrides and
+#    re-synthesize before spending a SWMM run on a structurally broken network.
+python3 skills/swmm-network/scripts/network_qa.py --inp <run-dir>/10_swmmanywhere/synth.inp
+
+# 2. Run SWMM (aiswmm's own swmm5 binary, NOT pyswmm)
 aiswmm run --inp <run-dir>/10_swmmanywhere/synth.inp --run-dir <run-dir>/swmm_run
 
-# 2. Audit the run
+# 3. Audit the run
 aiswmm audit --run-dir <run-dir>/swmm_run
 
-# 3. Plot rain/runoff
+# 4. Plausibility-review the synthesized model (NO observed data needed).
+#    Reference-free: scores velocity / capacity / slope / roughness / diameter
+#    against physical-plausibility bands → <run-dir>/swmm_run/09_review/.
+#    Every finding is a WARN (flag-for-review); continuity stays the postflight gate's job.
+aiswmm review --run-dir <run-dir>/swmm_run \
+  --rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml
+
+# 5. Plot rain/runoff
 aiswmm plot --run-dir <run-dir>/swmm_run
 
-# 4. Plot a specific node or conduit (requires --link support; see swmm-plot SKILL.md)
+# 6. Plot a specific node or conduit (requires --link support; see swmm-plot SKILL.md)
 aiswmm plot --run-dir <run-dir>/swmm_run --node <node_id> --node-attr Total_inflow
 
-# 5. Pick a peak-flow conduit from the RPT Link Flow Summary and plot it
+# 7. Pick a peak-flow conduit from the RPT Link Flow Summary and plot it
 aiswmm plot --run-dir <run-dir>/swmm_run --link <conduit_id>
 ```
 

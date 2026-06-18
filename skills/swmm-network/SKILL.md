@@ -74,7 +74,7 @@ Do **not** use this skill when the user only wants subcatchment delineation (use
 
 ### QA + export
 
-7. **`qa`** — run topology + required-attribute checks on a `network.json`. Args: `networkJsonPath`. Returns a structured QA report (warnings include `no_outfall_path`, missing inverts, etc.).
+7. **`qa`** — run topology + required-attribute checks on a network. Args: `networkJsonPath` **or** `inpPath` (provide exactly one). `inpPath` runs the same checks on a SWMM `.inp` via `inp_to_network.py` — use it to QA a SWMManywhere-synthesized model (which emits an INP but no `network.json`) or any INP-only path, so structural QA is uniform across the real-data and synth paths. Returns a structured QA report (warnings include `isolated_node`, `no_outfall_path`, missing inverts, etc.). CLI: `python3 scripts/network_qa.py --inp <model.inp>`.
 
 8. **`export_inp`** — render a `network.json` to SWMM INP sections (junctions/outfalls/conduits/xsections/coordinates). Args: `networkJsonPath`. Used internally by `swmm-builder`; rarely called directly by an agent.
 

@@ -1,0 +1,147 @@
+rulebook_id: synth_plausibility
+version: "0.1"
+standard: "Physical-plausibility heuristics for synthesized (ungauged) SWMM networks"
+disclaimer: |
+  PLAUSIBILITY HEURISTICS — NOT A DESIGN STANDARD. This rulebook screens a
+  SWMManywhere-style synthesized network (inferred from OSM + DEM, never
+  surveyed) for physically implausible hydraulics and geometry. It needs NO
+  observed data. Every finding is a WARN: it flags a value for an engineer to
+  inspect, it does NOT reject a design and does NOT certify one. A synthesized
+  network is an approximate baseline, so out-of-band values usually point at an
+  inference artifact (DEM noise, slope/topology error, pipe-sizing defect) to
+  investigate — not at a real infrastructure defect.
+
+  Continuity / mass-balance error is intentionally NOT checked here: that is the
+  job of the runtime postflight QA gate
+  (agentic_swmm/agent/swmm_runtime/postflight.py), which hard-classifies it
+  against reference_benchmarks.yaml. This rulebook only covers the
+  structural/hydraulic plausibility that postflight does not.
+
+  All thresholds are engineering rules-of-thumb carrying verify:true — confirm
+  them against your locally applicable design practice before relying on any
+  finding. aiswmm makes NO representation of regulatory compliance.
+created_at: "2026-06-18"
+units: SI
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Velocity plausibility (rpt Link Flow Summary — always available)
+  # ---------------------------------------------------------------------------
+  - id: VELOCITY_MAX_PLAUSIBLE
+    title: "Peak conduit velocity is within a physically plausible ceiling"
+    metric: link.max_velocity
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 5.0
+    units: SI
+    severity: WARN
+    citation: "Scour/erosion plausibility ceiling for gravity sewers. Design limits are typically 3-4 m/s (concrete); a peak > 5 m/s in a synthesized network usually indicates an over-steep inferred slope (DEM artifact) rather than a real pipe. Confirm against pipe-material limits in local practice."
+    verify: true
+    remediation: |
+      Inspect the offending conduit's end inverts and length — an implausibly high
+      velocity is almost always a slope-inference artifact from DEM noise. Check the
+      upstream/downstream node elevations the synthesizer assigned.
+
+  - id: VELOCITY_MIN_SELFCLEAN
+    title: "Peak conduit velocity reaches the self-cleansing minimum"
+    metric: link.max_velocity
+    scope:
+      link_type: CONDUIT
+    operator: gte
+    threshold: 0.3
+    units: SI
+    severity: WARN
+    citation: "Self-cleansing velocity rule-of-thumb (~0.3 m/s at peak flow) below which sediment accumulates. Butler, Digman, Makropoulos & Davies, Urban Drainage (4th ed.). Confirm against local minimum-velocity tables."
+    verify: true
+    remediation: |
+      Low or zero peak velocity is expected on some conduits in a synthesized
+      baseline (oversized inferred pipe or small storm). Persistent zero velocity
+      across many conduits can instead indicate that subcatchment runoff is not
+      reaching the network — check the synthesized subcatchment-to-node routing.
+
+  # ---------------------------------------------------------------------------
+  # Capacity plausibility (rpt Link Flow Summary)
+  # ---------------------------------------------------------------------------
+  - id: PIPE_CAPACITY_PLAUSIBLE
+    title: "Pipe is not grossly surcharged (Q/Qfull within capacity)"
+    metric: link.max_full_flow_ratio
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 1.0
+    units: SI
+    severity: WARN
+    citation: "Q/Qfull > 1 implies the inferred pipe is surcharged / undersized for the design storm. Butler & Davies, Urban Drainage. Synthesized sizing (pipe_by_pipe) is approximate; confirm against a designed cross-section."
+    verify: true
+    remediation: |
+      A surcharged inferred pipe may reflect undersized synthesis rather than a real
+      deficiency. Consider re-synthesizing with adjusted hydraulic_design parameter
+      overrides, or treat the conduit as a candidate for manual sizing review.
+
+  # ---------------------------------------------------------------------------
+  # Slope plausibility (INP-derived — SI models only)
+  # ---------------------------------------------------------------------------
+  - id: SLOPE_MIN_SELFCLEAN
+    title: "Conduit gradient meets a minimum self-cleansing slope"
+    metric: conduit.slope_pct
+    scope:
+      link_type: CONDUIT
+    operator: gte
+    threshold: 0.1
+    units: SI
+    severity: WARN
+    citation: "Minimum gradient for self-cleansing gravity flow is of order 0.1-0.3%. Flat or near-zero inferred gradients usually reflect DEM noise rather than a designed flat run. Confirm against local minimum-gradient tables."
+    verify: true
+    remediation: |
+      A near-flat or adverse inferred slope is typically a DEM/topology artifact.
+      Inspect the from/to node inverts the synthesizer derived for this conduit.
+
+  - id: SLOPE_MAX_PLAUSIBLE
+    title: "Conduit gradient is not physically implausible for gravity drainage"
+    metric: conduit.slope_pct
+    scope:
+      link_type: CONDUIT
+    operator: lte
+    threshold: 20.0
+    units: SI
+    severity: WARN
+    citation: "Gravity-sewer gradients above ~20% are physically implausible and almost always indicate a DEM/topology inference artifact, not a real pipe. Engineering judgement; verify by inspecting the offending conduit's end inverts."
+    verify: true
+    remediation: |
+      A > 20% inferred gradient is essentially never a real sewer. The DEM likely
+      assigned a large elevation drop across a short conduit. Inspect and, if needed,
+      re-synthesize with corrected starting elevations.
+
+  # ---------------------------------------------------------------------------
+  # Geometry plausibility (INP-derived — SI models only)
+  # ---------------------------------------------------------------------------
+  - id: ROUGHNESS_PLAUSIBLE
+    title: "Conduit Manning's n is within a plausible pipe-material band"
+    metric: conduit.roughness
+    operator: between
+    threshold_low: 0.009
+    threshold_high: 0.030
+    units: SI
+    severity: WARN
+    citation: "Manning's n plausibility band for pipe materials: smooth PVC ~0.009 to corrugated/aged ~0.025. EPA SWMM Reference Manual Vol. II; cross-check reference_benchmarks.yaml manning_n_pipes. A value outside this band indicates a synthesis defect."
+    verify: true
+    remediation: |
+      An out-of-band roughness means the synthesizer wrote a non-physical Manning's n.
+      Check the SWMManywhere hydraulic_design defaults / parameter overrides used for
+      this run.
+
+  - id: DIAMETER_PLAUSIBLE
+    title: "Circular-pipe diameter is within a plausible urban-drainage range"
+    metric: conduit.diameter_m
+    operator: between
+    threshold_low: 0.1
+    threshold_high: 3.0
+    units: SI
+    severity: WARN
+    citation: "Plausible circular-pipe diameter range for urban drainage: ~0.1 m (minimum practical) to ~3 m (large trunk). Values outside indicate a pipe_by_pipe sizing artifact. Confirm against the local design catalogue."
+    verify: true
+    remediation: |
+      A diameter below ~100 mm or above ~3 m from synthesis is almost certainly a
+      sizing artifact. Inspect the contributing-area and design-flow the synthesizer
+      used for this conduit, or re-synthesize with adjusted hydraulic_design overrides.
