@@ -43,13 +43,13 @@ def summarize(network: dict) -> dict:
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("network_json", type=Path)
-    ap.add_argument("--report-json", default=None, type=Path)
-    args = ap.parse_args()
+def run_qa(network: dict) -> dict:
+    """Run structural QA on a network dict, return the report dict.
 
-    network = load_json(args.network_json)
+    Pure: no I/O. ``main`` builds ``network`` from either a network.json or
+    (via ``inp_to_network``) a SWMM ``.inp`` and hands it here, so every
+    entrypoint shares one QA implementation.
+    """
     issues: list[dict] = []
 
     node_ids = [j["id"] for j in network.get("junctions", [])] + [o["id"] for o in network.get("outfalls", [])]
@@ -124,12 +124,37 @@ def main() -> None:
         if not reaches_outfall:
             add_issue(issues, "warning", "no_outfall_path", "No downstream path from junction to any outfall", start)
 
-    report = {
+    return {
         "ok": not any(x["severity"] == "error" for x in issues),
         "summary": summarize(network),
         "issue_count": len(issues),
         "issues": issues,
     }
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description="Structural QA for a SWMM network — a network.json or a .inp.",
+    )
+    ap.add_argument("network_json", type=Path, nargs="?", default=None,
+                    help="Path to a network.json (omit when using --inp).")
+    ap.add_argument("--inp", type=Path, default=None,
+                    help="Run QA on a SWMM .inp instead of a network.json "
+                         "(e.g. a SWMManywhere-synthesized model).")
+    ap.add_argument("--report-json", default=None, type=Path)
+    args = ap.parse_args()
+
+    if args.inp is not None:
+        # Lazy sibling import: the script's own dir is on sys.path when run
+        # directly, so this resolves without packaging the scripts dir.
+        from inp_to_network import inp_to_network
+        network = inp_to_network(args.inp)
+    elif args.network_json is not None:
+        network = load_json(args.network_json)
+    else:
+        ap.error("provide a network_json path or --inp <model.inp>")
+
+    report = run_qa(network)
     if args.report_json:
         save_json(args.report_json, report)
     print(json.dumps(report, indent=2))

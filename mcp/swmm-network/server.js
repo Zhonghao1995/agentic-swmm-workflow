@@ -103,10 +103,14 @@ server.tool(
 
 server.tool(
   'qa',
-  'Run QA checks on a SWMM network JSON model',
-  { networkJsonPath: z.string() },
-  async ({ networkJsonPath }) => {
-    const out = runPython(qaScript, [networkJsonPath]);
+  'Run QA checks on a SWMM network model — a network JSON (networkJsonPath) or a SWMM .inp (inpPath, e.g. a SWMManywhere-synthesized model). Provide exactly one.',
+  { networkJsonPath: z.string().optional(), inpPath: z.string().optional() },
+  async ({ networkJsonPath, inpPath }) => {
+    if (!networkJsonPath && !inpPath) {
+      return { content: [{ type: 'text', text: 'ERROR: provide networkJsonPath or inpPath' }], isError: true };
+    }
+    const args = inpPath ? ['--inp', inpPath] : [networkJsonPath];
+    const out = runPython(qaScript, args);
     return { content: [{ type: 'text', text: out }] };
   }
 );
