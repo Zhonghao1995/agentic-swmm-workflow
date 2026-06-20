@@ -38,6 +38,32 @@ class CliSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("bbox", result.stderr.lower())
 
+    def test_cli_help_mentions_config_overrides(self) -> None:
+        result = subprocess.run(
+            [sys.executable, str(CLI), "--help"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("config-overrides", result.stdout.lower())
+
+    def test_cli_rejects_malformed_config_overrides(self) -> None:
+        # The JSON validation fails fast BEFORE the heavy [anywhere] import,
+        # so this exercises the override path without the extra installed.
+        result = subprocess.run(
+            [
+                sys.executable, str(CLI),
+                "--bbox", "0", "0", "1", "1",
+                "--config-overrides", "{not json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("config-overrides", result.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

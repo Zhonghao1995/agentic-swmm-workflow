@@ -33,6 +33,7 @@ The synthesized INP is **immediately runnable** through `swmm-runner` and **imme
 
 - `--refresh-raw`: reserved flag for a future cache-aware path. **Today every call re-downloads** OSM/DEM via SWMManywhere's own `prepare_data`; aiswmm does not yet replay a run *from* the `00_raw/` snapshot, so this flag has no effect at the aiswmm layer yet.
 - `--project-name`: human-readable label embedded in the manifest.
+- `--config-overrides`: JSON object of per-call SWMManywhere parameter overrides to adjust the synthesis (cure orphan nodes, tune pipe density). See *Adjusting the synthesis* below. The `synth_swmm_from_bbox` agent tool exposes the same as a `config_overrides` argument.
 
 ## Defaults — tuned for fewer, more useful outfalls
 
@@ -45,6 +46,28 @@ The skill ships with `outfall_derivation` parameters tuned in spike 04 (A/B'd ag
 | `outfall_derivation.outfall_length` | 40 | **200** | Stronger penalty against selecting additional outfalls. |
 
 On the spike bbox these defaults dropped outfalls from 50 to 33 (-34 %), grew pipes from 500 to 517 (+3.4 %), and shortened end-to-end runtime from 40 s to 32 s. The defaults can be overridden per call.
+
+## Adjusting the synthesis — orphan nodes, too many / too few pipes
+
+When the structural QA step (`network_qa.py --inp ...`, step 1 of *What to do next*) flags `isolated_node` / `no_outfall_path` nodes, or the pipe count looks off, tune SWMManywhere's parameters and re-synthesise. Pass overrides per call — CLI `--config-overrides '<json>'`, or the `synth_swmm_from_bbox` tool's `config_overrides` argument — shape `{group: {param: value}}`. The runner merges them onto the resolved config and re-runs the pipeline.
+
+| Symptom | Knob (`group.field`) | Default | Turn it |
+|---|---|---|---|
+| Orphan / `no_outfall_path` nodes | `outfall_derivation.outfall_length` | **200** | **Lower** toward the upstream 40 → more outfalls, fewer orphans. This skill's tuned 200 *suppresses* outfalls (see Defaults above), so it is the first suspect for orphan nodes. |
+| Orphan nodes | `outfall_derivation.river_buffer_distance` | 300 | Raise (≤ 500) → streets pair with a river segment more easily. |
+| Orphan nodes (quick reset) | *all three outfall defaults* | — | Pass `upstream_defaults: true` (tool) / `--upstream-defaults` (CLI) to drop aiswmm's tuned overrides and use SWMManywhere's `separate` / 150 / 40 in one switch. |
+| Too many pipes | `subcatchment_derivation.node_merge_distance` | 10 | **Raise** (≤ 39.9, must stay `< max_street_length`) → merges nearby nodes → fewer pipes. |
+| Too many pipes | `subcatchment_derivation.max_street_length` | 60 | Raise (≤ 100) → fewer street segments → fewer pipes. |
+| Too few pipes | the two above | — | Lower them; or add a type to `topology_derivation.allowable_networks` (default `[walk, drive]`). |
+
+Example — more outfalls (cure orphans) **and** fewer pipes:
+
+```bash
+python3 skills/swmm-anywhere/scripts/synth_from_bbox.py --bbox <min_lon> <min_lat> <max_lon> <max_lat> \
+  --config-overrides '{"outfall_derivation": {"outfall_length": 60}, "subcatchment_derivation": {"node_merge_distance": 25}}'
+```
+
+SWMManywhere is nonlinear, so expect 1–2 iterations to hit a target, and keep each value inside its valid range (synthesis errors on out-of-bounds, e.g. `node_merge_distance` ≥ `max_street_length`). Re-run the structural QA after each re-synthesis to confirm the fix.
 
 ## Skill artifacts produced
 
