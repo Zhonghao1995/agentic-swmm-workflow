@@ -93,6 +93,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--config-overrides",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help=(
+            "JSON object of per-call SWMManywhere parameter overrides, shape "
+            "{group: {param: value}}, e.g. "
+            "'{\"outfall_derivation\": {\"outfall_length\": 60}}'. Merged onto the "
+            "resolved config (re-synthesize to apply). Lower "
+            "outfall_derivation.outfall_length for fewer orphan / no-outfall-path "
+            "nodes; raise subcatchment_derivation.node_merge_distance for fewer "
+            "pipes. See the symptom->knob table in skills/swmm-anywhere/SKILL.md."
+        ),
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print the SynthRunResult summary as machine-readable JSON.",
@@ -102,6 +117,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    # Validate --config-overrides BEFORE the heavy import so a malformed JSON
+    # fails fast (and stays testable without the [anywhere] extra).
+    config_overrides = None
+    if args.config_overrides:
+        try:
+            config_overrides = json.loads(args.config_overrides)
+        except json.JSONDecodeError as exc:
+            print(f"error: --config-overrides is not valid JSON: {exc}", file=sys.stderr)
+            return 2
+        if not isinstance(config_overrides, dict):
+            print("error: --config-overrides must be a JSON object (dict)", file=sys.stderr)
+            return 2
 
     # Lazy import: lets `--help` work without the `[anywhere]` extra installed.
     try:
@@ -129,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             refresh_raw=args.refresh_raw,
             use_upstream_defaults=args.upstream_defaults,
             rain_file=args.rain_file,
+            config_overrides=config_overrides,
         )
     except SynthRunError as exc:
         print(

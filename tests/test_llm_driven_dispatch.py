@@ -196,6 +196,17 @@ class LlmPicksSwmmAnywhereForBboxPromptTests(unittest.TestCase):
         # The legacy mode gate is gone.
         self.assertNotIn("select_workflow_mode", tool_names)
 
+        # The parameter-override knob is exposed so the LLM can adjust the
+        # synthesis (e.g. lower outfall_length to cure orphan nodes) and
+        # re-synthesise — not just toggle the coarse upstream_defaults switch.
+        synth_spec = next(
+            s for s in provider.tool_schemas_seen[0]
+            if s["name"] == "synth_swmm_from_bbox"
+        )
+        props = synth_spec["parameters"]["properties"]
+        self.assertIn("config_overrides", props)
+        self.assertEqual(props["config_overrides"]["type"], "object")
+
 
 class LlmPicksRunSwmmInpForExistingInpTests(unittest.TestCase):
     """When the prompt references an existing INP path, the LLM picks

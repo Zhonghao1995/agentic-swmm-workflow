@@ -711,7 +711,16 @@ def _build_tools() -> dict[str, ToolSpec]:
                     },
                     "config_overrides": {
                         "type": "object",
-                        "description": "Per-call SWMManywhere parameter overrides merged onto the resolved config; keys per the SWMManywhere parameter schema.",
+                        "description": (
+                            "Per-call SWMManywhere parameter overrides, shape {group: {param: value}}, "
+                            "merged onto the resolved config. Use to fix structural complaints from "
+                            "network_qa, then re-synthesise: LOWER outfall_derivation.outfall_length "
+                            "(default 200) for more outfalls / fewer orphan / no-outfall-path nodes; "
+                            "RAISE subcatchment_derivation.node_merge_distance (default 10, keep < "
+                            "max_street_length) or max_street_length (default 60) for fewer pipes. "
+                            "Shortcut: pass upstream_defaults=true to drop aiswmm's tuned outfall "
+                            "overrides entirely. Full symptom->knob table in swmm-anywhere SKILL.md."
+                        ),
                     },
                 },
                 ["bbox"],
