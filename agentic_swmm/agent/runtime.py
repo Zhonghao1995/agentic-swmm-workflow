@@ -141,4 +141,31 @@ def run_openai_plan(
         outcome=outcome,
     )
     write_event(trace_path, {"event": "session_state", "state": str(state_path), "context_summary": str(context_path)})
+
+    # Runtime observability: record operational tool failures (MCP transport
+    # drops, path-resolution errors, SWMM solver errors) to a dedicated
+    # run_failures.jsonl so the real failure distribution is queryable and
+    # future fixes can be data-driven. Deliberately separate from
+    # negative_lessons (modeling knowledge) so operational noise never
+    # pollutes that recall path. Best-effort: a recording failure must never
+    # change the turn's outcome, so the whole block is swallowed.
+    try:
+        from agentic_swmm.memory.run_failures import (
+            record_run_failures,
+            resolve_store,
+        )
+
+        recorded = record_run_failures(
+            resolve_store(),
+            run_id=executor.session_dir.name,
+            results=outcome.results,
+        )
+        if recorded:
+            write_event(
+                trace_path,
+                {"event": "run_failures_recorded", "count": len(recorded)},
+            )
+    except Exception as exc:  # noqa: BLE001 - observability must not break the turn
+        write_event(trace_path, {"event": "run_failures_error", "error": str(exc)})
+
     return outcome
