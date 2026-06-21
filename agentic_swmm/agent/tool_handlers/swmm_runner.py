@@ -24,13 +24,62 @@ come from ``tool_handlers/_shared``.
 
 from __future__ import annotations
 
+import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _resolve_or_create_run_dir, _safe_name
+from agentic_swmm.agent.swmm_runtime.preflight import preflight_inp
+from agentic_swmm.agent.tool_handlers._shared import (
+    _failure,
+    _resolve_or_create_run_dir,
+    _safe_name,
+)
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
+
+_log = logging.getLogger(__name__)
+
+# User-only escape hatch (env, never an LLM-settable arg) to bypass the
+# preflight gate. Honoured truthy values mirror the project's other env flags.
+_SKIP_PREFLIGHT_VALUES = {"1", "true", "yes", "on"}
+
+
+def _preflight_gate(call: ToolCall, inp: Path) -> dict[str, Any] | None:
+    """Validate ``inp`` before the (minutes-long) SWMM run.
+
+    Returns a fail-soft ``_failure`` payload to BLOCK the run on a preflight
+    FAIL — the actionable detail goes in ``summary`` (the field the planner
+    sees) so the LLM can fix the .inp and retry; repeated FAILs trip the
+    planner's same-tool circuit breaker. Returns ``None`` to proceed: a WARN
+    is logged (advisory, non-blocking), a PASS is silent. A user-only
+    ``AISWMM_SKIP_PREFLIGHT`` env flag bypasses the gate entirely.
+
+    No auto-fix by design: the modeler/LLM must change the model visibly
+    (verification-first), so the gate never edits the .inp.
+    """
+    if os.environ.get("AISWMM_SKIP_PREFLIGHT", "").strip().lower() in _SKIP_PREFLIGHT_VALUES:
+        return None
+    report = preflight_inp(inp)
+    if report.status == "FAIL":
+        details = "; ".join(
+            str(f.get("detail") or f.get("code")) for f in report.failures
+        ) or "invalid .inp"
+        return _failure(
+            call,
+            f"preflight blocked run_swmm_inp: {details} "
+            "(fix the .inp and retry, or set AISWMM_SKIP_PREFLIGHT=1 to override)",
+        )
+    if report.warnings:
+        _log.warning(
+            "preflight warnings for %s: %s",
+            inp,
+            "; ".join(
+                str(w.get("detail") or w.get("code")) for w in report.warnings
+            ),
+        )
+    return None
 
 
 def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -49,6 +98,9 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     inp = _resolve_inp_for_run(call)
     if isinstance(inp, dict):
         return inp
+    blocked = _preflight_gate(call, inp)
+    if blocked is not None:
+        return blocked
     run_dir = _resolve_or_create_run_dir(call, "run_dir")
     if isinstance(run_dir, dict):
         return run_dir
