@@ -27,6 +27,7 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,35 @@ from typing import Any
 from agentic_swmm.agent.mcp_client import McpClientError, _read, _send
 from agentic_swmm.utils.paths import repo_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
+
+
+# --- transport resilience ---------------------------------------------------
+# A dropped MCP child manifests as one of these client errors (raised by
+# ``mcp_client._readline`` / ``_wait_readable``). They are recoverable:
+# respawn the server and — for safe methods — replay the request.
+_TRANSIENT_TRANSPORT_MARKERS = (
+    "process ended before sending a complete line",
+    "response timed out",
+)
+# Respawn-and-retry budget after a transient drop. One extra attempt covers
+# the common "child died between calls" case without risking a thrash loop.
+_MAX_TRANSPORT_RETRIES = 1
+# Brief pause before a respawn so a crash-looping server is not hammered.
+_RETRY_BACKOFF_SECONDS = 0.1
+# Methods safe to re-send after the request was already written to a now-dead
+# child. ``tools/call`` is intentionally excluded: a non-idempotent server-side
+# effect may have run before the pipe closed, so replaying it could double-apply.
+# (A drop during *startup* — before the call is sent — is still retried for
+# every method; see ``_request``.)
+_IDEMPOTENT_METHODS = frozenset(
+    {"tools/list", "initialize", "resources/list", "prompts/list"}
+)
+
+
+def _is_transient_transport_error(exc: Exception) -> bool:
+    """True when ``exc`` is a recoverable MCP transport drop (dead child / timeout)."""
+    message = str(exc).lower()
+    return any(marker in message for marker in _TRANSIENT_TRANSPORT_MARKERS)
 
 
 @dataclass(frozen=True)
@@ -139,11 +169,74 @@ class MCPPool:
             raise McpClientError(f"unknown MCP server: {server}")
         handle = self._handles[server]
         if handle.error:
+            # Permanent failure (toolchain/deps missing, or the server rejected
+            # initialize). Transient transport drops no longer pin handle.error,
+            # so reaching here means "do not bother retrying".
             raise McpClientError(handle.error)
 
-        with handle.lock:
-            self._ensure_started(handle, timeout=timeout)
-            return self._send_recv(handle, method, params, timeout=timeout)
+        last_exc: McpClientError | None = None
+        for attempt in range(_MAX_TRANSPORT_RETRIES + 1):
+            is_last = attempt == _MAX_TRANSPORT_RETRIES
+            with handle.lock:
+                try:
+                    self._ensure_started(handle, timeout=timeout)
+                except McpClientError as exc:
+                    # Startup failure: the request was never sent, so a retry is
+                    # safe for any method. Give up on permanent failures
+                    # (handle.error pinned) or once retries are exhausted.
+                    if (
+                        handle.error
+                        or is_last
+                        or not _is_transient_transport_error(exc)
+                    ):
+                        raise
+                    last_exc = exc
+                    self._reset_handle(handle)
+                else:
+                    try:
+                        return self._send_recv(
+                            handle, method, params, timeout=timeout
+                        )
+                    except McpClientError as exc:
+                        # Request already on the wire. Clear the dead child so
+                        # the next call starts clean, then replay only when it
+                        # is safe: idempotent methods are fine; tools/call may
+                        # have mutated state before the pipe closed.
+                        self._reset_handle(handle)
+                        if (
+                            is_last
+                            or not _is_transient_transport_error(exc)
+                            or method not in _IDEMPOTENT_METHODS
+                        ):
+                            raise
+                        last_exc = exc
+            # Transient failure with retries left: brief backoff, then respawn.
+            time.sleep(_RETRY_BACKOFF_SECONDS)
+
+        if last_exc is not None:
+            raise last_exc
+        raise McpClientError(f"MCP server '{server}' request failed")
+
+    def _reset_handle(self, handle: MCPServerHandle) -> None:
+        """Tear down a dead/half-built child so the next attempt respawns clean.
+
+        Deliberately does not touch ``handle.error``: a permanent failure stays
+        pinned, while a transient drop leaves it ``None`` so the server can
+        recover on the next call.
+        """
+        proc = handle.proc
+        if proc is not None:
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        handle.proc = None
+        handle.initialized = False
 
     def _ensure_started(self, handle: MCPServerHandle, *, timeout: int) -> None:
         if handle.proc is not None and handle.proc.poll() is None and handle.initialized:
@@ -196,7 +289,7 @@ class MCPPool:
                 {"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}},
             )
             handle.initialized = True
-        except Exception:
+        except Exception as exc:
             # Initialize failed — tear the half-built child down so a later
             # call cannot reuse a broken pipe.
             try:
@@ -209,7 +302,11 @@ class MCPPool:
                     pass
             handle.proc = None
             handle.initialized = False
-            if handle.error is None:
+            # Pin a permanent error only for non-transient init failures. A
+            # transient transport drop during startup (child crashed before the
+            # handshake completed) must stay recoverable so a respawn/retry can
+            # succeed; an init error payload already pinned handle.error above.
+            if handle.error is None and not _is_transient_transport_error(exc):
                 handle.error = "MCP server failed to initialize"
             raise
 
