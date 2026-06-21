@@ -188,6 +188,11 @@ class AgentToolRegistry:
             # into the next LLM turn as a user_clarification message.
             "resume_mode",
             "gap_kind",
+            # Structured path/file-resolution remediation
+            # (error_remediation.file_resolution_error): the planner needs
+            # the actionable hint + cause to self-correct a bad path.
+            "hint",
+            "cause",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 

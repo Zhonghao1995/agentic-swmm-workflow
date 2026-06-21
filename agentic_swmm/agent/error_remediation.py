@@ -125,6 +125,64 @@ def _format_did_you_mean(suggestions: list[str]) -> str | None:
 # builder is one concept.
 
 
+def file_resolution_error(
+    summary: str,
+    *,
+    requested: str | Path | None = None,
+    search_dir: str | Path | None = None,
+    suffixes: tuple[str, ...] = (),
+    limit: int = 8,
+) -> RemediationError:
+    """Augment a file-not-found ``summary`` with a cause + an actionable hint.
+
+    The hint lists the files that *do* exist in ``search_dir`` (optionally
+    filtered to ``suffixes`` like ``(".inp",)``) and, when ``requested``
+    names a specific path, prepends a fuzzy "did you mean" against the
+    directory's entries. ``summary`` is preserved verbatim so existing log
+    greps still match. Used by the SWMM tool handlers so the planner sees
+    *which* file to pick instead of a dead-end "not found".
+    """
+    if search_dir is None:
+        return RemediationError(summary=summary)
+    directory = Path(search_dir)
+    if not directory.is_dir():
+        return RemediationError(
+            summary=summary, cause=f"directory does not exist: {directory}"
+        )
+
+    try:
+        names = sorted(p.name for p in directory.iterdir() if p.is_file())
+    except OSError:
+        names = []
+
+    matched = (
+        [n for n in names if n.endswith(tuple(suffixes))] if suffixes else names
+    )
+    cause = None
+    if suffixes and not matched:
+        cause = f"no {' or '.join(suffixes)} file in {directory}"
+
+    hint_parts: list[str] = []
+    req_name = Path(str(requested)).name if requested else None
+    if req_name:
+        did_you_mean = _format_did_you_mean(
+            fuzzy_match_suggestions(query=req_name, choices=names)
+        )
+        if did_you_mean:
+            hint_parts.append(did_you_mean)
+
+    shown = matched if matched else names
+    if shown:
+        label = "matching" if matched else "available"
+        more = "" if len(shown) <= limit else f" (+{len(shown) - limit} more)"
+        hint_parts.append(f"{label} files: {', '.join(shown[:limit])}{more}")
+    elif not hint_parts:
+        hint_parts.append(f"{directory} contains no files")
+
+    hint = "; ".join(hint_parts) if hint_parts else None
+    return RemediationError(summary=summary, cause=cause, hint=hint)
+
+
 def parameter_lookup_error(
     *,
     parameter_name: str,

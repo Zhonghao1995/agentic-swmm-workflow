@@ -41,6 +41,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _repo_path,
     _tail,
 )
+from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.runtime.registry import discover_skills
 from agentic_swmm.utils.paths import repo_root
@@ -51,7 +52,10 @@ def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if path is None:
         return _failure(call, "refusing to read outside repository")
     if not path.exists() or not path.is_file():
-        return _failure(call, f"file not found: {path}")
+        err = file_resolution_error(
+            f"file not found: {path}", requested=path, search_dir=path.parent
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     text = path.read_text(encoding="utf-8", errors="replace")
     return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read {path.relative_to(repo_root())}"}
 
@@ -82,7 +86,12 @@ def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     path = _repo_path(str(call.args.get("path") or "."))
     if path is None or not path.exists() or not path.is_dir():
-        return _failure(call, "directory must exist inside repository")
+        err = file_resolution_error(
+            "directory must exist inside repository",
+            requested=call.args.get("path"),
+            search_dir=path.parent if path is not None else None,
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     entries = [{"name": item.name, "type": "dir" if item.is_dir() else "file", "path": str(item.relative_to(repo_root()))} for item in sorted(path.iterdir())[:200]]
     return {"tool": call.name, "args": call.args, "ok": True, "results": entries, "summary": f"{len(entries)} entries"}
 

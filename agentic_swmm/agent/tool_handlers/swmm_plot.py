@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path, _resolve_run_dir
+from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.commands.plot import (
     DEFAULT_NODE_ATTR,
@@ -73,7 +74,13 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     if call.args.get("out_file"):
         out_file = _repo_path(str(call.args["out_file"]))
         if out_file is None or not out_file.exists() or not out_file.is_file():
-            return _failure(call, f"out_file must be an existing repository file: {call.args['out_file']}")
+            err = file_resolution_error(
+                f"out_file must be an existing repository file: {call.args['out_file']}",
+                requested=call.args["out_file"],
+                search_dir=out_file.parent if out_file is not None else None,
+                suffixes=(".out",),
+            )
+            return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     elif run_dir is not None:
         manifest = _read_manifest(run_dir)
         out_file = _find_out(run_dir, manifest)
@@ -125,9 +132,19 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     inp_path = _find_inp(run_dir, manifest)
     out_path = _find_out(run_dir, manifest)
     if inp_path is None or not inp_path.is_file():
-        return _failure(call, f"could not resolve .inp from {run_dir}")
+        err = file_resolution_error(
+            f"could not resolve .inp from {run_dir}",
+            search_dir=run_dir,
+            suffixes=(".inp",),
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     if out_path is None or not out_path.is_file():
-        return _failure(call, f"could not resolve .out from {run_dir}")
+        err = file_resolution_error(
+            f"could not resolve .out from {run_dir}",
+            search_dir=run_dir,
+            suffixes=(".out",),
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     # ``link`` (conduit) is mutually exclusive with ``node`` at the
     # script's argparse layer. When the LLM supplies a link, we must
     # forward it to the MCP and suppress ``node`` so the script doesn't
