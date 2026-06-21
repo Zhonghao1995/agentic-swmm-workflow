@@ -147,6 +147,12 @@ class Spinner:
 
     _FRAMES = ("[/]", "[\\]", "[|]", "[-]")
     _TICK_SECONDS = 0.12
+    # THINKING-state verbs cycled on the single status line so the long
+    # (5-30s) LLM wait reads as live progress instead of a frozen label.
+    # Cadence is deliberately calm (~_VERB_TICKS * _TICK_SECONDS ≈ 1.2s per
+    # verb) to avoid flicker.
+    _THINKING_VERBS = ("Thinking", "Reasoning", "Planning", "Analyzing", "Working")
+    _VERB_TICKS = 10
 
     def __init__(
         self,
@@ -159,6 +165,9 @@ class Spinner:
         self.state = state
         self.stream = stream if stream is not None else sys.stdout
         self._frame = 0
+        # THINKING verb cycling state — see _advance.
+        self._tick_count = 0
+        self._verb_index = 0
         self._is_tty = self._stream_is_tty(self.stream)
         self._closed = False
         # Background ticker — only used for THINKING on a TTY.
@@ -225,13 +234,25 @@ class Spinner:
         self._stop_event = None
         self._ticker = None
 
+    def _advance(self) -> None:
+        """Advance one animation tick: spin the glyph and, for THINKING,
+        rotate the verb on a calm cadence so the single status line reads as
+        live progress instead of a frozen "Thinking…". RUNNING/other states
+        keep their caller-set label (e.g. the current tool name)."""
+        self._frame = (self._frame + 1) % len(self._FRAMES)
+        if self.state is SpinnerState.THINKING:
+            self._tick_count += 1
+            if self._tick_count % self._VERB_TICKS == 0:
+                self._verb_index = (self._verb_index + 1) % len(self._THINKING_VERBS)
+                self.label = self._THINKING_VERBS[self._verb_index] + "…"
+
     def _tick_loop(self) -> None:
         assert self._stop_event is not None
         while not self._stop_event.wait(self._TICK_SECONDS):
             with self._lock:
                 if self._closed:
                     return
-                self._frame = (self._frame + 1) % len(self._FRAMES)
+                self._advance()
                 self._render()
 
     @staticmethod
