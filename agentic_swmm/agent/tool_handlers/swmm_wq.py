@@ -19,6 +19,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _run_script_tool,
 )
+from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 
@@ -40,7 +41,13 @@ def _read_wq_loads_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if not rpt_path.is_absolute():
         rpt_path = (repo_root() / rpt_path).resolve()
     if not rpt_path.exists():
-        return _failure(call, f"rpt file not found: {rpt_path}")
+        err = file_resolution_error(
+            f"rpt file not found: {rpt_path}",
+            requested=rpt_path,
+            search_dir=rpt_path.parent,
+            suffixes=(".rpt",),
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
 
     script_path = repo_root().joinpath(*_WQ_EXTRACT_SCRIPT)
     if not script_path.is_file():

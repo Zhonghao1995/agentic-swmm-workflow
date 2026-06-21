@@ -58,8 +58,27 @@ from agentic_swmm.utils.paths import repo_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
 
-def _failure(call: ToolCall, summary: str) -> dict[str, Any]:
-    return {"tool": call.name, "args": call.args, "ok": False, "summary": summary}
+def _failure(
+    call: ToolCall,
+    summary: str,
+    *,
+    hint: str | None = None,
+    cause: str | None = None,
+) -> dict[str, Any]:
+    """Canonical fail-soft payload. ``hint``/``cause`` are optional structured
+    remediation (see ``error_remediation.file_resolution_error``); they are
+    only added when supplied so legacy callers keep the exact 4-key shape."""
+    payload: dict[str, Any] = {
+        "tool": call.name,
+        "args": call.args,
+        "ok": False,
+        "summary": summary,
+    }
+    if cause is not None:
+        payload["cause"] = cause
+    if hint is not None:
+        payload["hint"] = hint
+    return payload
 
 
 def _repo_path(value: str) -> Path | None:
