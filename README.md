@@ -159,6 +159,17 @@ The downstream modelling-memory layer can summarize audited run histories into r
 
 More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
 
+## Learn more about the ecosystem
+
+Agentic SWMM is the **SWMM engine** within a larger effort toward a *trustworthy, auditable, fully automated urban-hydrology modelling platform*: a top-level agentic runtime orchestrating engine-specific automation on top of a shared data-to-model front end.
+
+| Project | Role in the ecosystem | Status |
+| --- | --- | --- |
+| [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer** — top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
+| [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer** — ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines | SWMM today; extending to MIKE+ and InfoWorks ICM |
+| **Agentic SWMM** *(this repository)* | **SWMM engine** — verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.3 |
+| [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine** — headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
+
 ## Codex / Claude / OpenClaw / Hermes ready
 
 Beyond its own aiswmm runtime, the Agentic SWMM workflow can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
