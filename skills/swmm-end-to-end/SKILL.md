@@ -402,7 +402,7 @@ If calibration is requested, also produce:
 - Keep reasoning at the orchestration layer and calculations at the script layer.
 - When a run fails, report the failing stage and the missing or invalid input rather than guessing.
 
-## Current limitations
+## Known limitations
 - This skill does not remove the need for `swmm-network`; it only coordinates it.
 - Full watershed automation still depends on real subcatchment + network preparation.
 - The Tod Creek real-data fallback is intentionally simplified and should not be confused with the final multi-subcatchment production workflow.
