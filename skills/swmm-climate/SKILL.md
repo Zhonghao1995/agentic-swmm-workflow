@@ -190,7 +190,7 @@ and `build_raingage_section`). Pass camelCase equivalents: `method`, `duration`,
 `outTimeseries`, `form`, `returnPeriod`, `dt`, `r`, `a1`, `cCoeff`, `b`, `n`, `aCoeff`,
 `cExp`, `idfCsv`, `idfJson`, `seriesName`.
 
-## MVP limitations
+## Known limitations
 - MVP focuses on rainfall intensity and raingage section helper only.
 - No temperature/evaporation/wind climatology conversion in this pass.
 - `swmm-builder` path in this repo still assembles a single raingage reference per build step.

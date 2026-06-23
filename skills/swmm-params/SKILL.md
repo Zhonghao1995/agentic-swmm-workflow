@@ -81,7 +81,7 @@ npm --prefix mcp/swmm-params install
 npm --prefix mcp/swmm-params run start
 ```
 
-## MVP limitations
+## Known limitations
 - Lookup mapping is key-based only (no spatial interpolation or fuzzy matching).
 - A fallback row is expected in lookup tables (`DEFAULT` for land use, `-` or `DEFAULT` for soil).
 - No unit conversion or calibration logic is included here.

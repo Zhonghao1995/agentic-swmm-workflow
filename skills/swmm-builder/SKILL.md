@@ -163,6 +163,6 @@ python3 skills/swmm-builder/scripts/build_swmm_inp.py \
 The builder validates all cross-references (pollutant/landuse/subcatchment
 consistency) before writing the INP.
 
-## MVP limitations
+## Known limitations
 - No automatic polygon export, LID controls, snowpack, or RTC rules.
 - Assumes one raingage source for all subcatchments unless `rain_gage` is explicitly set per row.

@@ -360,7 +360,7 @@ The summary answers:
 - What peak-flow and continuity envelopes were induced by each alpha level?
 - What output entropy curve was induced by the propagated ensemble?
 
-## MVP Assumptions
+## Assumptions
 
 - Fuzzy analysis focuses on epistemic parameter uncertainty through membership functions.
 - Monte Carlo analysis supports prior or calibration-informed probability distributions.
