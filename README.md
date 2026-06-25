@@ -11,9 +11,6 @@
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml">
     <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
   </a>
-  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest">
-    <img src="https://img.shields.io/badge/release-v0.7.3-1F6FEB" alt="latest release v0.7.3" />
-  </a>
   <a href="https://pypi.org/project/aiswmm/">
     <img src="https://img.shields.io/pypi/v/aiswmm?label=PyPI&color=3775A9&cacheSeconds=300" alt="PyPI version" />
   </a>
@@ -28,6 +25,9 @@
   </a>
   <a href="https://zhonghaoz.ca">
     <img src="https://img.shields.io/badge/built%20by-Zhonghao-7C3AED" alt="Built by Zhonghao" />
+  </a>
+  <a href="https://pepy.tech/project/aiswmm">
+    <img src="https://img.shields.io/pepy/dt/aiswmm?label=downloads&color=3775A9" alt="PyPI downloads (total)" />
   </a>
 </p>
 
@@ -60,6 +60,7 @@ License: **MIT**
   <a href="https://aiswmm.com/"><img src="https://img.shields.io/badge/Video-introduction-EA4335" alt="Introduction video" /></a>
   <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
   <a href="https://doi.org/10.5281/zenodo.20337281"><img src="https://img.shields.io/badge/Zenodo-DOI-1682D4" alt="Zenodo DOI" /></a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.7.3-1F6FEB" alt="latest release v0.7.3" /></a>
 </p>
 
 
