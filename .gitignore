@@ -16,6 +16,7 @@ mcp/*/runs/
 # Local-only
 .claude/
 data/Saanich/
+Validation-Snapshot.docx
 
 # Outputs
 *.out
@@ -153,6 +154,9 @@ memory/modeling-memory/parametric_memory.sqlite3
 memory/modeling-memory/command_trace.json
 memory/modeling-memory/project_overrides.yaml
 memory/rag-memory/.last_refresh_error.json
+
+# Local-only modeling-memory README (describes the gitignored data store above).
+memory/modeling-memory/README.md
 
 # Spike / research scripts — local-only experiments, isolated venv,
 # one-shot driver scripts. Promoted code goes into agentic_swmm/ or
