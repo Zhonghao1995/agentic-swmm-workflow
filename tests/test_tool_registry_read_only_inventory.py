@@ -59,6 +59,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     # ImperialCollegeLondon/SWMManywhere — writes a synthesised INP +
     # raw-data snapshot, so not read-only.
     "synth_swmm_from_bbox": False,
+    # SWMMCanada upstream fetch (ADR-0001): downloads a zip and writes
+    # model.inp + swmm_model.zip into the run dir, so not read-only.
+    "fetch_swmm_from_canada": False,
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools.
     # All is_read_only=False — calibration runs SWMM and writes files.
     "swmm_calibrate": False,

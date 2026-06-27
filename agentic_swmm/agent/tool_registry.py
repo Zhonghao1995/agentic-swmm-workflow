@@ -732,6 +732,47 @@ def _build_tools() -> dict[str, ToolSpec]:
             ),
             _synth_swmm_from_bbox_tool,
         ),
+        ToolSpec(
+            "fetch_swmm_from_canada",
+            (
+                "Fetch a SWMM .inp built from REAL municipal pipe networks for a "
+                "supported Canadian city, via the SWMMCanada upstream HTTP service "
+                "(ADR-0001).\n"
+                "USE WHEN: the user wants a model for a Canadian location covered by "
+                "published municipal storm-pipe data (Victoria, Ottawa, Calgary, "
+                "Surrey, London, Kitchener-Waterloo, Kelowna) and wants the real "
+                "network, not a synthesized one.\n"
+                "DO NOT USE WHEN: the AOI is outside Canada or outside a supported "
+                "city — use synth_swmm_from_bbox (global, synthesized) instead.\n"
+                "Models are uncalibrated first-pass estimates — treat like the synth "
+                "path (reference-free QA only). Requires the SWMMCanada service URL "
+                "(AISWMM_SWMMCANADA_URL); returns a stage-tagged hint if unset."
+            ),
+            _object(
+                {
+                    "aoi_geojson": {
+                        "type": "string",
+                        "description": "GeoJSON Polygon string for the area of interest. Provide this or bbox.",
+                    },
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat]; converted to a polygon. Provide this or aoi_geojson.",
+                    },
+                    "start_date": {"type": "string", "description": "Rainfall window start, ISO YYYY-MM-DD."},
+                    "end_date": {"type": "string", "description": "Rainfall window end, ISO YYYY-MM-DD."},
+                    "run_dir": {"type": "string"},
+                    "base_url": {
+                        "type": "string",
+                        "description": "Override the SWMMCanada service base URL (else $AISWMM_SWMMCANADA_URL).",
+                    },
+                },
+                ["start_date", "end_date"],
+            ),
+            fetch_swmm_from_canada_tool,
+        ),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
@@ -1699,6 +1740,12 @@ from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
 # late-import dance the MCP-routed families use.
 from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
     _synth_swmm_from_bbox_tool,
+)
+# ADR-0001: ``swmm-canada`` handler drives the SWMMCanada HTTP service
+# (real municipal-pipe INP source). Pure-stdlib client, in-process — same
+# clean re-export shape as swmm-anywhere, no MCP routing.
+from agentic_swmm.agent.tool_handlers.swmm_canada import (  # noqa: E402,F401
+    fetch_swmm_from_canada_tool,
 )
 # ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
 # no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;
