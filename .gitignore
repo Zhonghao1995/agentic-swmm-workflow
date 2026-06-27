@@ -17,6 +17,8 @@ mcp/*/runs/
 .claude/
 data/Saanich/
 Validation-Snapshot.docx
+# Design-thinking doc — kept local going forward (already-pushed history left as-is).
+CONTEXT.md
 
 # Outputs
 *.out
