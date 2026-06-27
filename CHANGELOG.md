@@ -2,6 +2,29 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.7.4 - SWMMCanada upstream INP source, skill-author, reference-free synth QA (2026-06-27)
+
+A capability-focused release bundling 9 feature/fix PRs since v0.7.3: a new way to source a model (real Canadian municipal pipes), a new skill, reference-free QA for synthesized networks, and reliability hardening across the runtime. Typed tools 55 → **56**, skills 18 → **19**; full suite green (**2,875 passed**), SWMM execution byte-identical.
+
+### Added
+
+- **SWMMCanada upstream real-pipe INP source** (`fetch_swmm_from_canada`, #294). A 5th "INP source": fetch a SWMM model built from **real municipal pipe networks** for supported Canadian cities (Victoria, Ottawa, Calgary, Surrey, London, Kitchener–Waterloo, Kelowna) from the separate SWMMCanada service. Consumed over an **HTTP service boundary** (configurable `AISWMM_SWMMCANADA_URL`), not an in-process import — keeping its heavy geo stack out of aiswmm. The whole `swmm_model.zip` is kept in the run dir as the durable provenance artifact (service URL + task_id recorded as foreign keys); models are uncalibrated first-pass estimates, treated like the synth path. Positioned **alongside** `synth_swmm_from_bbox`, never as a replacement (SWMMCanada is Canada-only + real pipes; swmmanywhere is global + synthesized).
+- **`skill-author` skill + evidence-gated skill-evolution proposals** (#282). A portable, domain-general skill for authoring skills; `summarize_memory` now auto-proposes refine-vs-new-skill, gated on accumulated run evidence. The 19th skill.
+- **Reference-free structural + plausibility QA for synthesized networks** (#283). Structural QA (via `swmm-network`) and a plausibility rulebook (`synth_plausibility.yaml`) that score a model with no observed data — the design-review path for synth/real-pipe models.
+- **Operational run-failure capture for memory observability** (#285).
+- **Discoverable swmm-anywhere synthesis parameter overrides** (#284) — `synth_swmm_from_bbox` exposes `config_overrides` with a symptom→knob guide.
+- **THINKING status line cycles verbs** for live progress feedback (#289).
+
+### Changed
+
+- **`run_swmm_inp` is gated behind preflight validation** (#288) — zero-length conduits, missing inverts, undefined raingages, and unit/step sanity are caught before SWMM runs.
+- **Path/file "not found" errors become actionable hints** (#287) instead of bare stack traces.
+- `CONTEXT.md` is no longer published — kept local as design intent; history untouched (#293).
+
+### Fixed
+
+- **MCP servers respawn and retry on transient transport drops** (#286), so a momentary stdio/transport blip no longer fails a tool call.
+
 ## v0.7.3 - One-command install on Windows, latest-release by default (2026-06-13)
 
 Reworks the one-line installers so a single command provisions the full toolchain on a fresh machine, and makes both platforms default to the latest published release.
