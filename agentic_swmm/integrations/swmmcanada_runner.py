@@ -130,9 +130,15 @@ def _submit(
     try:
         with opener(req, timeout=60) as resp:
             payload = json.loads(resp.read().decode())
+        task_id = str(payload["task_id"])
+        mode = str(payload.get("mode") or "")
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
         raise CanadaFetchError("submit", repr(exc)) from exc
-    return str(payload["task_id"]), str(payload.get("mode") or "")
+    except (ValueError, KeyError, AttributeError) as exc:
+        # Non-JSON body (e.g. a proxy's HTML 5xx page) or a response missing
+        # task_id — keep the fail-soft contract instead of leaking a raw error.
+        raise CanadaFetchError("submit", f"bad submit response: {exc!r}") from exc
+    return task_id, mode
 
 
 def _poll_until_done(
@@ -153,6 +159,10 @@ def _poll_until_done(
                 status = json.loads(resp.read().decode())
         except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             raise CanadaFetchError("poll", repr(exc)) from exc
+        except ValueError as exc:
+            # Non-JSON status body (e.g. a transient proxy error page) — fail
+            # soft with a stage tag rather than crashing the poll loop.
+            raise CanadaFetchError("poll", f"bad status response: {exc!r}") from exc
 
         state = str(status.get("state") or "")
         if state == _TERMINAL_OK:

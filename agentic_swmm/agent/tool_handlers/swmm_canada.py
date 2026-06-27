@@ -51,6 +51,12 @@ def _stage_hint(stage: str) -> str:
             "the model did not finish in time; the live pipeline fetches external "
             "open data and can be slow. Retry, or raise the timeout."
         )
+    if stage == "extract":
+        return (
+            "the downloaded swmm_model.zip was missing a .inp file or was "
+            "corrupt. Check that the SWMMCanada service produced a complete "
+            "model for this AOI (inspect the kept swmm_model.zip in the run dir)."
+        )
     if stage in {"submit", "poll", "download"}:
         return (
             "the SWMMCanada service was unreachable or errored at the HTTP layer. "

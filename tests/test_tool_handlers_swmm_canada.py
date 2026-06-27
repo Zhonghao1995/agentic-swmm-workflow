@@ -48,6 +48,11 @@ class StageHintTests(unittest.TestCase):
     def test_task_failed_hint_mentions_supported_cities(self) -> None:
         self.assertIn("Canadian", _stage_hint("task_failed"))
 
+    def test_extract_hint_points_at_zip_not_service(self) -> None:
+        hint = _stage_hint("extract")
+        self.assertIn("zip", hint)
+        self.assertNotIn("service URL", hint)
+
     def test_unknown_stage_has_default_hint(self) -> None:
         self.assertTrue(_stage_hint("whatever"))
 

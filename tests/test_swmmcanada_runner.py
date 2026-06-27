@@ -182,6 +182,54 @@ class FailureTests(unittest.TestCase):
         self.assertEqual(ctx.exception.stage, "timeout")
 
 
+class MalformedResponseTests(unittest.TestCase):
+    """The handler promises fail-soft: every failure must surface as a
+    stage-tagged CanadaFetchError, never a raw exception into the planner."""
+
+    def _opener_with_submit_body(self, body: bytes):
+        class _O:
+            calls: list = []
+
+            def __call__(self, request, timeout=None):
+                if request.get_method() == "POST":
+                    return _FakeResp(body, status=202)
+                raise AssertionError("should fail before polling")
+
+        return _O()
+
+    def test_non_json_submit_response_raises_submit_stage(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+
+        opener = self._opener_with_submit_body(b"<html>502 Bad Gateway</html>")
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=opener, sleep=lambda *_: None)
+        self.assertEqual(ctx.exception.stage, "submit")
+
+    def test_submit_response_missing_task_id_raises_submit_stage(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+
+        opener = self._opener_with_submit_body(json.dumps({"status": "QUEUED", "mode": "real"}).encode())
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=opener, sleep=lambda *_: None)
+        self.assertEqual(ctx.exception.stage, "submit")
+
+    def test_non_json_status_response_raises_poll_stage(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+
+        class _O:
+            def __call__(self, request, timeout=None):
+                if request.get_method() == "POST":
+                    return _FakeResp(json.dumps({"task_id": "t1", "status": "QUEUED", "mode": "real"}).encode(), status=202)
+                return _FakeResp(b"<html>504</html>")  # status poll returns non-JSON
+
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=_O(), sleep=lambda *_: None)
+        self.assertEqual(ctx.exception.stage, "poll")
+
+
 class ConfigTests(unittest.TestCase):
     def test_missing_base_url_raises_config_missing(self) -> None:
         from agentic_swmm.integrations.swmmcanada_runner import BASE_URL_ENV, CanadaFetchError, fetch_from_aoi
