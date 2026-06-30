@@ -33,7 +33,7 @@
 
 > **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
 > 
-> 🚧 **In active development:** a UI that will become the primary interface, replacing CLI-first UX.
+> 🚧 **In active development:** [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada) — Agentic SWMM's data front-end. Point it at a Canadian city and it hands back a real, ready-to-run pipe-network model. Already pulling its weight — one ecosystem, two repos.
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
@@ -58,6 +58,7 @@ License: **MIT**
 
 <p>
   <a href="https://aiswmm.com/"><img src="https://img.shields.io/badge/Video-introduction-EA4335" alt="Introduction video" /></a>
+  <a href="https://doi.org/10.3390/aieng1010005"><img src="https://img.shields.io/badge/Published-AI%20for%20Engineering-2DA44E" alt="Published in AI for Engineering" /></a>
   <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
   <a href="https://doi.org/10.5281/zenodo.20337281"><img src="https://img.shields.io/badge/Zenodo-DOI-1682D4" alt="Zenodo DOI" /></a>
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.7.4-1F6FEB" alt="latest release v0.7.4" /></a>
@@ -209,10 +210,25 @@ Contact:
 
 ## Citation
 
-GitHub citation metadata is provided in `CITATION.cff`.
+GitHub citation metadata is provided in `CITATION.cff`. **Please cite the published article.**
+
+### APA article (preferred)
+Zhang, Z., & Valeo, C. (2026). Agentic SWMM: Auditable and reproducible stormwater modelling workflow with Agent Skills and Model Context Protocol. *AI for Engineering, 1*(1), 5. https://doi.org/10.3390/aieng1010005
+
+### BibTeX
+```bibtex
+@article{zhang2026agentic,
+  title   = {Agentic SWMM: Auditable and Reproducible Stormwater Modelling Workflow with Agent Skills and Model Context Protocol},
+  author  = {Zhang, Zhonghao and Valeo, Caterina},
+  journal = {AI for Engineering},
+  volume  = {1},
+  number  = {1},
+  pages   = {5},
+  year    = {2026},
+  doi     = {10.3390/aieng1010005},
+  url     = {https://doi.org/10.3390/aieng1010005}
+}
+```
 
 ### APA repository
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
-
-### APA manuscript / preprint
-Zhang, Z., & Valeo, C. (2026). *Agentic Modelling Pipeline: Reproducible Rapid Stormwater Modelling Management System with OpenClaw*. https://doi.org/10.31223/X5F47G

@@ -13,11 +13,16 @@ license: MIT
 repository-code: "https://github.com/Zhonghao1995/agentic-swmm-workflow"
 preferred-citation:
   type: article
-  title: "Agentic SWMM: Auditable and Reproducible Stormwater Modelling Workflow with Skills and Model Context Protocol"
+  title: "Agentic SWMM: Auditable and Reproducible Stormwater Modelling Workflow with Agent Skills and Model Context Protocol"
   authors:
     - family-names: Zhang
       given-names: Zhonghao
     - family-names: Valeo
       given-names: Caterina
+  journal: "AI for Engineering"
   year: 2026
-  doi: "10.31223/X5F47G"
+  volume: 1
+  issue: 1
+  start: 5
+  doi: "10.3390/aieng1010005"
+  url: "https://doi.org/10.3390/aieng1010005"
