@@ -215,20 +215,6 @@ GitHub citation metadata is provided in `CITATION.cff`. **Please cite the publis
 ### APA article (preferred)
 Zhang, Z., & Valeo, C. (2026). Agentic SWMM: Auditable and reproducible stormwater modelling workflow with Agent Skills and Model Context Protocol. *AI for Engineering, 1*(1), 5. https://doi.org/10.3390/aieng1010005
 
-### BibTeX
-```bibtex
-@article{zhang2026agentic,
-  title   = {Agentic SWMM: Auditable and Reproducible Stormwater Modelling Workflow with Agent Skills and Model Context Protocol},
-  author  = {Zhang, Zhonghao and Valeo, Caterina},
-  journal = {AI for Engineering},
-  volume  = {1},
-  number  = {1},
-  pages   = {5},
-  year    = {2026},
-  doi     = {10.3390/aieng1010005},
-  url     = {https://doi.org/10.3390/aieng1010005}
-}
-```
 
 ### APA repository
 Zhang, Z., & Valeo, C. (2026). *agentic-swmm-workflow* [Computer software]. GitHub. https://github.com/Zhonghao1995/agentic-swmm-workflow
