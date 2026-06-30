@@ -33,7 +33,7 @@
 
 > **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
 > 
-> 🚧 **In active development:** [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), Agentic SWMM's data front-end. It pulls real pipe-network data from 7 Canadian cities' official portals and hands back a ready-to-run model. One ecosystem, two repos.
+> 🚧 **In active development:** [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), a SWMM INP generator built from Canadian open data: draw anywhere in Canada and run, with real municipal storm networks for 7 cities or synthesized everywhere else.
 
 
 **Agentic SWMM for reproducible stormwater modeling**<br>
