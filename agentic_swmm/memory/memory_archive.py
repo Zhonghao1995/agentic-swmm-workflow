@@ -59,6 +59,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row, iter_rows
 from typing import Any
 
 from agentic_swmm.memory.memory_outcomes import (
@@ -109,21 +110,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
     Tolerates missing files (returns ``[]``) and torn final lines.
     """
-    if not path.is_file():
-        return []
-    rows: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for raw in fh:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-                if isinstance(row, dict):
-                    rows.append(row)
-            except json.JSONDecodeError:
-                continue
-    return rows
+    return [row for row in iter_rows(path) if isinstance(row, dict)]
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -139,9 +126,7 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def _append_jsonl_row(path: Path, row: dict[str, Any]) -> None:
     """Append a single row to a JSONL file (creates if missing)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+    append_row(path, row)
 
 
 def _utc_now_str() -> str:

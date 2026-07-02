@@ -66,12 +66,12 @@ line; readers must tolerate that (standard pattern here).
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row, iter_rows
 from typing import Any
 
 _log = logging.getLogger(__name__)
@@ -183,12 +183,8 @@ def append_outcome_event(
     }
 
     store_path = Path(store_path)
-    store_path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
-
     with _append_lock:
-        with store_path.open("a", encoding="utf-8") as fh:
-            fh.write(line)
+        append_row(store_path, record)
 
     return event_id
 
@@ -206,18 +202,9 @@ def load_outcome_events(store_path: Path) -> list[dict[str, Any]]:
     if not store_path.is_file():
         return []
     events: list[dict[str, Any]] = []
-    with store_path.open("r", encoding="utf-8") as fh:
-        for raw in fh:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                # Torn final line during a concurrent write — skip.
-                continue
-            if isinstance(row, dict):
-                events.append(row)
+    for row in iter_rows(store_path):
+        if isinstance(row, dict):
+            events.append(row)
     return events
 
 

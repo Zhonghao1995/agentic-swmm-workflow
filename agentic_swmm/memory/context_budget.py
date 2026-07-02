@@ -34,10 +34,10 @@ Usage (session bootstrap path)::
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row
 from typing import Any
 
 # Default character budget for the combined injected memory block.  The
@@ -269,9 +269,7 @@ def emit_budget_trace_event(
         "excluded_ids": list(result.excluded_ids),
         "truncated_head": result.truncated_head,
     }
-    trace_path.parent.mkdir(parents=True, exist_ok=True)
-    with trace_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+    append_row(trace_path, payload, ensure_ascii=True)
 
 
 __all__ = [
