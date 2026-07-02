@@ -45,7 +45,8 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _safe_name,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS, rainfall_timeseries_options
+from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
+from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import load_mcp_registry
 from agentic_swmm.utils.paths import repo_root

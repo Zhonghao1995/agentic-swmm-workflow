@@ -33,7 +33,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.commands.plot import _find_inp, _read_manifest
+from agentic_swmm.agent.swmm_runtime.run_artifacts import find_inp, read_manifest
 from agentic_swmm.utils.paths import require_dir, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
@@ -117,9 +117,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def main(args: argparse.Namespace) -> int:
     """Resolve run-dir / INP / geoparquet, then invoke the renderer."""
     run_dir = require_dir(args.run_dir, "run directory")
-    manifest = _read_manifest(run_dir)
+    manifest = read_manifest(run_dir)
 
-    inp = require_file(args.inp, "INP file") if args.inp else _find_inp(run_dir, manifest)
+    inp = require_file(args.inp, "INP file") if args.inp else find_inp(run_dir, manifest)
     # The INP is required for the fallback path; on the geoparquet
     # path it is unused. We only fail-fast when *neither* source is
     # available, so users with a non-SWMManywhere run that has no

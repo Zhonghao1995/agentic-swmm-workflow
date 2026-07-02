@@ -39,13 +39,13 @@ from typing import Any
 from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path, _resolve_run_dir
 from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.commands.plot import (
-    DEFAULT_NODE_ATTR,
-    _find_inp,
-    _find_out,
-    _read_manifest,
-    rainfall_timeseries_options,
+from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
+from agentic_swmm.agent.swmm_runtime.run_artifacts import (
+    find_inp as _find_inp,
+    find_out as _find_out,
+    read_manifest as _read_manifest,
 )
+from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR
 
 
 def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
