@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import functools
 import os
 import sys
 
 from agentic_swmm import __version__
+from agentic_swmm.memory.run_progress import (
+    list_partial_state_files as _list_partial_state_files,
+)
 from agentic_swmm.agent.help_router import (
     GroupedHelpFormatter,
     render_top_level_help,
@@ -19,83 +23,26 @@ from agentic_swmm.commands.expert import publish as expert_publish
 from agentic_swmm.commands.expert import thresholds as expert_thresholds
 
 
-COMMANDS = {
-    "agent",
-    "model",
-    "config",
-    "capabilities",
-    "setup",
-    # ``aiswmm login`` stores an LLM provider API key (OpenAI by
-    # default). Top-level so the default-router does not punt it to the
-    # agent planner.
-    "login",
-    "mcp",
-    "skill",
-    "doctor",
-    "run",
-    "audit",
-    "plot",
-    # PRD swmmanywhere_integration: spatial-layout counterpart to
-    # ``plot`` (which is time-series). Listed top-level so the
-    # default-router does not punt it to the agent — pure CLI surface.
-    "map",
-    "memory",
-    "demo",
-    # PRD-06 Phase D.4: bootstrap memory scaffold. Top-level so the
-    # default-router does not punt it to the agent — the command
-    # creates only the on-disk skeleton.
-    "bootstrap",
-    # PRD-06 Phase B verbs. Registered top-level so the default-router
-    # does not punt them to the agent — both are deterministic surfaces
-    # over pure functions in agentic_swmm/agent/swmm_runtime/ and
-    # agentic_swmm/memory/.
-    "compare",
-    "cite",
-    # PRD-06 §2.2 reverse-lookup of a parameter value to its citation
-    # (Round 2). Listed top-level so the default-router does not punt
-    # it to the agent — pure CLI surface over a memory verb.
-    "cite-param",
-    # PRD-06 Phase B.4 verbs. Top-level so the default-router does not
-    # punt them to the agent — both are deterministic surfaces over
-    # pure functions.
-    "storm",
-    # PRD-07 Phase 5 verb. ``aiswmm transfer`` recommends warm-start
-    # parameters for a fresh INP by ranking calibrated prior cases by
-    # watershed similarity. Listed top-level so the default-router does
-    # not punt it to the agent — it is a deterministic CLI surface.
-    "transfer",
-    # Uncertainty integration deliverable (issue #55). Lives at the top
-    # level so the default-router does not punt it to the agent — it is
-    # a deterministic CLI surface over a pure function.
-    "uncertainty",
-    # PRD-06 Phase C.5 verb. Checkpoint-aware calibration loop.
-    "calibrate",
-    # PRD-08 Phase B (#31): pretty-print a run's JSONL trace files
-    # (agent_trace.jsonl + memory_trace.jsonl) from the CLI.
-    "trace",
-    # Expert-only commands (PRD-Z). Listed here so the default-router
-    # does not punt them to the agent; the agent itself has no
-    # ToolSpec entries for these names.
-    # Design-review / code-compliance checker (PRD_design_review.md).
-    "review",
-    # Client-deliverable Word report (PRD_report_export.md).
-    "report",
-    "calibration",
-    "pour_point",
-    "thresholds",
-    "publish",
-    # PRD-GF-PROMOTE: expert-only gap-fill case-level promotion.
-    "gap",
-    # PRD-CASE-ID: case-level namespace surface. ``case`` covers
-    # ``init``/``show``; ``list`` is the top-level lister
-    # (``aiswmm list cases``) per the PRD's CLI surface table.
-    "case",
-    "list",
-    # PRD-08 A.2: ``aiswmm help`` routes to verb-level --help via
-    # ``help_router.route_help_verb``. Listed top-level so the default
-    # router does not punt help requests to the LLM planner.
-    "help",
-}
+def registered_commands() -> frozenset[str]:
+    """Every registered CLI verb, derived from ``build_parser()``.
+
+    Single source of truth for the router and the did-you-mean
+    rejector. The old hand-maintained ``COMMANDS`` set was a second
+    registration site ~250 lines from ``build_parser()``: a verb added
+    there but missed here silently routed to the LLM planner instead of
+    its own parser. Every per-verb comment in that set said the same
+    thing — "listed top-level so the default-router does not punt it to
+    the agent" — which is now a structural property of registering the
+    verb at all, not a per-verb decision.
+    """
+    parser = build_parser()
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return frozenset(action.choices)
+    return frozenset()
+
+
+registered_commands = functools.lru_cache(maxsize=1)(registered_commands)
 
 
 # CONCURRENCY-OWNER: PRD-CASE-ID
@@ -563,66 +510,6 @@ def _resolve_run_dir(args: argparse.Namespace) -> "Path | None":
         return None
 
 
-def _list_partial_state_files(run_dir: "Path | None") -> list[str]:
-    """Return the partial-state files present under ``run_dir``.
-
-    Inspects ``progress.json``, ``agent_trace.jsonl``, and
-    ``chat_note.md``. Returns a list of human-friendly entries
-    (path + a one-line summary when known) in the order the user
-    most often cares about. Empty list when the run_dir is missing
-    or no partial state is found.
-    """
-    if run_dir is None:
-        return []
-    try:
-        if not run_dir.is_dir():
-            return []
-    except OSError:
-        return []
-    entries: list[str] = []
-    progress = run_dir / "progress.json"
-    if progress.is_file():
-        summary = _summarise_progress_json(progress)
-        if summary:
-            entries.append(f"{progress} ({summary})")
-        else:
-            entries.append(str(progress))
-    trace = run_dir / "agent_trace.jsonl"
-    if trace.is_file() and trace.stat().st_size > 0:
-        entries.append(str(trace))
-    chat_note = run_dir / "chat_note.md"
-    if chat_note.is_file() and chat_note.stat().st_size > 0:
-        entries.append(str(chat_note))
-    return entries
-
-
-def _summarise_progress_json(path: "Path") -> str | None:
-    """Return a one-line summary of a progress.json checkpoint.
-
-    Pulls ``iter_index`` / ``total_iters`` / ``best_objective_so_far``
-    (when present) to give the user immediate context. Returns
-    ``None`` on any read / parse failure so the caller falls back
-    to the bare path.
-    """
-    import json as _json
-
-    try:
-        payload = _json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, _json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    iter_index = payload.get("iter_index")
-    total_iters = payload.get("total_iters")
-    best = payload.get("best_objective_so_far")
-    bits: list[str] = []
-    if iter_index is not None and total_iters is not None:
-        bits.append(f"iter {iter_index}/{total_iters}")
-    if isinstance(best, (int, float)):
-        bits.append(f"best obj {best:.3g}")
-    return ", ".join(bits) if bits else None
-
-
 def _preflight_interactive_dispatch(argv: list[str]) -> list[str]:
     """Swap the planner to ``rule`` when no LLM provider is configured.
 
@@ -705,11 +592,11 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
     if any(ch.isspace() for ch in token):
         # Quoted natural-language goal; not a verb candidate.
         return None
-    if token in COMMANDS or token == "chat":
+    if token in registered_commands() or token == "chat":
         return None
-    # Build the set of suggestable verbs from COMMANDS plus the
-    # legacy ``chat`` alias the router still understands.
-    candidates = sorted(COMMANDS | {"chat"})
+    # Build the set of suggestable verbs from the registered parser
+    # verbs plus the legacy ``chat`` alias the router still understands.
+    candidates = sorted(registered_commands() | {"chat"})
     matches = difflib.get_close_matches(token, candidates, n=1, cutoff=0.6)
     if matches:
         hint = f" Did you mean '{matches[0]}'?"
@@ -741,7 +628,7 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
             else ["agent", "--planner", "llm", "--interactive"]
         )
         return _preflight_interactive_dispatch(dispatched)
-    if argv[0] in COMMANDS:
+    if argv[0] in registered_commands():
         if (
             argv[0] == "run"
             and "--inp" not in argv

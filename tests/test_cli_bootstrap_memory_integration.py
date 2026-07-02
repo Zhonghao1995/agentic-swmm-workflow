@@ -13,14 +13,14 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from agentic_swmm.cli import COMMANDS, build_parser, main
+from agentic_swmm.cli import build_parser, main, registered_commands
 
 
 class CliBootstrapMemoryTests(unittest.TestCase):
     def test_bootstrap_in_commands_set(self) -> None:
         # The default-router checks this set to decide whether to
         # punt the command to the agent. ``bootstrap`` must be here.
-        self.assertIn("bootstrap", COMMANDS)
+        self.assertIn("bootstrap", registered_commands())
 
     def test_parser_recognises_bootstrap_memory(self) -> None:
         parser = build_parser()
