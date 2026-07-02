@@ -1,4 +1,4 @@
-"""Tests for ``agentic_swmm.commands.doctor_extension`` (PRD-08 A.1, cluster 2).
+"""Tests for ``agentic_swmm.diagnostics.doctor_report`` (PRD-08 A.1, cluster 2).
 
 The doctor extension is a pure data layer: every helper takes a path
 or a list and returns dataclasses or strings. Tests cover the empty,
@@ -16,16 +16,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from agentic_swmm.commands.doctor_extension import (
-    FixAction,
+from agentic_swmm.diagnostics.doctor_report import (
     GroupedWarnRow,
     MemoryStoreStatus,
     OptOutFlagStatus,
-    apply_fix_actions,
-    collect_fix_actions,
     collect_memory_store_status,
     collect_optout_status,
-    fix_action_to_dict,
     group_identical_warns,
     grouped_warn_to_dict,
     memory_store_status_to_dict,
@@ -33,6 +29,12 @@ from agentic_swmm.commands.doctor_extension import (
     render_grouped_warns_section,
     render_memory_stores_section,
     render_runtime_knobs_section,
+)
+from agentic_swmm.diagnostics.fixes import (
+    FixAction,
+    apply_fix_actions,
+    collect_fix_actions,
+    fix_action_to_dict,
 )
 
 

@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from agentic_swmm.cli import main as cli_main
-from agentic_swmm.commands.doctor_extension import (
+from agentic_swmm.diagnostics.doctor_report import (
     collect_llm_provider_status,
     collect_optout_status,
     llm_provider_status_to_dict,
