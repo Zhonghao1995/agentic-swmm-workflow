@@ -1322,26 +1322,7 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 # ``select_workflow_mode`` handler module have been deleted. The LLM
 # now reads each tool's description / SKILL.md and picks tools
 # directly — see ``.claude/prds/PRD_llm_driven_dispatch.md`` for the
-# decision record. ``compute_intent_signals`` survives because the
-# warm-intro classifier (``intent_classifier``) still consumes its
-# legacy dict shape; the function is now a thin adapter only.
-
-
-def compute_intent_signals(goal: str) -> dict[str, bool]:
-    """Compute the keyword-derived ``wants_*`` flags for a goal.
-
-    PRD #121 made ``agentic_swmm.agent.intent_classifier`` the single
-    source of truth for keyword-driven intent extraction. This function
-    is the legacy-shaped adapter that any remaining keyword-driven
-    surface (warm-intro gates, tests) consumes; new callers should use
-    ``intent_classifier.classify_intent`` directly.
-    """
-
-    # Late import keeps the tool_registry → intent_classifier edge one
-    # way; intent_classifier must stay dependency-free of tool_registry.
-    from agentic_swmm.agent.intent_classifier import classify_intent
-
-    return classify_intent(goal).as_dict()
+# decision record.
 
 
 # PRD #128 Phase 2 Group A: ``_plot_run_args`` / ``_plot_run_tool``

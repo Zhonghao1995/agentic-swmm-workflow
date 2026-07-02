@@ -1,8 +1,9 @@
 """Migration parity for PRD #121.
 
-Each migrated function (``compute_intent_signals``, ``is_open_shaped_prompt``,
+Each migrated surface (``classify_intent().as_dict()`` — formerly
+``compute_intent_signals`` — ``is_open_shaped_prompt``,
 ``_looks_like_run_continuation``, ``continuation_classifier.classify``,
-``planner._is_negated``) keeps its public signature post-migration.
+``planner._is_negated``) keeps its public contract post-migration.
 This test parametrises across a representative corpus and asserts the
 post-migration value matches a snapshot of the pre-migration behaviour.
 
@@ -21,15 +22,15 @@ from agentic_swmm.agent.continuation_classifier import ExecutionPath, classify
 # function itself lives on ``intent_classifier.is_negated`` (no leading
 # underscore there); the test below pins parity against that surface
 # directly.
+from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.intent_classifier import is_negated as _is_negated
 from agentic_swmm.agent.runtime_loop import is_open_shaped_prompt
-from agentic_swmm.agent.tool_registry import compute_intent_signals
 
 
 class ComputeIntentSignalsParityTests(unittest.TestCase):
     def test_legacy_dict_shape_unchanged(self) -> None:
         """Six legacy keys plus boolean values — no shape drift."""
-        signals = compute_intent_signals("plot the figure")
+        signals = classify_intent("plot the figure").as_dict()
         expected_keys = {
             "wants_calibration",
             "wants_uncertainty",
@@ -54,7 +55,7 @@ class ComputeIntentSignalsParityTests(unittest.TestCase):
         ]
         for goal, expected_true in cases:
             with self.subTest(goal=goal):
-                signals = compute_intent_signals(goal)
+                signals = classify_intent(goal).as_dict()
                 for key, expected in expected_true.items():
                     self.assertEqual(
                         signals[key], expected, f"goal={goal!r} key={key}"
