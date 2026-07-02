@@ -22,6 +22,8 @@ import argparse
 import json
 from pathlib import Path
 
+from agentic_swmm.utils.paths import resolve_memory_dir
+
 
 def add_subparser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
@@ -95,22 +97,11 @@ def add_subparser(
     restore_parser.set_defaults(func=restore_main)
 
 
-def _resolve_memory_dir(override: Path | None) -> Path:
-    if override is not None:
-        return override.expanduser().resolve()
-    env_val = __import__("os").environ.get("AISWMM_MEMORY_DIR")
-    if env_val:
-        return Path(env_val).expanduser().resolve()
-    from agentic_swmm.utils.paths import repo_root
-
-    return repo_root() / "memory" / "modeling-memory"
-
-
 def archive_main(args: argparse.Namespace) -> int:
     """Entry point for ``aiswmm memory archive``."""
     from agentic_swmm.memory.memory_archive import archive_entry, auto_archive_all
 
-    memory_dir = _resolve_memory_dir(getattr(args, "memory_dir", None))
+    memory_dir = resolve_memory_dir(getattr(args, "memory_dir", None))
     json_out = getattr(args, "json_out", False)
     auto = getattr(args, "auto", False)
     memory_id = getattr(args, "memory_id", None)
@@ -156,7 +147,7 @@ def restore_main(args: argparse.Namespace) -> int:
     """Entry point for ``aiswmm memory restore``."""
     from agentic_swmm.memory.memory_archive import restore_entry
 
-    memory_dir = _resolve_memory_dir(getattr(args, "memory_dir", None))
+    memory_dir = resolve_memory_dir(getattr(args, "memory_dir", None))
     memory_id = args.memory_id
     json_out = getattr(args, "json_out", False)
 

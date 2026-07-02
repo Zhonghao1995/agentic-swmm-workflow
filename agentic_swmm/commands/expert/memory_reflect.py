@@ -46,6 +46,7 @@ from agentic_swmm.memory.lessons_metadata import (
     _iter_pattern_spans,
     read_metadata,
 )
+from agentic_swmm.utils.paths import resolve_memory_dir, resolve_runs_dir
 
 
 # ---------------------------------------------------------------------------
@@ -124,8 +125,8 @@ def main(args: argparse.Namespace) -> int:
     proposal build step so the on-disk artefact is identical in both
     modes — ``--apply`` simply adds the ratification loop on top.
     """
-    memory_dir = _resolve_memory_dir()
-    runs_dir = _resolve_runs_dir()
+    memory_dir = resolve_memory_dir()
+    runs_dir = resolve_runs_dir()
     audit_dir = _resolve_audit_dir(args.audit_dir, runs_dir)
     audit_dir.mkdir(parents=True, exist_ok=True)
 
@@ -192,26 +193,6 @@ def main(args: argparse.Namespace) -> int:
 
 # ---------------------------------------------------------------------------
 # Helpers — path resolution
-
-
-def _resolve_memory_dir() -> Path:
-    """Return ``memory/modeling-memory`` honouring ``AISWMM_MEMORY_DIR``."""
-    override = os.environ.get("AISWMM_MEMORY_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    from agentic_swmm.utils.paths import repo_root
-
-    return repo_root() / "memory" / "modeling-memory"
-
-
-def _resolve_runs_dir() -> Path:
-    """Return the runs directory honouring ``AISWMM_RUNS_ROOT``."""
-    override = os.environ.get("AISWMM_RUNS_ROOT")
-    if override:
-        return Path(override).expanduser().resolve()
-    from agentic_swmm.utils.paths import repo_root
-
-    return repo_root() / "runs"
 
 
 def _resolve_audit_dir(explicit: Path | None, runs_dir: Path) -> Path:

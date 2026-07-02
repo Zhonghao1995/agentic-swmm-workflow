@@ -1,11 +1,41 @@
 from __future__ import annotations
 
+import os
 import sysconfig
 from pathlib import Path
 
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def resolve_memory_dir(explicit: Path | None = None) -> Path:
+    """Resolve the modeling-memory directory.
+
+    Precedence: ``explicit`` argument -> ``AISWMM_MEMORY_DIR`` env var ->
+    ``<repo>/memory/modeling-memory``. Explicit and env values are
+    expanduser()+resolve()d.
+    """
+    if explicit is not None:
+        return explicit.expanduser().resolve()
+    override = os.environ.get("AISWMM_MEMORY_DIR")
+    if override:
+        return Path(override).expanduser().resolve()
+    return repo_root() / "memory" / "modeling-memory"
+
+
+def resolve_runs_dir(explicit: Path | None = None) -> Path:
+    """Resolve the runs root.
+
+    Precedence: ``explicit`` argument -> ``AISWMM_RUNS_ROOT`` env var ->
+    ``<repo>/runs``. Explicit and env values are expanduser()+resolve()d.
+    """
+    if explicit is not None:
+        return explicit.expanduser().resolve()
+    override = os.environ.get("AISWMM_RUNS_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    return repo_root() / "runs"
 
 
 def packaged_resource_root() -> Path:
