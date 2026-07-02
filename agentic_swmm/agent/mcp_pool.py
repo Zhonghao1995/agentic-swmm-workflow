@@ -1,6 +1,6 @@
 """Long-running MCP server pool.
 
-Per PRD-X, ``MCPPool`` is a deep module: the only public contract is the four
+Per PRD-X, ``MCPPool`` is a deep module: the only public contract is the five
 methods below. Construction is cheap and side-effect-free — servers are only
 spawned the first time they are referenced by ``list_tools`` / ``call_tool``.
 
@@ -110,6 +110,18 @@ class MCPPool:
 
     def list_servers(self) -> list[str]:
         return list(self._handles)
+
+    def find_server(self, command: str, args: list[str]) -> str | None:
+        """Return the registered server name whose spec matches ``(command,
+        args)``, or ``None``. Matching policy: command equality + args
+        equality — the spec args are canonical within one session, so
+        equality is enough (see ``mcp_client._route_through_pool``).
+        """
+        for name, handle in self._handles.items():
+            spec = handle.spec
+            if spec.command == command and list(spec.args) == list(args):
+                return name
+        return None
 
     def list_tools(self, server: str, *, timeout: int = 20) -> list[dict[str, Any]]:
         response = self._request(server, "tools/list", {}, timeout=timeout)
