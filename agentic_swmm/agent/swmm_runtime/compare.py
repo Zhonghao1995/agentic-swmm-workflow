@@ -36,12 +36,12 @@ disagree about a metric.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.swmm_runtime.postflight import QAReport, postflight_qa
+from agentic_swmm.agent.swmm_runtime.rpt_summary import section_data_lines
 from agentic_swmm.agent.swmm_runtime.version_compat import (
     SwmmVersionCompatVerdict,
     check_swmm_versions_for_compare,
@@ -280,13 +280,6 @@ _TIE_TOL = _TIE_TOL_DEFAULT
 # ---------------------------------------------------------------------------
 
 
-_NODE_INFLOW_HEADER_RE = re.compile(r"Node\s+Inflow\s+Summary", re.IGNORECASE)
-_SUBCATCH_RUNOFF_HEADER_RE = re.compile(
-    r"Subcatchment\s+Runoff\s+Summary", re.IGNORECASE
-)
-_DASHED_LINE_RE = re.compile(r"^\s*-{3,}\s*$")
-
-
 def _safe_float(token: str) -> float | None:
     """Parse a token as float; return ``None`` on failure.
 
@@ -299,68 +292,6 @@ def _safe_float(token: str) -> float | None:
         return float(token)
     except (TypeError, ValueError):
         return None
-
-
-def _section_lines(text: str, header_re: re.Pattern[str]) -> list[str]:
-    """Return the data lines under a ``header_re`` section in ``text``.
-
-    A SWMM summary section looks like::
-
-        ******************
-        Node Inflow Summary
-        ******************
-
-        ------------------------------------------------------------
-                                          Maximum Maximum ...
-        Node                  Type            CMS    CMS   ...
-        ------------------------------------------------------------
-        J1                    JUNCTION      1.184  1.184    2 13:54  ...
-        ...
-
-    The column-header block is delimited by *two* dashed lines (top and
-    bottom). Data rows live after the second dashed line and run until
-    a blank line, a new all-asterisks separator, or another dashed
-    line (the latter is unusual but possible when SWMM appends a
-    sub-table footer).
-    """
-    lines = text.splitlines()
-    out: list[str] = []
-    in_section = False
-    dash_count = 0  # number of dashed lines seen since entering the section
-    for raw in lines:
-        if not in_section:
-            if header_re.search(raw):
-                in_section = True
-            continue
-        # We are inside the section.
-        stripped = raw.strip()
-        if _DASHED_LINE_RE.match(raw):
-            dash_count += 1
-            if dash_count >= 2 and out:
-                # Closing dashed line below the data rows — terminate.
-                break
-            # Otherwise: still inside the column-header box.
-            continue
-        if not stripped:
-            # Blank line: terminate only once we are past the column
-            # headers (dash_count >= 2) and have already captured data.
-            if dash_count >= 2 and out:
-                break
-            # Otherwise, blank between section header and column-header
-            # box. Keep going.
-            continue
-        # A row of asterisks would mark the next section. Only treat
-        # it as a terminator after we have started capturing data —
-        # the section title itself is wrapped in asterisks.
-        if stripped.startswith("*") and "*" * 4 in stripped:
-            if out:
-                break
-            continue
-        if dash_count < 2:
-            # Inside the column-header rows (text labels). Skip.
-            continue
-        out.append(raw)
-    return out
 
 
 def parse_node_peaks_from_rpt(text: str) -> dict[str, NodePeak]:
@@ -380,7 +311,7 @@ def parse_node_peaks_from_rpt(text: str) -> dict[str, NodePeak]:
     extension can capture flow-balance error too.
     """
     out: dict[str, NodePeak] = {}
-    for raw in _section_lines(text, _NODE_INFLOW_HEADER_RE):
+    for raw in section_data_lines(text, "Node Inflow Summary"):
         tokens = raw.split()
         if len(tokens) < 6:
             # Minimum: name type max_lat max_total day hr:min
@@ -420,7 +351,7 @@ def parse_subcatch_runoff_from_rpt(text: str) -> dict[str, SubcatchRunoff]:
     is index 8.
     """
     out: dict[str, SubcatchRunoff] = {}
-    for raw in _section_lines(text, _SUBCATCH_RUNOFF_HEADER_RE):
+    for raw in section_data_lines(text, "Subcatchment Runoff Summary"):
         tokens = raw.split()
         # Minimum: name + 10 numeric columns
         if len(tokens) < 11:
