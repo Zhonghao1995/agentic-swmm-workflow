@@ -239,8 +239,9 @@ _CALIBRATION_COMMON_REQUIRED = [
 ]
 
 
-def _build_tools() -> dict[str, ToolSpec]:
-    specs = [
+def _audit_patch_onboarding_tools() -> list[ToolSpec]:
+    """Run-audit surface (audit_run, apply_patch) and new-case onboarding acceptance."""
+    return [
         ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}}, ["run_dir"]), _audit_run_tool),
         ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
         # New-case onboarding (#246 follow-up rewire): typed tool that applies the
@@ -282,6 +283,12 @@ def _build_tools() -> dict[str, ToolSpec]:
             _apply_onboarding_tool,
             is_read_only=False,
         ),
+    ]
+
+
+def _builder_climate_tools() -> list[ToolSpec]:
+    """INP assembly (swmm-builder) and rainfall/design-storm synthesis (swmm-climate), plus capabilities/demo/doctor."""
+    return [
         ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "water_quality_json": {"type": "string", "description": "Optional path to a WQ config JSON enabling pollutant buildup/washoff simulation ([POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/[LOADINGS] sections)."}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
         # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
         # snippet that pairs with a formatted timeseries.
@@ -378,6 +385,12 @@ def _build_tools() -> dict[str, ToolSpec]:
         # IDF-driven tool above because it covers shapes the IDF path does
         # not (uniform/triangular/front/back/huff/scs) from an EXPLICIT depth.
         ToolSpec("generate_storm_shape", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) scaled to an EXPLICIT total depth you already know. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4). Use generate_design_storm instead when you only have a return period + IDF coefficients and need the depth derived for you.", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_storm_shape_tool, is_read_only=False),
+    ]
+
+
+def _introspection_mcp_network_plot_tools() -> list[ToolSpec]:
+    """Repo/diff introspection, the MCP bridge, network QA/export, and the plot/map renderers."""
+    return [
         ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
         ToolSpec("inspect_plot_options", "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.", _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []), _inspect_plot_options_tool, is_read_only=True),
         ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool, is_read_only=True),
@@ -415,6 +428,12 @@ def _build_tools() -> dict[str, ToolSpec]:
             ),
             _plot_run_tool,
         ),
+    ]
+
+
+def _read_memory_hitl_tools() -> list[ToolSpec]:
+    """File/rpt/skill reading, memory recall, and human-in-the-loop expert-review and gap-judgement pauses."""
+    return [
         ToolSpec("read_file", "Read a repository file and return a bounded excerpt (capped at 4000 chars). NOTE: for SWMM .rpt summary sections (Link Flow / Outfall Loading / Node Inflow / water-quality sections), use read_rpt_summary instead — read_file's 4000-char cap cannot reach summary sections, which sit past the rpt header in 300+ KB files.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
         ToolSpec(
             "read_rpt_summary",
@@ -596,6 +615,12 @@ def _build_tools() -> dict[str, ToolSpec]:
             # it with the GF-CORE state machine.
             supports_gap_fill=False,
         ),
+    ]
+
+
+def _run_ops_memory_report_tools() -> list[ToolSpec]:
+    """SWMM run execution (local, bbox-synthesized, SWMMCanada), allowlisted command/test running, skill selection, memory summarize/retrieve, and the water-quality/design-review/report-export handoffs."""
+    return [
         ToolSpec("run_swmm_inp", "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.", _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]), _run_swmm_inp_tool),
         ToolSpec(
             "synth_swmm_from_bbox",
@@ -786,6 +811,12 @@ def _build_tools() -> dict[str, ToolSpec]:
             _generate_report_tool,
             is_read_only=False,
         ),
+    ]
+
+
+def _calibration_tools() -> list[ToolSpec]:
+    """The six swmm-calibration ToolSpecs (sensitivity scan, calibrate, calibrate_search/sceua/dream_zs, validate)."""
+    return [
         # ---------------------------------------------------------------
         # swmm-calibration tools (dark-MCP registration — PR 1, issue #246)
         # All is_read_only=False: calibration runs SWMM and writes files.
@@ -961,6 +992,12 @@ def _build_tools() -> dict[str, ToolSpec]:
             _swmm_validate_tool,
             is_read_only=False,
         ),
+    ]
+
+
+def _web_uncertainty_tools() -> list[ToolSpec]:
+    """Web fetch/search plus the five swmm-uncertainty ToolSpecs (OAT/Morris/Sobol sensitivity, rainfall ensemble, source decomposition)."""
+    return [
         ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
         # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
@@ -1040,6 +1077,18 @@ def _build_tools() -> dict[str, ToolSpec]:
             is_read_only=False,
         ),
     ]
+
+
+def _build_tools() -> dict[str, ToolSpec]:
+    specs = (
+        _audit_patch_onboarding_tools()
+        + _builder_climate_tools()
+        + _introspection_mcp_network_plot_tools()
+        + _read_memory_hitl_tools()
+        + _run_ops_memory_report_tools()
+        + _calibration_tools()
+        + _web_uncertainty_tools()
+    )
     return {spec.name: spec for spec in specs}
 
 
