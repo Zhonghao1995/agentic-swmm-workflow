@@ -13,7 +13,6 @@ negative-lessons store.
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,6 +20,7 @@ from unittest import mock
 
 from agentic_swmm.memory.audit_hook import trigger_memory_refresh
 from agentic_swmm.memory.negative_lessons import recall_negative_lessons
+from tests.conftest import patched_audit_hook_subprocess, seed_provenance_run_dir
 
 
 _BASE_PROVENANCE = {
@@ -37,29 +37,6 @@ _BASE_PROVENANCE = {
 
 
 class AuditHookNegativeLessonsTests(unittest.TestCase):
-    def _make_run(self, project_root: Path, provenance: dict) -> Path:
-        runs_dir = project_root / "runs" / "abc"
-        runs_dir.mkdir(parents=True)
-        run_dir = runs_dir
-        audit_dir = run_dir / "09_audit"
-        audit_dir.mkdir()
-        (audit_dir / "experiment_provenance.json").write_text(
-            json.dumps(provenance), encoding="utf-8"
-        )
-        return run_dir
-
-    def _patches(self):
-        return (
-            mock.patch(
-                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-                return_value=(0, ""),
-            ),
-            mock.patch(
-                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-                return_value=(0, ""),
-            ),
-        )
-
     def test_continuity_fail_writes_negative_lesson(self) -> None:
         prov = dict(_BASE_PROVENANCE)
         prov["metrics"] = {
@@ -74,8 +51,8 @@ class AuditHookNegativeLessonsTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root, prov)
-            with self._patches()[0], self._patches()[1]:
+            run_dir = seed_provenance_run_dir(project_root, prov)
+            with patched_audit_hook_subprocess():
                 result = trigger_memory_refresh(run_dir)
 
             self.assertFalse(result["skipped"], msg=str(result))
@@ -105,8 +82,8 @@ class AuditHookNegativeLessonsTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root, prov)
-            with self._patches()[0], self._patches()[1]:
+            run_dir = seed_provenance_run_dir(project_root, prov)
+            with patched_audit_hook_subprocess():
                 result = trigger_memory_refresh(run_dir)
         self.assertNotIn("negative_lessons", result, msg=str(result))
 
@@ -121,7 +98,7 @@ class AuditHookNegativeLessonsTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = trigger_memory_refresh(run_dir, no_memory=True)
         self.assertTrue(result["skipped"])
         self.assertNotIn("negative_lessons", result)
@@ -138,8 +115,8 @@ class AuditHookNegativeLessonsTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root, prov)
-            with self._patches()[0], self._patches()[1], mock.patch(
+            run_dir = seed_provenance_run_dir(project_root, prov)
+            with patched_audit_hook_subprocess(), mock.patch(
                 "agentic_swmm.memory.audit_hook._record_negative_lesson_for_continuity_fail",
                 side_effect=RuntimeError("boom"),
             ):

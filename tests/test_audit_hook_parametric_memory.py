@@ -9,14 +9,13 @@ the same fixture pattern other audit-hook tests use.
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import mock
 
 from agentic_swmm.memory.audit_hook import trigger_memory_refresh
 from agentic_swmm.memory.parametric_memory import recall_parametric
+from tests.conftest import patched_audit_hook_subprocess, seed_provenance_run_dir
 
 
 _PROVENANCE = {
@@ -39,33 +38,13 @@ _PROVENANCE = {
 
 
 class AuditHookParametricMemoryTests(unittest.TestCase):
-    def _make_run(self, project_root: Path) -> Path:
-        runs_dir = project_root / "runs" / "abc"
-        runs_dir.mkdir(parents=True)
-        run_dir = runs_dir
-        audit_dir = run_dir / "09_audit"
-        audit_dir.mkdir()
-        (audit_dir / "experiment_provenance.json").write_text(
-            json.dumps(_PROVENANCE), encoding="utf-8"
-        )
-        return run_dir
-
     def test_parametric_record_appended_for_eligible_run(self) -> None:
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root)
+            run_dir = seed_provenance_run_dir(project_root, _PROVENANCE)
 
-            # Patch the heavy subprocess + RAG refresh so the test
-            # exercises only the in-process wiring. Both targets return
-            # ``(0, "")`` so the success path runs to completion.
-            with mock.patch(
-                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-                return_value=(0, ""),
-            ), mock.patch(
-                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-                return_value=(0, ""),
-            ):
+            with patched_audit_hook_subprocess():
                 result = trigger_memory_refresh(run_dir)
 
             self.assertFalse(result["skipped"], msg=str(result))
@@ -96,7 +75,7 @@ class AuditHookParametricMemoryTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root)
+            run_dir = seed_provenance_run_dir(project_root, _PROVENANCE)
             result = trigger_memory_refresh(run_dir, no_memory=True)
         self.assertTrue(result["skipped"])
         # ``--no-memory`` skips before any memory dir is even created.
@@ -110,27 +89,8 @@ class AuditHookParametricMemoryTests(unittest.TestCase):
 
 
 class AuditHookSchema2PassThroughTests(unittest.TestCase):
-    def _make_run_with_provenance(
-        self, project_root: Path, provenance: dict
-    ) -> Path:
-        runs_dir = project_root / "runs" / "abc"
-        runs_dir.mkdir(parents=True)
-        run_dir = runs_dir
-        audit_dir = run_dir / "09_audit"
-        audit_dir.mkdir()
-        (audit_dir / "experiment_provenance.json").write_text(
-            json.dumps(provenance), encoding="utf-8"
-        )
-        return run_dir
-
     def _run_hook(self, run_dir: Path):
-        with mock.patch(
-            "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-            return_value=(0, ""),
-        ), mock.patch(
-            "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-            return_value=(0, ""),
-        ):
+        with patched_audit_hook_subprocess():
             return trigger_memory_refresh(run_dir)
 
     def test_watershed_classification_block_carried_through(self) -> None:
@@ -144,7 +104,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})
@@ -163,7 +123,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})
@@ -178,7 +138,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})
@@ -198,7 +158,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             self.assertIn("parametric_memory", result, msg=str(result))
             store = Path(result["parametric_memory"])
@@ -213,7 +173,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, dict(_PROVENANCE))
+            run_dir = seed_provenance_run_dir(project_root, dict(_PROVENANCE))
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})
@@ -231,7 +191,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})
@@ -243,7 +203,7 @@ class AuditHookSchema2PassThroughTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run_with_provenance(project_root, prov)
+            run_dir = seed_provenance_run_dir(project_root, prov)
             result = self._run_hook(run_dir)
             store = Path(result["parametric_memory"])
             rows = recall_parametric(store, {})

@@ -1,3 +1,14 @@
+---
+name: swmm-design-review
+description: >
+  Score a completed SWMM run against a configurable YAML rulebook of
+  design checks — GB50014-style standards for real catchments, or the
+  reference-free physical-plausibility rulebook for synthesized
+  networks. Reads the run's existing manifest.json / model.rpt /
+  model.inp and never re-runs SWMM. Use it post-run for compliance or
+  plausibility review; continuity gating stays with postflight.
+---
+
 # swmm-design-review — Design Review / Code-Compliance Checker
 
 ## What this skill does
