@@ -6,7 +6,9 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from agentic_swmm.commands.run import _copy_inp_sidecar_files
+from agentic_swmm.agent.swmm_runtime.inp_parsing import (
+    copy_inp_sidecar_files as _copy_inp_sidecar_files,
+)
 
 
 def test_section_header_token_raises_parser_error():
