@@ -51,7 +51,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
@@ -226,7 +226,41 @@ def _run_script_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> 
     return _run_process_tool(call, session_dir, [sys.executable, *cli_args], cwd=repo_root())
 
 
+def _inp_source_tool(
+    call: ToolCall,
+    *,
+    fetch: Callable[[], Any],
+    describe: Callable[[Any], tuple[dict[str, Any], str]],
+    stage_hint: Callable[[str], str],
+) -> dict[str, Any]:
+    """Uniform handler glue for INP-source adapters (see
+    ``integrations/inp_source.py``): run the fetch, map a stage-tagged
+    ``InpSourceError`` onto the fail-soft payload plus an actionable
+    hint, and wrap the adapter's result description in the standard
+    tool-result envelope. ``fetch`` closures keep their lazy imports so
+    tests can patch the underlying runner functions.
+    """
+    from agentic_swmm.integrations.inp_source import InpSourceError
+
+    try:
+        result = fetch()
+    except InpSourceError as exc:
+        payload = _failure(call, str(exc))
+        payload["stage"] = exc.stage
+        payload["hint"] = stage_hint(exc.stage)
+        return payload
+    results, summary = describe(result)
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": results,
+        "summary": summary,
+    }
+
+
 __all__ = [
+    "_inp_source_tool",
     "_failure",
     "_repo_path",
     "_repo_output_path",

@@ -53,6 +53,8 @@ import types
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from agentic_swmm.integrations.inp_source import InpSourceError, InpSourceResult
 from typing import Any, Mapping
 
 from agentic_swmm.integrations.raw_snapshot import (
@@ -71,16 +73,19 @@ DEFAULT_OUTFALL_DERIVATION = {
 
 
 @dataclass(frozen=True)
-class SynthRunResult:
-    inp_path: Path
-    run_dir: Path
+class SynthRunResult(InpSourceResult):
+    """swmm-anywhere adapter result at the INP-source seam.
+
+    Inherits the shared surface (``inp_path``, ``run_dir``,
+    ``warnings``) and adds the synth path's typed extras.
+    """
+
     raw_manifest_path: Path
     provenance: dict
     stage_durations: dict
-    warnings: tuple[str, ...]
 
 
-class SynthRunError(RuntimeError):
+class SynthRunError(InpSourceError):
     def __init__(self, stage: str, original_exc: BaseException) -> None:
         super().__init__(f"swmm-anywhere stage '{stage}' failed: {original_exc!r}")
         self.stage = stage

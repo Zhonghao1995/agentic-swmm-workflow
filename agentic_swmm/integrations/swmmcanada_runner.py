@@ -30,6 +30,8 @@ import zipfile
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+
+from agentic_swmm.integrations.inp_source import InpSourceError, InpSourceResult
 from typing import Any, Callable
 
 # Environment variable holding the SWMMCanada service base URL. The client is
@@ -43,20 +45,23 @@ _TERMINAL_FAIL = "FAILED"
 
 
 @dataclass(frozen=True)
-class CanadaFetchResult:
-    inp_path: Path
-    run_dir: Path
+class CanadaFetchResult(InpSourceResult):
+    """SWMMCanada adapter result at the INP-source seam.
+
+    Inherits the shared surface (``inp_path``, ``run_dir``,
+    ``warnings``) and adds the service path's typed extras. The zip is
+    the durable provenance artifact (ADR-0001).
+    """
+
     zip_path: Path
     service_url: str
     task_id: str
     mode: str
     validation: dict | None
-    warnings: tuple[str, ...]
 
 
-class CanadaFetchError(RuntimeError):
-    """Stage-tagged failure, mirroring ``SynthRunError`` in the swmm-anywhere
-    runner so handlers can map a stage to an actionable hint.
+class CanadaFetchError(InpSourceError):
+    """Stage-tagged failure at the INP-source seam.
 
     ``stage`` is one of: ``config_missing``, ``submit``, ``poll``,
     ``task_failed``, ``timeout``, ``download``, ``extract``.
