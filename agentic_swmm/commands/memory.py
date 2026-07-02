@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.utils.paths import repo_root, require_dir, script_path
+from agentic_swmm.utils.paths import (
+    repo_root,
+    require_dir,
+    resolve_memory_dir,
+    resolve_runs_dir,
+    script_path,
+)
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
 
@@ -228,25 +234,11 @@ def promote_facts_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_memory_dir() -> Path:
-    override = os.environ.get("AISWMM_MEMORY_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    return repo_root() / "memory" / "modeling-memory"
-
-
 def _resolve_rag_dir() -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override).expanduser().resolve()
     return repo_root() / "memory" / "rag-memory"
-
-
-def _resolve_runs_dir() -> Path:
-    override = os.environ.get("AISWMM_RUNS_ROOT")
-    if override:
-        return Path(override).expanduser().resolve()
-    return repo_root() / "runs"
 
 
 def _resolve_evolution_config() -> Path:
@@ -284,9 +276,9 @@ def compact_main(args: argparse.Namespace) -> int:
     """
     from agentic_swmm.memory.lessons_lifecycle import apply_decay, load_config
 
-    memory_dir = _resolve_memory_dir()
+    memory_dir = resolve_memory_dir()
     rag_dir = _resolve_rag_dir()
-    runs_dir = _resolve_runs_dir()
+    runs_dir = resolve_runs_dir()
     config_path = _resolve_evolution_config()
     lessons_path = memory_dir / "lessons_learned.md"
     archive_path = memory_dir / "lessons_archived.md"
@@ -383,7 +375,7 @@ def migrate_negative_lessons_md_main(args: argparse.Namespace) -> int:
         migrate_jsonl_to_md,
     )
 
-    memory_dir = _resolve_memory_dir()
+    memory_dir = resolve_memory_dir()
     jsonl_path = memory_dir / "negative_lessons.jsonl"
     md_path = memory_dir / "negative_lessons.md"
     archive_path = memory_dir / "negative_lessons_archived.md"
@@ -594,7 +586,7 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
     if getattr(args, "runs_root", None) is not None:
         runs_root = args.runs_root.expanduser().resolve()
     else:
-        runs_root = _resolve_runs_dir()
+        runs_root = resolve_runs_dir()
 
     db_path = runs_root / "sessions.sqlite"
 

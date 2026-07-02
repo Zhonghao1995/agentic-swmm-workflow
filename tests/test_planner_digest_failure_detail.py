@@ -25,7 +25,7 @@ import unittest
 from typing import Any
 
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 
@@ -52,7 +52,7 @@ class _StubExecutor:
 def _emit_failure(*, result: dict[str, Any], emitted: list[str]) -> None:
     """Run ``_emit_step`` once for a synthetic failed ``list_dir`` call."""
     registry = AgentToolRegistry()
-    planner = OpenAIPlanner(
+    planner = Planner(
         provider=None,  # type: ignore[arg-type]
         registry=registry,
         max_steps=2,

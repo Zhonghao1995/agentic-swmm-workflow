@@ -94,19 +94,13 @@ def _route_through_pool(command: str, args: list[str]) -> tuple[Any, str] | None
     pool = mcp_pool.session_pool()
     if pool is None:
         return None
-    handles = getattr(pool, "_handles", None)
-    if not isinstance(handles, dict):
-        return None
-    for name, handle in handles.items():
-        spec = getattr(handle, "spec", None)
-        if spec is None:
-            # Test doubles may stash the spec on a `specs` list instead of
-            # using ``MCPServerHandle``; fall back to that shape.
-            continue
-        if spec.command == command and list(spec.args) == list(args):
+    find_server = getattr(pool, "find_server", None)
+    if callable(find_server):
+        name = find_server(command, args)
+        if name is not None:
             return pool, name
-    # Test doubles: a pool that exposes ``specs`` directly (see
-    # ``tests/test_mcp_client_pool_routing.py``).
+    # Test doubles: a pool without ``find_server`` that exposes ``specs``
+    # directly (see ``tests/test_mcp_client_pool_routing.py``).
     for spec in getattr(pool, "specs", []):
         if getattr(spec, "command", None) == command and list(getattr(spec, "args", [])) == list(args):
             return pool, spec.name

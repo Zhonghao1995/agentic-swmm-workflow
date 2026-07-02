@@ -6,7 +6,7 @@ parse/apply helpers.
 
 As of the #246 follow-up rewire the surface has two production callers:
 
-1. ``OpenAIPlanner._consult_onboarding`` — the pre-LLM hook that
+1. ``Planner._consult_onboarding`` — the pre-LLM hook that
    evaluates the gate for a new case, injects the chat block into
    ``system_prompt_extras``, and emits the ``onboarding_offer`` trace
    event.  Mirror of ``_consult_memory_informed_policy`` in placement

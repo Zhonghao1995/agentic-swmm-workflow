@@ -2,7 +2,7 @@
 
 Three surfaces are tested here:
 
-1. **Planner hook** (``OpenAIPlanner._consult_onboarding``): injects
+1. **Planner hook** (``Planner._consult_onboarding``): injects
    the onboarding chat block + tool hint into ``system_prompt_extras``
    and emits an ``onboarding_offer`` trace event when the session's
    case is new; strict no-op for a known case or when no case resolves.
@@ -26,7 +26,7 @@ from unittest import mock
 
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.memory.calibration_memory import (
@@ -136,7 +136,7 @@ class OnboardingHookInjectsBlockTests(unittest.TestCase):
         goal: str,
         memory_dir: Path,
         prior_session_state: dict[str, Any] | None = None,
-    ) -> tuple[OpenAIPlanner, Path]:
+    ) -> tuple[Planner, Path]:
         trace_path = tmp / "agent_trace.jsonl"
         registry = AgentToolRegistry()
         executor = AgentExecutor(
@@ -146,7 +146,7 @@ class OnboardingHookInjectsBlockTests(unittest.TestCase):
             dry_run=False,
             profile=Profile.QUICK,
         )
-        planner = OpenAIPlanner(
+        planner = Planner(
             provider=_ScriptedProvider(),  # type: ignore[arg-type]
             registry=registry,
             max_steps=2,

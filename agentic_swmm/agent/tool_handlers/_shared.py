@@ -29,9 +29,9 @@ What lives here:
 
 What deliberately does NOT live here:
 
-* ``ToolSpec`` / ``AgentToolRegistry`` / ``compute_intent_signals`` —
-  these are the registry's public surface (per PRD #128 commit
-  ``467e5e8``); they stay in ``tool_registry.py``.
+* ``ToolSpec`` / ``AgentToolRegistry`` — these are the registry's
+  public surface (per PRD #128 commit ``467e5e8``); they stay in
+  ``tool_registry.py``.
 * The MCP-routed handler factory (``_make_mcp_routed_handler``,
   ``_wrap_mcp_result``). It is cross-cutting, but a tests/test_*.py
   contract relies on ``tool_registry.ensure_session_pool`` being

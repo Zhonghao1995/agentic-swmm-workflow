@@ -193,13 +193,9 @@ def _refresh_moc_only() -> int:
     "runs"``. Returns 0 on success, 1 if the runs root does not exist
     or MOC generation fails.
     """
-    env_override = os.environ.get("AISWMM_RUNS_ROOT")
-    if env_override:
-        runs_root = Path(env_override).expanduser().resolve()
-    else:
-        from agentic_swmm.utils.paths import repo_root
+    from agentic_swmm.utils.paths import resolve_runs_dir
 
-        runs_root = repo_root() / "runs"
+    runs_root = resolve_runs_dir()
     if not runs_root.exists():
         print(
             json.dumps(

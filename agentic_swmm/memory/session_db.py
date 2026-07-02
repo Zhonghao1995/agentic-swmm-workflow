@@ -445,6 +445,29 @@ def insert_tool_event(
         return
 
 
+def latest_session(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Return the most recently-ended session across all cases, or ``None``.
+
+    Case-agnostic sibling of :func:`latest_session_for_case`; the startup
+    welcome banner (``agent/welcome.py``) uses it to point at "your last
+    session". Sessions with NULL ``end_utc`` are excluded so we never
+    surface a still-running session as the last one. Caller must set
+    ``conn.row_factory = sqlite3.Row`` (same contract as the sibling).
+    """
+    row = conn.execute(
+        """
+        SELECT session_id, case_name, goal, end_utc, ok
+        FROM sessions
+        WHERE end_utc IS NOT NULL
+        ORDER BY end_utc DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return {key: row[key] for key in row.keys()}
+
+
 def latest_session_for_case(
     conn: sqlite3.Connection, case_name: str
 ) -> dict[str, Any] | None:

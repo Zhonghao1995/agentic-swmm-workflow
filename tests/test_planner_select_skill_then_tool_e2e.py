@@ -32,7 +32,7 @@ import pytest
 from agentic_swmm.agent import mcp_pool
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.mcp_pool import MCPPool, ServerSpec, bind_session_pool, clear_session_pool
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
@@ -168,7 +168,7 @@ class PlannerSelectSkillThenToolE2ETests(unittest.TestCase):
                 dry_run=False,
                 profile=Profile.QUICK,
             )
-            planner = OpenAIPlanner(
+            planner = Planner(
                 provider=provider,  # type: ignore[arg-type]
                 registry=registry,
                 max_steps=4,

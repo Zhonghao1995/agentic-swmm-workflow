@@ -66,14 +66,14 @@ class RuntimeOnboardingRenderTests(unittest.TestCase):
             executor = _StubExecutor(session_dir)
             trace_path = session_dir / "agent_trace.jsonl"
 
-            # Monkey-patch OpenAIPlanner via dependency injection through
+            # Monkey-patch Planner via dependency injection through
             # the module's globals — runtime constructs it internally
             # with provider+registry, so we shim via patching.
             from agentic_swmm.agent import runtime as runtime_mod
 
-            original_planner = runtime_mod.OpenAIPlanner
+            original_planner = runtime_mod.Planner
             try:
-                runtime_mod.OpenAIPlanner = lambda *args, **kwargs: _StubPlanner(  # type: ignore[assignment]
+                runtime_mod.Planner = lambda *args, **kwargs: _StubPlanner(  # type: ignore[assignment]
                     escalation
                 )
                 outcome = run_openai_plan(
@@ -88,7 +88,7 @@ class RuntimeOnboardingRenderTests(unittest.TestCase):
                     emit=lambda _m: None,
                 )
             finally:
-                runtime_mod.OpenAIPlanner = original_planner
+                runtime_mod.Planner = original_planner
 
         self.assertFalse(outcome.ok)
         # The runtime must render the chat block verbatim; the
@@ -116,9 +116,9 @@ class RuntimeOnboardingRenderTests(unittest.TestCase):
 
             from agentic_swmm.agent import runtime as runtime_mod
 
-            original_planner = runtime_mod.OpenAIPlanner
+            original_planner = runtime_mod.Planner
             try:
-                runtime_mod.OpenAIPlanner = lambda *a, **k: _StubPlanner(  # type: ignore[assignment]
+                runtime_mod.Planner = lambda *a, **k: _StubPlanner(  # type: ignore[assignment]
                     escalation
                 )
                 outcome = run_openai_plan(
@@ -133,7 +133,7 @@ class RuntimeOnboardingRenderTests(unittest.TestCase):
                     emit=lambda _m: None,
                 )
             finally:
-                runtime_mod.OpenAIPlanner = original_planner
+                runtime_mod.Planner = original_planner
 
         self.assertFalse(outcome.ok)
         self.assertIn(

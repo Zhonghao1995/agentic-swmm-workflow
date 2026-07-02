@@ -32,7 +32,7 @@ from agentic_swmm.providers.base import ChatProvider
 # OpenAI agent loop tolerates before giving up. Three strikes guards
 # against the LLM getting stuck in a retry loop on the same broken
 # call while still leaving room for a typo + one retry + a final
-# pivot. The loop logic in OpenAIPlanner.run depends on this constant
+# pivot. The loop logic in Planner.run depends on this constant
 # being at least 1.
 SAME_TOOL_RETRY_LIMIT = 3
 
@@ -160,7 +160,7 @@ def _resolve_case_name_for_memory(
     return None
 
 
-class OpenAIPlanner:
+class Planner:
     def __init__(
         self,
         provider: ChatProvider,
@@ -817,3 +817,9 @@ def _build_l5_replan_clarification(
         "judgement above; decide the next step in context of this choice."
     )
     return {"role": "user", "content": content}
+
+
+# Back-compat alias: the class predates the two-provider factory and was
+# published as ``OpenAIPlanner``; external callers may still import that
+# name. Internal code and tests use ``Planner``.
+OpenAIPlanner = Planner

@@ -108,7 +108,7 @@ class SpinnerState(enum.Enum):
 
     Issue #58 (UX-3): the spinner gained a state enum so it can be
     reused beyond per-tool progress. ``THINKING`` covers the silent
-    5-30s window inside ``OpenAIPlanner.run`` while we wait on the
+    5-30s window inside ``Planner.run`` while we wait on the
     LLM; ``RUNNING`` is the existing per-tool behaviour; ``WAITING``
     is reserved for future user-confirmation pauses; ``DONE`` and
     ``FAILED`` are the terminal markers when a Spinner finishes.

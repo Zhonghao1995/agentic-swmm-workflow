@@ -28,11 +28,10 @@ PRD-02 (``is_open_shaped_prompt``, ``maybe_warm_intro``,
 ``_new_interactive_session``, ``_display_path``, ``_safe_name``,
 ``_refresh_moc_after_session``, ``_build_system_prompt_extras``,
 ``invoke_tool_with_gap_fill``, ``execute_with_chrome``, ``_is_tty``,
-``OpenAIProvider``, ``load_config``, ``generate_moc``) is re-exported
-from here, so existing imports and ``unittest.mock.patch`` targets
-continue to work without changes. Provider construction now routes
-through ``make_provider`` (also re-exported) for every backend; the
-``OpenAIProvider`` symbol is retained only for back-compat imports.
+``load_config``, ``generate_moc``) is re-exported from here, so
+existing imports and ``unittest.mock.patch`` targets continue to work
+without changes. Provider construction routes through
+``make_provider`` (also re-exported) for every backend.
 """
 
 from __future__ import annotations
@@ -69,7 +68,6 @@ from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 from agentic_swmm.memory.session_sync import sync_session_to_db
 from agentic_swmm.providers.factory import SUPPORTED_PROVIDERS, make_provider
-from agentic_swmm.providers.openai_api import OpenAIProvider
 from agentic_swmm.utils.paths import repo_root
 
 # PRD-02 — deep-module split. New modules with the carved-out behaviour;

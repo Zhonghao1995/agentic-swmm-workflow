@@ -28,18 +28,11 @@ class ToolRegistryPublicApiTests(unittest.TestCase):
         self.assertIn("handler", fields)
         self.assertIn("parameters", fields)
 
-    def test_compute_intent_signals_importable(self) -> None:
-        from agentic_swmm.agent.tool_registry import compute_intent_signals
-
-        signals = compute_intent_signals("plot the figure")
-        self.assertIn("wants_plot", signals)
-        self.assertTrue(signals["wants_plot"])
-
     # LLM-driven dispatch refactor: ``_VALID_MODE_ENUM`` and the
     # ``intent_disambiguator`` consumer are gone, so the import-stability
-    # contract no longer applies. ``compute_intent_signals`` above is
-    # the surviving legacy surface that the warm-intro classifier still
-    # consumes.
+    # contract no longer applies. ``compute_intent_signals`` was the last
+    # legacy adapter; it was removed after its final callers migrated to
+    # ``intent_classifier.classify_intent``.
 
 
 if __name__ == "__main__":

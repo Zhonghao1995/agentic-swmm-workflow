@@ -18,6 +18,8 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.utils.paths import resolve_memory_dir
+
 
 def add_subparser(
     sub: argparse._SubParsersAction[argparse.ArgumentParser],
@@ -54,17 +56,6 @@ def add_subparser(
         help="Modeling-memory directory. Defaults to memory/modeling-memory.",
     )
     parser.set_defaults(func=health_main)
-
-
-def _resolve_memory_dir(override: Path | None) -> Path:
-    if override is not None:
-        return override.expanduser().resolve()
-    env_val = __import__("os").environ.get("AISWMM_MEMORY_DIR")
-    if env_val:
-        return Path(env_val).expanduser().resolve()
-    from agentic_swmm.utils.paths import repo_root
-
-    return repo_root() / "memory" / "modeling-memory"
 
 
 def _fmt_score(score: float) -> str:
@@ -133,7 +124,7 @@ def health_main(args: argparse.Namespace) -> int:
         summary_for_all,
     )
 
-    memory_dir = _resolve_memory_dir(getattr(args, "memory_dir", None))
+    memory_dir = resolve_memory_dir(getattr(args, "memory_dir", None))
     store_path = memory_dir / OUTCOME_LEDGER_FILENAME
 
     all_events = load_outcome_events(store_path)

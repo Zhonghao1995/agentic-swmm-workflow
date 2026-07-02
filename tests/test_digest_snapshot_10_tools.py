@@ -25,7 +25,7 @@ from typing import Any
 from agentic_swmm.agent.digest_render import brief_result, render_step
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 
@@ -77,7 +77,7 @@ def _render_verbose(steps: list[_Step]) -> str:
     Issue #193 item 8: this used to hand-build what the planner /
     executor emit in verbose mode, which let the production verbose
     path drift without failing the ratio assertion. Now we instantiate
-    a real ``OpenAIPlanner(verbose=True)`` + real ``AgentExecutor``,
+    a real ``Planner(verbose=True)`` + real ``AgentExecutor``,
     feed each fixture step through ``_emit_step`` directly, and prefix
     each step with the executor's own ``_tool_label`` (the spinner
     row the user sees) so the snapshot tracks any future change to
@@ -93,7 +93,7 @@ def _render_verbose(steps: list[_Step]) -> str:
     """
     emitted_lines: list[str] = []
     registry = AgentToolRegistry()
-    planner = OpenAIPlanner(
+    planner = Planner(
         provider=None,  # type: ignore[arg-type]
         registry=registry,
         max_steps=2,
