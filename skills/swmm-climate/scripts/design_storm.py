@@ -135,50 +135,37 @@ def chicago_hyetograph(
     # peak (r*tau before, (1-r)*tau after) must accumulate exactly D(tau),
     # so the limb cumulative at distance s from the peak is the r-weighted
     # share of the window it closes: C_pre(s) = r * D(s/r) and
-    # C_post(s) = (1-r) * D(s/(1-r)). Telescoping the block differences
-    # makes the storm total exactly C_pre(rT) + C_post((1-r)T) = D(T).
+    # C_post(s) = (1-r) * D(s/(1-r)).
     def limb_pre(s: float) -> float:
         return r * idf_depth(s / r)
 
     def limb_post(s: float) -> float:
         return (1.0 - r) * idf_depth(s / (1.0 - r))
 
-    # Rising limb block k (0-indexed left to right, k in 0..i_peak):
-    #   distance from peak at block END (nearer peak)  = t_pre - k * dt
-    #   distance from peak at block START (farther)    = t_pre - (k+1) * dt
-    #   depth = C_pre(s_end) - C_pre(s_start)
-    # Falling limb block k (i_peak+1..n_steps-1):
-    #   branch offset j = k - (i_peak+1)
-    #   depth = C_post((j+1)*dt) - C_post(j*dt)
-
+    # Blocks are differences of the storm cumulative F at bin edges:
+    #   F(t) = C_pre(t_pre) - C_pre(t_pre - t)   for t <= t_pre
+    #   F(t) = C_pre(t_pre) + C_post(t - t_pre)  for t >  t_pre
+    # Mass is exact at any discretisation (the differences telescope to
+    # F(T) = C_pre(rT) + C_post((1-r)T) = D(T)), and the block containing
+    # the peak carries both its rising and falling slivers — no zero-depth
+    # hole when r * duration lands exactly on a bin boundary.
+    # Twin implementation: agentic_swmm/agent/swmm_runtime/design_storm.py
+    # ``_chicago_from_idf`` (this script's portability constraint forbids
+    # sharing code; tests/test_chicago_idf_parity.py locks the two equal).
     t_pre = r * duration_min
-    i_peak = int(r * n_steps)
-    i_peak = max(0, min(i_peak, n_steps - 1))
 
-    depths: list[float] = [0.0] * n_steps
+    def cumulative(t: float) -> float:
+        if t <= t_pre:
+            return limb_pre(t_pre) - limb_pre(t_pre - t)
+        return limb_pre(t_pre) + limb_post(t - t_pre)
 
-    # Rising limb
-    for k in range(i_peak + 1):
-        ta_end = t_pre - k * dt_min
-        ta_start = t_pre - (k + 1) * dt_min
-        if ta_start < 0.0:
-            ta_start = 0.0
-        depths[k] = max(0.0, limb_pre(ta_end) - limb_pre(ta_start))
-
-    # Falling limb
-    # The last block extends to exactly t_post = (1-r)*duration_min so that
-    # sum(depths) == limb_pre(t_pre) + limb_post(t_post) == idf_depth(T) exactly.
-    t_post = (1.0 - r) * duration_min
-    n_fall = n_steps - i_peak - 1
-    for j in range(n_fall):
-        k = i_peak + 1 + j
-        tb_start = j * dt_min
-        if j == n_fall - 1:
-            # Last falling block: extend to exact branch end
-            tb_end = t_post
-        else:
-            tb_end = (j + 1) * dt_min
-        depths[k] = max(0.0, limb_post(tb_end) - limb_post(tb_start))
+    depths: list[float] = []
+    for k in range(n_steps):
+        lo = k * dt_min
+        # The last block ends at exactly duration_min so the storm total is
+        # exactly D(duration_min) even when duration is not a multiple of dt.
+        hi = duration_min if k == n_steps - 1 else (k + 1) * dt_min
+        depths.append(max(0.0, cumulative(hi) - cumulative(lo)))
 
     return depths
 

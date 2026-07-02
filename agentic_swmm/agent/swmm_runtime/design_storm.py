@@ -8,14 +8,15 @@ SWMM ``[TIMESERIES]`` text the modeler pastes into an INP.
 Scope (intentional)
 -------------------
 - Shapes: ``"uniform"``, ``"triangular"`` (peak at midpoint),
-  ``"front_loaded"`` (peak at 25%), ``"back_loaded"`` (peak at 75%).
+  ``"front_loaded"`` (peak at 25%), ``"back_loaded"`` (peak at 75%),
+  plus ``chicago`` / ``huff`` / ``scs`` hyetographs (Round 2, #157).
 - Conservation: ``sum(intensity * dt_hr) == depth_mm`` for every
-  shape. Tests pin this contract.
-- No IDF curve lookup, no curve-number transform, no return-period
-  inference. Real-world design storms typically come from local IDF
-  curves and require curve fitting — that is later-phase work. The
-  scope here is "give me a shape with a known depth and duration"
-  which is what the modeler actually needs interactively.
+  explicit-depth shape. Tests pin this contract.
+- IDF input: ``chicago_hyetograph(idf_params={"a", "b", "c"})`` builds
+  the exact Keifer–Chu storm from ``i = a/(t+b)^c`` (storm total = the
+  IDF depth of the full duration). No curve fitting or return-period
+  inference here — fitted regional curves stay upstream (storm library
+  / ``aiswmm storm --idf``).
 
 Why this lives in ``agent/swmm_runtime``
 ----------------------------------------
@@ -602,42 +603,56 @@ def _chicago_from_idf(
     peak_position: float,
     interval_min: int,
 ) -> list[float]:
-    """Build a Chicago hyetograph from IDF parameters ``i = a/(t+b)^c``.
+    """Build the Keifer–Chu Chicago hyetograph from IDF ``i = a/(t+b)^c``.
 
-    The Chicago method conventionally computes the intensity at
-    distance ``t_leg`` from the peak using the IDF curve evaluated at
-    that ``t_leg`` (treating the leading and trailing legs as separate
-    "subdurations" both peaking at the centre). We sample at bin
-    centres and produce mm/hr values directly.
+    ``t`` is in minutes, ``i`` in mm/hr. Defining property: any window of
+    duration ``tau`` centred on the peak (``r*tau`` before, ``(1-r)*tau``
+    after, with ``r = peak_position``) accumulates exactly the IDF depth
+    ``D(tau) = i(tau) * tau / 60`` — so the storm total is exactly
+    ``D(duration_min)``. Construction: limb cumulatives
+    ``C_pre(s) = r*D(s/r)`` / ``C_post(s) = (1-r)*D(s/(1-r))`` are
+    differenced at bin edges, which conserves mass exactly at any
+    discretisation and leaves no dry bin when the peak lands on a bin
+    boundary.
+
+    Twin implementation: ``skills/swmm-climate/scripts/design_storm.py``
+    ``chicago_hyetograph`` (that script's stdlib-only portability
+    constraint forbids sharing code; ``tests/test_chicago_idf_parity.py``
+    locks the two numerically equal).
     """
     n_steps = duration_min // interval_min
     if n_steps <= 0:
         return []
-    peak_t = peak_position * duration_min
+    r = peak_position
+    t_pre = r * duration_min
 
+    def idf_depth(t_branch: float) -> float:
+        """Cumulative IDF depth (mm) over duration ``t_branch`` minutes."""
+        if t_branch <= 0.0:
+            return 0.0
+        base = t_branch + b
+        if base <= 0.0:
+            return 0.0
+        return (a / (base ** c)) * t_branch / 60.0
+
+    def limb_pre(s: float) -> float:
+        return r * idf_depth(s / r)
+
+    def limb_post(s: float) -> float:
+        return (1.0 - r) * idf_depth(s / (1.0 - r))
+
+    def cumulative(t: float) -> float:
+        if t <= t_pre:
+            return limb_pre(t_pre) - limb_pre(t_pre - t)
+        return limb_pre(t_pre) + limb_post(t - t_pre)
+
+    dt_hr = interval_min / 60.0
     intensities: list[float] = []
-    for step in range(n_steps):
-        bin_centre = (step + 0.5) * interval_min
-        if bin_centre <= peak_t:
-            leg = max(peak_t, 1e-6)
-            # Distance from start of leading leg back to the peak,
-            # scaled into [0, leg].
-            t_leg = peak_t - bin_centre
-        else:
-            leg = max(duration_min - peak_t, 1e-6)
-            t_leg = bin_centre - peak_t
-        # Map onto a positive sub-duration and evaluate IDF (intensity
-        # increases as sub-duration shrinks, peak at sub-duration ~0).
-        # Floor at half-bin so the peak bin is finite.
-        t_eval = max(t_leg, interval_min * 0.5)
-        # Normalise to ``leg`` to keep the curve scale-invariant in
-        # peak position, then evaluate on the leg-length time axis.
-        scaled_t = (t_eval / leg) * (duration_min / 2.0)
-        denom = (scaled_t + b)
-        if denom <= 0:
-            intensities.append(0.0)
-            continue
-        intensities.append(a / (denom ** c))
+    for k in range(n_steps):
+        lo = float(k * interval_min)
+        hi = float(duration_min) if k == n_steps - 1 else float((k + 1) * interval_min)
+        depth = max(0.0, cumulative(hi) - cumulative(lo))
+        intensities.append(depth / dt_hr)
     return intensities
 
 
