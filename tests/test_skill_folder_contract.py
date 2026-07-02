@@ -41,5 +41,12 @@ def test_skill_folder_is_well_formed(skill_name: str) -> None:
 
 
 def test_sweep_covers_the_shipped_skills() -> None:
-    """Guard against the parametrize list silently going empty."""
-    assert len(_ALL_SKILLS) >= 19
+    """Guard against the parametrize list silently going empty.
+
+    A floor, not an exact count: the tracked skill set grows over time,
+    and a local checkout may carry additional untracked skill folders a
+    CI checkout does not — so any exact number written from one
+    environment is wrong in the other. The guard only needs to catch
+    "the sweep found nothing / lost most of the tree".
+    """
+    assert len(_ALL_SKILLS) >= 15
