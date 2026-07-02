@@ -17,10 +17,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
-from agentic_swmm.cli import (
-    _list_partial_state_files,
-    _summarise_progress_json,
-    main as cli_main,
+from agentic_swmm.cli import main as cli_main
+from agentic_swmm.memory.run_progress import (
+    list_partial_state_files as _list_partial_state_files,
+)
+from agentic_swmm.memory.run_progress import (
+    summarize_progress_json as _summarise_progress_json,
 )
 
 

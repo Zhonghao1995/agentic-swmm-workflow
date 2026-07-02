@@ -170,3 +170,70 @@ def summarize_progress(ckpt: ProgressCheckpoint) -> str:
     else:
         time_str = f"{elapsed / 3600:.1f} h elapsed"
     return f"{ckpt.algorithm} {iter_str}, {obj_str}, {time_str}"
+
+# ---------------------------------------------------------------------------
+# Tolerant one-line views used by the CLI interrupt handler. Unlike
+# read_checkpoint/summarize_progress above (the typed contract), these
+# stay deliberately fail-soft raw-JSON readers: they run while a
+# checkpoint may be mid-write after Ctrl-C, so any parse failure falls
+# back to the bare path instead of raising. Moved from cli.py so every
+# reader of the progress.json shape lives in this module.
+
+def list_partial_state_files(run_dir: "Path | None") -> list[str]:
+    """Return the partial-state files present under ``run_dir``.
+
+    Inspects ``progress.json``, ``agent_trace.jsonl``, and
+    ``chat_note.md``. Returns a list of human-friendly entries
+    (path + a one-line summary when known) in the order the user
+    most often cares about. Empty list when the run_dir is missing
+    or no partial state is found.
+    """
+    if run_dir is None:
+        return []
+    try:
+        if not run_dir.is_dir():
+            return []
+    except OSError:
+        return []
+    entries: list[str] = []
+    progress = run_dir / "progress.json"
+    if progress.is_file():
+        summary = summarize_progress_json(progress)
+        if summary:
+            entries.append(f"{progress} ({summary})")
+        else:
+            entries.append(str(progress))
+    trace = run_dir / "agent_trace.jsonl"
+    if trace.is_file() and trace.stat().st_size > 0:
+        entries.append(str(trace))
+    chat_note = run_dir / "chat_note.md"
+    if chat_note.is_file() and chat_note.stat().st_size > 0:
+        entries.append(str(chat_note))
+    return entries
+
+
+def summarize_progress_json(path: "Path") -> str | None:
+    """Return a one-line summary of a progress.json checkpoint.
+
+    Pulls ``iter_index`` / ``total_iters`` / ``best_objective_so_far``
+    (when present) to give the user immediate context. Returns
+    ``None`` on any read / parse failure so the caller falls back
+    to the bare path.
+    """
+    import json as _json
+
+    try:
+        payload = _json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, _json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    iter_index = payload.get("iter_index")
+    total_iters = payload.get("total_iters")
+    best = payload.get("best_objective_so_far")
+    bits: list[str] = []
+    if iter_index is not None and total_iters is not None:
+        bits.append(f"iter {iter_index}/{total_iters}")
+    if isinstance(best, (int, float)):
+        bits.append(f"best obj {best:.3g}")
+    return ", ".join(bits) if bits else None
