@@ -75,7 +75,7 @@ class RainfallTimeseriesOptionsRaingagesFileTests(unittest.TestCase):
     RAINGAGES-FILE entry so ``_infer_rain_timeseries`` doesn't raise."""
 
     def test_options_include_raingages_file_entry(self) -> None:
-        from agentic_swmm.commands.plot import rainfall_timeseries_options
+        from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
 
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
@@ -101,7 +101,9 @@ class RainfallTimeseriesOptionsRaingagesFileTests(unittest.TestCase):
         self.assertEqual(chosen.get("name"), "rg1")
 
     def test_infer_rain_timeseries_does_not_raise(self) -> None:
-        from agentic_swmm.commands.plot import _infer_rain_timeseries
+        from agentic_swmm.agent.swmm_runtime.inp_parsing import (
+            infer_rain_timeseries as _infer_rain_timeseries,
+        )
 
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
