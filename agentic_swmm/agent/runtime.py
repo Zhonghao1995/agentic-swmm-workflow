@@ -6,7 +6,7 @@ from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.hitl_surface import format_hitl_prompt
 from agentic_swmm.agent.memory_context import MemoryContext
 from agentic_swmm.agent.memory_informed_policy import MemoryHITLRequired
-from agentic_swmm.agent.planner import OpenAIPlanner, PlannerRun, rule_plan
+from agentic_swmm.agent.planner import Planner, PlannerRun, rule_plan
 from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.state import write_session_state
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -59,7 +59,7 @@ def run_openai_plan(
             "allowed_tools": registry.sorted_names(),
         },
     )
-    planner = OpenAIPlanner(
+    planner = Planner(
         provider,
         registry,
         max_steps=max_steps,

@@ -26,7 +26,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
@@ -113,8 +113,8 @@ def _tool_response(calls: list[ProviderToolCall], *, response_id: str = "stub-st
     )
 
 
-def _planner(provider: _ScriptedProvider) -> OpenAIPlanner:
-    return OpenAIPlanner(
+def _planner(provider: _ScriptedProvider) -> Planner:
+    return Planner(
         provider=provider,  # type: ignore[arg-type]
         registry=AgentToolRegistry(),
         max_steps=8,

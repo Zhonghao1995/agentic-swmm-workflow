@@ -1,4 +1,4 @@
-"""Integration: every ``OpenAIPlanner`` LLM call lands in the trace.
+"""Integration: every ``Planner`` LLM call lands in the trace.
 
 PRD-LLM-TRACE wires ``record_llm_call`` into
 ``agent/planner.py`` around the ``provider.respond_with_tools`` call.
@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
@@ -125,7 +125,7 @@ class PlannerIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             session_dir = Path(tmp)
             trace_path = session_dir / "agent_trace.jsonl"
-            planner = OpenAIPlanner(
+            planner = Planner(
                 provider=provider,  # type: ignore[arg-type]
                 registry=AgentToolRegistry(),
                 max_steps=4,

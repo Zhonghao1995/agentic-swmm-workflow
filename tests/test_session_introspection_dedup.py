@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 
@@ -47,7 +47,7 @@ class IntrospectionDedupTests(unittest.TestCase):
         # The planner constructor needs a provider; we never call run(),
         # only the private _consult_workflow_skills helper, so a None
         # provider is acceptable here.
-        self.planner = OpenAIPlanner(
+        self.planner = Planner(
             provider=None,  # type: ignore[arg-type]
             registry=self.registry,
             max_steps=8,

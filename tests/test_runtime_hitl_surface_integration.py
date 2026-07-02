@@ -44,7 +44,7 @@ class _RaisingProvider:
 
 
 class _RaisingPlanner:
-    """Drop-in for ``OpenAIPlanner`` that raises ``MemoryHITLRequired``.
+    """Drop-in for ``Planner`` that raises ``MemoryHITLRequired``.
 
     We exercise the runtime's catch block without booting the real
     planner. The exception carries a populated MemoryContext so the
@@ -81,8 +81,8 @@ class RuntimeHitlIntegrationTests(unittest.TestCase):
         from agentic_swmm.agent import runtime as runtime_mod
 
         # Patch the planner constructor in runtime to our raiser.
-        original_planner = runtime_mod.OpenAIPlanner
-        runtime_mod.OpenAIPlanner = _RaisingPlanner  # type: ignore[assignment]
+        original_planner = runtime_mod.Planner
+        runtime_mod.Planner = _RaisingPlanner  # type: ignore[assignment]
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 session_dir = Path(tmp)
@@ -130,7 +130,7 @@ class RuntimeHitlIntegrationTests(unittest.TestCase):
                 # The agent should NOT be marked ok on a hitl.
                 self.assertFalse(outcome.ok)
         finally:
-            runtime_mod.OpenAIPlanner = original_planner  # type: ignore[assignment]
+            runtime_mod.Planner = original_planner  # type: ignore[assignment]
 
 
 if __name__ == "__main__":

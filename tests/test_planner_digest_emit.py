@@ -23,7 +23,7 @@ from typing import Any
 
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
 
@@ -49,14 +49,14 @@ class _ScriptedProvider:
         )
 
 
-def _make_planner(emit, verbose: bool) -> tuple[OpenAIPlanner, AgentToolRegistry]:
+def _make_planner(emit, verbose: bool) -> tuple[Planner, AgentToolRegistry]:
     registry = AgentToolRegistry()
     provider = _ScriptedProvider(
         [
             ProviderToolCall(call_id="c1", name="list_skills", arguments={}),
         ]
     )
-    planner = OpenAIPlanner(
+    planner = Planner(
         provider,  # type: ignore[arg-type]
         registry,
         max_steps=2,

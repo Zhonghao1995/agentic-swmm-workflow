@@ -13,7 +13,7 @@ LLM disambiguator. These tests pin three integration-level guarantees:
 3. **One memory_trace.jsonl line per disambiguation decision** — the
    audit trail must capture every consultation regardless of outcome.
 
-These tests exercise ``OpenAIPlanner`` end-to-end with a scripted
+These tests exercise ``Planner`` end-to-end with a scripted
 provider so they run in milliseconds and stay deterministic.
 """
 
@@ -29,7 +29,7 @@ from typing import Any
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.memory_informed_policy import MemoryHITLRequired
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.memory.parametric_memory import (
     ParametricRecord as StoredParametricRecord,
@@ -118,7 +118,7 @@ def _seed_parametric_memory(memory_dir: Path, **overrides: object) -> None:
 
 
 class _PlannerHarness:
-    """Build + run an ``OpenAIPlanner`` against a temp session_dir.
+    """Build + run an ``Planner`` against a temp session_dir.
 
     Used as a contextmanager so we can seed env vars (``AISWMM_MEMORY_DIR``)
     around the planner.run call and restore them afterwards.
@@ -150,7 +150,7 @@ class _PlannerHarness:
             dry_run=False,
             profile=Profile.QUICK,
         )
-        planner = OpenAIPlanner(
+        planner = Planner(
             provider=_ScriptedProvider(self.picked_mode),  # type: ignore[arg-type]
             registry=registry,
             max_steps=2,
@@ -348,7 +348,7 @@ class HighStakesEscalationIntegrationTests(unittest.TestCase):
                 dry_run=False,
                 profile=Profile.QUICK,
             )
-            planner = OpenAIPlanner(
+            planner = Planner(
                 provider=_ScriptedProvider("prepared_demo"),  # type: ignore[arg-type]
                 registry=registry,
                 max_steps=2,

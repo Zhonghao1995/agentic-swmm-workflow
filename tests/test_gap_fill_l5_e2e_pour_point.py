@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.gap_fill.protocol import GapCandidate
@@ -142,7 +142,7 @@ class L5PourPointE2ETests(unittest.TestCase):
             _seed_audit_evidence(session_dir)
             registry = AgentToolRegistry()
             executor = _RealExecutor(registry, session_dir)
-            planner = OpenAIPlanner(
+            planner = Planner(
                 provider=provider,  # type: ignore[arg-type]
                 registry=registry,
                 max_steps=4,

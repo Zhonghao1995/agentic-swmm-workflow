@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
@@ -104,7 +104,7 @@ class SkillSelectedEventTests(unittest.TestCase):
             ]
         )
         registry = AgentToolRegistry()
-        planner = OpenAIPlanner(
+        planner = Planner(
             provider=provider,  # type: ignore[arg-type]
             registry=registry,
             max_steps=4,
@@ -158,7 +158,7 @@ class SkillSelectedEventTests(unittest.TestCase):
             ]
         )
         registry = AgentToolRegistry()
-        planner = OpenAIPlanner(
+        planner = Planner(
             provider=provider,  # type: ignore[arg-type]
             registry=registry,
             max_steps=4,

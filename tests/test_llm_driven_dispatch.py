@@ -7,7 +7,7 @@ sends the full ``AgentToolRegistry.schemas()`` to the provider and the
 LLM picks tools by name.
 
 These tests pin the LLM-driven dispatch contract by feeding a scripted
-provider into the real :class:`OpenAIPlanner` and asserting the tool
+provider into the real :class:`Planner` and asserting the tool
 calls the LLM emits actually reach the executor — *no* keyword
 re-classification, *no* mode gate, *no* hidden routing layer between
 LLM and tool.
@@ -29,7 +29,7 @@ from unittest import mock
 
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
 
@@ -89,7 +89,7 @@ class _ScriptedProvider:
 
 def _make_planner_and_executor(
     tmp: Path, provider: _ScriptedProvider
-) -> tuple[OpenAIPlanner, AgentExecutor, Path]:
+) -> tuple[Planner, AgentExecutor, Path]:
     trace_path = tmp / "agent_trace.jsonl"
     registry = AgentToolRegistry()
     executor = AgentExecutor(
@@ -99,7 +99,7 @@ def _make_planner_and_executor(
         dry_run=False,
         profile=Profile.QUICK,
     )
-    planner = OpenAIPlanner(
+    planner = Planner(
         provider=provider,  # type: ignore[arg-type]
         registry=registry,
         max_steps=3,

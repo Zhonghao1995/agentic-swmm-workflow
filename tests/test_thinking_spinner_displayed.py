@@ -1,6 +1,6 @@
 """Thinking spinner runs during the LLM call (issue #58, UX-3).
 
-Currently ``OpenAIPlanner.run`` calls ``provider.respond_with_tools``
+Currently ``Planner.run`` calls ``provider.respond_with_tools``
 synchronously and produces no output during the 5-30s wait.  This test
 pins the contract: when the provider call takes time, the spinner
 emits ``Thinking…`` with carriage-return framing, and the line is
@@ -22,7 +22,7 @@ from conftest import _FakeTTYStream
 
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
-from agentic_swmm.agent.planner import OpenAIPlanner
+from agentic_swmm.agent.planner import Planner
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.providers.base import ProviderToolResponse
 
@@ -81,7 +81,7 @@ class ThinkingSpinnerDisplayedTests(unittest.TestCase):
                     dry_run=True,
                     profile=Profile.QUICK,
                 )
-                planner = OpenAIPlanner(
+                planner = Planner(
                     provider,  # type: ignore[arg-type]
                     registry,
                     max_steps=1,
