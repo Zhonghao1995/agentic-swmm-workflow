@@ -1,6 +1,6 @@
 """Public-surface contract for the memory facade (PRD-03).
 
-The ``agentic_swmm.memory`` namespace holds 13 sub-modules with 100+
+The ``agentic_swmm.memory`` namespace holds 30+ sub-modules with 100+
 public functions used internally between them. External callers should
 only need a small, stable verb set; this test locks that contract.
 
@@ -15,8 +15,7 @@ The facade exposes four verbs:
   (used by ``agent/tool_handlers/swmm_memory.py``)
 
 Internal sub-module imports keep working — this PRD is a contract
-narrowing, not a code move. See ``test_memory_generic_domain_shim.py``
-for the backwards-compat lock.
+narrowing, not a code move.
 """
 
 from __future__ import annotations
