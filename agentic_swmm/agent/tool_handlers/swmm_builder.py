@@ -79,7 +79,7 @@ def _build_build_inp_tool() -> Any:
     see module docstring on why module-level imports of that symbol
     are not safe here.
     """
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-builder", "build_inp", args_mapper=_build_inp_args

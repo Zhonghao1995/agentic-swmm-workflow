@@ -23,6 +23,12 @@ What lives here:
 * ``_run_cli_tool`` / ``_run_script_tool`` / ``_run_process_tool`` —
   uniform subprocess pipe with stdout/stderr capture and tool-results
   files under the session dir.
+* The MCP-routed handler factory (``_make_mcp_routed_handler``,
+  ``_wrap_mcp_result``) — moved here once the supposed
+  ``tool_registry.ensure_session_pool`` monkeypatch contract turned out
+  to have no remaining users; the pool is resolved through the
+  ``mcp_pool`` module attribute at call time.
+* ``_inp_source_tool`` — uniform glue for INP-source adapters.
 * Small text utilities (``_try_json``, ``_tail``, ``_safe_name``,
   ``_process_text``, ``_summarize_cli_result``) that the process helper
   family needs.
@@ -32,11 +38,6 @@ What deliberately does NOT live here:
 * ``ToolSpec`` / ``AgentToolRegistry`` — these are the registry's
   public surface (per PRD #128 commit ``467e5e8``); they stay in
   ``tool_registry.py``.
-* The MCP-routed handler factory (``_make_mcp_routed_handler``,
-  ``_wrap_mcp_result``). It is cross-cutting, but a tests/test_*.py
-  contract relies on ``tool_registry.ensure_session_pool`` being
-  monkey-patchable through the registry module, so moving it would
-  break that fixture pattern. Deferred to a separate follow-up.
 * Anything family-specific (skill router, MCP server registry,
   plotting option resolvers, etc.) — those will move with their family
   in Phase 2.
@@ -53,6 +54,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from agentic_swmm.agent import mcp_pool
+from agentic_swmm.agent.mcp_client import McpClientError
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
@@ -226,6 +229,108 @@ def _run_script_tool(call: ToolCall, session_dir: Path, cli_args: list[str]) -> 
     return _run_process_tool(call, session_dir, [sys.executable, *cli_args], cwd=repo_root())
 
 
+def _make_mcp_routed_handler(
+    server: str,
+    tool: str,
+    *,
+    args_mapper: Callable[[ToolCall, Path], dict[str, Any] | dict[str, Any]] | None = None,
+) -> Callable[[ToolCall, Path], dict[str, Any]]:
+    """Build a ToolSpec handler that forwards the call through ``MCPPool``.
+
+    ``args_mapper`` is an optional pre-call hook that may:
+    * translate ToolSpec snake_case argument names into the MCP server's
+      camelCase property names,
+    * resolve relative paths / inject defaults (e.g. node auto-detect),
+    * return a fail-soft result dict early when validation fails — that
+      dict is returned verbatim so handlers behave the same way the
+      old in-process subprocess handlers did when args were bad.
+
+    The handler returns a flat ``{tool, args, ok, results, summary}``
+    dict shaped like the historical subprocess handlers, so existing
+    planner / reporting code does not need updating.
+
+    The session pool is resolved through the ``mcp_pool`` module
+    attribute at call time, so tests that patch ``mcp_pool`` internals
+    keep working regardless of where this factory lives.
+    """
+
+    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+        if args_mapper is None:
+            mcp_args: dict[str, Any] = dict(call.args)
+        else:
+            mapped = args_mapper(call, session_dir)
+            if isinstance(mapped, dict) and mapped.get("ok") is False and "summary" in mapped:
+                # ``_failure``-shaped early return — surface it unchanged.
+                return mapped
+            mcp_args = mapped if isinstance(mapped, dict) else {}
+        pool = mcp_pool.ensure_session_pool()
+        if pool is None:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": (
+                    f"MCP transport unavailable for {server}.{tool}: "
+                    "no MCP server registry configured. "
+                    "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)."
+                ),
+            }
+        try:
+            result = pool.call_tool(server, tool, mcp_args)
+        except McpClientError as exc:
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": f"MCP transport failed: {exc}",
+            }
+        return _wrap_mcp_result(call, server, tool, result)
+
+    # Routing metadata — the public query surface is
+    # ``AgentToolRegistry.mcp_routing(name)``; the lock-in test
+    # ``tests/test_handler_lockin_no_direct_subprocess.py`` asserts
+    # through it that every deterministic-SWMM ToolSpec handler is
+    # built via this factory and not a legacy subprocess shim.
+    handler._mcp_routing = {"server": server, "tool": tool}  # type: ignore[attr-defined]
+    return handler
+
+
+def _wrap_mcp_result(
+    call: ToolCall,
+    server: str,
+    tool: str,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Convert the raw MCP ``tools/call`` result into a ToolSpec response.
+
+    The MCP server returns a JSON-RPC ``result`` object — usually with a
+    ``content`` array of text blocks. We pass the body through under the
+    ``results`` key, and synthesise an ``excerpt`` from the joined text
+    blocks so existing reporting code that reads ``stdout_tail`` /
+    ``excerpt`` still surfaces useful context to the user.
+    """
+
+    excerpt = ""
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        chunks = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text = str(item.get("text") or "")
+                if text:
+                    chunks.append(text)
+        excerpt = "\n".join(chunks)[:4000]
+    summary = f"called {server}.{tool}"
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "results": result,
+        "excerpt": excerpt,
+        "summary": summary,
+    }
+
+
 def _inp_source_tool(
     call: ToolCall,
     *,
@@ -261,6 +366,8 @@ def _inp_source_tool(
 
 __all__ = [
     "_inp_source_tool",
+    "_make_mcp_routed_handler",
+    "_wrap_mcp_result",
     "_failure",
     "_repo_path",
     "_repo_output_path",

@@ -187,7 +187,7 @@ def _generate_design_storm_args(call: ToolCall, session_dir: Path) -> dict[str, 
 
 
 def _build_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-climate", "format_rainfall", args_mapper=_format_rainfall_args
@@ -195,7 +195,7 @@ def _build_handler() -> Any:
 
 
 def _build_raingage_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-climate", "build_raingage_section", args_mapper=_build_raingage_section_args
@@ -203,7 +203,7 @@ def _build_raingage_handler() -> Any:
 
 
 def _build_design_storm_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-climate", "generate_design_storm", args_mapper=_generate_design_storm_args

@@ -207,35 +207,35 @@ def _source_decomposition_args(call: ToolCall, session_dir: Path) -> dict[str, A
 # ---------------------------------------------------------------------------
 
 def _build_sensitivity_oat_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-uncertainty", "swmm_sensitivity_oat", args_mapper=_sensitivity_oat_args
     )
 
 
 def _build_sensitivity_morris_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-uncertainty", "swmm_sensitivity_morris", args_mapper=_sensitivity_morris_args
     )
 
 
 def _build_sensitivity_sobol_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-uncertainty", "swmm_sensitivity_sobol", args_mapper=_sensitivity_sobol_args
     )
 
 
 def _build_rainfall_ensemble_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-uncertainty", "swmm_rainfall_ensemble", args_mapper=_rainfall_ensemble_args
     )
 
 
 def _build_source_decomposition_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-uncertainty",
         "swmm_uncertainty_source_decomposition",

@@ -98,7 +98,7 @@ def _build_handlers() -> tuple[Any, Any]:
     defining ``_make_mcp_routed_handler``, so this is safe.
     """
 
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return (
         _make_mcp_routed_handler("swmm-network", "qa", args_mapper=_network_qa_args),
