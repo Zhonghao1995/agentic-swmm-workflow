@@ -36,10 +36,10 @@ proposals slip through.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row, iter_rows
 from typing import Any
 
 
@@ -107,11 +107,8 @@ def record_negative_lesson(store: Path, lesson: NegativeLesson) -> None:
         )
 
     store = Path(store)
-    store.parent.mkdir(parents=True, exist_ok=True)
     payload = lesson.to_dict()
-    line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    with store.open("a", encoding="utf-8") as handle:
-        handle.write(line + "\n")
+    append_row(store, payload)
 
 
 def recall_negative_lessons(
@@ -135,19 +132,10 @@ def recall_negative_lessons(
 
     filters = filters or {}
     matches: list[NegativeLesson] = []
-    with store.open("r", encoding="utf-8") as handle:
-        for raw in handle:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                # Torn final line during a concurrent write — skip.
-                continue
-            row = migrate_record("negative_lessons", row)
-            if _matches(row, filters):
-                matches.append(_row_to_lesson(row))
+    for row in iter_rows(store):
+        row = migrate_record("negative_lessons", row)
+        if _matches(row, filters):
+            matches.append(_row_to_lesson(row))
     return matches
 
 

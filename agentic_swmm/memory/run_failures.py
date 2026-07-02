@@ -33,12 +33,12 @@ Schema (``SCHEMA_VERSION == "1.0"``)
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_rows, iter_rows
 from typing import Any, Iterable
 
 
@@ -191,13 +191,7 @@ def record_run_failures(
         return []
 
     store = Path(store)
-    store.parent.mkdir(parents=True, exist_ok=True)
-    with store.open("a", encoding="utf-8") as handle:
-        for failure in failures:
-            line = json.dumps(
-                failure.to_dict(), ensure_ascii=False, sort_keys=True
-            )
-            handle.write(line + "\n")
+    append_rows(store, (failure.to_dict() for failure in failures))
     return failures
 
 
@@ -210,23 +204,14 @@ def read_run_failures(store: Path) -> list[RunFailure]:
     if not store.is_file():
         return []
     out: list[RunFailure] = []
-    with store.open("r", encoding="utf-8") as handle:
-        for raw in handle:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                # Torn final line during a concurrent write — skip.
-                continue
-            out.append(
-                RunFailure(
-                    run_id=str(row.get("run_id", "")),
-                    tool=str(row.get("tool", "")),
-                    failure_class=str(row.get("failure_class", "")),
-                    summary=str(row.get("summary", "")),
-                    recorded_at=row.get("recorded_at"),
-                )
+    for row in iter_rows(store):
+        out.append(
+            RunFailure(
+                run_id=str(row.get("run_id", "")),
+                tool=str(row.get("tool", "")),
+                failure_class=str(row.get("failure_class", "")),
+                summary=str(row.get("summary", "")),
+                recorded_at=row.get("recorded_at"),
             )
+        )
     return out

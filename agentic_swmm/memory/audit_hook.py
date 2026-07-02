@@ -23,6 +23,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row
 from typing import Any
 
 
@@ -84,8 +85,7 @@ def _append_skip_log(memory_dir: Path, run_dir: Path, reason: str) -> None:
         "reason": reason,
         "at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
-    with skip_log.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    append_row(skip_log, entry, sort_keys=False)
 
 
 def _resolve_memory_dir(project_root: Path | None = None) -> Path:

@@ -44,10 +44,10 @@ the rest of the memory pipeline.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from agentic_swmm.memory.jsonl_store import append_row, iter_rows
 from typing import Any
 
 
@@ -119,11 +119,8 @@ def record_calibration_run(store_path: Path, record: CalibrationRecord) -> None:
         raise ValueError("CalibrationRecord.case_name must be a non-empty string")
 
     store_path = Path(store_path)
-    store_path.parent.mkdir(parents=True, exist_ok=True)
     payload = record.to_dict()
-    line = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-    with store_path.open("a", encoding="utf-8") as handle:
-        handle.write(line + "\n")
+    append_row(store_path, payload)
 
 
 def recall_calibration(
@@ -149,19 +146,10 @@ def recall_calibration(
 
     filters = filters or {}
     matches: list[dict[str, Any]] = []
-    with store_path.open("r", encoding="utf-8") as handle:
-        for raw in handle:
-            raw = raw.strip()
-            if not raw:
-                continue
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError:
-                # Torn final line during a concurrent write — skip.
-                continue
-            row = migrate_record("calibration_memory", row)
-            if _matches(row, filters):
-                matches.append(row)
+    for row in iter_rows(store_path):
+        row = migrate_record("calibration_memory", row)
+        if _matches(row, filters):
+            matches.append(row)
     return matches
 
 
