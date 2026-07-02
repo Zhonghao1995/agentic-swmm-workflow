@@ -24,7 +24,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from agentic_swmm.memory.jsonl_store import append_row
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
 
 
 _AGENT_DIR_RE = re.compile(r"(^|/)agent-[A-Za-z0-9_-]+$")
@@ -707,6 +708,193 @@ def _bump_corpus_mtime(rag_dir: Path) -> Path:
     return corpus
 
 
+@dataclass
+class _RefreshContext:
+    """Shared state for the refresh phases.
+
+    ``result`` is the exact dict ``trigger_memory_refresh`` returns —
+    each phase writes its keys into it and appends its error strings to
+    ``result["errors"]``, preserving the pre-pipeline calling
+    convention. TODO(#207): boundary-migrate — every phase appends a
+    per-site message to ``result["errors"]`` rather than returning a
+    constant default, so the fail-soft decorator's "return ``default``"
+    contract does not fit yet; migrating would first have to rework
+    this result-collection convention.
+    """
+
+    run_dir: Path
+    runs_dir: Path
+    project_root: Path
+    memory_dir: Path
+    lessons_path: Path
+    result: dict[str, Any]
+
+
+def _phase_compaction_marker(ctx: _RefreshContext) -> None:
+    # PRD M3 / M7-derived: tag the file for compaction if it has grown
+    # past the threshold. No automatic compaction in this PRD.
+    try:
+        from agentic_swmm.memory.proposal_skeleton import maybe_prepend_compaction_marker
+
+        if maybe_prepend_compaction_marker(ctx.lessons_path):
+            ctx.result["compaction_marker_added"] = True
+    except Exception as exc:
+        ctx.result["errors"].append(f"compaction marker failed: {exc}")
+
+
+def _phase_memory_moc(ctx: _RefreshContext) -> None:
+    # PRD M4: regenerate the memory MOC alongside lessons.
+    try:
+        from agentic_swmm.memory.moc_generator import write_memory_moc
+
+        moc_path = write_memory_moc(ctx.memory_dir, ctx.runs_dir)
+        ctx.result["memory_moc"] = str(moc_path)
+    except Exception as exc:
+        ctx.result["errors"].append(f"memory MOC write failed: {exc}")
+
+
+def _phase_lifecycle_metadata(ctx: _RefreshContext) -> None:
+    # ME-1 (issue #61): bump lifecycle metadata for the patterns that
+    # this run matched and recompute confidence_score for all patterns.
+    # This runs AFTER the summariser regenerates lessons_learned.md so
+    # the bump is the last write to disk.
+    try:
+        from agentic_swmm.memory.lessons_metadata import update_metadata_for_run
+
+        meta_summary = update_metadata_for_run(
+            lessons_path=ctx.lessons_path, run_dir=ctx.run_dir
+        )
+        ctx.result["lifecycle_metadata"] = meta_summary
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"lifecycle metadata update failed: {exc}")
+
+
+def _phase_parametric_bridge(ctx: _RefreshContext) -> None:
+    # PRD-06 Phase A.5: bridge audit -> parametric_memory. Pull only
+    # what experiment_provenance.json already records; soft failures.
+    try:
+        parametric_path = _record_parametric_from_provenance(
+            run_dir=ctx.run_dir, memory_dir=ctx.memory_dir
+        )
+        if parametric_path:
+            ctx.result["parametric_memory"] = parametric_path
+            # PRD-07 Phase 2: every parametric write also leaves an
+            # auditable transparency line in the run dir. The trace
+            # is the user-visible counterpart to the JSONL store and
+            # the seed wire-up for the disambiguator / QA replacement
+            # call sites the next phase introduces.
+            try:
+                trace_path = _emit_audit_memory_trace(
+                    run_dir=ctx.run_dir,
+                    memory_dir=ctx.memory_dir,
+                    parametric_path=Path(parametric_path),
+                )
+                if trace_path:
+                    ctx.result["memory_trace"] = str(trace_path)
+            except Exception as exc:  # noqa: BLE001 — never block the pipeline
+                ctx.result["errors"].append(f"memory trace write failed: {exc}")
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"parametric memory write failed: {exc}")
+
+
+def _phase_calibration_bridge(ctx: _RefreshContext) -> None:
+    # PRD-06 Phase B.3: bridge audit -> calibration_memory. Only fires
+    # when provenance carries a ``calibration`` block; non-calibration
+    # runs are silently skipped. Soft failures.
+    try:
+        calibration_path = _record_calibration_from_provenance(
+            run_dir=ctx.run_dir, memory_dir=ctx.memory_dir
+        )
+        if calibration_path:
+            ctx.result["calibration_memory"] = calibration_path
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"calibration memory write failed: {exc}")
+
+
+def _phase_negative_lessons(ctx: _RefreshContext) -> None:
+    # PRD-06 Phase C.2: bridge audit -> negative_lessons when continuity
+    # classifies FAIL AND the parametric bridge already produced a row.
+    # The parametric record is the eligibility marker: a run that never
+    # made it into parametric_memory should not seed a negative lesson.
+    # Soft-fail: any write error never blocks the audit.
+    if not ctx.result.get("parametric_memory"):
+        return
+    try:
+        negative_path = _record_negative_lesson_for_continuity_fail(
+            run_dir=ctx.run_dir, memory_dir=ctx.memory_dir
+        )
+        if negative_path:
+            ctx.result["negative_lessons"] = negative_path
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"negative lesson write failed: {exc}")
+
+
+def _phase_decay_pass(ctx: _RefreshContext) -> None:
+    # ME-2 (issue #62): apply confidence decay + status transitions
+    # AFTER the metadata bump. Retired patterns are moved into
+    # ``lessons_archived.md`` and a structured summary is written to
+    # ``09_audit/decay_report.json`` so downstream tooling can surface
+    # what changed.
+    try:
+        decay_summary = _run_decay_pass(
+            lessons_path=ctx.lessons_path,
+            memory_dir=ctx.memory_dir,
+            run_dir=ctx.run_dir,
+            project_root=ctx.project_root,
+        )
+        ctx.result["decay"] = decay_summary
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"lessons decay pass failed: {exc}")
+
+
+def _phase_outcome_ledger(ctx: _RefreshContext) -> None:
+    # PR-3 Phase 1: append outcome events to the application outcome ledger.
+    # Fires after the parametric/calibration bridges so provenance is complete.
+    # Soft-fail: a broken write must never block the rest of the pipeline.
+    # Skipped when AISWMM_SKIP_MEMORY=1 (is_skip_memory_run would have
+    # short-circuited above, but guard here too for defensive clarity).
+    try:
+        from agentic_swmm.memory.memory_outcomes import (
+            OUTCOME_LEDGER_FILENAME,
+            classify_and_record_outcome,
+        )
+
+        outcome_store = ctx.memory_dir / OUTCOME_LEDGER_FILENAME
+        provenance_for_outcomes = _read_provenance(ctx.run_dir)
+        if provenance_for_outcomes.get("memories_applied") is not None:
+            # Look for the manifest in the run dir (standard layout).
+            manifest_candidate = ctx.run_dir / "manifest.json"
+            manifest_path = manifest_candidate if manifest_candidate.is_file() else None
+            event_ids = classify_and_record_outcome(
+                run_dir=ctx.run_dir,
+                provenance=provenance_for_outcomes,
+                manifest_path=manifest_path,
+                memory_dir=ctx.memory_dir,
+                store_path=outcome_store,
+            )
+            if event_ids:
+                ctx.result["outcome_events"] = event_ids
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"outcome log write failed: {exc}")
+
+
+# Ordered pipeline. Order is behaviour: the lifecycle bump precedes the
+# decay pass (ME-2 reads the bumped metadata), the parametric bridge
+# precedes negative-lessons (eligibility marker) and the outcome ledger
+# (complete provenance). Each phase is fail-soft in isolation — one
+# phase's exception never blocks the next.
+_REFRESH_PHASES: tuple[Callable[[_RefreshContext], None], ...] = (
+    _phase_compaction_marker,
+    _phase_memory_moc,
+    _phase_lifecycle_metadata,
+    _phase_parametric_bridge,
+    _phase_calibration_bridge,
+    _phase_negative_lessons,
+    _phase_decay_pass,
+    _phase_outcome_ledger,
+)
+
+
 def trigger_memory_refresh(
     run_dir: Path,
     *,
@@ -715,9 +903,11 @@ def trigger_memory_refresh(
 ) -> dict[str, Any]:
     """Run the audit -> memory hook for ``run_dir``.
 
-    Returns a dict describing what happened: ``{"skipped": bool,
-    "reason": str, "lessons": Path|None, "corpus": Path|None,
-    "errors": list[str]}``.
+    Gating and context construction happen here; the memory-bridge work
+    itself runs as the ordered ``_REFRESH_PHASES`` pipeline, each phase
+    independently fail-soft. Returns a dict describing what happened:
+    ``{"skipped": bool, "reason": str, "lessons": Path|None,
+    "corpus": Path|None, "errors": list[str]}`` plus per-phase keys.
     """
     result: dict[str, Any] = {
         "skipped": False,
@@ -751,143 +941,16 @@ def trigger_memory_refresh(
     lessons_path = _bump_lessons_mtime(memory_dir)
     result["lessons"] = str(lessons_path)
 
-    # PRD M3 / M7-derived: tag the file for compaction if it has grown
-    # past the threshold. No automatic compaction in this PRD.
-    #
-    # TODO(#207): boundary-migrate — every audit-hook except block in
-    # this function appends a per-site message to ``result["errors"]``
-    # rather than returning a constant default. That side-effect-on-
-    # local-mutable pattern does not fit the decorator's
-    # "return ``default``" contract; a follow-up refactor would have to
-    # rework the result-collection convention before migrating.
-    try:
-        from agentic_swmm.memory.proposal_skeleton import maybe_prepend_compaction_marker
-
-        if maybe_prepend_compaction_marker(lessons_path):
-            result["compaction_marker_added"] = True
-    except Exception as exc:
-        result["errors"].append(f"compaction marker failed: {exc}")
-
-    # PRD M4: regenerate the memory MOC alongside lessons.
-    try:
-        from agentic_swmm.memory.moc_generator import write_memory_moc
-
-        moc_path = write_memory_moc(memory_dir, runs_dir)
-        result["memory_moc"] = str(moc_path)
-    except Exception as exc:
-        result["errors"].append(f"memory MOC write failed: {exc}")
-
-    # ME-1 (issue #61): bump lifecycle metadata for the patterns that
-    # this run matched and recompute confidence_score for all patterns.
-    # This runs AFTER the summariser regenerates lessons_learned.md so
-    # the bump is the last write to disk.
-    try:
-        from agentic_swmm.memory.lessons_metadata import update_metadata_for_run
-
-        meta_summary = update_metadata_for_run(
-            lessons_path=Path(lessons_path), run_dir=run_dir
-        )
-        result["lifecycle_metadata"] = meta_summary
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        result["errors"].append(f"lifecycle metadata update failed: {exc}")
-
-    # PRD-06 Phase A.5: bridge audit -> parametric_memory. Pull only
-    # what experiment_provenance.json already records; soft failures.
-    try:
-        parametric_path = _record_parametric_from_provenance(
-            run_dir=run_dir, memory_dir=memory_dir
-        )
-        if parametric_path:
-            result["parametric_memory"] = parametric_path
-            # PRD-07 Phase 2: every parametric write also leaves an
-            # auditable transparency line in the run dir. The trace
-            # is the user-visible counterpart to the JSONL store and
-            # the seed wire-up for the disambiguator / QA replacement
-            # call sites the next phase introduces.
-            try:
-                trace_path = _emit_audit_memory_trace(
-                    run_dir=run_dir,
-                    memory_dir=memory_dir,
-                    parametric_path=Path(parametric_path),
-                )
-                if trace_path:
-                    result["memory_trace"] = str(trace_path)
-            except Exception as exc:  # noqa: BLE001 — never block the pipeline
-                result["errors"].append(f"memory trace write failed: {exc}")
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        result["errors"].append(f"parametric memory write failed: {exc}")
-
-    # PRD-06 Phase B.3: bridge audit -> calibration_memory. Only fires
-    # when provenance carries a ``calibration`` block; non-calibration
-    # runs are silently skipped. Soft failures.
-    try:
-        calibration_path = _record_calibration_from_provenance(
-            run_dir=run_dir, memory_dir=memory_dir
-        )
-        if calibration_path:
-            result["calibration_memory"] = calibration_path
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        result["errors"].append(f"calibration memory write failed: {exc}")
-
-    # PRD-06 Phase C.2: bridge audit -> negative_lessons when continuity
-    # classifies FAIL AND the parametric bridge already produced a row.
-    # The parametric record is the eligibility marker: a run that never
-    # made it into parametric_memory should not seed a negative lesson.
-    # Soft-fail: any write error never blocks the audit.
-    if result.get("parametric_memory"):
-        try:
-            negative_path = _record_negative_lesson_for_continuity_fail(
-                run_dir=run_dir, memory_dir=memory_dir
-            )
-            if negative_path:
-                result["negative_lessons"] = negative_path
-        except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-            result["errors"].append(f"negative lesson write failed: {exc}")
-
-    # ME-2 (issue #62): apply confidence decay + status transitions
-    # AFTER the metadata bump. Retired patterns are moved into
-    # ``lessons_archived.md`` and a structured summary is written to
-    # ``09_audit/decay_report.json`` so downstream tooling can surface
-    # what changed.
-    try:
-        decay_summary = _run_decay_pass(
-            lessons_path=Path(lessons_path),
-            memory_dir=memory_dir,
-            run_dir=run_dir,
-            project_root=project_root,
-        )
-        result["decay"] = decay_summary
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        result["errors"].append(f"lessons decay pass failed: {exc}")
-
-    # PR-3 Phase 1: append outcome events to the application outcome ledger.
-    # Fires after the parametric/calibration bridges so provenance is complete.
-    # Soft-fail: a broken write must never block the rest of the pipeline.
-    # Skipped when AISWMM_SKIP_MEMORY=1 (is_skip_memory_run would have
-    # short-circuited above, but guard here too for defensive clarity).
-    try:
-        from agentic_swmm.memory.memory_outcomes import (
-            OUTCOME_LEDGER_FILENAME,
-            classify_and_record_outcome,
-        )
-
-        outcome_store = memory_dir / OUTCOME_LEDGER_FILENAME
-        provenance_for_outcomes = _read_provenance(run_dir)
-        if provenance_for_outcomes.get("memories_applied") is not None:
-            # Look for the manifest in the run dir (standard layout).
-            manifest_candidate = run_dir / "manifest.json"
-            manifest_path = manifest_candidate if manifest_candidate.is_file() else None
-            event_ids = classify_and_record_outcome(
-                run_dir=run_dir,
-                provenance=provenance_for_outcomes,
-                manifest_path=manifest_path,
-                memory_dir=memory_dir,
-                store_path=outcome_store,
-            )
-            if event_ids:
-                result["outcome_events"] = event_ids
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        result["errors"].append(f"outcome log write failed: {exc}")
+    ctx = _RefreshContext(
+        run_dir=run_dir,
+        runs_dir=runs_dir,
+        project_root=project_root,
+        memory_dir=memory_dir,
+        lessons_path=Path(lessons_path),
+        result=result,
+    )
+    for phase in _REFRESH_PHASES:
+        phase(ctx)
 
     if no_rag:
         return result
