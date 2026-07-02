@@ -14,7 +14,7 @@ from tempfile import TemporaryDirectory
 
 import yaml
 
-from agentic_swmm.commands.expert.gap_promote import (
+from agentic_swmm.case.case_defaults import (
     CaseDefaultEntry,
     read_case_defaults,
     write_case_defaults,
