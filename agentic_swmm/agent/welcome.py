@@ -39,6 +39,7 @@ from agentic_swmm import __version__
 from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
 from agentic_swmm.config import config_dir
+from agentic_swmm.memory.session_db import latest_session
 from agentic_swmm.memory.session_sync import default_db_path
 
 
@@ -134,22 +135,11 @@ def lookup_last_session(*, db_path: Path | None = None) -> dict[str, Any] | None
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         try:
-            row = conn.execute(
-                """
-                SELECT session_id, case_name, goal, end_utc, ok
-                FROM sessions
-                WHERE end_utc IS NOT NULL
-                ORDER BY end_utc DESC
-                LIMIT 1
-                """
-            ).fetchone()
+            return latest_session(conn)
         finally:
             conn.close()
     except sqlite3.Error:
         return None
-    if row is None:
-        return None
-    return {key: row[key] for key in row.keys()}
 
 
 # ---------------------------------------------------------------------------
