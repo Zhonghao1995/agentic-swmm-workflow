@@ -115,7 +115,7 @@ def _seed_session_dir(
 
 class RepairSessionsHelperTests(unittest.TestCase):
     def test_repair_backs_up_corrupt_db_with_timestamp_suffix(self) -> None:
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
         from agentic_swmm.memory import session_db
 
         with TemporaryDirectory() as tmp:
@@ -148,7 +148,7 @@ class RepairSessionsHelperTests(unittest.TestCase):
             self.assertEqual(backup.read_bytes(), corrupt_bytes)
 
     def test_repair_rebuilds_db_from_session_trace(self) -> None:
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
         from agentic_swmm.memory import session_db
 
         with TemporaryDirectory() as tmp:
@@ -192,7 +192,7 @@ class RepairSessionsHelperTests(unittest.TestCase):
         yet should still walk the traces and create a fresh store. No
         backup file is written (nothing to back up).
         """
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
         from agentic_swmm.memory import session_db
 
         with TemporaryDirectory() as tmp:
@@ -224,7 +224,7 @@ class RepairSessionsHelperTests(unittest.TestCase):
         found, the original corrupt file must remain accessible at the
         backup path.
         """
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
         from agentic_swmm.memory import session_db
 
         with TemporaryDirectory() as tmp:
@@ -253,7 +253,7 @@ class RepairSessionsHelperTests(unittest.TestCase):
         import os as _os
         from unittest import mock
 
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
         from agentic_swmm.memory import session_db
 
         with TemporaryDirectory() as tmp:
