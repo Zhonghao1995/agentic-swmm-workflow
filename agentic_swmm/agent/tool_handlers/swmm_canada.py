@@ -26,7 +26,11 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _safe_name
+from agentic_swmm.agent.tool_handlers._shared import (
+    _failure,
+    _inp_source_tool,
+    _safe_name,
+)
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 
@@ -152,35 +156,31 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     # Lazy import — keeps the agent's import graph light. The runner is pure
     # stdlib, so this is cheap; the lazy form also matches swmm_anywhere.py and
     # lets tests patch ``swmmcanada_runner.fetch_from_aoi``.
-    from agentic_swmm.integrations.swmmcanada_runner import (
-        CanadaFetchError,
-        fetch_from_aoi,
+    from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+    def _describe(result: Any) -> tuple[dict[str, Any], str]:
+        return (
+            {
+                "inp_path": str(result.inp_path),
+                "run_dir": str(result.run_dir),
+                "zip_path": str(result.zip_path),
+                "service_url": result.service_url,
+                "task_id": result.task_id,
+                "mode": result.mode,
+                "validation": result.validation,
+                "warnings": list(result.warnings),
+            },
+            f"canada_inp={result.inp_path} (task={result.task_id}, mode={result.mode})",
+        )
+
+    return _inp_source_tool(
+        call,
+        fetch=lambda: fetch_from_aoi(
+            aoi, start, end, run_dir=run_dir, base_url=base_url
+        ),
+        describe=_describe,
+        stage_hint=_stage_hint,
     )
-
-    try:
-        result = fetch_from_aoi(aoi, start, end, run_dir=run_dir, base_url=base_url)
-    except CanadaFetchError as exc:
-        payload = _failure(call, str(exc))
-        payload["stage"] = exc.stage
-        payload["hint"] = _stage_hint(exc.stage)
-        return payload
-
-    return {
-        "tool": call.name,
-        "args": call.args,
-        "ok": True,
-        "results": {
-            "inp_path": str(result.inp_path),
-            "run_dir": str(result.run_dir),
-            "zip_path": str(result.zip_path),
-            "service_url": result.service_url,
-            "task_id": result.task_id,
-            "mode": result.mode,
-            "validation": result.validation,
-            "warnings": list(result.warnings),
-        },
-        "summary": f"canada_inp={result.inp_path} (task={result.task_id}, mode={result.mode})",
-    }
 
 
 __all__ = [

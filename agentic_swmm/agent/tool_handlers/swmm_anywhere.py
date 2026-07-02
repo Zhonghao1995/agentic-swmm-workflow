@@ -34,7 +34,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _safe_name
+from agentic_swmm.agent.tool_handlers._shared import (
+    _failure,
+    _inp_source_tool,
+    _safe_name,
+)
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.utils.paths import repo_root
 
@@ -148,13 +152,24 @@ def _synth_swmm_from_bbox_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     # [anywhere] extra is not installed. The integration wrapper itself
     # checks for the extra and raises ``SynthRunError(stage='extra_missing')``,
     # which we map to a fail-soft hint below.
-    from agentic_swmm.integrations.swmmanywhere_runner import (
-        SynthRunError,
-        run_synth_from_bbox,
-    )
+    from agentic_swmm.integrations.swmmanywhere_runner import run_synth_from_bbox
 
-    try:
-        result = run_synth_from_bbox(
+    def _describe(result: Any) -> tuple[dict[str, Any], str]:
+        return (
+            {
+                "inp_path": str(result.inp_path),
+                "run_dir": str(result.run_dir),
+                "raw_manifest_path": str(result.raw_manifest_path),
+                "stage_durations_s": dict(result.stage_durations),
+                "warnings": list(result.warnings),
+                "provenance": dict(result.provenance),
+            },
+            f"synth_inp={result.inp_path}",
+        )
+
+    return _inp_source_tool(
+        call,
+        fetch=lambda: run_synth_from_bbox(
             bbox=list(bbox),
             run_dir=run_dir,
             project_name=project_name,
@@ -162,30 +177,10 @@ def _synth_swmm_from_bbox_tool(call: ToolCall, session_dir: Path) -> dict[str, A
             use_upstream_defaults=upstream_defaults,
             rain_file=rain_file,
             config_overrides=config_overrides,
-        )
-    except SynthRunError as exc:
-        payload = _failure(
-            call,
-            f"swmm-anywhere stage '{exc.stage}' failed: {exc.original_exc!r}",
-        )
-        payload["stage"] = exc.stage
-        payload["hint"] = _stage_hint(exc.stage)
-        return payload
-
-    return {
-        "tool": call.name,
-        "args": call.args,
-        "ok": True,
-        "results": {
-            "inp_path": str(result.inp_path),
-            "run_dir": str(result.run_dir),
-            "raw_manifest_path": str(result.raw_manifest_path),
-            "stage_durations_s": dict(result.stage_durations),
-            "warnings": list(result.warnings),
-            "provenance": dict(result.provenance),
-        },
-        "summary": f"synth_inp={result.inp_path}",
-    }
+        ),
+        describe=_describe,
+        stage_hint=_stage_hint,
+    )
 
 
 __all__ = [
