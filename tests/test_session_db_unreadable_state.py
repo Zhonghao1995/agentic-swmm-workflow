@@ -90,7 +90,7 @@ class RepairRefusesOnUnreadableTests(unittest.TestCase):
     def test_repair_refuses_when_db_is_unreadable(self) -> None:
         if os.geteuid() == 0:
             self.skipTest("root bypasses POSIX file permissions; skip")
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
 
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -134,7 +134,7 @@ class RepairOkFlagReflectsFailuresTests(unittest.TestCase):
 
     def test_ok_false_when_sessions_fail(self) -> None:
         import agentic_swmm.commands.memory as memory_mod
-        from agentic_swmm.commands.memory import repair_sessions_db
+        from agentic_swmm.memory.session_repair import repair_sessions_db
 
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
