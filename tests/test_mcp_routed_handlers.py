@@ -98,19 +98,22 @@ def test_mcp_routed_handler_when_pool_is_unbound_fails_soft(tmp_path: Path) -> N
     instead of crashing.
     """
 
-    # Force ensure_session_pool to return None — registry empty.
-    import agentic_swmm.agent.tool_registry as tr
+    # Force ensure_session_pool to return None — registry empty. The
+    # factory resolves the pool through the ``mcp_pool`` module
+    # attribute at call time, so that module is the patch point.
+    from agentic_swmm.agent import mcp_pool
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     def fake_pool() -> None:
         return None
 
-    original = tr.ensure_session_pool
-    tr.ensure_session_pool = fake_pool  # type: ignore[assignment]
+    original = mcp_pool.ensure_session_pool
+    mcp_pool.ensure_session_pool = fake_pool  # type: ignore[assignment]
     try:
-        handler = tr._make_mcp_routed_handler("swmm-builder", "build_inp")
+        handler = _make_mcp_routed_handler("swmm-builder", "build_inp")
         result = handler(ToolCall("build_inp", {}), tmp_path)
     finally:
-        tr.ensure_session_pool = original  # type: ignore[assignment]
+        mcp_pool.ensure_session_pool = original  # type: ignore[assignment]
 
     assert result["ok"] is False
     assert "MCP transport" in result["summary"]

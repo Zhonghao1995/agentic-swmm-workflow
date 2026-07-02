@@ -295,42 +295,42 @@ def _validate_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _build_sensitivity_scan_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_sensitivity_scan", args_mapper=_sensitivity_scan_args
     )
 
 
 def _build_calibrate_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_calibrate", args_mapper=_calibrate_args
     )
 
 
 def _build_calibrate_search_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_calibrate_search", args_mapper=_calibrate_search_args
     )
 
 
 def _build_calibrate_sceua_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_calibrate_sceua", args_mapper=_calibrate_sceua_args
     )
 
 
 def _build_calibrate_dream_zs_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_calibrate_dream_zs", args_mapper=_calibrate_dream_zs_args
     )
 
 
 def _build_validate_handler() -> Any:
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
     return _make_mcp_routed_handler(
         "swmm-calibration", "swmm_validate", args_mapper=_validate_args
     )

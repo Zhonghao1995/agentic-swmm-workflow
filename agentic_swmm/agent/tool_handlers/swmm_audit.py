@@ -47,7 +47,7 @@ def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 
 def _build_handler() -> Any:
     # Lazy import — see ``swmm_network`` module docstring.
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-experiment-audit", "audit_run", args_mapper=_audit_run_args

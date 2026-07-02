@@ -213,7 +213,7 @@ def _build_plot_run_tool() -> Any:
     see module docstring on why module-level imports of that symbol
     are not safe here.
     """
-    from agentic_swmm.agent.tool_registry import _make_mcp_routed_handler
+    from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return _make_mcp_routed_handler(
         "swmm-plot", "plot_rain_runoff_si", args_mapper=_plot_run_args

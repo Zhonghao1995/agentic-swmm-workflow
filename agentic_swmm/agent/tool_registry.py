@@ -34,11 +34,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from agentic_swmm.agent import mcp_cache, mcp_client
-from agentic_swmm.agent.mcp_client import McpClientError
-from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.policy import capability_summary
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
+    _make_mcp_routed_handler,
+    _wrap_mcp_result,
     _repo_output_path,
     _repo_path,
     _run_process_tool,
@@ -152,6 +152,21 @@ class AgentToolRegistry:
             return None
         return spec.description
 
+    def mcp_routing(self, name: str) -> dict[str, str] | None:
+        """Return ``{"server", "tool"}`` for MCP-routed tools, else ``None``.
+
+        Handlers built by ``_make_mcp_routed_handler`` carry their
+        routing metadata; this is the public query surface so tests and
+        diagnostics can assert "tool X routes through MCP server Y"
+        without parsing this module's source or reading closure
+        internals. In-process handlers (and unknown names) return
+        ``None``.
+        """
+        spec = self._tools.get(name)
+        if spec is None:
+            return None
+        return getattr(spec.handler, "_mcp_routing", None)
+
     def output_for_model(self, result: dict[str, Any]) -> dict[str, Any]:
         allowed_keys = {
             "tool",
@@ -214,103 +229,6 @@ def _object(properties: dict[str, Any], required: list[str] | None = None) -> di
 # mapping (snake_case → camelCase, default-node detection, output-dir
 # resolution) lives in dedicated ``_*_mcp_args`` builders below so we keep
 # the handler body uniform.
-
-
-def _make_mcp_routed_handler(
-    server: str,
-    tool: str,
-    *,
-    args_mapper: Callable[[ToolCall, Path], dict[str, Any] | dict[str, Any]] | None = None,
-) -> Callable[[ToolCall, Path], dict[str, Any]]:
-    """Build a ToolSpec handler that forwards the call through ``MCPPool``.
-
-    ``args_mapper`` is an optional pre-call hook that may:
-    * translate ToolSpec snake_case argument names into the MCP server's
-      camelCase property names,
-    * resolve relative paths / inject defaults (e.g. node auto-detect),
-    * return a fail-soft result dict early when validation fails — that
-      dict is returned verbatim so handlers behave the same way the
-      old in-process subprocess handlers did when args were bad.
-
-    The handler returns a flat ``{tool, args, ok, results, summary}``
-    dict shaped like the historical subprocess handlers, so existing
-    planner / reporting code does not need updating.
-    """
-
-    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-        if args_mapper is None:
-            mcp_args: dict[str, Any] = dict(call.args)
-        else:
-            mapped = args_mapper(call, session_dir)
-            if isinstance(mapped, dict) and mapped.get("ok") is False and "summary" in mapped:
-                # ``_failure``-shaped early return — surface it unchanged.
-                return mapped
-            mcp_args = mapped if isinstance(mapped, dict) else {}
-        pool = ensure_session_pool()
-        if pool is None:
-            return {
-                "tool": call.name,
-                "args": call.args,
-                "ok": False,
-                "summary": (
-                    f"MCP transport unavailable for {server}.{tool}: "
-                    "no MCP server registry configured. "
-                    "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)."
-                ),
-            }
-        try:
-            result = pool.call_tool(server, tool, mcp_args)
-        except McpClientError as exc:
-            return {
-                "tool": call.name,
-                "args": call.args,
-                "ok": False,
-                "summary": f"MCP transport failed: {exc}",
-            }
-        return _wrap_mcp_result(call, server, tool, result)
-
-    # Synthetic introspection attribute — the lock-in test
-    # ``tests/test_handler_lockin_no_direct_subprocess.py`` reads this to
-    # verify that every deterministic-SWMM ToolSpec handler is built via
-    # this factory and not a legacy subprocess shim.
-    handler._mcp_routing = {"server": server, "tool": tool}  # type: ignore[attr-defined]
-    return handler
-
-
-def _wrap_mcp_result(
-    call: ToolCall,
-    server: str,
-    tool: str,
-    result: dict[str, Any],
-) -> dict[str, Any]:
-    """Convert the raw MCP ``tools/call`` result into a ToolSpec response.
-
-    The MCP server returns a JSON-RPC ``result`` object — usually with a
-    ``content`` array of text blocks. We pass the body through under the
-    ``results`` key, and synthesise an ``excerpt`` from the joined text
-    blocks so existing reporting code that reads ``stdout_tail`` /
-    ``excerpt`` still surfaces useful context to the user.
-    """
-
-    excerpt = ""
-    content = result.get("content") if isinstance(result, dict) else None
-    if isinstance(content, list):
-        chunks = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                text = str(item.get("text") or "")
-                if text:
-                    chunks.append(text)
-        excerpt = "\n".join(chunks)[:4000]
-    summary = f"called {server}.{tool}"
-    return {
-        "tool": call.name,
-        "args": call.args,
-        "ok": True,
-        "results": result,
-        "excerpt": excerpt,
-        "summary": summary,
-    }
 
 
 # Required args shared by all six calibration ToolSpecs (mirrors
@@ -1693,13 +1611,15 @@ def _mcp_server(name: str) -> dict[str, Any] | None:
 # PRD #128 Phase 2 Group A: family-module re-exports.
 #
 # These imports sit at the very end of this file so every helper the
-# family modules pull back in (``_make_mcp_routed_handler``,
-# ``_resolve_inp_for_run``, ``_node_suggestions``,
-# ``_node_attribute_options``, ``_resolve_existing_inp``,
-# ``_required_repo_file``, ``_required_repo_dir``,
-# ``_optional_repo_output_dir``) is already bound on the partial
-# ``tool_registry`` module by the time the family submodules execute
-# their ``from agentic_swmm.agent.tool_registry import ...`` statements.
+# family modules pull back in (``_resolve_inp_for_run``,
+# ``_node_suggestions``, ``_node_attribute_options``,
+# ``_resolve_existing_inp``, ``_required_repo_file``,
+# ``_required_repo_dir``, ``_optional_repo_output_dir``) is already
+# bound on the partial ``tool_registry`` module by the time the family
+# submodules execute their ``from agentic_swmm.agent.tool_registry
+# import ...`` statements. (``_make_mcp_routed_handler`` no longer
+# rides this cycle — it lives in ``tool_handlers/_shared.py`` and the
+# family modules import it from there directly.)
 # Re-exporting the handler symbols here keeps ``_build_tools()`` and
 # any existing ``from agentic_swmm.agent.tool_registry import _*_args``
 # call sites working byte-for-byte after the move.
