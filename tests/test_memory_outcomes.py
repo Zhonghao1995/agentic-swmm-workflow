@@ -20,6 +20,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from tests.conftest import patched_audit_hook_subprocess
+
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -73,20 +75,6 @@ def _write_manifest(run_dir: Path, memories_applied: list[str] | None = None) ->
     p = run_dir / "manifest.json"
     p.write_text(json.dumps(manifest), encoding="utf-8")
     return p
-
-
-def _hook_patches():
-    """Return context managers that stub the heavy audit-hook subprocesses."""
-    return (
-        mock.patch(
-            "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-            return_value=(0, ""),
-        ),
-        mock.patch(
-            "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-            return_value=(0, ""),
-        ),
-    )
 
 
 # ── Append-only writer ────────────────────────────────────────────────────────
@@ -681,16 +669,7 @@ class TestAuditHookOutcomeLog(unittest.TestCase):
         project_root, run_dir = self._make_project(prov)
         memory_dir = project_root / "memory" / "modeling-memory"
 
-        with mock.patch(
-            "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-            return_value=(0, ""),
-        ), mock.patch(
-            "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-            return_value=(0, ""),
-        ), mock.patch(
-            "agentic_swmm.memory.audit_hook._run_decay_pass",
-            return_value={"skipped": True},
-        ):
+        with patched_audit_hook_subprocess(_run_decay_pass={"skipped": True}):
             result = trigger_memory_refresh(run_dir)
 
         # Outcome events must be present in result and in the ledger
@@ -713,16 +692,7 @@ class TestAuditHookOutcomeLog(unittest.TestCase):
         project_root, run_dir = self._make_project(prov)
         memory_dir = project_root / "memory" / "modeling-memory"
 
-        with mock.patch(
-            "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-            return_value=(0, ""),
-        ), mock.patch(
-            "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-            return_value=(0, ""),
-        ), mock.patch(
-            "agentic_swmm.memory.audit_hook._run_decay_pass",
-            return_value={"skipped": True},
-        ):
+        with patched_audit_hook_subprocess(_run_decay_pass={"skipped": True}):
             result = trigger_memory_refresh(run_dir)
 
         # No outcome events when memories_applied is empty

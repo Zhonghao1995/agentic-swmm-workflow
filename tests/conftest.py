@@ -17,6 +17,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -154,6 +155,56 @@ def seed_minimal_run_dir(
         encoding="utf-8",
     )
     return run_dir
+
+
+def seed_provenance_run_dir(project_root: Path, provenance: dict[str, Any]) -> Path:
+    """Build the minimal run dir ``trigger_memory_refresh`` accepts.
+
+    Layout: ``<project_root>/runs/abc/09_audit/experiment_provenance.json``.
+    Consolidates the per-file ``_make_run`` builders the audit-hook
+    memory-bridge tests used to hand-roll (same treatment issue #196 gave
+    the audit-pipeline run-dir builders).
+    """
+    run_dir = project_root / "runs" / "abc"
+    audit_dir = run_dir / "09_audit"
+    audit_dir.mkdir(parents=True)
+    (audit_dir / "experiment_provenance.json").write_text(
+        json.dumps(provenance), encoding="utf-8"
+    )
+    return run_dir
+
+
+@contextlib.contextmanager
+def patched_audit_hook_subprocess(**extra_stubs: Any):
+    """Stub ``trigger_memory_refresh``'s two heavy externals to success.
+
+    Patches ``audit_hook._summarize_memory_cli`` and
+    ``audit_hook._refresh_rag_corpus`` to ``(0, "")`` so audit-hook tests
+    exercise only the in-process wiring. Additional ``audit_hook``
+    attributes can be stubbed via keyword args, e.g.
+    ``patched_audit_hook_subprocess(_run_decay_pass={"skipped": True})``.
+    """
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            mock.patch(
+                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
+                return_value=(0, ""),
+            )
+        )
+        stack.enter_context(
+            mock.patch(
+                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
+                return_value=(0, ""),
+            )
+        )
+        for attr, retval in extra_stubs.items():
+            stack.enter_context(
+                mock.patch(
+                    f"agentic_swmm.memory.audit_hook.{attr}",
+                    return_value=retval,
+                )
+            )
+        yield
 
 
 class _FakeTTYStream(io.StringIO):

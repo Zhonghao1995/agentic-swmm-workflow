@@ -49,3 +49,38 @@ def test_real_skill_author_passes():
     # dogfood: the skill-author skill itself must be well-formed
     skill_author = _SCRIPT.resolve().parent.parent
     assert validate_skill.validate(skill_author) == []
+
+
+def test_folded_block_description_measures_full_length(tmp_path):
+    """``description: >`` continuation lines count toward the length check.
+
+    Regression: the parser used to read the block-scalar marker itself
+    (1 char) as the value, failing legitimate multi-line descriptions.
+    """
+    skill = tmp_path / "demo-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(
+        "---\n"
+        "name: demo-skill\n"
+        "description: >\n"
+        "  A folded multi-line description that says what the skill does\n"
+        "  and when the agent should reach for it.\n"
+        "---\n\n# Demo\n\nBody.\n",
+        encoding="utf-8",
+    )
+    assert validate_skill.validate(skill) == []
+
+
+def test_literal_block_description_measures_full_length(tmp_path):
+    skill = tmp_path / "demo-skill"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(
+        "---\n"
+        "name: demo-skill\n"
+        "description: |-\n"
+        "  A literal multi-line description that says what the skill does\n"
+        "  and when the agent should reach for it.\n"
+        "---\n\n# Demo\n\nBody.\n",
+        encoding="utf-8",
+    )
+    assert validate_skill.validate(skill) == []

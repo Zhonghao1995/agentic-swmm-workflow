@@ -8,17 +8,16 @@ agent wires it into the disambiguator / QA replacement.
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from unittest import mock
 
 from agentic_swmm.agent.memory_trace import (
     MEMORY_TRACE_FILENAME,
     read_memory_trace,
 )
 from agentic_swmm.memory.audit_hook import trigger_memory_refresh
+from tests.conftest import patched_audit_hook_subprocess, seed_provenance_run_dir
 
 
 _PROVENANCE = {
@@ -41,29 +40,13 @@ _PROVENANCE = {
 
 
 class AuditHookMemoryTraceTests(unittest.TestCase):
-    def _make_run(self, project_root: Path) -> Path:
-        runs_dir = project_root / "runs" / "abc"
-        runs_dir.mkdir(parents=True)
-        audit_dir = runs_dir / "09_audit"
-        audit_dir.mkdir()
-        (audit_dir / "experiment_provenance.json").write_text(
-            json.dumps(_PROVENANCE), encoding="utf-8"
-        )
-        return runs_dir
-
     def test_eligible_run_writes_one_memory_trace_line(self) -> None:
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root)
+            run_dir = seed_provenance_run_dir(project_root, _PROVENANCE)
 
-            with mock.patch(
-                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-                return_value=(0, ""),
-            ), mock.patch(
-                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-                return_value=(0, ""),
-            ):
+            with patched_audit_hook_subprocess():
                 result = trigger_memory_refresh(run_dir)
 
             self.assertFalse(result["skipped"], msg=str(result))
@@ -90,7 +73,7 @@ class AuditHookMemoryTraceTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root)
+            run_dir = seed_provenance_run_dir(project_root, _PROVENANCE)
             result = trigger_memory_refresh(run_dir, no_memory=True)
 
             self.assertTrue(result["skipped"])
@@ -102,17 +85,10 @@ class AuditHookMemoryTraceTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
             project_root.mkdir()
-            run_dir = self._make_run(project_root)
+            run_dir = seed_provenance_run_dir(project_root, _PROVENANCE)
 
-            with mock.patch(
-                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-                return_value=(0, ""),
-            ), mock.patch(
-                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-                return_value=(0, ""),
-            ), mock.patch(
-                "agentic_swmm.memory.audit_hook._record_parametric_from_provenance",
-                return_value=None,
+            with patched_audit_hook_subprocess(
+                _record_parametric_from_provenance=None
             ):
                 result = trigger_memory_refresh(run_dir)
 

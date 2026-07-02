@@ -19,6 +19,7 @@ from pathlib import Path
 
 _NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _MIN_DESCRIPTION_CHARS = 40
+_BLOCK_SCALAR_RE = re.compile(r"^[>|][+-]?$")
 
 
 def _parse_frontmatter(text):
@@ -26,7 +27,10 @@ def _parse_frontmatter(text):
 
     Returns ``(front, body)`` where ``front`` is a dict of the simple
     ``key: value`` scalars (all a skill header needs), or ``(None, text)`` if
-    there is no frontmatter block.
+    there is no frontmatter block. Values written as YAML block scalars
+    (``key: >`` / ``key: |`` with indented continuation lines) are joined so
+    a multi-line description measures its real length, and indented
+    continuation lines are never misread as keys.
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
@@ -34,10 +38,28 @@ def _parse_frontmatter(text):
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
             front = {}
-            for raw in lines[1:i]:
-                if ":" in raw:
-                    key, _, val = raw.partition(":")
-                    front[key.strip()] = val.strip()
+            j = 1
+            while j < i:
+                raw = lines[j]
+                if raw.startswith((" ", "\t")) or ":" not in raw:
+                    j += 1
+                    continue
+                key, _, val = raw.partition(":")
+                val = val.strip()
+                if _BLOCK_SCALAR_RE.match(val):
+                    # Folded (>) joins with spaces; literal (|) keeps newlines.
+                    sep = " " if val.startswith(">") else "\n"
+                    parts = []
+                    j += 1
+                    while j < i and (
+                        lines[j].startswith((" ", "\t")) or not lines[j].strip()
+                    ):
+                        parts.append(lines[j].strip())
+                        j += 1
+                    front[key.strip()] = sep.join(p for p in parts if p)
+                    continue
+                front[key.strip()] = val
+                j += 1
             return front, "\n".join(lines[i + 1:])
     return None, text
 
