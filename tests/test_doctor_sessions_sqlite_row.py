@@ -59,9 +59,9 @@ def _corrupt(db_path: Path) -> None:
 
 def test_sessions_sqlite_row_absent(tmp_path: Path) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -76,9 +76,9 @@ def test_sessions_sqlite_row_absent(tmp_path: Path) -> None:
 
 def test_sessions_sqlite_row_ok(tmp_path: Path) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -97,9 +97,9 @@ def test_sessions_sqlite_row_ok(tmp_path: Path) -> None:
 
 def test_sessions_sqlite_row_corrupt(tmp_path: Path) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -122,10 +122,10 @@ def test_render_memory_stores_includes_sessions_sqlite_row_absent(
     tmp_path: Path,
 ) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-        render_memory_stores_section,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+    render_memory_stores_section,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -142,10 +142,10 @@ def test_render_memory_stores_includes_sessions_sqlite_row_ok(
     tmp_path: Path,
 ) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-        render_memory_stores_section,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+    render_memory_stores_section,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -166,10 +166,10 @@ def test_render_memory_stores_includes_sessions_sqlite_row_corrupt(
     tmp_path: Path,
 ) -> None:
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        collect_sessions_db_status,
-        render_memory_stores_section,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    collect_sessions_db_status,
+    render_memory_stores_section,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
@@ -194,11 +194,11 @@ def test_render_corrupt_severity_header_counter(tmp_path: Path) -> None:
     summary would miss the most important signal.
     """
     from agentic_swmm.memory import session_db
-    from agentic_swmm.commands.doctor_extension import (
-        MemoryStoreStatus,
-        collect_sessions_db_status,
-        render_memory_stores_section,
-    )
+    from agentic_swmm.diagnostics.doctor_report import (
+    MemoryStoreStatus,
+    collect_sessions_db_status,
+    render_memory_stores_section,
+)
 
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"

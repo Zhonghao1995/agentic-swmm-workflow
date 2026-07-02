@@ -12,14 +12,11 @@ from agentic_swmm.agent.flag_naming import (
     register_example_flag,
     register_quiet_flag,
 )
-from agentic_swmm.commands.doctor_extension import (
-    apply_fix_actions,
-    collect_fix_actions,
+from agentic_swmm.diagnostics.doctor_report import (
     collect_llm_provider_status,
     collect_memory_store_status,
     collect_optout_status,
     collect_sessions_db_status,
-    fix_action_to_dict,
     group_identical_warns,
     grouped_warn_to_dict,
     llm_provider_status_to_dict,
@@ -29,6 +26,11 @@ from agentic_swmm.commands.doctor_extension import (
     render_llm_provider_section,
     render_memory_stores_section,
     render_runtime_knobs_section,
+)
+from agentic_swmm.diagnostics.fixes import (
+    apply_fix_actions,
+    collect_fix_actions,
+    fix_action_to_dict,
 )
 from agentic_swmm.config import mcp_registry_path
 from agentic_swmm.utils.paths import repo_root

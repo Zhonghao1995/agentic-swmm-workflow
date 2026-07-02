@@ -84,7 +84,7 @@ class DoctorFixYesTests(unittest.TestCase):
                 with contextlib.redirect_stdout(stdout), mock.patch(
                     "agentic_swmm.commands.doctor.apply_fix_actions",
                     wraps=__import__(
-                        "agentic_swmm.commands.doctor_extension",
+                        "agentic_swmm.diagnostics.fixes",
                         fromlist=["apply_fix_actions"],
                     ).apply_fix_actions,
                 ) as fake_apply:

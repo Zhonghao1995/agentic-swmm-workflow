@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import unittest
 
-from agentic_swmm.commands.doctor_extension import (
+from agentic_swmm.diagnostics.doctor_report import (
     GroupedWarnRow,
     render_grouped_warns_section,
 )
