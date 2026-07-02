@@ -4,20 +4,22 @@ Why this module exists
 ----------------------
 Five independent .rpt parsers existed in the codebase before this module.
 This is the canonical in-process implementation.  All in-process consumers
-(``swmm_rpt.py``, ``postflight.py``, ``compare.py``) import from here so a
-SWMM version column change needs a single fix.
+import from here so a SWMM version format change needs a single fix:
+``swmm_rpt.py`` (section tables), ``postflight.py`` (``parse_continuity``),
+``compare.py`` (``section_data_lines`` — it keeps its own tolerant row
+projections on top of the shared walker).
 
-Skill scripts (``skills/swmm-runner/``, ``skills/swmm-uncertainty/``) are
-intentionally kept standalone / import-free for portability and MCP
-subprocess isolation.  They are not repointed here.  The parity test
-(``tests/test_rpt_parser_parity.py``) enforces agreement between this
-module and the skill scripts.
+Skill scripts (``skills/swmm-runner/``, ``skills/swmm-uncertainty/``,
+``skills/swmm-water-quality/``) are intentionally kept standalone /
+import-free for portability and MCP subprocess isolation.  They are not
+repointed here.  Numeric parity tests enforce agreement instead:
+``tests/test_rpt_parser_parity.py`` for the hydrology parsers and
+``tests/test_wq_parity.py`` for the water-quality sections.
 
 Water-quality sections (``Runoff Quality Continuity``, ``Quality Routing
 Continuity``, ``Subcatchment Washoff Summary``, ``Link Pollutant Load
 Summary``) are parsed by ``parse_variable_section`` — NOT by ``parse_section``
-— because pollutant column names vary by model configuration.  The parity
-test does not cover WQ sections; they are exempt.
+— because pollutant column names vary by model configuration.
 
 What is parsed
 --------------
@@ -54,6 +56,7 @@ row is skipped — a single malformed line does not fail the whole call.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -267,6 +270,82 @@ def _skip_to_second_dash_row(lines: list[str], start: int) -> int:
         cursor += 1
     cursor += 1  # past bottom dash row
     return cursor
+
+
+def section_data_lines(rpt_text: str, title: str) -> list[str]:
+    """Return the raw data-row lines of the section titled ``title``.
+
+    The shared section walker: locate the title (``startswith`` match),
+    skip the two-dash column-header box, then collect rows until a blank
+    line, a dashed rule, or the next asterisk banner.  Row-level
+    interpretation (token counts, field projections, tolerance) stays
+    with the caller — ``compare.py`` keeps its deliberately tolerant
+    projections while sharing the section-layout knowledge here.
+    """
+    lines = rpt_text.splitlines()
+    title_idx = _locate_title(lines, title)
+    if title_idx < 0:
+        return []
+    cursor = _skip_to_second_dash_row(lines, title_idx)
+    out: list[str] = []
+    while cursor < len(lines):
+        raw = lines[cursor]
+        stripped = raw.strip()
+        if not stripped:
+            break
+        if stripped.startswith("---"):
+            break
+        if stripped.startswith("*") and "****" in stripped:
+            break
+        out.append(raw)
+        cursor += 1
+    return out
+
+
+_RUNOFF_HEADER_RE = re.compile(r"Runoff\s+Quantity\s+Continuity", re.IGNORECASE)
+_FLOW_HEADER_RE = re.compile(r"Flow\s+Routing\s+Continuity", re.IGNORECASE)
+_CONTINUITY_RE = re.compile(
+    r"Continuity\s+Error\s*\(%\)\s*\.*\s*(-?\d+\.\d+)"
+)
+
+
+def parse_continuity(text: str) -> dict[str, float]:
+    """Extract continuity errors from a .rpt body.
+
+    Returns a dict with up to two keys: ``runoff_continuity_pct`` and
+    ``flow_continuity_pct``. Each is the signed percentage SWMM
+    reports — magnitude is what the postflight classifier cares about.
+
+    Missing sections are simply absent from the dict; we never raise
+    on partial reports because SWMM truncates the .rpt when the
+    simulation aborts early. (Moved here from ``postflight.py`` — this
+    module owns the .rpt format knowledge; postflight owns the QA
+    bands and gating.)
+    """
+    lines = text.splitlines()
+    out: dict[str, float] = {}
+
+    # We walk the file once, tracking which continuity block we are
+    # inside. The first "Continuity Error" line after a block header
+    # is the one we capture for that block.
+    block: str | None = None
+    for raw in lines:
+        if _RUNOFF_HEADER_RE.search(raw):
+            block = "runoff"
+            continue
+        if _FLOW_HEADER_RE.search(raw):
+            block = "flow"
+            continue
+        m = _CONTINUITY_RE.search(raw)
+        if m and block is not None:
+            value = float(m.group(1))
+            if block == "runoff":
+                out["runoff_continuity_pct"] = value
+            elif block == "flow":
+                out["flow_continuity_pct"] = value
+            block = None  # only capture the first error line per block
+
+    return out
 
 
 def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
@@ -604,4 +683,11 @@ def _parse_wq_entity_loads(lines: list[str], title_line_idx: int) -> list[dict[s
     return rows
 
 
-__all__ = ["SectionSchema", "SECTIONS", "parse_section", "parse_variable_section"]
+__all__ = [
+    "SectionSchema",
+    "SECTIONS",
+    "parse_continuity",
+    "parse_section",
+    "parse_variable_section",
+    "section_data_lines",
+]

@@ -21,13 +21,20 @@ classification arrive in Phase B with the comparison verb.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.honesty import scan_rpt_for_errors
+
+# API-stability re-export: the .rpt continuity parser moved to the
+# canonical rpt module (rpt_summary owns the format knowledge; this
+# module owns the QA bands and gating). Existing importers of
+# ``postflight.parse_continuity_from_rpt`` keep working.
+from agentic_swmm.agent.swmm_runtime.rpt_summary import (
+    parse_continuity as parse_continuity_from_rpt,
+)
 from agentic_swmm.memory.benchmark_resolver import (
     default_project_overrides_path,
     resolve_threshold,
@@ -44,13 +51,6 @@ _FALLBACK_CONTINUITY_THRESHOLDS: dict[str, dict[str, float]] = {
     "flow_continuity_pct": {"warn": 1.0, "fail": 5.0},
     "mass_balance_pct": {"warn": 2.0, "fail": 5.0},
 }
-
-
-_RUNOFF_HEADER_RE = re.compile(r"Runoff\s+Quantity\s+Continuity", re.IGNORECASE)
-_FLOW_HEADER_RE = re.compile(r"Flow\s+Routing\s+Continuity", re.IGNORECASE)
-_CONTINUITY_RE = re.compile(
-    r"Continuity\s+Error\s*\(%\)\s*\.*\s*(-?\d+\.\d+)"
-)
 
 
 @dataclass
@@ -92,43 +92,6 @@ class QAReport:
                 {"code": name, "detail": f"{name}={value} classified WARN"}
             )
         self._bump(classification)
-
-
-def parse_continuity_from_rpt(text: str) -> dict[str, float]:
-    """Extract continuity errors from a .rpt body.
-
-    Returns a dict with up to two keys: ``runoff_continuity_pct`` and
-    ``flow_continuity_pct``. Each is the signed percentage SWMM
-    reports — magnitude is what the classifier cares about.
-
-    Missing sections are simply absent from the dict; we never raise
-    on partial reports because SWMM truncates the .rpt when the
-    simulation aborts early.
-    """
-    lines = text.splitlines()
-    out: dict[str, float] = {}
-
-    # We walk the file once, tracking which continuity block we are
-    # inside. The first "Continuity Error" line after a block header
-    # is the one we capture for that block.
-    block: str | None = None
-    for raw in lines:
-        if _RUNOFF_HEADER_RE.search(raw):
-            block = "runoff"
-            continue
-        if _FLOW_HEADER_RE.search(raw):
-            block = "flow"
-            continue
-        m = _CONTINUITY_RE.search(raw)
-        if m and block is not None:
-            value = float(m.group(1))
-            if block == "runoff":
-                out["runoff_continuity_pct"] = value
-            elif block == "flow":
-                out["flow_continuity_pct"] = value
-            block = None  # only capture the first error line per block
-
-    return out
 
 
 def _resolve_default_benchmarks_path() -> Path:
