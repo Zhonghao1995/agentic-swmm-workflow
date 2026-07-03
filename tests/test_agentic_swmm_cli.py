@@ -134,8 +134,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm executor", proc.stdout)
-            self.assertIn("aiswmm> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm> Session:", proc.stdout)
+            self.assertIn("aiswmm> Session: openai", proc.stdout)
             self.assertIn("mocked agent answer", proc.stdout)
 
     def test_cli_without_command_defaults_to_openai_agent(self) -> None:
@@ -158,8 +158,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             # Runtime UX PRD trimmed the startup banner to a single line —
             # match the new "aiswmm interactive (...)" header.
             self.assertIn("aiswmm interactive", proc.stdout)
-            self.assertIn("aiswmm executor", proc.stdout)
-            self.assertIn("aiswmm> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm> Session:", proc.stdout)
+            self.assertIn("aiswmm> Session: openai", proc.stdout)
             self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
             self.assertIn("mocked default agent", proc.stdout)
 
@@ -230,7 +230,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm executor", proc.stdout)
+            self.assertIn("aiswmm> Session:", proc.stdout)
             self.assertIn("aiswmm> Goal: inspect the project", proc.stdout)
             self.assertIn("mocked natural language agent", proc.stdout)
 
@@ -297,6 +297,70 @@ class AgenticSwmmCliTests(unittest.TestCase):
         message = stderr.getvalue()
         self.assertIn("unknown command 'runn'", message)
         self.assertIn("Did you mean 'run'", message)
+
+    def test_non_ascii_single_token_goal_is_not_rejected(self) -> None:
+        """A Chinese goal often contains no spaces; it must reach the LLM
+        router instead of the typo rejector (every verb is ASCII)."""
+        from agentic_swmm.cli import _reject_unknown_verb, _route_default_to_agent
+
+        goal = "看看项目里有什么例子"
+        self.assertIsNone(_reject_unknown_verb([goal]))
+        routed = _route_default_to_agent([goal])
+        self.assertEqual(routed[:3], ["agent", "--planner", "llm"])
+        self.assertIn(goal, routed)
+
+    def test_unknown_verb_hint_points_at_the_llm_chat_surface(self) -> None:
+        """The escape-hatch hint must name a command that actually routes
+        to the LLM planner (``chat``), not the rule-planner default."""
+        import io
+        from contextlib import redirect_stderr
+
+        from agentic_swmm.cli import _reject_unknown_verb
+
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            code = _reject_unknown_verb(["bogusverb"])
+        self.assertEqual(code, 2)
+        self.assertIn('aiswmm chat "bogusverb"', buf.getvalue())
+
+    def test_turn_preamble_is_two_lines_in_process(self) -> None:
+        """The per-turn preamble is Goal + one Session line (provider,
+        model, run dir) — the old four-line block ('aiswmm executor' /
+        Planner / Evidence folder) stays gone. In-process so the lines
+        count toward coverage and the shape is pinned at unit level."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        from agentic_swmm.cli import main as cli_main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "AISWMM_CONFIG_DIR": tmp,
+                "AISWMM_OPENAI_MOCK_RESPONSE": "mocked in-process answer",
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env), redirect_stdout(buf):
+                rc = cli_main(
+                    [
+                        "chat",
+                        "--provider",
+                        "openai",
+                        "--model",
+                        "gpt-test",
+                        "inspect",
+                        "the",
+                        "project",
+                    ]
+                )
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("aiswmm> Goal: inspect the project", out)
+        self.assertIn("aiswmm> Session: openai (gpt-test) →", out)
+        self.assertNotIn("aiswmm executor", out)
+        self.assertNotIn("Evidence folder", out)
+        self.assertIn("mocked in-process answer", out)
+
 
     def test_known_verbs_and_flags_are_not_rejected(self) -> None:
         # The rejection must not fire for known verbs, flags, the
@@ -416,7 +480,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm executor", proc.stdout)
+            self.assertIn("aiswmm> Session:", proc.stdout)
             self.assertIn("demo_acceptance", proc.stdout)
             self.assertIn("audit_run", proc.stdout)
             report = Path(tmp) / "agent-session" / "final_report.md"
@@ -458,7 +522,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            self.assertIn("aiswmm> Planner: openai", proc.stdout)
+            self.assertIn("aiswmm> Session: openai", proc.stdout)
             self.assertIn("doctor", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
             self.assertIn("- planner: openai", report)
