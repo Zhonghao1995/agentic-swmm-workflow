@@ -360,3 +360,74 @@ def update_metadata_for_run(
     if updated_text != text:
         lessons_path.write_text(updated_text, encoding="utf-8")
     return summary
+
+# ---------------------------------------------------------------------------
+# Ratified-change notes (the write half of the pattern-block contract).
+# The reflect verb (``aiswmm memory reflect``) ratifies LLM-proposed
+# changes; the splice below records them INSIDE the affected pattern
+# block without touching the metadata fence — deliberately conservative,
+# because rewriting fences risks corrupting the YAML payload and the
+# decay pipeline (ME-2) stays the authoritative lifecycle statemachine.
+# Reading spans (``_iter_pattern_spans``) and writing notes now live in
+# the same module, so "how a pattern block is safely mutated" has one
+# home next to "how it is read".
+
+# The lessons store's ratified-change vocabulary. The reflect verb
+# validates proposals against this before ever calling the splice.
+ALLOWED_CHANGE_TYPES = ("merge", "refine", "retire", "promote")
+
+
+def format_reflection_note(change: dict[str, Any]) -> str:
+    """Render one ratified change as a small Obsidian-readable block."""
+    change_type = str(change.get("change_type") or "").strip()
+    summary = str(change.get("summary") or "").strip()
+    merge_with = str(change.get("merge_with") or "").strip()
+    stamp = _now_utc_iso()
+    parts = [
+        f"> **memory_reflect_apply** ({change_type}) — ratified {stamp}",
+    ]
+    if merge_with:
+        parts.append(f"> merge_with: `{merge_with}`")
+    if summary:
+        parts.append(f"> {summary}")
+    return "\n".join(parts)
+
+
+def apply_reflection_change(lessons_path: Path, change: dict[str, Any]) -> None:
+    """Apply one ratified change to ``lessons_learned.md``.
+
+    Appends a short Markdown note inside the affected pattern block
+    recording what the modeller ratified, inserted directly before the
+    next ``## `` heading (or end-of-file for the last block) so
+    subsequent metadata reads continue to find the fence at the top of
+    the section. A pattern the LLM named that does not exist yet gets a
+    placeholder section so the ratification still lands somewhere a
+    human can find. Unknown change types are a strict no-op.
+    """
+    pattern = str(change.get("pattern") or "").strip()
+    change_type = str(change.get("change_type") or "").strip()
+    if not pattern or change_type not in ALLOWED_CHANGE_TYPES:
+        return
+    text = lessons_path.read_text(encoding="utf-8")
+    found_start: int | None = None
+    found_end: int | None = None
+    for name, start, end in _iter_pattern_spans(text):
+        if name == pattern:
+            found_start, found_end = start, end
+            break
+    note = format_reflection_note(change)
+    if found_start is None or found_end is None:
+        new_block = f"\n## {pattern}\n\n{note}\n"
+        if not text.endswith("\n"):
+            text += "\n"
+        lessons_path.write_text(text + new_block, encoding="utf-8")
+        return
+    block = text[found_start:found_end]
+    # Splice the note before any trailing blank-line tail so the next
+    # section heading is not pushed down.
+    stripped = block.rstrip("\n")
+    new_block = stripped + "\n\n" + note + "\n\n"
+    lessons_path.write_text(
+        text[:found_start] + new_block + text[found_end:], encoding="utf-8"
+    )
+
