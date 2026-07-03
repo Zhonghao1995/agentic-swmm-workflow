@@ -237,6 +237,162 @@ def _parse_idf(text: str) -> dict[str, float]:
     return {"a": out["a"], "b": out["b"], "c": out["c"]}
 
 
+def _resolve_library_overrides(args: argparse.Namespace) -> dict[str, object] | None:
+    """Resolve ``--from-library`` into override fields, or ``None`` on failure.
+
+    Failure remediation (library file missing / entry missing / entry
+    present but placeholder-only) is printed to stderr before returning
+    ``None`` — the caller just exits 1. On success the caller also
+    forces the shape to chicago (the library key always implies one).
+    """
+    lib_path = args.storm_library or _default_library_path()
+    spec = recall_chicago_spec(lib_path, args.from_library)
+    if spec is None:
+        # PRD-08 A.3 (audit #35): differentiate three sub-cases —
+        # library file missing, entry missing, or entry present
+        # but only placeholder leaves.
+        from agentic_swmm.agent.error_remediation import (
+            storm_library_not_found,
+        )
+        from agentic_swmm.memory.storm_library import load_storm_library
+
+        if not Path(lib_path).is_file():
+            failure_mode = "library_missing"
+            available_keys: list[str] = []
+        else:
+            lib_dict = load_storm_library(Path(lib_path)) or {}
+            chicago_block = lib_dict.get("chicago_hyetographs") or {}
+            if not isinstance(chicago_block, dict):
+                chicago_block = {}
+            available_keys = list(chicago_block.keys())
+            if args.from_library in chicago_block:
+                failure_mode = "entry_placeholder"
+            else:
+                failure_mode = "entry_missing"
+        err = storm_library_not_found(
+            entry_key=args.from_library,
+            library_path=Path(lib_path),
+            available_keys=available_keys,
+            failure_mode=failure_mode,
+        )
+        sys.stderr.write(err.format_for_stderr() + "\n")
+        return None
+    # Treat the spec as if the user had passed equivalent flags;
+    # explicit CLI arguments still win.
+    return {
+        "idf_params": spec.get("idf_params"),
+        "peak_position": spec.get("peak_position"),
+        "duration_min": spec.get("duration_min"),
+        "interval_min": spec.get("interval_min"),
+    }
+
+
+def _build_chicago(
+    args: argparse.Namespace,
+    *,
+    duration_min: object,
+    interval_min: object,
+    library_overrides: dict[str, object],
+):
+    idf_params: dict[str, float] | None = None
+    if args.idf:
+        idf_params = _parse_idf(args.idf)
+    elif library_overrides.get("idf_params"):
+        raw = library_overrides["idf_params"]
+        if isinstance(raw, dict):
+            idf_params = {
+                "a": float(raw.get("a") or 0.0),
+                "b": float(raw.get("b") or 0.0),
+                "c": float(raw.get("c") or 0.0),
+            }
+
+    peak_position = args.peak_position
+    if (
+        library_overrides.get("peak_position") is not None
+        and peak_position == 0.5
+    ):
+        peak_position = float(library_overrides["peak_position"])
+
+    if duration_min is None:
+        raise ValueError("--duration-min is required for --shape chicago")
+
+    return chicago_hyetograph(
+        depth_mm=None if idf_params else args.depth_mm,
+        idf_params=idf_params,
+        duration_min=int(duration_min),
+        peak_position=float(peak_position),
+        interval_min=int(interval_min),
+        start_time=args.start_time,
+    )
+
+
+def _build_huff(args: argparse.Namespace, *, duration_min: object, interval_min: object):
+    if args.quartile is None:
+        raise ValueError("--quartile is required for --shape huff")
+    if args.depth_mm is None:
+        raise ValueError("--depth-mm is required for --shape huff")
+    if duration_min is None:
+        raise ValueError("--duration-min is required for --shape huff")
+    return huff_hyetograph(
+        depth_mm=float(args.depth_mm),
+        duration_min=int(duration_min),
+        quartile=int(args.quartile),
+        interval_min=int(interval_min),
+        start_time=args.start_time,
+    )
+
+
+def _build_scs(args: argparse.Namespace, *, duration_min: object, interval_min: object):
+    if args.depth_mm is None:
+        raise ValueError("--depth-mm is required for --shape scs")
+    return scs_type_ii_hyetograph(
+        depth_mm=float(args.depth_mm),
+        duration_min=int(duration_min),
+        interval_min=int(interval_min),
+        start_time=args.start_time,
+    )
+
+
+def _build_primitive(args: argparse.Namespace, *, duration_min: object, interval_min: object):
+    if args.depth_mm is None:
+        raise ValueError("--depth-mm is required")
+    if duration_min is None:
+        raise ValueError("--duration-min is required")
+    return generate_design_storm(
+        depth_mm=float(args.depth_mm),
+        duration_min=int(duration_min),
+        shape=args.shape,
+        interval_min=int(interval_min),
+        start_time=args.start_time,
+    )
+
+
+def _emit_output(storm, args: argparse.Namespace) -> int:
+    text = to_swmm_dat(storm, station_id=args.station_id)
+    # PRD-08 A.2 (audit #38 etc.): when ``--json`` is set we emit the
+    # structured DesignStorm payload on stdout so downstream tools
+    # (the agent surface, a notebook) can consume it without parsing
+    # the DAT text. ``--out`` still controls whether the DAT file is
+    # written to disk.
+    if getattr(args, "json", False):
+        payload = storm.to_dict()
+        payload["station_id"] = args.station_id
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(text, encoding="utf-8")
+        return 0
+    if args.out is None:
+        sys.stdout.write(text)
+    else:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(text, encoding="utf-8")
+        print(
+            f"wrote {len(storm.intensities_mm_per_hr)}-step design storm "
+            f"to {args.out}"
+        )
+    return 0
+
 def main(args: argparse.Namespace) -> int:
     # PRD-08 A.1 (audit #11): the historical default was a silent
     # ``uniform`` shape. A modeler asking for "a 25 mm 1-hour storm"
@@ -257,46 +413,10 @@ def main(args: argparse.Namespace) -> int:
     # ---- Resolve a storm_library override ahead of shape dispatch.
     library_overrides: dict[str, object] = {}
     if args.from_library:
-        lib_path = args.storm_library or _default_library_path()
-        spec = recall_chicago_spec(lib_path, args.from_library)
-        if spec is None:
-            # PRD-08 A.3 (audit #35): differentiate three sub-cases —
-            # library file missing, entry missing, or entry present
-            # but only placeholder leaves.
-            from agentic_swmm.agent.error_remediation import (
-                storm_library_not_found,
-            )
-            from agentic_swmm.memory.storm_library import load_storm_library
-
-            if not Path(lib_path).is_file():
-                failure_mode = "library_missing"
-                available_keys: list[str] = []
-            else:
-                lib_dict = load_storm_library(Path(lib_path)) or {}
-                chicago_block = lib_dict.get("chicago_hyetographs") or {}
-                if not isinstance(chicago_block, dict):
-                    chicago_block = {}
-                available_keys = list(chicago_block.keys())
-                if args.from_library in chicago_block:
-                    failure_mode = "entry_placeholder"
-                else:
-                    failure_mode = "entry_missing"
-            err = storm_library_not_found(
-                entry_key=args.from_library,
-                library_path=Path(lib_path),
-                available_keys=available_keys,
-                failure_mode=failure_mode,
-            )
-            sys.stderr.write(err.format_for_stderr() + "\n")
+        resolved = _resolve_library_overrides(args)
+        if resolved is None:
             return 1
-        # Treat the spec as if the user had passed equivalent flags;
-        # explicit CLI arguments still win.
-        library_overrides = {
-            "idf_params": spec.get("idf_params"),
-            "peak_position": spec.get("peak_position"),
-            "duration_min": spec.get("duration_min"),
-            "interval_min": spec.get("interval_min"),
-        }
+        library_overrides = resolved
         # The library always implies a Chicago shape on this key.
         args.shape = "chicago"
 
@@ -328,97 +448,26 @@ def main(args: argparse.Namespace) -> int:
 
     try:
         if args.shape == "chicago":
-            idf_params: dict[str, float] | None = None
-            if args.idf:
-                idf_params = _parse_idf(args.idf)
-            elif library_overrides.get("idf_params"):
-                raw = library_overrides["idf_params"]
-                if isinstance(raw, dict):
-                    idf_params = {
-                        "a": float(raw.get("a") or 0.0),
-                        "b": float(raw.get("b") or 0.0),
-                        "c": float(raw.get("c") or 0.0),
-                    }
-
-            peak_position = args.peak_position
-            if (
-                library_overrides.get("peak_position") is not None
-                and peak_position == 0.5
-            ):
-                peak_position = float(library_overrides["peak_position"])
-
-            if duration_min is None:
-                raise ValueError("--duration-min is required for --shape chicago")
-
-            storm = chicago_hyetograph(
-                depth_mm=None if idf_params else args.depth_mm,
-                idf_params=idf_params,
-                duration_min=int(duration_min),
-                peak_position=float(peak_position),
-                interval_min=int(interval_min),
-                start_time=args.start_time,
+            storm = _build_chicago(
+                args,
+                duration_min=duration_min,
+                interval_min=interval_min,
+                library_overrides=library_overrides,
             )
         elif args.shape == "huff":
-            if args.quartile is None:
-                raise ValueError("--quartile is required for --shape huff")
-            if args.depth_mm is None:
-                raise ValueError("--depth-mm is required for --shape huff")
-            if duration_min is None:
-                raise ValueError("--duration-min is required for --shape huff")
-            storm = huff_hyetograph(
-                depth_mm=float(args.depth_mm),
-                duration_min=int(duration_min),
-                quartile=int(args.quartile),
-                interval_min=int(interval_min),
-                start_time=args.start_time,
+            storm = _build_huff(
+                args, duration_min=duration_min, interval_min=interval_min
             )
         elif args.shape == "scs":
-            if args.depth_mm is None:
-                raise ValueError("--depth-mm is required for --shape scs")
-            storm = scs_type_ii_hyetograph(
-                depth_mm=float(args.depth_mm),
-                duration_min=int(duration_min),
-                interval_min=int(interval_min),
-                start_time=args.start_time,
+            storm = _build_scs(
+                args, duration_min=duration_min, interval_min=interval_min
             )
         else:
-            # Primitive shapes.
-            if args.depth_mm is None:
-                raise ValueError("--depth-mm is required")
-            if duration_min is None:
-                raise ValueError("--duration-min is required")
-            storm = generate_design_storm(
-                depth_mm=float(args.depth_mm),
-                duration_min=int(duration_min),
-                shape=args.shape,
-                interval_min=int(interval_min),
-                start_time=args.start_time,
+            storm = _build_primitive(
+                args, duration_min=duration_min, interval_min=interval_min
             )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    text = to_swmm_dat(storm, station_id=args.station_id)
-    # PRD-08 A.2 (audit #38 etc.): when ``--json`` is set we emit the
-    # structured DesignStorm payload on stdout so downstream tools
-    # (the agent surface, a notebook) can consume it without parsing
-    # the DAT text. ``--out`` still controls whether the DAT file is
-    # written to disk.
-    if getattr(args, "json", False):
-        payload = storm.to_dict()
-        payload["station_id"] = args.station_id
-        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-        if args.out is not None:
-            args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(text, encoding="utf-8")
-        return 0
-    if args.out is None:
-        sys.stdout.write(text)
-    else:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text, encoding="utf-8")
-        print(
-            f"wrote {len(storm.intensities_mm_per_hr)}-step design storm "
-            f"to {args.out}"
-        )
-    return 0
+    return _emit_output(storm, args)
