@@ -37,7 +37,7 @@ __all__ = [
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    parser = subparsers.add_parser("agent", help="Run the constrained local aiswmm executor.")
+    parser = subparsers.add_parser("agent", help="Send one goal through the agent (rule planner by default; --planner llm for the LLM).")
     parser.add_argument("goal", nargs="*", help="Goal for the local executor.")
     # ``llm`` is the provider-neutral planner name; ``openai`` is kept as a
     # deprecated alias so existing scripts/dispatch keep parsing. The chosen

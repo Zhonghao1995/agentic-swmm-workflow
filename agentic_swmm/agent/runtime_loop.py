@@ -314,10 +314,14 @@ def run_openai_planner(
     # stub provider.
     provider = make_provider(provider_name, model=model)
 
-    _agent_say("aiswmm executor")
+    # One compact context line instead of the old four-line preamble
+    # ("aiswmm executor" carried no information; planner and evidence
+    # folder now share a line — the turn's tail still prints the final
+    # report path when there is something to read).
     _agent_say(f"Goal: {goal}")
-    _agent_say(f"Planner: {provider_name} ({model})")
-    _agent_say(f"Evidence folder: {_display_path(session_dir)}")
+    _agent_say(
+        f"Session: {provider_name} ({model}) → {_display_path(session_dir)}"
+    )
     if args.verbose:
         _agent_say(f"Allowed tools: {', '.join(registry.sorted_names())}")
 

@@ -83,9 +83,8 @@ def run_single_shot(args: argparse.Namespace) -> int:
     if len(preview_plan) > args.max_steps:
         preview_plan = preview_plan[: args.max_steps]
 
-    _agent_say("aiswmm executor")
     _agent_say(f"Goal: {goal}")
-    _agent_say(f"Evidence folder: {_display_path(session_dir)}")
+    _agent_say(f"Session: rule planner → {_display_path(session_dir)}")
     if args.verbose:
         _agent_say("Plan:")
         for index, call in enumerate(preview_plan, start=1):

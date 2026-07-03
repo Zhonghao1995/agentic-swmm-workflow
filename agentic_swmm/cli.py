@@ -579,6 +579,9 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
     * the token contains no whitespace (a quoted multi-word goal such
       as ``aiswmm "inspect the project"`` is still a natural-language
       request);
+    * the token is pure ASCII — every registered verb is ASCII, so a
+      token with any non-ASCII character (``aiswmm 看看项目里有什么``)
+      is a natural-language goal, not a typo candidate;
     * the token is not a known verb, nor the legacy ``chat`` alias.
 
     A multi-token argv such as ``aiswmm inspect the project`` is a
@@ -591,6 +594,11 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
         return None
     if any(ch.isspace() for ch in token):
         # Quoted natural-language goal; not a verb candidate.
+        return None
+    if not token.isascii():
+        # Registered verbs are all ASCII; non-ASCII text (e.g. a Chinese
+        # goal, which often contains no spaces) is a natural-language
+        # request and must reach the LLM router, not the typo rejector.
         return None
     if token in registered_commands() or token == "chat":
         return None
@@ -606,7 +614,7 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
         f"error: unknown command '{token}'.{hint} "
         "See 'aiswmm --help' for available commands.\n"
         "To send a free-form goal to the agent, use: "
-        f"aiswmm agent \"{token}\"\n"
+        f"aiswmm chat \"{token}\"\n"
     )
     return 2
 
