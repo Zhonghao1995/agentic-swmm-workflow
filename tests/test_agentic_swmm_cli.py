@@ -323,6 +323,45 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn('aiswmm chat "bogusverb"', buf.getvalue())
 
+    def test_turn_preamble_is_two_lines_in_process(self) -> None:
+        """The per-turn preamble is Goal + one Session line (provider,
+        model, run dir) — the old four-line block ('aiswmm executor' /
+        Planner / Evidence folder) stays gone. In-process so the lines
+        count toward coverage and the shape is pinned at unit level."""
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        from agentic_swmm.cli import main as cli_main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            env = {
+                "AISWMM_CONFIG_DIR": tmp,
+                "AISWMM_OPENAI_MOCK_RESPONSE": "mocked in-process answer",
+            }
+            buf = io.StringIO()
+            with mock.patch.dict(os.environ, env), redirect_stdout(buf):
+                rc = cli_main(
+                    [
+                        "chat",
+                        "--provider",
+                        "openai",
+                        "--model",
+                        "gpt-test",
+                        "inspect",
+                        "the",
+                        "project",
+                    ]
+                )
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("aiswmm> Goal: inspect the project", out)
+        self.assertIn("aiswmm> Session: openai (gpt-test) →", out)
+        self.assertNotIn("aiswmm executor", out)
+        self.assertNotIn("Evidence folder", out)
+        self.assertIn("mocked in-process answer", out)
+
+
     def test_known_verbs_and_flags_are_not_rejected(self) -> None:
         # The rejection must not fire for known verbs, flags, the
         # legacy ``chat`` alias, multi-token natural-language goals,
