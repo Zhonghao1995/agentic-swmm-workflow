@@ -60,6 +60,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -86,6 +87,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -112,6 +114,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked agent answer"
             proc = subprocess.run(
                 [
@@ -142,6 +145,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
             proc = subprocess.run(
                 # ``--provider openai`` (the shipped default) makes the
@@ -167,6 +171,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked default agent"
             session_base = Path(tmp) / "interactive"
             proc = subprocess.run(
@@ -207,6 +212,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "mocked natural language agent"
             proc = subprocess.run(
                 [
@@ -337,6 +343,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = {
                 "AISWMM_CONFIG_DIR": tmp,
+                "AISWMM_MEMORY_DIR": tmp,
                 "AISWMM_OPENAI_MOCK_RESPONSE": "mocked in-process answer",
             }
             buf = io.StringIO()
@@ -491,6 +498,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [
                     {"name": "doctor", "arguments": {}},
@@ -534,6 +542,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps([{"name": "shell", "arguments": {"cmd": "pwd"}}])
             proc = subprocess.run(
                 [
@@ -565,6 +574,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [
                     {"name": "list_skills", "arguments": {}},
@@ -606,6 +616,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [
                     {"name": "capabilities", "arguments": {}},
@@ -698,6 +709,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [{"name": "run_allowed_command", "arguments": {"command": ["cmd", "/c", "dir"]}}]
             )
@@ -731,6 +743,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [{"name": "run_tests", "arguments": {"paths": ["tests/test_swmm_modeling_memory.py"], "timeout_seconds": 60}}]
             )
@@ -769,6 +782,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             session_dir = Path(tmp) / "agent-session"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "state checked"
             proc = subprocess.run(
                 [
@@ -883,6 +897,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             outside_inp = Path(tmp) / "outside.inp"
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
                 [{"name": "run_swmm_inp", "arguments": {"inp_path": str(outside_inp)}}]
             )
@@ -934,6 +949,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = os.environ.copy()
             env["AISWMM_CONFIG_DIR"] = tmp
+            env["AISWMM_MEMORY_DIR"] = tmp
             proc = subprocess.run(
                 [
                     sys.executable,

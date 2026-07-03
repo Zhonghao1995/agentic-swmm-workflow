@@ -1,2 +1,0 @@
-{"failure_class": "tool_error", "recorded_at": "2026-07-03T20:21:37Z", "run_id": "agent-session", "schema_version": "1.0", "summary": "command is not allowlisted", "tool": "run_allowed_command"}
-{"failure_class": "path_resolution", "recorded_at": "2026-07-03T20:21:38Z", "run_id": "agent-session", "schema_version": "1.0", "summary": "external INP file not found: /private/var/folders/tm/qzhpdsgn08n21pbdgwcy8y5r0000gn/T/tmp6he8lvx8/outside.inp", "tool": "run_swmm_inp"}

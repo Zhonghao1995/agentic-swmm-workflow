@@ -173,3 +173,10 @@ examples/hand1/
 
 # Contract test for entropy MCP tools (entropy paper, kept private)
 tests/test_qgis_mcp_contracts.py
+
+# Runtime-written operational logs (auto-appended by the agent runtime /
+# audit hook; never ship). The modeling-knowledge stores stay tracked —
+# these three are observability provenance, not curated content.
+memory/modeling-memory/run_failures.jsonl
+memory/modeling-memory/memory_outcome_events.jsonl
+memory/modeling-memory/.skip_log.jsonl
