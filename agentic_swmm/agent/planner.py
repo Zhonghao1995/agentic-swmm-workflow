@@ -120,6 +120,22 @@ def _looks_high_stakes(goal: str) -> bool:
     return any(token in lowered for token in _HIGH_STAKES_TOKENS)
 
 
+def _trace_event_best_effort(trace_path: Path, payload: dict[str, Any]) -> None:
+    """Append one agent-trace event, swallowing every failure.
+
+    The pre-LLM consult hooks emit audit-trail events that must never
+    break dispatch — a read-only filesystem costs us the trace line,
+    not the turn. The run loop's own ``write_event`` calls stay bare on
+    purpose: mid-run trace integrity is part of that path's contract.
+    Every future ``_consult_*`` hook should emit through this instead
+    of copy-pasting the try/except envelope.
+    """
+    try:
+        write_event(trace_path, payload)
+    except Exception:  # pragma: no cover - audit must never break dispatch
+        pass
+
+
 def _resolve_case_name_for_memory(
     goal: str, prior_session_state: dict[str, Any]
 ) -> str | None:
@@ -567,21 +583,18 @@ class Planner:
         except Exception:  # pragma: no cover - audit must never break dispatch
             pass
 
-        try:
-            write_event(
-                trace_path,
-                {
-                    "event": "memory_informed_policy",
-                    "goal": goal,
-                    "confidence": decision.confidence,
-                    "resolved_case": decision.resolved_case,
-                    "candidate_count": len(decision.candidates),
-                    "stakes": stakes,
-                    "reasoning": decision.reasoning,
-                },
-            )
-        except Exception:  # pragma: no cover - audit must never break dispatch
-            pass
+        _trace_event_best_effort(
+            trace_path,
+            {
+                "event": "memory_informed_policy",
+                "goal": goal,
+                "confidence": decision.confidence,
+                "resolved_case": decision.resolved_case,
+                "candidate_count": len(decision.candidates),
+                "stakes": stakes,
+                "reasoning": decision.reasoning,
+            },
+        )
 
         if decision.confidence == "hitl":
             raise MemoryHITLRequired(
@@ -685,24 +698,21 @@ class Planner:
             "<onboarding_offer>\n" + block_with_hint + "\n</onboarding_offer>"
         )
 
-        try:
-            write_event(
-                trace_path,
-                {
-                    "event": "onboarding_offer",
-                    "case_name": decision.target_case,
-                    "triggered": decision.triggered,
-                    "reason": decision.reason,
-                    "recommendation_count": len(decision.recommendations),
-                    "memory_ids": [
-                        rec.memory_id
-                        for rec in decision.recommendations
-                        if getattr(rec, "memory_id", None)
-                    ],
-                },
-            )
-        except Exception:  # pragma: no cover - audit must never break dispatch
-            pass
+        _trace_event_best_effort(
+            trace_path,
+            {
+                "event": "onboarding_offer",
+                "case_name": decision.target_case,
+                "triggered": decision.triggered,
+                "reason": decision.reason,
+                "recommendation_count": len(decision.recommendations),
+                "memory_ids": [
+                    rec.memory_id
+                    for rec in decision.recommendations
+                    if getattr(rec, "memory_id", None)
+                ],
+            },
+        )
 
     def _consult_workflow_skills(
         self,
