@@ -19,6 +19,7 @@ import json
 import sys
 from pathlib import Path
 
+from agentic_swmm.utils.tables import Column, render_table
 from agentic_swmm.agent.flag_naming import (
     register_example_flag,
     register_inp_flag,
@@ -123,6 +124,15 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.set_defaults(func=main)
 
 
+_TABLE_COLUMNS = (
+    Column("rank", 4, "right"),
+    Column("source_case", 24),
+    Column("similarity", 10, "right"),
+    Column("objective", 24),
+    Column("params", 28),
+)
+
+
 def _format_table(recs: list[TransferRecommendation]) -> str:
     """Render recommendations as a fixed-width table.
 
@@ -137,15 +147,7 @@ def _format_table(recs: list[TransferRecommendation]) -> str:
             "(calibration store empty or no similar prior cases)\n"
         )
 
-    header = (
-        f"{'rank':>4}  "
-        f"{'source_case':<24}  "
-        f"{'similarity':>10}  "
-        f"{'objective':<24}  "
-        f"{'params':<28}\n"
-    )
-    sep = "-" * (len(header) - 1) + "\n"
-    lines = [header, sep]
+    rows = []
     for rank, rec in enumerate(recs, start=1):
         obj = "—"
         record = rec.source_calibration_record
@@ -162,18 +164,13 @@ def _format_table(recs: list[TransferRecommendation]) -> str:
         ) or "—"
         if len(params) > 27:
             params = params[:24] + "..."
-        lines.append(
-            f"{rank:>4}  "
-            f"{rec.source_case[:24]:<24}  "
-            f"{rec.similarity:>10.4f}  "
-            f"{obj[:24]:<24}  "
-            f"{params:<28}\n"
+        rows.append(
+            (rank, rec.source_case[:24], f"{rec.similarity:.4f}", obj[:24], params)
         )
+    out = render_table(_TABLE_COLUMNS, rows)
     if recs[0].n_alternatives:
-        lines.append(
-            f"\n({recs[0].n_alternatives} additional candidate(s) ranked lower)\n"
-        )
-    return "".join(lines)
+        out += f"\n({recs[0].n_alternatives} additional candidate(s) ranked lower)\n"
+    return out
 
 
 def _format_enrichment_sections(
