@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.utils.paths import resolve_memory_dir
+from agentic_swmm.utils.tables import Column, render_table
 
 
 def add_subparser(
@@ -58,6 +59,21 @@ def add_subparser(
     parser.set_defaults(func=health_main)
 
 
+_EVENT_COLUMNS = (
+    Column("#", 3, "right"),
+    Column("event", 15),
+    Column("attribution", 12),
+    Column("metric_val", 10, "right"),
+    Column("ts_utc"),
+)
+
+_SUMMARY_COLUMNS = (
+    Column("memory_id", 30),
+    Column("score", 7, "right"),
+    Column("events", 7, "right"),
+)
+
+
 def _fmt_score(score: float) -> str:
     """Format health score as a percentage bar."""
     bar_len = 20
@@ -78,12 +94,7 @@ def _print_single_entry(memory_id: str, events: list[dict], score: float) -> Non
         print("  No outcome events recorded yet.")
         return
 
-    # Table header
-    print(
-        f"  {'#':>3}  {'event':15}  {'attribution':12}  {'metric_val':>10}  ts_utc"
-    )
-    print("  " + "-" * 70)
-
+    rows = []
     for i, ev in enumerate(events, 1):
         ev_type = str(ev.get("event", "?"))
         attr = str(ev.get("attribution", "?"))
@@ -91,7 +102,8 @@ def _print_single_entry(memory_id: str, events: list[dict], score: float) -> Non
         m = ev.get("metric") or {}
         mv = m.get("value")
         mv_str = f"{mv:.4f}" if mv is not None else "—"
-        print(f"  {i:>3}  {ev_type:15}  {attr:12}  {mv_str:>10}  {ts}")
+        rows.append((i, ev_type, attr, mv_str, ts))
+    print(render_table(_EVENT_COLUMNS, rows, indent="  "), end="")
 
     print()
 
@@ -104,13 +116,13 @@ def _print_summary_table(summaries: list[dict[str, Any]]) -> None:
         print("  No outcome events recorded yet.")
         return
 
-    print(f"  {'memory_id':30}  {'score':>7}  {'events':>7}")
-    print("  " + "-" * 55)
+    rows = []
     for row in summaries:
         mid = str(row.get("memory_id", "?"))
         score = float(row.get("health_score", 0))
         n = int(row.get("event_count", 0))
-        print(f"  {mid:30}  {score:7.3f}  {n:7d}")
+        rows.append((mid, f"{score:.3f}", n))
+    print(render_table(_SUMMARY_COLUMNS, rows, indent="  "), end="")
     print()
 
 
