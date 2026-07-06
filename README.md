@@ -37,7 +37,7 @@
 
 - **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, with a verification-first workflow and Obsidian-compatible audit trail.
 - **Five minutes, one command:** an Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.
-- **Live demo:** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
+- **Live demo (no install, offline case replay):** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
 - **[SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) upstream, ready to use:** inside Canada, real municipal storm networks for 8 cities or synthesis anywhere else in the country, built from Canadian open data and fetched directly into aiswmm through the `fetch_swmm_from_canada` tool; outside Canada, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)-based synthesis covers the rest of the globe. Two complementary upstream sources.
 - **Runtime-portable:** the Skills and MCP servers also work with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 - **Published research:** our paper is published in *AI for Engineering* (MDPI), June 9, 2026: [read the paper](https://doi.org/10.3390/aieng1010005).
