@@ -34,7 +34,7 @@
 > **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
 
 > [!TIP]
-> **Headaches from tedious model setup?** Try [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), our automated model-building project: draw an area anywhere in Canada and get a ready-to-run SWMM model. Up and running now.
+> **Headaches from tedious model setup?** Try our another project [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), our automated model-building project: draw an area anywhere in Canada and get a ready-to-run SWMM model. Up and running now.
 
 ## Highlights
 
