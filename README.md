@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://aiswmm.com/demo/">
-    <img src="https://img.shields.io/badge/demo-live-1a7f37" alt="Demo Live — aiswmm.com/demo" />
+    <img src="https://img.shields.io/badge/demo-live-1a7f37" alt="Demo Live: aiswmm.com/demo" />
   </a>
   <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml">
     <img src="https://github.com/Zhonghao1995/agentic-swmm-workflow/actions/workflows/ci.yml/badge.svg" alt="CI status" />
@@ -32,22 +32,19 @@
 </p>
 
 > **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
-> 
-> 🚧 **In active development:** [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), a SWMM INP generator built from Canadian open data: draw anywhere in Canada and run, with real municipal storm networks for 7 cities or synthesized everywhere else.
 
+## Highlights
 
-**Agentic SWMM for reproducible stormwater modeling**<br>
-*[**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM + verification-first workflow + Obsidian-compatible audit · also compatible with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).*
-
-**A five-minute, one-command Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.**
-
-**Try our Live Demo at [aiswmm.com](https://aiswmm.com/demo/)**
-
-**Great news: Our paper has been officially published in AI for Engineering, an MDPI journal, on June 9, 2026. [Paper](https://doi.org/10.3390/aieng1010005)**
+- **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, with a verification-first workflow and Obsidian-compatible audit trail.
+- **Five minutes, one command:** an Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.
+- **Live demo:** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
+- **Published research:** our paper is published in *AI for Engineering* (MDPI), June 9, 2026: [read the paper](https://doi.org/10.3390/aieng1010005).
+- **[SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) upstream, ready to use:** inside Canada, real municipal storm networks for 8 cities or synthesis anywhere else in the country, built from Canadian open data and fetched directly into aiswmm through the `fetch_swmm_from_canada` tool; outside Canada, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)-based synthesis covers the rest of the globe. Two complementary upstream sources.
+- **Runtime-portable:** the Skills and MCP servers also work with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
 ## Project Overview
 
-Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, SWMManywhere-based synthetic model generation, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
+Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, upstream model generation from [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) inside Canada (real storm networks for 8 cities, synthesis anywhere else in the country) and SWMManywhere-based synthesis outside Canada, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
 
 **The goal is not to replace SWMM or the modeller, but to build an agentic modelling layer that makes stormwater-modelling workflows easier to reproduce, audit, extend, remember, and trust.**  Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modelling goal in natural language, while model execution remains deterministic, inspectable, and artifact-based. The repository's MCP servers and Skills can also be used with other agent runtimes, including Codex, Claude, OpenClaw, and Hermes.
 
@@ -93,7 +90,7 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-Reproducible run (pinned Docker image, v0.7.4) — no local install:
+Reproducible run (pinned Docker image, v0.7.4), no local install:
 
 ```bash
 docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.4 acceptance
@@ -101,9 +98,9 @@ docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workf
 
 After installation, launch the runtime with `aiswmm`.
 
-One-line installers run a remote script — review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
+One-line installers run a remote script; review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
 
-**Three ways in** — one-line installer, Docker, or `pip` — compared side by side (what you get, prerequisites, reproducibility, when to pick each): [choosing an install path](docs/runtime-install-options.md).
+**Three ways in** (one-line installer, Docker, or `pip`), compared side by side (what you get, prerequisites, reproducibility, when to pick each): [choosing an install path](docs/runtime-install-options.md).
 
 ## Workflow
 
@@ -127,10 +124,10 @@ The workflow has three connected layers: execution, modeling memory, and control
 
 <p align="center">
   <a href="docs/figs/aiswmm_demo_greenwich.png">
-    <img src="docs/figs/aiswmm_demo_greenwich.png" alt="Agentic SWMM live demo — Greenwich Peninsula: synthesised network on a map, agent chat, artifacts (model.inp, model.rpt, subcatchments.geojson, graph.parquet, network_map.png), and a deterministic audit record" width="900" />
+    <img src="docs/figs/aiswmm_demo_greenwich.png" alt="Agentic SWMM live demo (Greenwich Peninsula): synthesised network on a map, agent chat, artifacts (model.inp, model.rpt, subcatchments.geojson, graph.parquet, network_map.png), and a deterministic audit record" width="900" />
   </a>
 </p>
-<p align="center"><sub><a href="https://aiswmm.com/demo/">▶ Try the live demo</a> — Greenwich Peninsula: <a href="https://github.com/ImperialCollegeLondon/SWMManywhere">SWMManywhere</a> synthesis → swmm5 run → audit → render, end to end in the browser.</sub></p>
+<p align="center"><sub><a href="https://aiswmm.com/demo/">▶ Try the live demo</a>: Greenwich Peninsula, <a href="https://github.com/ImperialCollegeLondon/SWMManywhere">SWMManywhere</a> synthesis → swmm5 run → audit → render, end to end in the browser.</sub></p>
 
 ## Validation snapshot
 
@@ -144,8 +141,8 @@ The repository includes runnable benchmarks and research previews with different
 | [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
 | [Optional INP-derived raw adapter benchmark](docs/validation-evidence.md#inp-derived-raw-adapter-benchmark) | Raw-like inputs extracted from a public SWMM fixture and rebuilt through the modular path | Adapter handoff check, not greenfield watershed generation |
 | [Cross-environment byte-identical reproducibility](docs/byte-identical-reproducibility.md) | A natural-language prompt (`Run the Tecnopolo (Rome 1994) demo`) drives the aiswmm chain (LLM agent → MCP → swmm-runner skill) to the same byte-identical `model.out` as bare `swmm5`, across macOS and Docker. **v0.7.1 re-verification**: the minimum natural-language prompt length for this chain is now **11 words**, and the `model.out` SHA256 remains identical across the v0.7.0 → v0.7.1 minor revision. | SWMM execution-layer reproducibility, not agentic workflow reproducibility |
-| [LLM-driven dispatch + data-scarce urban modeling (SWMManywhere)](docs/v0.7.1-swmmanywhere-nl-driven-evidence.md) | A single natural-language sentence referring only to a WGS84 bounding box drives the end-to-end SWMManywhere → SWMM → audit → network-map workflow on two independent regions (Greenwich Peninsula and NYC Midtown, ~1 km² each) — no shapefile, no DEM file, no step-by-step tool instructions. Synthesis is the work of [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (Imperial College London, BSD-3-Clause). | Agent-side plumbing for data-scarce baseline modeling; **not** a calibrated or validated network. Calibration is next-milestone scope. |
-| [Cross-session memory autonomous activation](docs/v0.7.1-cross-session-memory-evidence.md) | An 11-word user prompt drove a complete Tecnopolo run on 2026-05-28 during which the LLM autonomously queried `recall_session_history` and recovered two prior Tecnopolo sessions from 12 days earlier — the first user-observable activation of the memory layer on a real production run. | Memory layer fires correctly and shapes planner decisions; staleness weighting and negative-precedent handling are next-milestone scope. |
+| [LLM-driven dispatch + data-scarce urban modeling (SWMManywhere)](docs/v0.7.1-swmmanywhere-nl-driven-evidence.md) | A single natural-language sentence referring only to a WGS84 bounding box drives the end-to-end SWMManywhere → SWMM → audit → network-map workflow on two independent regions (Greenwich Peninsula and NYC Midtown, ~1 km² each), with no shapefile, no DEM file, and no step-by-step tool instructions. Synthesis is the work of [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (Imperial College London, BSD-3-Clause). | Agent-side plumbing for data-scarce baseline modeling; **not** a calibrated or validated network. Calibration is next-milestone scope. |
+| [Cross-session memory autonomous activation](docs/v0.7.1-cross-session-memory-evidence.md) | An 11-word user prompt drove a complete Tecnopolo run on 2026-05-28 during which the LLM autonomously queried `recall_session_history` and recovered two prior Tecnopolo sessions from 12 days earlier: the first user-observable activation of the memory layer on a real production run. | Memory layer fires correctly and shapes planner decisions; staleness weighting and negative-precedent handling are next-milestone scope. |
 
 Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
@@ -167,14 +164,14 @@ Agentic SWMM is the **SWMM engine** within a larger effort toward a *trustworthy
 
 | Project | Role in the ecosystem | Status |
 | --- | --- | --- |
-| [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer** — top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
-| [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer** — ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal pipes for 7 Canadian cities) | SWMM today; extending to MIKE+ and InfoWorks ICM |
-| **Agentic SWMM** *(this repository)* | **SWMM engine** — verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.4 |
-| [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine** — headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
+| [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer:** top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
+| [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer:** ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal pipes for 8 Canadian cities) | SWMM today; extending to MIKE+ and InfoWorks ICM |
+| **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.4 |
+| [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine:** headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
 
 ## Codex / Claude / OpenClaw / Hermes ready
 
-Beyond its own aiswmm runtime, the Agentic SWMM workflow can be driven by external agent runtimes — Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
+Beyond its own aiswmm runtime, the Agentic SWMM workflow can be driven by external agent runtimes: Codex, Claude Code, OpenClaw, or Hermes. For an agent-orchestrated run, preload the `agent/memory/` package and point the runtime at the top-level entry skill `skills/swmm-end-to-end/SKILL.md`, which decides which workflow path to take, which QA gates must pass, and when to stop rather than invent missing inputs.
 
 Install the skills into any skills-aware runtime (Claude Code, Codex, OpenCode, …) with one command:
 
