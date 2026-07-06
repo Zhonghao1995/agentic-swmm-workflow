@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 import urllib.error
 import urllib.parse
@@ -32,6 +33,12 @@ from datetime import date
 from pathlib import Path
 
 from agentic_swmm.integrations.inp_source import InpSourceError, InpSourceResult
+from agentic_swmm.providers._http import (
+    DEFAULT_BACKOFF_BASE_S,
+    DEFAULT_MAX_ATTEMPTS,
+    RETRY_STATUSES,
+    _retry_delay,
+)
 from typing import Any, Callable
 
 # Environment variable holding the SWMMCanada service base URL. The client is
@@ -42,6 +49,40 @@ BASE_URL_ENV = "AISWMM_SWMMCANADA_URL"
 # Terminal task states from the upstream tasks API.
 _TERMINAL_OK = "SUCCEEDED"
 _TERMINAL_FAIL = "FAILED"
+
+
+def _open_with_retry(
+    req: urllib.request.Request,
+    *,
+    timeout: float,
+    opener: Callable[..., Any],
+    sleep: Callable[[float], None],
+    max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+    backoff_base: float = DEFAULT_BACKOFF_BASE_S,
+) -> bytes:
+    """Send ``req`` and return the raw body, retrying transient failures.
+
+    Shares the transient set (429 + 5xx) and ``Retry-After``-aware backoff
+    with ``providers/_http.py`` (issue #295). Non-transient HTTP errors and
+    exhausted retries re-raise the original ``urllib`` error so each caller's
+    stage-tagged ``CanadaFetchError`` wrapping stays unchanged.
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with opener(req, timeout=timeout) as resp:
+                return resp.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code in RETRY_STATUSES and attempt < max_attempts:
+                sleep(_retry_delay(exc, attempt, backoff_base))
+                continue
+            raise
+        except urllib.error.URLError:
+            # Connection-level blip (DNS, refused, socket timeout) — transient.
+            if attempt < max_attempts:
+                sleep(backoff_base * (2 ** (attempt - 1)))
+                continue
+            raise
+    raise AssertionError("unreachable: loop always returns or raises")
 
 
 @dataclass(frozen=True)
@@ -79,6 +120,7 @@ def fetch_from_aoi(
     *,
     run_dir: Path,
     base_url: str | None = None,
+    infiltration: str | None = None,
     poll_interval: float = 3.0,
     timeout: float = 600.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
@@ -86,6 +128,11 @@ def fetch_from_aoi(
     now: Callable[[], float] = time.monotonic,
 ) -> CanadaFetchResult:
     """Fetch a SWMM model from SWMMCanada for ``aoi_geojson`` over ``start``..``end``.
+
+    ``infiltration`` optionally selects the upstream build's infiltration
+    method (CURVE_NUMBER / HORTON / GREEN_AMPT, case-insensitive). It is
+    passed through verbatim — the service owns the enum and 422s unknown
+    values, so this client never drifts from upstream's list.
 
     Returns a :class:`CanadaFetchResult` with ``model.inp`` extracted under
     ``run_dir`` and the whole ``swmm_model.zip`` kept alongside it.
@@ -97,7 +144,10 @@ def fetch_from_aoi(
             f"no SWMMCanada base URL — pass base_url= or set ${BASE_URL_ENV}",
         )
 
-    task_id, mode = _submit(service_url, aoi_geojson, start, end, opener=opener)
+    task_id, mode = _submit(
+        service_url, aoi_geojson, start, end,
+        infiltration=infiltration, opener=opener, sleep=sleep,
+    )
     _poll_until_done(
         service_url, task_id,
         poll_interval=poll_interval, timeout=timeout,
@@ -105,7 +155,7 @@ def fetch_from_aoi(
     )
 
     run_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = _download_zip(service_url, task_id, run_dir, opener=opener)
+    zip_path = _download_zip(service_url, task_id, run_dir, opener=opener, sleep=sleep)
     inp_path, validation = _extract(zip_path, run_dir)
 
     return CanadaFetchResult(
@@ -121,11 +171,19 @@ def fetch_from_aoi(
 
 
 def _submit(
-    service_url: str, aoi_geojson: str, start: date, end: date, *, opener: Callable[..., Any]
+    service_url: str,
+    aoi_geojson: str,
+    start: date,
+    end: date,
+    *,
+    infiltration: str | None = None,
+    opener: Callable[..., Any],
+    sleep: Callable[[float], None],
 ) -> tuple[str, str]:
-    body = urllib.parse.urlencode(
-        {"start_date": start.isoformat(), "end_date": end.isoformat(), "polygon": aoi_geojson}
-    ).encode()
+    fields = {"start_date": start.isoformat(), "end_date": end.isoformat(), "polygon": aoi_geojson}
+    if infiltration:
+        fields["infiltration"] = infiltration
+    body = urllib.parse.urlencode(fields).encode()
     req = urllib.request.Request(
         f"{service_url}/api/v1/tasks",
         data=body,
@@ -133,8 +191,7 @@ def _submit(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     try:
-        with opener(req, timeout=60) as resp:
-            payload = json.loads(resp.read().decode())
+        payload = json.loads(_open_with_retry(req, timeout=60, opener=opener, sleep=sleep).decode())
         task_id = str(payload["task_id"])
         mode = str(payload.get("mode") or "")
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
@@ -160,8 +217,7 @@ def _poll_until_done(
     while True:
         req = urllib.request.Request(f"{service_url}/api/v1/tasks/{task_id}", method="GET")
         try:
-            with opener(req, timeout=60) as resp:
-                status = json.loads(resp.read().decode())
+            status = json.loads(_open_with_retry(req, timeout=60, opener=opener, sleep=sleep).decode())
         except (urllib.error.HTTPError, urllib.error.URLError) as exc:
             raise CanadaFetchError("poll", repr(exc)) from exc
         except ValueError as exc:
@@ -184,12 +240,16 @@ def _poll_until_done(
 
 
 def _download_zip(
-    service_url: str, task_id: str, run_dir: Path, *, opener: Callable[..., Any]
+    service_url: str,
+    task_id: str,
+    run_dir: Path,
+    *,
+    opener: Callable[..., Any],
+    sleep: Callable[[float], None],
 ) -> Path:
     req = urllib.request.Request(f"{service_url}/api/v1/tasks/{task_id}/result", method="GET")
     try:
-        with opener(req, timeout=300) as resp:
-            data = resp.read()
+        data = _open_with_retry(req, timeout=300, opener=opener, sleep=sleep)
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
         raise CanadaFetchError("download", repr(exc)) from exc
     zip_path = run_dir / "swmm_model.zip"
@@ -205,7 +265,10 @@ def _extract(zip_path: Path, run_dir: Path) -> tuple[Path, dict | None]:
             if inp_name is None:
                 raise CanadaFetchError("extract", f"no .inp in {zip_path.name} ({names})")
             inp_path = run_dir / "model.inp"
-            inp_path.write_bytes(zf.read(inp_name))
+            # Stream instead of zf.read() + write_bytes — avoids holding a
+            # second full copy of a large model in memory (issue #295, LOW).
+            with zf.open(inp_name) as src, inp_path.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
             validation: dict | None = None
             val_name = next((n for n in names if n.lower().endswith("validation.json")), None)
             if val_name is not None:

@@ -712,6 +712,15 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
                         "type": "string",
                         "description": "Override the SWMMCanada service base URL (else $AISWMM_SWMMCANADA_URL).",
                     },
+                    "infiltration": {
+                        "type": "string",
+                        "enum": ["CURVE_NUMBER", "HORTON", "GREEN_AMPT"],
+                        "description": (
+                            "Infiltration method for the upstream build (omit for the "
+                            "service default, CURVE_NUMBER). Passed through verbatim; "
+                            "the SWMMCanada service validates it."
+                        ),
+                    },
                 },
                 ["start_date", "end_date"],
             ),
