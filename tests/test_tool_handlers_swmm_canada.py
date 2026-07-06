@@ -98,7 +98,8 @@ class HandlerTests(unittest.TestCase):
             self.assertEqual(json.loads(aoi_arg)["type"], "Polygon")
 
     def test_explicit_aoi_geojson_is_passed_through(self) -> None:
-        aoi = '{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}'
+        # Victoria-ish — must sit inside Canada so only the passthrough is under test.
+        aoi = '{"type":"Polygon","coordinates":[[[-123.4,48.4],[-123.3,48.4],[-123.3,48.5],[-123.4,48.5],[-123.4,48.4]]]}'
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"
             call = ToolCall("fetch_swmm_from_canada", {"aoi_geojson": aoi, "run_dir": str(run_dir), **DATES})
@@ -133,6 +134,48 @@ class HandlerTests(unittest.TestCase):
             ) as fetch:
                 fetch_swmm_from_canada_tool(call, Path(tmp))
             self.assertIsNone(fetch.call_args.kwargs["infiltration"])
+
+    def test_aoi_outside_canada_fails_soft_before_any_http(self) -> None:
+        tokyo = [139.6, 35.6, 139.8, 35.8]
+        call = ToolCall("fetch_swmm_from_canada", {"bbox": tokyo, **DATES})
+        with TemporaryDirectory() as tmp:
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi"
+            ) as fetch:
+                payload = fetch_swmm_from_canada_tool(call, Path(tmp))
+        fetch.assert_not_called()  # rejected deterministically, zero round-trips
+        self.assertFalse(payload["ok"])
+        self.assertIn("outside Canada", json.dumps(payload))
+        self.assertIn("synth_swmm_from_bbox", json.dumps(payload))
+
+    def test_aoi_near_southern_border_is_allowed_through(self) -> None:
+        windsor = [-83.1, 42.2, -82.9, 42.4]  # Windsor, ON — Canada's southern edge
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            call = ToolCall("fetch_swmm_from_canada", {"bbox": windsor, "run_dir": str(run_dir), **DATES})
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi",
+                return_value=_fake_result(run_dir),
+            ) as fetch:
+                payload = fetch_swmm_from_canada_tool(call, Path(tmp))
+        fetch.assert_called_once()
+        self.assertTrue(payload["ok"])
+
+    def test_unreadable_aoi_geometry_is_not_blocked(self) -> None:
+        # The pre-check never blocks geometry it can't read — upstream stays
+        # the authority on anything beyond a plain GeoJSON Polygon.
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            call = ToolCall(
+                "fetch_swmm_from_canada",
+                {"aoi_geojson": '{"type":"Feature","geometry":null}', "run_dir": str(run_dir), **DATES},
+            )
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi",
+                return_value=_fake_result(run_dir),
+            ) as fetch:
+                fetch_swmm_from_canada_tool(call, Path(tmp))
+        fetch.assert_called_once()
 
     def test_missing_aoi_and_bbox_fails_soft(self) -> None:
         call = ToolCall("fetch_swmm_from_canada", {**DATES})
