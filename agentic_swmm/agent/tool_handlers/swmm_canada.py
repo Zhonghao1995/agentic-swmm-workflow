@@ -73,6 +73,41 @@ def _stage_hint(stage: str) -> str:
     )
 
 
+# Canada's coarse WGS84 bounding box. Deliberately generous: a false pass
+# (e.g. a northern-US border town) only costs one upstream call that the
+# service rejects anyway, while nothing inside Canada is ever excluded —
+# so a crude box is enough and no precise border polygon is needed.
+_CANADA_LON = (-141.1, -52.5)
+_CANADA_LAT = (41.6, 83.2)
+
+
+def _aoi_centre_outside_canada(aoi_geojson: str) -> str | None:
+    """Return an error message when the AOI centre is clearly outside Canada.
+
+    Deterministic pre-check so an out-of-scope AOI fails soft before the
+    submit+poll round-trip, steering the planner to synth_swmm_from_bbox
+    instead of relying on tool-description judgement alone. Geometry the
+    check can't read returns None — upstream stays the authority (ADR-0001),
+    this never blocks anything it does not understand.
+    """
+    try:
+        ring = json.loads(aoi_geojson)["coordinates"][0]
+        lons = [float(point[0]) for point in ring]
+        lats = [float(point[1]) for point in ring]
+    except (ValueError, TypeError, KeyError, IndexError):
+        return None
+    if not lons or not lats:
+        return None
+    lon = (min(lons) + max(lons)) / 2
+    lat = (min(lats) + max(lats)) / 2
+    if _CANADA_LON[0] <= lon <= _CANADA_LON[1] and _CANADA_LAT[0] <= lat <= _CANADA_LAT[1]:
+        return None
+    return (
+        f"AOI centre (lon {lon:.3f}, lat {lat:.3f}) is outside Canada — "
+        "SWMMCanada builds models from Canadian open data only."
+    )
+
+
 def _bbox_to_polygon(bbox: list[float]) -> str:
     """Convert ``[min_lon, min_lat, max_lon, max_lat]`` to a closed GeoJSON polygon string."""
     min_lon, min_lat, max_lon, max_lat = (float(v) for v in bbox)
@@ -143,6 +178,14 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
         return _failure(call, error)
     assert aoi is not None
 
+    error = _aoi_centre_outside_canada(aoi)
+    if error is not None:
+        return _failure(
+            call,
+            error,
+            hint="use synth_swmm_from_bbox (global, synthesized) for regions outside Canada.",
+        )
+
     dates, error = _resolve_dates(call)
     if error is not None:
         return _failure(call, error)
@@ -190,6 +233,7 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
 
 
 __all__ = [
+    "_aoi_centre_outside_canada",
     "_bbox_to_polygon",
     "_stage_hint",
     "fetch_swmm_from_canada_tool",
