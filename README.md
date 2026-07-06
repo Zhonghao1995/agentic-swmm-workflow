@@ -31,7 +31,7 @@
   </a>
 </p>
 
-> **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
+> **Pre-1.0** · stable **v0.7.5** · `pip install aiswmm==0.7.5` · [CHANGELOG](CHANGELOG.md)
 
 > [!TIP]
 > **Headaches from tedious model setup?** Try our another project [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), our automated model-building project: draw an area anywhere in Canada and get a ready-to-run SWMM model. Up and running now.
@@ -61,7 +61,7 @@ License: **MIT**
   <a href="https://doi.org/10.3390/aieng1010005"><img src="https://img.shields.io/badge/Published-AI%20for%20Engineering-2DA44E" alt="Published in AI for Engineering" /></a>
   <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
   <a href="https://doi.org/10.5281/zenodo.20337281"><img src="https://img.shields.io/badge/Zenodo-DOI-1682D4" alt="Zenodo DOI" /></a>
-  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.7.4-1F6FEB" alt="latest release v0.7.4" /></a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.7.5-1F6FEB" alt="latest release v0.7.5" /></a>
 </p>
 
 
@@ -93,10 +93,10 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-Reproducible run (pinned Docker image, v0.7.4), no local install:
+Reproducible run (pinned Docker image, v0.7.5), no local install:
 
 ```bash
-docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.4 acceptance
+docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.5 acceptance
 ```
 
 After installation, launch the runtime with `aiswmm`.
@@ -169,7 +169,7 @@ Agentic SWMM is the **SWMM engine** within a larger effort toward a *trustworthy
 | --- | --- | --- |
 | [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer:** top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
 | [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer:** ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal pipes for 8 Canadian cities) | SWMM today; extending to MIKE+ and InfoWorks ICM |
-| **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.4 |
+| **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.5 |
 | [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine:** headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
 
 ## Codex / Claude / OpenClaw / Hermes ready

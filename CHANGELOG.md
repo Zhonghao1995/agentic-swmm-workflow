@@ -2,6 +2,31 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.7.5 - SWMMCanada integration hardened: retry, infiltration choice, Canada geofence (2026-07-05)
+
+A hardening release for the SWMMCanada real-pipe INP source introduced in v0.7.4, plus the completed architecture-deepening pass across runtime, memory, CLI, and agent internals (#301-#320). Tool surface unchanged (56 typed tools, 19 skills); full suite green (**2,932 passed**).
+
+### Added
+
+- **Infiltration method choice on `fetch_swmm_from_canada`** (#323). The upstream submit API's optional `infiltration` field (`CURVE_NUMBER`, `HORTON`, `GREEN_AMPT`) is exposed as a typed enum parameter and passed through verbatim: the SWMMCanada service owns the enum and rejects unknown values, so the client never drifts from upstream's list.
+- **Deterministic Canada geofence pre-check** (#324). `fetch_swmm_from_canada` computes the AOI centre and fails soft, at zero network cost, when it falls outside Canada's coarse WGS84 bounding box, steering the planner to `synth_swmm_from_bbox`. Routing away from the tool no longer relies on tool-description judgement alone; geometry the check cannot read passes through untouched (upstream stays the authority, ADR-0001).
+
+### Changed
+
+- **Chinese and other non-ASCII goals route straight to the LLM planner** (#321), and the per-turn preamble is halved.
+- **Architecture-deepening pass** (#301-#320; internal, no tool-surface change). Highlights: `rpt_summary` becomes the single in-process `.rpt` parsing seam with parity locked across all five parsers (#304, closing #232); one `jsonl_store` primitive owns the JSONL file mechanics (#305); a shared INP-source seam (typed results + handler glue) now backs both `synth_swmm_from_bbox` and `fetch_swmm_from_canada` (#307); MCP wiring becomes a factory plus a public routing registry query (#308); the doctor's data layer, CLI verb set, storm dispatch, plot/run manifest schemas, and memory reflection engine each move behind their own seam (#309-#320).
+
+### Fixed
+
+- **Transient HTTP failures no longer abort a SWMMCanada fetch** (#323, closes #295). All three endpoint calls (submit, poll, download) retry 429/5xx and connection-level blips with exponential backoff honouring `Retry-After`, sharing the backoff implementation with the LLM-provider HTTP layer. Failure semantics are unchanged: non-transient errors surface immediately as stage-tagged hints, and the `.inp` is streamed out of the zip instead of double-buffered.
+- **Exact Keifer-Chu Chicago-from-IDF design storm** (#302); the twin implementations are parity-locked by test.
+- **Runtime-written operational stores are untracked, and CLI tests no longer write repo memory** (#322).
+- **The skill-sweep CI guard no longer assumes the local skill count** (#315).
+
+### Upstream: SWMMCanada
+
+The real-pipe path in this release is powered by [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada), a separate service that turns an area of interest plus a date range into a runnable SWMM model from Canadian open data: real municipal storm networks for **8 cities** (Victoria, Ottawa, Calgary, Surrey, London, Kitchener-Waterloo, Kelowna, Regina), synthesis anywhere else in Canada, and, where a city publishes it (Regina), the sanitary sewer carried as a second tagged system in the same `.inp`. SWMMCanada does the heavy lifting (data acquisition, network building, validation, mode selection); aiswmm consumes it strictly over the async tasks API (ADR-0001), keeps the whole `swmm_model.zip` as the durable provenance artifact, and records the reported mode in every audit.
+
 ## v0.7.4 - SWMMCanada upstream INP source, skill-author, reference-free synth QA (2026-06-27)
 
 A capability-focused release bundling 9 feature/fix PRs since v0.7.3: a new way to source a model (real Canadian municipal pipes), a new skill, reference-free QA for synthesized networks, and reliability hardening across the runtime. Typed tools 55 → **56**, skills 18 → **19**; full suite green (**2,875 passed**), SWMM execution byte-identical.
