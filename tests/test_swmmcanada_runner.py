@@ -246,5 +246,138 @@ class ConfigTests(unittest.TestCase):
                 os.environ[BASE_URL_ENV] = saved
 
 
+class _FlakyOpener:
+    """Wrap a delegate opener, failing the first ``fail_first`` calls."""
+
+    def __init__(self, delegate, *, fail_first: int, exc_factory) -> None:
+        self._delegate = delegate
+        self._fail_remaining = fail_first
+        self._exc_factory = exc_factory
+        self.attempts = 0
+
+    def __call__(self, request, timeout=None):  # noqa: ANN001 - urlopen shape
+        self.attempts += 1
+        if self._fail_remaining > 0:
+            self._fail_remaining -= 1
+            raise self._exc_factory()
+        return self._delegate(request, timeout=timeout)
+
+
+def _http_error(code: int) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError("http://svc", code, f"HTTP {code}", {}, io.BytesIO(b""))
+
+
+class TransientRetryTests(unittest.TestCase):
+    """Issue #295: transient blips (429/5xx/URLError) must not abort the fetch."""
+
+    def test_transient_503_on_submit_is_retried_then_succeeds(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        inner = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        opener = _FlakyOpener(inner, fail_first=1, exc_factory=lambda: _http_error(503))
+        sleeps: list[float] = []
+        with TemporaryDirectory() as tmp:
+            result = fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=sleeps.append,
+            )
+            self.assertTrue(result.inp_path.is_file())
+        self.assertGreaterEqual(opener.attempts, 2)  # failed once, then retried
+        self.assertEqual(len(sleeps), 1)  # one backoff sleep for the one failure
+
+    def test_url_error_on_poll_is_retried_then_succeeds(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        inner = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+
+        class _PollFlaky:
+            """Fail only the first status GET with a connection-level blip."""
+
+            def __init__(self) -> None:
+                self.failed = False
+
+            def __call__(self, request, timeout=None):  # noqa: ANN001
+                if (
+                    request.get_method() == "GET"
+                    and request.full_url.endswith("/tasks/t1")
+                    and not self.failed
+                ):
+                    self.failed = True
+                    raise urllib.error.URLError("connection reset")
+                return inner(request, timeout=timeout)
+
+        with TemporaryDirectory() as tmp:
+            result = fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=_PollFlaky(),
+                sleep=lambda *_: None,
+            )
+            self.assertTrue(result.inp_path.is_file())
+
+    def test_non_transient_404_raises_immediately_without_retry(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+
+        inner = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        opener = _FlakyOpener(inner, fail_first=99, exc_factory=lambda: _http_error(404))
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=opener, sleep=lambda *_: None)
+        self.assertEqual(ctx.exception.stage, "submit")
+        self.assertEqual(opener.attempts, 1)  # no retry on a non-transient 4xx
+
+    def test_exhausted_retries_raise_stage_tagged_error(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+        from agentic_swmm.providers._http import DEFAULT_MAX_ATTEMPTS
+
+        inner = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        opener = _FlakyOpener(inner, fail_first=99, exc_factory=lambda: _http_error(503))
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=opener, sleep=lambda *_: None)
+        self.assertEqual(ctx.exception.stage, "submit")
+        self.assertEqual(opener.attempts, DEFAULT_MAX_ATTEMPTS)
+
+
+class InfiltrationPassthroughTests(unittest.TestCase):
+    """The optional infiltration method is passed through verbatim; the
+    service owns the enum (this client never validates it)."""
+
+    def _submitted_body(self, **kwargs) -> str:
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        bodies: list[bytes] = []
+
+        def _capture(request, timeout=None):  # noqa: ANN001
+            if request.get_method() == "POST":
+                bodies.append(request.data)
+            return opener(request, timeout=timeout)
+
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        with TemporaryDirectory() as tmp:
+            fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=_capture,
+                sleep=lambda *_: None,
+                **kwargs,
+            )
+        self.assertEqual(len(bodies), 1)
+        return bodies[0].decode()
+
+    def test_infiltration_included_when_set(self) -> None:
+        body = self._submitted_body(infiltration="HORTON")
+        self.assertIn("infiltration=HORTON", body)
+
+    def test_infiltration_omitted_by_default(self) -> None:
+        body = self._submitted_body()
+        self.assertNotIn("infiltration", body)
+
+
 if __name__ == "__main__":
     unittest.main()

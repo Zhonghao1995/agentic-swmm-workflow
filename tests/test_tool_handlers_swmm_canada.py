@@ -109,6 +109,31 @@ class HandlerTests(unittest.TestCase):
                 fetch_swmm_from_canada_tool(call, Path(tmp))
             self.assertEqual(fetch.call_args.args[0], aoi)
 
+    def test_infiltration_is_passed_through(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            call = ToolCall(
+                "fetch_swmm_from_canada",
+                {"bbox": BBOX, "run_dir": str(run_dir), "infiltration": "GREEN_AMPT", **DATES},
+            )
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi",
+                return_value=_fake_result(run_dir),
+            ) as fetch:
+                fetch_swmm_from_canada_tool(call, Path(tmp))
+            self.assertEqual(fetch.call_args.kwargs["infiltration"], "GREEN_AMPT")
+
+    def test_infiltration_defaults_to_none(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            call = ToolCall("fetch_swmm_from_canada", {"bbox": BBOX, "run_dir": str(run_dir), **DATES})
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi",
+                return_value=_fake_result(run_dir),
+            ) as fetch:
+                fetch_swmm_from_canada_tool(call, Path(tmp))
+            self.assertIsNone(fetch.call_args.kwargs["infiltration"])
+
     def test_missing_aoi_and_bbox_fails_soft(self) -> None:
         call = ToolCall("fetch_swmm_from_canada", {**DATES})
         with TemporaryDirectory() as tmp:

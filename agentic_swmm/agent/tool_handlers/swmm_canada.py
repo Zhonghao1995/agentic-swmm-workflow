@@ -152,6 +152,12 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     run_dir = _resolve_run_dir(call)
     base_url_raw = call.args.get("base_url")
     base_url = base_url_raw if isinstance(base_url_raw, str) and base_url_raw.strip() else None
+    infiltration_raw = call.args.get("infiltration")
+    infiltration = (
+        infiltration_raw.strip()
+        if isinstance(infiltration_raw, str) and infiltration_raw.strip()
+        else None
+    )
 
     # Lazy import — keeps the agent's import graph light. The runner is pure
     # stdlib, so this is cheap; the lazy form also matches swmm_anywhere.py and
@@ -176,7 +182,7 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     return _inp_source_tool(
         call,
         fetch=lambda: fetch_from_aoi(
-            aoi, start, end, run_dir=run_dir, base_url=base_url
+            aoi, start, end, run_dir=run_dir, base_url=base_url, infiltration=infiltration
         ),
         describe=_describe,
         stage_hint=_stage_hint,
