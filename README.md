@@ -33,6 +33,9 @@
 
 > **Pre-1.0** · stable **v0.7.4** · `pip install aiswmm==0.7.4` · [CHANGELOG](CHANGELOG.md)
 
+> [!TIP]
+> **Headaches from tedious model setup?** Try [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), our automated model-building project: draw an area anywhere in Canada and get a ready-to-run SWMM model. Up and running now.
+
 ## Highlights
 
 - **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, with a verification-first workflow and Obsidian-compatible audit trail.
