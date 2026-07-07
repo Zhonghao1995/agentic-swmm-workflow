@@ -87,6 +87,17 @@
       "exclusive_when": "user has not provided any .shp/.csv/network.json/.inp file — only use this intent when the user lacks real pipe-network data"
     },
     {
+      "id": "fetch-canada",
+      "skills": [],
+      "keywords": ["canada", "canadian", "real network", "real pipes", "municipal storm", "真实管网", "真实管道", "加拿大", "victoria", "ottawa", "calgary", "surrey", "kitchener", "waterloo", "kelowna", "regina"],
+      "required_inputs": ["bbox_or_aoi_geojson", "start_date", "end_date"],
+      "optional_inputs": ["run_dir", "infiltration", "base_url"],
+      "preferred_tools": ["fetch_swmm_from_canada"],
+      "stop_conditions": ["AOI outside Canada (use synth-from-bbox)", "SWMMCanada service unreachable"],
+      "next_user_prompt": "Please provide the Canadian area (bbox or GeoJSON polygon) and a rainfall date window (start and end dates, YYYY-MM-DD).",
+      "exclusive_when": "the AOI is in Canada and the user wants the city's real published storm network — outside Canada or outside a supported city, synth-from-bbox is the path"
+    },
+    {
       "id": "runner",
       "skills": ["swmm-runner"],
       "keywords": [".inp", "run", "runner", "swmm5", "运行", "跑一下"],

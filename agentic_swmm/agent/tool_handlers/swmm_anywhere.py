@@ -30,7 +30,6 @@ helpers every family imports.
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Any
 
@@ -38,9 +37,9 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _inp_source_tool,
     _safe_name,
+    _timestamped_run_dir,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
 
 
 def _stage_hint(stage: str) -> str:
@@ -96,29 +95,13 @@ def _validate_bbox(raw: Any) -> tuple[list[float] | None, str | None]:
 
 
 def _resolve_run_dir(call: ToolCall) -> Path:
-    """Pick the run directory: caller-provided absolute path or a
-    repo-relative default under ``runs/agent/<safe>-<unix-ts>``.
+    """Caller-provided path, or a timestamped default under ``runs/agent``.
 
-    Mirrors the ``run_swmm_inp`` handler's timestamped default so a
-    re-run of the same project name never lands in (and silently
-    overwrites) a previous run's directory (issue #246/#234). If the
-    timestamped name already exists on disk, a ``-N`` suffix bumps
-    until a fresh directory is found. An EXPLICIT ``run_dir`` is
-    passed through untouched — same-dir reuse (e.g. the synth
-    ``00_raw/`` snapshot workflow) stays a deliberate caller choice.
+    Thin wrapper over ``_shared._timestamped_run_dir`` (issue #296);
+    the prefix is the safe project name so run dirs stay recognisable.
     """
-    raw = call.args.get("run_dir")
-    if isinstance(raw, str) and raw.strip():
-        return Path(raw).expanduser()
     project = str(call.args.get("project_name") or "swmm-anywhere")
-    base = f"{_safe_name(project)}-{int(time.time())}"
-    root = repo_root() / "runs" / "agent"
-    candidate = root / base
-    bump = 1
-    while candidate.exists():
-        bump += 1
-        candidate = root / f"{base}-{bump}"
-    return candidate
+    return _timestamped_run_dir(call, prefix=_safe_name(project))
 
 
 def _synth_swmm_from_bbox_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

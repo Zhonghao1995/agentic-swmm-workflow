@@ -46,7 +46,9 @@ class StageHintTests(unittest.TestCase):
         self.assertIn("AISWMM_SWMMCANADA_URL", _stage_hint("config_missing"))
 
     def test_task_failed_hint_mentions_supported_cities(self) -> None:
-        self.assertIn("Canadian", _stage_hint("task_failed"))
+        hint = _stage_hint("task_failed")
+        self.assertIn("Canadian", hint)
+        self.assertIn("Regina", hint)  # 8th city, added upstream after v0.7.4
 
     def test_extract_hint_points_at_zip_not_service(self) -> None:
         hint = _stage_hint("extract")
@@ -176,6 +178,17 @@ class HandlerTests(unittest.TestCase):
             ) as fetch:
                 fetch_swmm_from_canada_tool(call, Path(tmp))
         fetch.assert_called_once()
+
+    def test_progress_callback_is_wired_into_the_fetch(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            call = ToolCall("fetch_swmm_from_canada", {"bbox": BBOX, "run_dir": str(run_dir), **DATES})
+            with mock.patch(
+                "agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi",
+                return_value=_fake_result(run_dir),
+            ) as fetch:
+                fetch_swmm_from_canada_tool(call, Path(tmp))
+            self.assertTrue(callable(fetch.call_args.kwargs["progress"]))
 
     def test_missing_aoi_and_bbox_fails_soft(self) -> None:
         call = ToolCall("fetch_swmm_from_canada", {**DATES})

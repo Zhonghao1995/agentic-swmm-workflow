@@ -21,7 +21,6 @@ maps ``SynthRunError`` stages.
 from __future__ import annotations
 
 import json
-import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -29,10 +28,10 @@ from typing import Any
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _inp_source_tool,
-    _safe_name,
+    _timestamped_run_dir,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.agent.ui import update_tool_status
 
 
 def _stage_hint(stage: str) -> str:
@@ -47,8 +46,8 @@ def _stage_hint(stage: str) -> str:
         return (
             "the service rejected this AOI — SWMMCanada produces real municipal "
             "pipe networks only for supported Canadian cities (Victoria, Ottawa, "
-            "Calgary, Surrey, London, Kitchener-Waterloo, Kelowna). For other "
-            "regions use synth_swmm_from_bbox instead."
+            "Calgary, Surrey, London, Kitchener-Waterloo, Kelowna, Regina). For "
+            "other regions use synth_swmm_from_bbox instead."
         )
     if stage == "timeout":
         return (
@@ -153,22 +152,11 @@ def _resolve_dates(call: ToolCall) -> tuple[tuple[date, date] | None, str | None
 
 
 def _resolve_run_dir(call: ToolCall) -> Path:
-    """Caller-provided absolute path, or a timestamped default under ``runs/agent``.
+    """Caller-provided path, or a timestamped default under ``runs/agent``.
 
-    Mirrors the swmm-anywhere handler so a re-fetch never silently overwrites
-    a previous run's directory.
+    Thin wrapper over ``_shared._timestamped_run_dir`` (issue #296).
     """
-    raw = call.args.get("run_dir")
-    if isinstance(raw, str) and raw.strip():
-        return Path(raw).expanduser()
-    base = f"swmm-canada-{int(time.time())}"
-    root = repo_root() / "runs" / "agent"
-    candidate = root / base
-    bump = 1
-    while candidate.exists():
-        bump += 1
-        candidate = root / f"{base}-{bump}"
-    return candidate
+    return _timestamped_run_dir(call, prefix="swmm-canada")
 
 
 def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -222,10 +210,23 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
             f"canada_inp={result.inp_path} (task={result.task_id}, mode={result.mode})",
         )
 
+    def _progress(stage: str, pct: Any) -> None:
+        # Live status for the multi-minute upstream build: the poll loop
+        # reports stage + progress_pct and this repaints the executor's
+        # status line (no-op outside an agent run). Best-effort by design.
+        text = "fetch_swmm_from_canada"
+        if stage:
+            text += f" — {stage}"
+        if isinstance(pct, (int, float)):
+            text += f" {int(pct)}%"
+        update_tool_status(text)
+
     return _inp_source_tool(
         call,
         fetch=lambda: fetch_from_aoi(
-            aoi, start, end, run_dir=run_dir, base_url=base_url, infiltration=infiltration
+            aoi, start, end,
+            run_dir=run_dir, base_url=base_url, infiltration=infiltration,
+            progress=_progress,
         ),
         describe=_describe,
         stage_hint=_stage_hint,

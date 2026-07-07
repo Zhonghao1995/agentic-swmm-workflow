@@ -343,6 +343,55 @@ class TransientRetryTests(unittest.TestCase):
         self.assertEqual(opener.attempts, DEFAULT_MAX_ATTEMPTS)
 
 
+class ProgressCallbackTests(unittest.TestCase):
+    """The optional progress callback surfaces the multi-minute build as
+    live status; it is strictly best-effort and can never break a fetch."""
+
+    def test_progress_reports_each_poll_tick_and_download(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        opener = _FakeOpener(
+            zip_bytes=_make_zip(),
+            status_script=[
+                {"state": "QUEUED", "progress_pct": 0, "stage": "QUEUED", "mode": "real", "error": None},
+                {"state": "RUNNING", "progress_pct": 40, "stage": "BUILDING", "mode": "real", "error": None},
+                {"state": "SUCCEEDED", "progress_pct": 100, "stage": "DONE", "mode": "real", "error": None},
+            ],
+        )
+        seen: list[tuple[str, object]] = []
+        with TemporaryDirectory() as tmp:
+            fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=lambda *_: None,
+                progress=lambda stage, pct: seen.append((stage, pct)),
+            )
+        self.assertEqual(
+            seen,
+            [("QUEUED", 0), ("BUILDING", 40), ("DONE", 100), ("DOWNLOADING", None)],
+        )
+
+    def test_broken_progress_callback_never_breaks_the_fetch(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        def _boom(stage, pct):  # noqa: ANN001
+            raise RuntimeError("progress UI crashed")
+
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        with TemporaryDirectory() as tmp:
+            result = fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=lambda *_: None,
+                progress=_boom,
+            )
+            self.assertTrue(result.inp_path.is_file())
+
+
 class InfiltrationPassthroughTests(unittest.TestCase):
     """The optional infiltration method is passed through verbatim; the
     service owns the enum (this client never validates it)."""

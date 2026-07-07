@@ -264,3 +264,38 @@ class Spinner:
             return bool(isatty())
         except (AttributeError, ValueError):
             return False
+
+
+# ---------------------------------------------------------------------------
+# Live tool status seam (SWMMCanada UX polish)
+# ---------------------------------------------------------------------------
+# The executor owns one per-run RUNNING spinner; long-blocking tool handlers
+# (e.g. fetch_swmm_from_canada polling a multi-minute upstream build) have no
+# handle on it. This module-level seam lets a handler repaint the live status
+# line without threading a spinner through 56 handler signatures. Outside an
+# agent run (CLI verbs, tests) there is no active spinner and updates are
+# silent no-ops. Updates are deduped so a non-TTY stream (one line per
+# update) is not spammed by identical poll ticks.
+
+_active_tool_spinner: Spinner | None = None
+_last_tool_status: str | None = None
+
+
+def set_active_tool_spinner(spinner: Spinner | None) -> None:
+    """Register (or clear, with ``None``) the executor's per-tool spinner."""
+    global _active_tool_spinner, _last_tool_status
+    _active_tool_spinner = spinner
+    _last_tool_status = None
+
+
+def update_tool_status(text: str) -> None:
+    """Best-effort live status update from inside a blocking tool handler."""
+    global _last_tool_status
+    spinner = _active_tool_spinner
+    if spinner is None or text == _last_tool_status:
+        return
+    _last_tool_status = text
+    try:
+        spinner.update(text)
+    except Exception:  # pragma: no cover - progress must never break a tool
+        pass

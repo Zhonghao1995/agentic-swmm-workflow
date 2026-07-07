@@ -109,11 +109,13 @@ class ResolveRunDirTests(unittest.TestCase):
         a collision silently overwrites the earlier results."""
         import tempfile
 
-        from agentic_swmm.agent.tool_handlers import swmm_anywhere as mod
+        # The collision policy lives in _shared._timestamped_run_dir since
+        # issue #296 — patch repo_root where it is now looked up.
+        from agentic_swmm.agent.tool_handlers import _shared as shared_mod
 
         call = ToolCall("synth_swmm_from_bbox", {"bbox": VALID_BBOX, "project_name": "todcreek"})
         with tempfile.TemporaryDirectory() as tmp:
-            with mock.patch.object(mod, "repo_root", return_value=Path(tmp)):
+            with mock.patch.object(shared_mod, "repo_root", return_value=Path(tmp)):
                 first = _resolve_run_dir(call)
                 first.mkdir(parents=True)
                 second = _resolve_run_dir(call)
