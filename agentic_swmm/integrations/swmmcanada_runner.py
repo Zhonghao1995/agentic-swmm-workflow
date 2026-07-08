@@ -9,10 +9,14 @@ runnable SWMM model from Canadian open data. aiswmm consumes it over a
     GET  /api/v1/tasks/{id}/result-> 200 swmm_model.zip | 409 not ready | 404
 
 This module submits, polls to a terminal state, downloads the zip, and
-extracts ``model.inp``. The whole zip is kept in the run directory as the
-durable provenance artifact (the upstream task store is in-memory, and the
-upstream's own provenance — datastore + validation.json — rides inside the
-zip). aiswmm records only two foreign keys: the service URL and task_id.
+extracts ``model.inp``. Per the canonical run-directory layout (ADR-0004,
+``agentic_swmm.agent.swmm_runtime.run_layout``): the whole zip is kept as
+the durable provenance artifact inside the ``10_upstream/swmmcanada/``
+box (the upstream task store is in-memory, and the upstream's own
+provenance — datastore + validation.json — rides inside the zip), while
+the extracted ``model.inp`` is staged under ``05_builder/`` — the same
+canonical stage every other INP source lands its runnable model in.
+aiswmm records only two foreign keys: the service URL and task_id.
 
 The HTTP seam is pure stdlib ``urllib`` with an injectable ``opener``
 (mirroring ``agentic_swmm/providers/_http.py``), so callers and tests can
@@ -32,6 +36,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.integrations.inp_source import InpSourceError, InpSourceResult
 from agentic_swmm.providers._http import (
     DEFAULT_BACKOFF_BASE_S,
@@ -151,7 +156,9 @@ def fetch_from_aoi(
     swallowed: reporting progress must never break the fetch.
 
     Returns a :class:`CanadaFetchResult` with ``model.inp`` extracted under
-    ``run_dir`` and the whole ``swmm_model.zip`` kept alongside it.
+    the canonical ``05_builder/`` stage of ``run_dir`` and the whole
+    ``swmm_model.zip`` kept alongside it in the ``10_upstream/swmmcanada/``
+    box (ADR-0004).
     """
     service_url = (base_url or os.environ.get(BASE_URL_ENV) or "").strip().rstrip("/")
     if not service_url:
@@ -271,7 +278,10 @@ def _download_zip(
         data = _open_with_retry(req, timeout=300, opener=opener, sleep=sleep)
     except (urllib.error.HTTPError, urllib.error.URLError) as exc:
         raise CanadaFetchError("download", repr(exc)) from exc
-    zip_path = run_dir / "swmm_model.zip"
+    # The zip is provenance evidence, so it lives in the opaque upstream box
+    # (ADR-0001/ADR-0004) rather than at the run-dir root.
+    upstream_box = run_layout.upstream_dir(run_dir, run_layout.UPSTREAM_SWMMCANADA, create=True)
+    zip_path = upstream_box / "swmm_model.zip"
     zip_path.write_bytes(data)
     return zip_path
 
@@ -283,7 +293,11 @@ def _extract(zip_path: Path, run_dir: Path) -> tuple[Path, dict | None]:
             inp_name = next((n for n in names if n.lower().endswith(".inp")), None)
             if inp_name is None:
                 raise CanadaFetchError("extract", f"no .inp in {zip_path.name} ({names})")
-            inp_path = run_dir / "model.inp"
+            # The runnable model is a builder artifact (ADR-0004) — it sits in
+            # 05_builder/ like every other INP source, separate from the
+            # opaque upstream zip.
+            builder_dir = run_layout.stage_dir(run_dir, run_layout.BUILDER, create=True)
+            inp_path = builder_dir / "model.inp"
             # Stream instead of zf.read() + write_bytes — avoids holding a
             # second full copy of a large model in memory (issue #295, LOW).
             with zf.open(inp_name) as src, inp_path.open("wb") as dst:

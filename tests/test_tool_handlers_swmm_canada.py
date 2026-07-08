@@ -29,10 +29,12 @@ DATES = {"start_date": "2022-06-01", "end_date": "2022-06-07"}
 
 
 def _fake_result(run_dir: Path) -> CanadaFetchResult:
+    # Paths mirror the runner's canonical layout (ADR-0004): model.inp in
+    # 05_builder/, swmm_model.zip in the opaque 10_upstream/swmmcanada/ box.
     return CanadaFetchResult(
-        inp_path=run_dir / "model.inp",
+        inp_path=run_dir / "05_builder" / "model.inp",
         run_dir=run_dir,
-        zip_path=run_dir / "swmm_model.zip",
+        zip_path=run_dir / "10_upstream" / "swmmcanada" / "swmm_model.zip",
         service_url="http://svc",
         task_id="t1",
         mode="real",
@@ -79,8 +81,11 @@ class HandlerTests(unittest.TestCase):
             ) as fetch:
                 payload = fetch_swmm_from_canada_tool(call, Path(tmp))
             self.assertTrue(payload["ok"])
-            self.assertEqual(payload["results"]["inp_path"], str(run_dir / "model.inp"))
-            self.assertEqual(payload["results"]["zip_path"], str(run_dir / "swmm_model.zip"))
+            self.assertEqual(payload["results"]["inp_path"], str(run_dir / "05_builder" / "model.inp"))
+            self.assertEqual(
+                payload["results"]["zip_path"],
+                str(run_dir / "10_upstream" / "swmmcanada" / "swmm_model.zip"),
+            )
             self.assertEqual(payload["results"]["task_id"], "t1")
             self.assertEqual(payload["results"]["service_url"], "http://svc")
             self.assertEqual(payload["results"]["mode"], "real")

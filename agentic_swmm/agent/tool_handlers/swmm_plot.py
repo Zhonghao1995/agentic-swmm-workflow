@@ -39,6 +39,7 @@ from typing import Any
 from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path, _resolve_run_dir
 from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
 from agentic_swmm.agent.swmm_runtime.run_artifacts import (
     find_inp as _find_inp,
@@ -159,12 +160,15 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         if out_png is None or out_png.suffix.lower() != ".png":
             return _failure(call, "out_png must be a repository-relative .png path")
     else:
-        # The MCP server requires outPng. Match the historical CLI default
-        # (``07_plots/fig_<node>_<attr>.png`` under the run dir). When
-        # ``link`` is set, use the conduit id so the file is findable.
+        # The MCP server requires outPng. Match the CLI default (ADR-0004:
+        # ``run_layout.PLOT`` = ``08_plot/fig_<node>_<attr>.png`` under the
+        # run dir; the legacy ``07_plots`` name stays readable but is never
+        # written again). When ``link`` is set, use the conduit id so the
+        # file is findable.
+        plot_dir = run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
         if link is not None:
             safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", link).strip("_") or "link"
-            out_png = run_dir / "07_plots" / f"fig_link_{safe}_flow.png"
+            out_png = plot_dir / f"fig_link_{safe}_flow.png"
         else:
             node_for_default = re.sub(
                 r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node") or "node")
@@ -172,8 +176,7 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             attr_for_default = re.sub(
                 r"[^A-Za-z0-9_.-]+", "_", str(call.args.get("node_attr") or "series")
             ).strip("_") or "series"
-            out_png = run_dir / "07_plots" / f"fig_{node_for_default}_{attr_for_default}.png"
-        out_png.parent.mkdir(parents=True, exist_ok=True)
+            out_png = plot_dir / f"fig_{node_for_default}_{attr_for_default}.png"
     args: dict[str, Any] = {
         "inp": str(inp_path),
         "out": str(out_path),

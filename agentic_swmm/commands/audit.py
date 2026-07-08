@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import register_example_flag
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.utils.paths import require_dir, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
@@ -18,7 +19,20 @@ from agentic_swmm.utils.subprocess_runner import append_trace, python_command, r
 # returned. Full ``request_expert_review`` triggering remains a
 # follow-up; this PRD just makes the data available.
 THRESHOLD_HITS_FILENAME = "threshold_hits.json"
-_QA_SUMMARY_REL = Path("06_qa") / "qa_summary.json"
+
+
+def _resolve_qa_summary_path(run_dir: Path) -> Path | None:
+    """Locate ``qa_summary.json`` under the run's QA stage (ADR-0004).
+
+    Canonical ``run_layout.QA`` (``07_qa``) first, then the legacy
+    generation (``06_qa``) via ``run_layout.find_stage`` — read-only
+    tolerance; this command never writes into the legacy name.
+    """
+    qa_dir = run_layout.find_stage(run_dir, run_layout.QA)
+    if qa_dir is None:
+        return None
+    candidate = qa_dir / "qa_summary.json"
+    return candidate if candidate.is_file() else None
 
 
 REAUDIT_BACKED_UP_FILES = (
@@ -103,8 +117,8 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
     )
     from agentic_swmm.utils.paths import repo_root
 
-    qa_path = run_dir / _QA_SUMMARY_REL
-    if not qa_path.is_file():
+    qa_path = _resolve_qa_summary_path(run_dir)
+    if qa_path is None:
         return None
     try:
         qa = json.loads(qa_path.read_text(encoding="utf-8"))
@@ -123,9 +137,13 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
     audit_dir = run_dir / "09_audit"
     audit_dir.mkdir(parents=True, exist_ok=True)
     out_path = audit_dir / THRESHOLD_HITS_FILENAME
+    try:
+        qa_summary_rel = str(qa_path.relative_to(run_dir))
+    except ValueError:
+        qa_summary_rel = str(qa_path)
     payload = {
         "generated_at_utc": _utc_stamp(),
-        "qa_summary": str(_QA_SUMMARY_REL),
+        "qa_summary": qa_summary_rel,
         "thresholds_doc": "docs/hitl-thresholds.md",
         "hits": [
             {

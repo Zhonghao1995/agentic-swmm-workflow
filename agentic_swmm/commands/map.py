@@ -9,11 +9,12 @@ the same CLI level and route through the same skill (``swmm-plot``).
 Data discovery (run-dir convention introduced by PRD
 swmmanywhere_integration):
 
-* If ``<run-dir>/10_swmmanywhere/`` contains ``nodes.geoparquet`` +
-  ``edges.geoparquet`` + ``subcatchments.geoparquet`` (the artefacts
-  the swmm-anywhere runner copies out of the SWMManywhere pipeline),
-  the renderer reads those directly — the geometries are real WGS84
-  shapes downloaded from OSM.
+* If the canonical upstream box ``<run-dir>/10_upstream/swmmanywhere/``
+  (ADR-0004; falls back to the legacy flat ``<run-dir>/10_swmmanywhere/``
+  for older runs) contains ``nodes.geoparquet`` + ``edges.geoparquet`` +
+  ``subcatchments.geoparquet`` (the artefacts the swmm-anywhere runner
+  copies out of the SWMManywhere pipeline), the renderer reads those
+  directly — the geometries are real WGS84 shapes downloaded from OSM.
 * Otherwise the renderer parses ``[COORDINATES]``, ``[VERTICES]``,
   ``[Polygons]``, ``[SUBCATCHMENTS]``, ``[JUNCTIONS]``, ``[OUTFALLS]``,
   and ``[CONDUITS]`` directly out of the INP. This path needs nothing
@@ -33,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.run_artifacts import find_inp, read_manifest
 from agentic_swmm.utils.paths import require_dir, require_file, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
@@ -44,12 +46,20 @@ _MAP_EXAMPLE = "aiswmm map --run-dir runs/2026-05-27/195456_e2e_chain"
 def _find_synth_dir(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
     """Locate the SWMManywhere geoparquet directory, if present.
 
-    SWMManywhere's runner writes its three geoparquet artefacts under
-    ``<run-dir>/10_swmmanywhere/``. We don't require all three to be
-    present — the script will gracefully fall back to INP parsing
-    when any of the files (or geopandas itself) is missing.
+    SWMManywhere's runner writes its three geoparquet artefacts under the
+    canonical upstream box ``<run-dir>/10_upstream/swmmanywhere/``
+    (ADR-0004); older runs may carry it under the legacy flat
+    ``<run-dir>/10_swmmanywhere/``. We don't require all three artefacts to
+    be present — the script will gracefully fall back to INP parsing when
+    any of the files (or geopandas itself) is missing.
     """
-    candidate = run_dir / "10_swmmanywhere"
+    candidate = run_layout.upstream_dir(run_dir, run_layout.UPSTREAM_SWMMANYWHERE)
+    if not candidate.is_dir():
+        for legacy_name in run_layout.LEGACY_ALIASES.get(run_layout.UPSTREAM, ()):
+            legacy_candidate = run_dir / legacy_name
+            if legacy_candidate.is_dir():
+                candidate = legacy_candidate
+                break
     if candidate.is_dir():
         # Only return when at least one of the three artefacts is
         # actually there. An empty directory means SWMManywhere never
@@ -89,7 +99,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--out-png",
         type=Path,
         default=None,
-        help="Output PNG path. Defaults to <run-dir>/07_plots/network_map.png.",
+        help=f"Output PNG path. Defaults to <run-dir>/{run_layout.PLOT}/network_map.png.",
     )
     parser.add_argument(
         "--dpi",
@@ -134,7 +144,7 @@ def main(args: argparse.Namespace) -> int:
     out_png = (
         args.out_png.expanduser().resolve()
         if args.out_png
-        else run_dir / "07_plots" / "network_map.png"
+        else run_layout.stage_dir(run_dir, run_layout.PLOT, create=True) / "network_map.png"
     )
 
     script = script_path("skills", "swmm-plot", "scripts", "plot_network_layout.py")

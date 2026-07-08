@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import register_example_flag
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.inp_parsing import (
     infer_rain_timeseries as _infer_rain_timeseries,
 )
@@ -70,7 +71,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         choices=["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"],
         help="How to interpret rainfall values. Defaults to INP-based inference, then depth_mm_per_dt.",
     )
-    parser.add_argument("--out-png", type=Path, help="Output PNG path. Defaults to run-dir/07_plots/fig_rain_runoff.png.")
+    parser.add_argument("--out-png", type=Path, help=f"Output PNG path. Defaults to run-dir/{run_layout.PLOT}/fig_rain_runoff.png.")
     parser.add_argument("--focus-day", help="Optional focus day in YYYY-MM-DD format.")
     parser.add_argument("--window-start", help="Optional HH:MM start time when --focus-day is set.")
     parser.add_argument("--window-end", help="Optional HH:MM end time when --focus-day is set.")
@@ -97,7 +98,11 @@ def main(args: argparse.Namespace) -> int:
     if out_file is None:
         raise FileNotFoundError(f"Unable to find a SWMM OUT file in run directory: {run_dir}")
 
-    out_png = args.out_png.expanduser().resolve() if args.out_png else run_dir / "07_plots" / "fig_rain_runoff.png"
+    out_png = (
+        args.out_png.expanduser().resolve()
+        if args.out_png
+        else run_layout.stage_dir(run_dir, run_layout.PLOT, create=True) / "fig_rain_runoff.png"
+    )
     rain_ts = args.rain_ts
     inferred_rain_kind = None
     if not rain_ts:

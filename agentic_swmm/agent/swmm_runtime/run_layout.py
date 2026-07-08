@@ -71,8 +71,8 @@ UPSTREAM_SWMMCANADA = "swmmcanada"
 LEGACY_ALIASES: dict[str, tuple[str, ...]] = {
     BUILDER: ("04_builder", "builder"),
     RUNNER: ("05_runner", "runner", "01_runner"),
-    QA: ("06_qa", "07_qa"),
-    PLOT: ("07_plots", "08_plot"),
+    QA: ("06_qa",),
+    PLOT: ("07_plots",),
     AUDIT: ("06_audit",),
     REVIEW: ("09_review",),
     UPSTREAM: ("10_swmmanywhere",),

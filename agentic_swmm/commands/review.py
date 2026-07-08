@@ -13,6 +13,7 @@ import argparse
 from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import register_example_flag
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.utils.paths import require_dir, script_path
 from agentic_swmm.utils.subprocess_runner import python_command, run_command
 
@@ -33,7 +34,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--out-dir",
         type=Path,
         default=None,
-        help="Output directory for review artifacts (default: <run-dir>/09_review/).",
+        help=f"Output directory for review artifacts (default: <run-dir>/{run_layout.REVIEW}/).",
     )
     register_example_flag(parser, example_text="aiswmm review --run-dir runs/<case>")
     parser.set_defaults(func=main)
@@ -41,14 +42,18 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 def main(args: argparse.Namespace) -> int:
     run_dir = require_dir(args.run_dir, "run directory")
+    # Canonical default (ADR-0004): land in run_layout.REVIEW unless the
+    # caller overrides --out-dir. Always pass --out-dir explicitly so this
+    # CLI verb never falls through to design_review.py's own legacy
+    # ``09_review`` default.
+    out_dir = args.out_dir or run_layout.stage_dir(run_dir, run_layout.REVIEW)
     cmd = python_command(
         script_path("skills", "swmm-design-review", "scripts", "design_review.py"),
         "--run-dir", str(run_dir),
+        "--out-dir", str(out_dir),
     )
     if args.rules:
         cmd.extend(["--rules", str(args.rules)])
-    if args.out_dir:
-        cmd.extend(["--out-dir", str(args.out_dir)])
     result = run_command(cmd)
     if result.stdout.strip():
         print(result.stdout.strip())

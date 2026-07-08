@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _resolve_run_dir,
@@ -28,9 +29,10 @@ _REVIEW_SCRIPT = ("skills", "swmm-design-review", "scripts", "design_review.py")
 def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Run the deterministic design-review rule checklist against a completed run.
 
-    Shells out to design_review.py.  Writes ``09_review/design_review.json``
-    and ``09_review/design_review.md`` into the run directory.  Reports
-    findings; never certifies compliance.
+    Shells out to design_review.py.  Writes ``11_review/design_review.json``
+    and ``11_review/design_review.md`` into the run directory (canonical per
+    ADR-0004; older runs may carry these under the legacy ``09_review/``).
+    Reports findings; never certifies compliance.
     """
     run_dir = _resolve_run_dir(call, "run_dir")
     if isinstance(run_dir, dict):
@@ -54,7 +56,12 @@ def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         out_dir_path = Path(out_dir_raw).expanduser()
         if not out_dir_path.is_absolute():
             out_dir_path = (repo_root() / out_dir_path).resolve()
-        cli_args.extend(["--out-dir", str(out_dir_path)])
+    else:
+        # Canonical default (ADR-0004): always pass --out-dir explicitly so
+        # this tool never falls through to design_review.py's own legacy
+        # ``09_review`` default.
+        out_dir_path = run_layout.stage_dir(run_dir, run_layout.REVIEW)
+    cli_args.extend(["--out-dir", str(out_dir_path)])
 
     return _run_script_tool(call, session_dir, cli_args)
 

@@ -7,6 +7,15 @@ CLI verb and was reached into by the ``map`` verb and the plot tool
 handler — three consumers importing underscore names across module
 boundaries. The 2026-07 architecture pass gave the family its own
 home next to the other run-contract modules (postflight / rpt_summary).
+
+ADR-0004: the subdirectory patterns below are canonical-first
+(``run_layout.BUILDER`` / ``run_layout.RUNNER``) with a legacy-generation
+fallback resolved through ``run_layout.find_stage`` — see
+``agentic_swmm.agent.swmm_runtime.run_layout`` for the single source of
+truth on stage numbering. The bare ``*.inp`` / ``*.out`` / ``**/*.inp`` /
+``**/*.out`` globs after that are the pre-ADR-0004 flat-layout fallback
+(the agent path used to write straight into the run-dir root); they stay
+so very old runs and one-off directories still resolve.
 """
 
 from __future__ import annotations
@@ -15,6 +24,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.utils.paths import repo_root
 
 
@@ -50,7 +60,15 @@ def find_inp(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
     recorded = resolve_recorded_path(manifest.get("inp"), run_dir)
     if recorded and recorded.exists():
         return recorded
-    for pattern in ("00_inputs/*.inp", "04_builder/*.inp", "*.inp", "**/*.inp"):
+    matches = sorted((run_dir / "00_inputs").glob("*.inp"))
+    if matches:
+        return matches[0]
+    builder_dir = run_layout.find_stage(run_dir, run_layout.BUILDER)
+    if builder_dir is not None:
+        matches = sorted(builder_dir.glob("*.inp"))
+        if matches:
+            return matches[0]
+    for pattern in ("*.inp", "**/*.inp"):
         matches = sorted(run_dir.glob(pattern))
         if matches:
             return matches[0]
@@ -64,7 +82,12 @@ def find_out(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
         recorded = resolve_recorded_path(files.get("out"), run_dir)
         if recorded and recorded.exists():
             return recorded
-    for pattern in ("05_runner/*.out", "01_runner/*.out", "*.out", "**/*.out"):
+    runner_dir = run_layout.find_stage(run_dir, run_layout.RUNNER)
+    if runner_dir is not None:
+        matches = sorted(runner_dir.glob("*.out"))
+        if matches:
+            return matches[0]
+    for pattern in ("*.out", "**/*.out"):
         matches = sorted(run_dir.glob(pattern))
         if matches:
             return matches[0]

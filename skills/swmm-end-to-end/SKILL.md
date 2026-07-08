@@ -149,7 +149,7 @@ inputs are referenced.
 14. `swmm-runner-mcp.swmm_run` — omit the `node` arg to auto-detect the first `[OUTFALLS]` entry from the .inp.
 15. `swmm-runner-mcp.swmm_continuity`
 16. `swmm-runner-mcp.swmm_peak` — pass the actual outfall name explicitly (no longer defaults to `O1`).
-16b. `aiswmm review --run-dir runs/<case> --rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml` — reference-free plausibility review (no observed data); writes `09_review/design_review.json` + `.md`. Direct `review_run` tool / CLI verb, not an MCP server. Use the `synth_plausibility` rulebook for `swmm-anywhere` runs; use `gb50014_template` (or a local rulebook) for real-data design checks.
+16b. `aiswmm review --run-dir runs/<case> --rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml` — reference-free plausibility review (no observed data); writes `11_review/design_review.json` + `.md`. Direct `review_run` tool / CLI verb, not an MCP server. Use the `synth_plausibility` rulebook for `swmm-anywhere` runs; use `gb50014_template` (or a local rulebook) for real-data design checks.
 17. optional `swmm-plot-mcp.plot_rain_runoff_si` — paired rain + flow figure for any node.
 14. optional calibration tools:
    - `swmm-calibration-mcp.swmm_sensitivity_scan`
@@ -190,7 +190,7 @@ Exact MCP call chain for prepared inputs:
 2. `swmm-runner-mcp.swmm_run`
 3. `swmm-runner-mcp.swmm_continuity`
 4. `swmm-runner-mcp.swmm_peak`
-4b. `aiswmm review --run-dir runs/<case> [--rules <rulebook.yaml>]` — reference-free plausibility review; writes `09_review/`. Defaults to the `gb50014_template` rulebook; pass `--rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml` for synthesized networks.
+4b. `aiswmm review --run-dir runs/<case> [--rules <rulebook.yaml>]` — reference-free plausibility review; writes `11_review/`. Defaults to the `gb50014_template` rulebook; pass `--rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml` for synthesized networks.
 5. optional `swmm-plot-mcp.plot_rain_runoff_si`
 6. optional calibration tools
 7. optional uncertainty / LID scripts where a runnable base INP exists
@@ -384,7 +384,7 @@ At minimum, the orchestrator should leave behind:
 - run `.out`
 - `manifest.json`
 - a short machine-readable QA summary
-- `09_review/design_review.json` + `09_review/design_review.md` (reference-free plausibility review)
+- `11_review/design_review.json` + `11_review/design_review.md` (reference-free plausibility review)
 - `09_audit/experiment_provenance.json`
 - `09_audit/comparison.json`
 - Obsidian-compatible `09_audit/experiment_note.md`
