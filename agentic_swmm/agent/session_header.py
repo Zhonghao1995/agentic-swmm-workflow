@@ -38,15 +38,38 @@ from typing import Any
 
 import yaml
 
-from agentic_swmm import __version__ as _AISWMM_VERSION
+from agentic_swmm import __version__ as _DIST_VERSION
 from agentic_swmm.utils.paths import repo_root
+
+
+def _aiswmm_version() -> str:
+    """The version this code IS, not the version last pip-installed.
+
+    Editable/checkout runs often carry stale dist metadata (pyproject
+    already bumped, dist not reinstalled), so prefer the checkout's
+    pyproject.toml and fall back to the installed metadata.
+    """
+    try:
+        import tomllib
+
+        with (repo_root() / "pyproject.toml").open("rb") as fh:
+            version = tomllib.load(fh)["project"]["version"]
+        return str(version)
+    except Exception:
+        return _DIST_VERSION
+
+
+_AISWMM_VERSION = _aiswmm_version()
 
 SESSION_HEADER_NAME = "session.yaml"
 AGENT_SNAPSHOT_NAME = "agent_snapshot.json"
 
-# Env var set by the Docker entrypoint (ADR-0003 layer 3, wired in the
-# environment-fingerprint PR); absent means a bare-metal run.
+# Container identity (ADR-0003 layer 3). The image REFERENCE (tag) is
+# baked into the image as an ENV by the Dockerfile; the content DIGEST
+# only exists after push, so runners/CI inject it at `docker run -e`.
+# Both absent means a bare-metal run.
 CONTAINER_DIGEST_ENV = "AISWMM_CONTAINER_DIGEST"
+CONTAINER_IMAGE_ENV = "AISWMM_CONTAINER_IMAGE"
 
 
 def _sha256_text(text: str) -> str:
@@ -137,6 +160,7 @@ def environment_fingerprint() -> dict[str, Any]:
         "platform": platform.platform(),
         "aiswmm_version": _AISWMM_VERSION,
         "git_commit": _git_commit(),
+        "container_image": os.environ.get(CONTAINER_IMAGE_ENV) or None,
         "container_image_digest": os.environ.get(CONTAINER_DIGEST_ENV) or None,
     }
 
@@ -219,6 +243,7 @@ def try_write_session_header(session_dir: Path, **kwargs: Any) -> Path | None:
 __all__ = [
     "AGENT_SNAPSHOT_NAME",
     "CONTAINER_DIGEST_ENV",
+    "CONTAINER_IMAGE_ENV",
     "SESSION_HEADER_NAME",
     "build_agent_snapshot",
     "environment_fingerprint",
