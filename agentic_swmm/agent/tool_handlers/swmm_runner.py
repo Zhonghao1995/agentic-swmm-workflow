@@ -30,6 +30,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.preflight import preflight_inp
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
@@ -88,6 +89,18 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     Path validation (in-repo + suffix) and default ``run_dir`` / ``node``
     selection mirror the historical in-process handler so behaviour is
     identical for the caller.
+
+    ADR-0004: the MCP server + skill script write ``model.rpt`` /
+    ``model.out`` / ``stdout.txt`` / ``stderr.txt`` (+ their own
+    ``manifest.json``) directly into whatever ``runDir`` we hand them —
+    they have no stage-numbering concept of their own. Historically that
+    meant those files landed FLAT at the top of the caller's ``run_dir``.
+    We now point the MCP call at the canonical runner stage
+    (``run_layout.RUNNER``) under ``run_dir`` instead, so the agent path
+    matches the CLI path (``aiswmm run``) and lands in the same reserved
+    parking spot. ``run_dir`` itself — the ToolCall-level argument the
+    planner passed and ``state.py`` tracks as ``active_run_dir`` — is
+    unchanged; only the MCP-facing ``runDir`` gains the stage subdir.
     """
     # Lazy import — see module docstring on the circular-load reasoning.
     from agentic_swmm.agent.tool_registry import (
@@ -107,9 +120,10 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if run_dir is None:
         run_id = str(call.args.get("run_id") or f"{_safe_name(inp.stem)}-{int(time.time())}")
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
+    runner_dir = run_layout.stage_dir(run_dir, run_layout.RUNNER, create=True)
     default_node = _node_suggestions(str(inp), limit=1)
     node = str(call.args.get("node") or (default_node[0] if default_node else "O1"))
-    return {"inp": str(inp), "runDir": str(run_dir), "node": node}
+    return {"inp": str(inp), "runDir": str(runner_dir), "node": node}
 
 
 def _build_run_swmm_inp_tool() -> Any:

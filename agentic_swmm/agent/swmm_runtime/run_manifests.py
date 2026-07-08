@@ -1,14 +1,19 @@
 """Manifest schemas for the prepared-input run pipeline (``aiswmm run``).
 
 Three JSON artifacts document a prepared-input run: the QA summary
-(``06_qa/qa_summary.json`` plus its peak/continuity side files), the
-builder handoff manifest (``04_builder/manifest.json``) and the
+(``07_qa/qa_summary.json`` plus its peak/continuity side files), the
+builder handoff manifest (``05_builder/manifest.json``) and the
 top-level run manifest (``manifest.json``, the source of truth
 downstream consumers read — Key invariant 3). Their schemas used to be
 assembled field-by-field inside the CLI verb, which left "what does
 ``outputs.built_inp`` mean" answerable only by reading the whole
 command function. The builders live here as plain functions —
 dicts in, dicts out — so the schemas are testable without argv.
+
+Stage numbers above are the ADR-0004 canonical ones (see
+``agentic_swmm.agent.swmm_runtime.run_layout``); callers pass in the
+actual ``qa_dir``/``runner_dir`` paths, so this module only embeds the
+numbers in documentation and in the human-readable notes below.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.session_header import environment_fingerprint
+from agentic_swmm.agent.swmm_runtime import run_layout
 
 from agentic_swmm.utils.paths import repo_root
 
@@ -123,7 +129,11 @@ def build_builder_manifest(
     sidecar_inputs: list[Path],
     source_type: str,
 ) -> dict[str, Any]:
-    """The ``04_builder/manifest.json`` prepared-input handoff record."""
+    """The ``05_builder/manifest.json`` prepared-input handoff record."""
+    handoff_note = (
+        "Prepared-input workflow: INP was supplied by the user/example and "
+        f"copied into {run_layout.BUILDER} as the execution handoff."
+    )
     return {
         "schema_version": "1.0",
         "stage": "prepared-input-handoff",
@@ -144,13 +154,11 @@ def build_builder_manifest(
         "validation": {
             "status": "pass",
             "notes": [
-                "Prepared-input workflow: INP was supplied by the user/example and copied into 04_builder as the execution handoff.",
+                handoff_note,
                 "External INP imports are copied into the run directory before execution; SWMM runs against the run-local copy.",
             ]
             if source_type == "external_inp_import"
-            else [
-                "Prepared-input workflow: INP was supplied by the user/example and copied into 04_builder as the execution handoff."
-            ],
+            else [handoff_note],
         },
     }
 

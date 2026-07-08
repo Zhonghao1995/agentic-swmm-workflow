@@ -16,8 +16,9 @@ description: >
 Evaluates a completed SWMM run against a configurable rulebook of design checks.
 Reads the run's existing artifacts (manifest.json + model.rpt + model.inp) — SWMM
 is never re-run. Classifies each rule as `pass`, `fail`, `warn`, or `needs-data`
-and writes `09_review/design_review.json` + `09_review/design_review.md` into the
-run directory.
+and writes `11_review/design_review.json` + `11_review/design_review.md` into the
+run directory (canonical per ADR-0004; the underlying script's own bare default
+is the legacy `09_review/` — see *CLI usage* below).
 
 This skill is **decision-support only**. It never certifies regulatory compliance.
 
@@ -33,10 +34,11 @@ python3 skills/swmm-design-review/scripts/design_review.py \
     [--inp <path>]           # override: explicit model.inp path
     [--manifest <path>]      # override: explicit manifest.json path
     [--rules <rulebook>]     # override rulebook YAML/JSON (repeatable for multiple books)
-    [--out-dir <dir>]        # default: <run-dir>/09_review/
+    [--out-dir <dir>]        # bare-script default: <run-dir>/09_review/ (legacy)
     [--no-inp]               # skip INP-derived metrics (slope, diameter)
 
-# CLI verb (registered in aiswmm CLI)
+# CLI verb (registered in aiswmm CLI) — always passes --out-dir explicitly,
+# defaulting to the canonical <run-dir>/11_review/ (ADR-0004)
 aiswmm review --run-dir <path> [--rules <rulebook.yaml>] [--out-dir <dir>]
 ```
 
@@ -45,7 +47,8 @@ Exit codes: `0` = pass/warn/needs-data only; `1` = any FAIL; `2` = script/input 
 ## Agent tool: `review_run`
 
 Registered in `AgentToolRegistry`. Direct handler (not MCP-routed) — writes
-`09_review/design_review.json` + `09_review/design_review.md` into the run dir.
+`11_review/design_review.json` + `11_review/design_review.md` into the run dir
+(canonical per ADR-0004).
 
 ```
 review_run(run_dir="runs/my_run/")
@@ -107,8 +110,11 @@ Metrics returning `needs-data` until PR2: `node.surcharge_hours`, `node.max_dept
 
 ## Output files
 
-- `<run-dir>/09_review/design_review.json` — machine-readable results (schema_version 1.0)
-- `<run-dir>/09_review/design_review.md` — human report with disclaimer and sign-off table
+- `<run-dir>/11_review/design_review.json` — machine-readable results (schema_version 1.0)
+- `<run-dir>/11_review/design_review.md` — human report with disclaimer and sign-off table
+
+(Canonical location per ADR-0004. Runs from before that migration, or the bare
+script invoked without `--out-dir`, carry these under the legacy `09_review/`.)
 
 ---
 

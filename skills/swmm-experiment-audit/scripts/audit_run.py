@@ -159,6 +159,19 @@ def first_existing(paths: list[Path]) -> Path | None:
     return None
 
 
+# ADR-0004 stage numbering. ``agentic_swmm/agent/swmm_runtime/run_layout.py``
+# is the single source of truth for canonical stage names + their legacy
+# aliases (``run_layout.LEGACY_ALIASES``). This script intentionally stays
+# agentic_swmm-import-free (it runs as a standalone subprocess script), so
+# these tuples are a manually-synced mirror of that module's values —
+# canonical name first (search preference), then every legacy generation.
+# Keep in sync BY VALUE with run_layout.py if a stage is ever renumbered
+# again.
+BUILDER_STAGE_NAMES = ["05_builder", "04_builder", "builder"]
+RUNNER_STAGE_NAMES = ["06_runner", "05_runner", "runner", "01_runner"]
+QA_STAGE_NAMES = ["07_qa", "06_qa"]
+
+
 def find_stage_manifest(run_dir: Path, names: list[str]) -> Path | None:
     direct = [run_dir / name / "manifest.json" for name in names]
     found = first_existing(direct)
@@ -168,6 +181,11 @@ def find_stage_manifest(run_dir: Path, names: list[str]) -> Path | None:
     for pattern in names:
         candidates.extend(sorted(run_dir.glob(f"**/*{pattern.strip('0123456789_')}*/manifest.json")))
     return candidates[0] if candidates else None
+
+
+def find_qa_file(run_dir: Path, filename: str) -> Path | None:
+    """Locate a QA-stage file, canonical (``07_qa``) first, then ``06_qa``."""
+    return first_existing([run_dir / name / filename for name in QA_STAGE_NAMES])
 
 
 def artifact_record(
@@ -874,11 +892,11 @@ def collect_run(
     top_manifest_path = run_dir / "manifest.json"
     acceptance_report_path = run_dir / "acceptance_report.json"
     acceptance_report_md_path = run_dir / "acceptance_report.md"
-    builder_manifest_path = find_stage_manifest(run_dir, ["04_builder", "05_builder", "builder"])
-    runner_manifest_path = find_stage_manifest(run_dir, ["05_runner", "06_runner", "runner"])
-    network_qa_path = first_existing([run_dir / "06_qa/network_qa.json", run_dir / "07_qa/network_qa.json"])
-    continuity_qa_path = first_existing([run_dir / "06_qa/runner_continuity.json", run_dir / "07_qa/runner_continuity.json"])
-    peak_qa_path = first_existing([run_dir / "06_qa/runner_peak.json", run_dir / "07_qa/runner_peak.json"])
+    builder_manifest_path = find_stage_manifest(run_dir, BUILDER_STAGE_NAMES)
+    runner_manifest_path = find_stage_manifest(run_dir, RUNNER_STAGE_NAMES)
+    network_qa_path = find_qa_file(run_dir, "network_qa.json")
+    continuity_qa_path = find_qa_file(run_dir, "runner_continuity.json")
+    peak_qa_path = find_qa_file(run_dir, "runner_peak.json")
     model_diagnostics_path = run_dir / "model_diagnostics.json"
 
     top_manifest = read_json(top_manifest_path)

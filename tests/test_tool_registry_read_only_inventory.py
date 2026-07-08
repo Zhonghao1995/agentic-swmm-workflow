@@ -60,7 +60,8 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     # raw-data snapshot, so not read-only.
     "synth_swmm_from_bbox": False,
     # SWMMCanada upstream fetch (ADR-0001): downloads a zip and writes
-    # model.inp + swmm_model.zip into the run dir, so not read-only.
+    # model.inp (05_builder/) + swmm_model.zip (10_upstream/swmmcanada/)
+    # into the run dir, so not read-only.
     "fetch_swmm_from_canada": False,
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools.
     # All is_read_only=False — calibration runs SWMM and writes files.
@@ -80,7 +81,7 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     # PRD_water_quality.md PR3: read_wq_loads shells out to extract_wq_loads.py
     # (stdout-JSON mode only — no file writes). is_read_only=True.
     "read_wq_loads": True,
-    # PRD_design_review.md PR2: review_run writes 09_review/ artifacts.
+    # PRD_design_review.md PR2: review_run writes 11_review/ artifacts.
     "review_run": False,
     # PRD_report_export.md PR2: generate_report writes .docx deliverable.
     "generate_report": False,

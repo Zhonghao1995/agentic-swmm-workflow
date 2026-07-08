@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.postflight import QAReport, postflight_qa
 from agentic_swmm.agent.swmm_runtime.rpt_summary import section_data_lines
 from agentic_swmm.agent.swmm_runtime.version_compat import (
@@ -479,6 +480,23 @@ def _rank_top_movers(
     return ranked[: max(0, int(limit))]
 
 
+def _experiment_provenance_candidates(run_dir: Path) -> list[Path]:
+    """Candidate ``experiment_provenance.json`` paths, canonical-first.
+
+    ADR-0004: ``run_layout.AUDIT`` (``09_audit``) is the canonical audit
+    stage; ``run_layout.find_stage`` resolves it and falls back to the
+    legacy ``06_audit`` generation (``run_layout.LEGACY_ALIASES``) when
+    the canonical dir is absent. The bare run-dir-root path is the
+    oldest (pre-audit-stage) flat layout and stays as the last resort.
+    """
+    candidates: list[Path] = []
+    audit_dir = run_layout.find_stage(run_dir, run_layout.AUDIT)
+    if audit_dir is not None:
+        candidates.append(audit_dir / "experiment_provenance.json")
+    candidates.append(run_dir / "experiment_provenance.json")
+    return candidates
+
+
 def _read_swmm_version_for_run(
     run_dir: Path, run_id: str, parametric_store: Path | None = None
 ) -> str | None:
@@ -486,7 +504,8 @@ def _read_swmm_version_for_run(
 
     Lookup order:
 
-    1. ``run_dir/09_audit/experiment_provenance.json`` ``swmm_version`` field.
+    1. ``run_dir/09_audit/experiment_provenance.json`` ``swmm_version`` field
+       (or its legacy ``06_audit`` generation).
     2. ``run_dir/experiment_provenance.json`` ``swmm_version`` field.
     3. ``parametric_store`` (parametric_memory.jsonl): row with matching
        ``run_id``, then ``swmm_version`` field.
@@ -496,11 +515,7 @@ def _read_swmm_version_for_run(
     is swallowed so the comparison verb stays usable even when the
     audit artefact is half-populated.
     """
-    for relative in (
-        Path("09_audit") / "experiment_provenance.json",
-        Path("experiment_provenance.json"),
-    ):
-        candidate = run_dir / relative
+    for candidate in _experiment_provenance_candidates(run_dir):
         if not candidate.is_file():
             continue
         try:
@@ -532,11 +547,7 @@ def _resolve_run_id(run_dir: Path) -> str:
     malformed JSON — a comparison must not crash because a sibling
     audit artefact failed to materialise.
     """
-    for relative in (
-        Path("09_audit") / "experiment_provenance.json",
-        Path("experiment_provenance.json"),
-    ):
-        candidate = run_dir / relative
+    for candidate in _experiment_provenance_candidates(run_dir):
         if not candidate.is_file():
             continue
         try:

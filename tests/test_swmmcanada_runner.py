@@ -5,6 +5,10 @@ The runner is a thin HTTP client over SWMMCanada's async tasks API
 download ``swmm_model.zip``, extract ``model.inp`` and keep the whole
 zip as the durable provenance artifact (CONTEXT.md §"INP sources").
 
+Per the canonical run-directory layout (ADR-0004): the zip lands in the
+opaque ``10_upstream/swmmcanada/`` box and the extracted ``model.inp``
+lands in ``05_builder/`` — the same stage every other INP source uses.
+
 Tests never touch the network: the client takes an injectable
 ``opener`` (mirroring ``providers/_http.py``) plus ``sleep``/``now``
 seams, so the three endpoints are faked in-process.
@@ -108,10 +112,13 @@ class HappyPathTests(unittest.TestCase):
                 sleep=lambda *_: None,
             )
 
-            # The whole zip is kept as the durable provenance artifact (D6).
-            self.assertEqual(result.zip_path, run_dir / "swmm_model.zip")
+            # The whole zip is kept as the durable provenance artifact (D6),
+            # inside the opaque upstream box (ADR-0001/ADR-0004).
+            self.assertEqual(result.zip_path, run_dir / "10_upstream" / "swmmcanada" / "swmm_model.zip")
             self.assertTrue(result.zip_path.is_file())
-            # model.inp is extracted and runnable by the normal run path.
+            # model.inp is extracted into the canonical builder stage (ADR-0004)
+            # and runnable by the normal run path.
+            self.assertEqual(result.inp_path, run_dir / "05_builder" / "model.inp")
             self.assertTrue(result.inp_path.is_file())
             self.assertEqual(result.inp_path.read_bytes(), b"[TITLE]\nVictoria real network\n")
             # Foreign keys back to the upstream provenance.

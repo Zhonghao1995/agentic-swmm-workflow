@@ -785,7 +785,7 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
         ),
         # --- Design review -----------------------------------------------
         # PRD_design_review.md PR2: review_run ToolSpec.
-        # Direct handler; writes 09_review/ artifacts → is_read_only=False.
+        # Direct handler; writes 11_review/ artifacts → is_read_only=False.
         ToolSpec(
             "review_run",
             "Run the deterministic design-review rule checklist against a completed SWMM run; reports findings, never certifies compliance.",
@@ -793,7 +793,7 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
                 {
                     "run_dir": {"type": "string", "description": "Absolute path to the run directory."},
                     "rules": {"type": "string", "description": "Path to a custom YAML rulebook. Omit to use the bundled GB 50014 template."},
-                    "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/09_review/)."},
+                    "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/11_review/)."},
                 },
                 ["run_dir"],
             ),

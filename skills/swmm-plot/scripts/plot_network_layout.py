@@ -15,7 +15,9 @@ The data path is deliberately two-tier:
   directory was produced by the swmm-anywhere chain (PRD
   swmmanywhere_integration), the runner copies
   ``nodes.geoparquet`` / ``edges.geoparquet`` /
-  ``subcatchments.geoparquet`` under ``<run-dir>/10_swmmanywhere/``.
+  ``subcatchments.geoparquet`` under the canonical upstream box
+  ``<run-dir>/10_upstream/swmmanywhere/`` (ADR-0004; older runs may carry
+  it under the legacy flat ``<run-dir>/10_swmmanywhere/``).
   These carry the real WGS84 polygons SWMManywhere downloaded from OSM
   plus extra columns (``node_type``, ``outfall_id``) that drive the
   per-outfall colouring. We load them via ``geopandas`` *lazily* so the
@@ -600,7 +602,8 @@ def _build_argparser() -> argparse.ArgumentParser:
         help=(
             "Optional path to a directory containing nodes.geoparquet, "
             "edges.geoparquet, subcatchments.geoparquet (the SWMManywhere "
-            "chain output under <run-dir>/10_swmmanywhere/)."
+            "chain output under <run-dir>/10_upstream/swmmanywhere/, or the "
+            "legacy <run-dir>/10_swmmanywhere/ for older runs)."
         ),
     )
     p.add_argument("--out-png", type=Path, required=True)

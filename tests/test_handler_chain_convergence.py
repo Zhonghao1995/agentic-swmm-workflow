@@ -179,7 +179,9 @@ class HandlerChainConvergenceTests(unittest.TestCase):
             self.run_result.get("ok"),
             msg=f"run_swmm_inp did not converge: {self.run_result!r}",
         )
-        rpt_path = self.run_dir / "model.rpt"
+        # ADR-0004: the agent path now lands runner outputs in the
+        # canonical 06_runner stage dir instead of flat at run_dir root.
+        rpt_path = self.run_dir / "06_runner" / "model.rpt"
         self.assertTrue(rpt_path.is_file(), msg=f"missing .rpt at {rpt_path}")
 
         self.assertTrue(
@@ -208,7 +210,9 @@ class HandlerChainConvergenceTests(unittest.TestCase):
             self.plot_result.get("ok"),
             msg=f"plot_run did not converge: {self.plot_result!r}",
         )
-        fig_path = self.run_dir / "07_plots" / "fig_O1_series.png"
+        # ADR-0004: plot_run's default output now lands in the canonical
+        # 08_plot stage dir instead of the legacy 07_plots.
+        fig_path = self.run_dir / "08_plot" / "fig_O1_series.png"
         self.assertTrue(fig_path.is_file(), msg=f"missing figure at {fig_path}")
 
 

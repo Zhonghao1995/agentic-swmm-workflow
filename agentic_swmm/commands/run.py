@@ -16,6 +16,7 @@ from agentic_swmm.agent.honesty import (
     assert_swmm_run_ok,
     is_honesty_layer_disabled,
 )
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.inp_parsing import copy_inp_sidecar_files
 from agentic_swmm.agent.swmm_runtime.run_manifests import (
     build_builder_manifest,
@@ -50,13 +51,14 @@ def main(args: argparse.Namespace) -> int:
     inp = require_file(args.inp, "INP file")
     run_dir = args.run_dir.expanduser().resolve()
     inputs_dir = run_dir / "00_inputs"
-    builder_dir = run_dir / "04_builder"
-    runner_dir = run_dir / "05_runner"
-    qa_dir = run_dir / "06_qa"
+    # Canonical stage dirs (ADR-0004): run_layout is the single source of
+    # truth for these numbers. Legacy runs (04_builder/05_runner/06_qa)
+    # stay readable forever via run_layout.LEGACY_ALIASES; this writer
+    # never produces them again.
+    builder_dir = run_layout.stage_dir(run_dir, run_layout.BUILDER, create=True)
+    runner_dir = run_layout.stage_dir(run_dir, run_layout.RUNNER, create=True)
+    qa_dir = run_layout.stage_dir(run_dir, run_layout.QA, create=True)
     inputs_dir.mkdir(parents=True, exist_ok=True)
-    builder_dir.mkdir(parents=True, exist_ok=True)
-    runner_dir.mkdir(parents=True, exist_ok=True)
-    qa_dir.mkdir(parents=True, exist_ok=True)
 
     source_type = source_type_of(inp)
     run_inp = inputs_dir / "model.inp"

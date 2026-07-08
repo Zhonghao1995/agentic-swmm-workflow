@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent import tui_chrome as _chrome
+from agentic_swmm.agent.swmm_runtime import run_layout
 
 
 _ARTIFACT_KIND_LABELS = {
@@ -23,6 +24,19 @@ _ARTIFACT_KIND_LABELS = {
     "audit": "Audit",
     "other": "Other artifacts",
 }
+
+# ADR-0004: path-fragment classifiers built from run_layout's canonical
+# stage name + its legacy aliases, so this module never hardcodes a
+# stage number that could drift out of sync with the single source of
+# truth. ``run_layout.PLOT`` is ``08_plot``; its legacy generation is
+# ``07_plots``. ``run_layout.AUDIT`` is already ``09_audit`` (unchanged
+# by ADR-0004) with ``06_audit`` as an older legacy alias.
+_PLOT_DIR_FRAGMENTS = tuple(
+    f"/{name}/" for name in (run_layout.PLOT, *run_layout.LEGACY_ALIASES[run_layout.PLOT])
+)
+_AUDIT_DIR_FRAGMENTS = tuple(
+    f"/{name}" for name in (run_layout.AUDIT, *run_layout.LEGACY_ALIASES[run_layout.AUDIT])
+)
 
 # Tools whose result paths are LLM *input* (skill contracts they read,
 # directory listings, registry lookups), not produced artifacts. The
@@ -275,9 +289,17 @@ def _what_you_got(results: list[dict[str, Any]]) -> list[str]:
 def _classify_artifact(result: dict[str, Any], path: str) -> str:
     tool = str(result.get("tool", "")).lower()
     path_lower = str(path).lower()
-    if tool == "plot_run" or path_lower.endswith(".png") or "/07_plots/" in path_lower:
+    if (
+        tool == "plot_run"
+        or path_lower.endswith(".png")
+        or any(frag in path_lower for frag in _PLOT_DIR_FRAGMENTS)
+    ):
         return "plot"
-    if tool == "audit_run" or "/09_audit" in path_lower or "audit_note" in path_lower:
+    if (
+        tool == "audit_run"
+        or any(frag in path_lower for frag in _AUDIT_DIR_FRAGMENTS)
+        or "audit_note" in path_lower
+    ):
         return "audit"
     if tool == "run_swmm_inp" or path_lower.endswith((".out", ".rpt")):
         return "run"

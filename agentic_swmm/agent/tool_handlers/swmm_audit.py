@@ -23,17 +23,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure
+from agentic_swmm.agent.tool_handlers._shared import _failure, _resolve_run_dir
 from agentic_swmm.agent.types import ToolCall
 
 
 def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Map ``audit_run`` args to ``swmm-experiment-audit`` MCP schema."""
 
-    run_dir = call.args.get("run_dir")
-    if not isinstance(run_dir, str) or not run_dir.strip():
-        return _failure(call, "missing required argument: run_dir")
-    args: dict[str, Any] = {"runDir": run_dir}
+    # ADR-0004: resolve to an ABSOLUTE path before crossing the MCP
+    # boundary. The Node server resolves relative paths against its own
+    # cwd (mcp/swmm-experiment-audit/), which used to scatter 09_audit/
+    # into the source tree. Same seam the plot mapper uses.
+    run_dir = _resolve_run_dir(call, "run_dir")
+    if isinstance(run_dir, dict):
+        return run_dir
+    args: dict[str, Any] = {"runDir": str(run_dir)}
     if call.args.get("workflow_mode"):
         args["workflowMode"] = str(call.args["workflow_mode"])
     if call.args.get("objective"):

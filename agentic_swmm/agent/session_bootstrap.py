@@ -31,6 +31,8 @@ import os
 import re
 from datetime import datetime
 from pathlib import Path
+
+from agentic_swmm.agent.swmm_runtime import run_layout
 from typing import Any
 
 from agentic_swmm.agent.ui import display_path
@@ -189,8 +191,9 @@ def is_swmm_run_dir(path: Path) -> bool:
 
     A SWMM run dir is either:
 
-    - has ``manifest.json`` *and* a runner subfolder (``01_runner`` /
-      ``05_runner``), or
+    - has ``manifest.json`` *and* a runner subfolder (canonical
+      ``06_runner`` per ADR-0004, or the legacy ``05_runner`` /
+      ``01_runner`` names), or
     - contains both ``*.out`` and ``*.rpt`` anywhere under it.
 
     The REPL uses this to decide whether to pin the path as the
@@ -199,8 +202,8 @@ def is_swmm_run_dir(path: Path) -> bool:
     """
     if not path.exists() or not path.is_dir():
         return False
-    if (path / "manifest.json").exists() and (
-        (path / "05_runner").exists() or (path / "01_runner").exists()
+    if (path / "manifest.json").exists() and run_layout.find_stage(
+        path, run_layout.RUNNER
     ):
         return True
     return any(path.glob("**/*.out")) and any(path.glob("**/*.rpt"))

@@ -48,10 +48,10 @@ fixture — no rainfall series at all
 
 def _seed_run_dir(root: Path, inp_text: str) -> Path:
     run_dir = root / "runs" / "agent" / "test-run"
-    (run_dir / "04_builder").mkdir(parents=True)
-    (run_dir / "05_runner").mkdir(parents=True)
-    (run_dir / "04_builder" / "model.inp").write_text(inp_text, encoding="utf-8")
-    (run_dir / "05_runner" / "model.out").write_bytes(b"\x00")
+    (run_dir / "05_builder").mkdir(parents=True)
+    (run_dir / "06_runner").mkdir(parents=True)
+    (run_dir / "05_builder" / "model.inp").write_text(inp_text, encoding="utf-8")
+    (run_dir / "06_runner" / "model.out").write_bytes(b"\x00")
     return run_dir
 
 

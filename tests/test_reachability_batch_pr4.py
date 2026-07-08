@@ -211,14 +211,15 @@ def test_c4_audit_run_schema_has_compare_to(registry: AgentToolRegistry) -> None
     assert "compare_to" in props
 
 
-def test_c4_audit_run_mapper_emits_compare_to_when_present() -> None:
-    call = _call("audit_run", {"run_dir": "/runs/abc", "compare_to": "/runs/baseline"})
+def test_c4_audit_run_mapper_emits_compare_to_when_present(tmp_path) -> None:
+    # run_dir must be a real directory since the ADR-0004 mapper fix.
+    call = _call("audit_run", {"run_dir": str(tmp_path), "compare_to": "/runs/baseline"})
     result = _audit_run_args(call, _SESSION)
     assert result.get("compareTo") == "/runs/baseline"
 
 
-def test_c4_audit_run_mapper_absent_compare_to() -> None:
-    call = _call("audit_run", {"run_dir": "/runs/abc"})
+def test_c4_audit_run_mapper_absent_compare_to(tmp_path) -> None:
+    call = _call("audit_run", {"run_dir": str(tmp_path)})
     result = _audit_run_args(call, _SESSION)
     assert "compareTo" not in result
 

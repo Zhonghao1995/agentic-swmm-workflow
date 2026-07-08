@@ -36,7 +36,7 @@ def _runner_manifest(tmp_path: Path, *, return_code: int = 0) -> dict:
 
 def test_qa_summary_passes_on_healthy_run(tmp_path: Path) -> None:
     peak, continuity, qa = build_qa_summary(
-        _runner_manifest(tmp_path), qa_dir=tmp_path / "06_qa"
+        _runner_manifest(tmp_path), qa_dir=tmp_path / "07_qa"
     )
     assert qa["status"] == "pass"
     assert [c["id"] for c in qa["checks"]] == [
@@ -52,7 +52,7 @@ def test_qa_summary_passes_on_healthy_run(tmp_path: Path) -> None:
 
 def test_qa_summary_fails_on_nonzero_return_code(tmp_path: Path) -> None:
     _, _, qa = build_qa_summary(
-        _runner_manifest(tmp_path, return_code=1), qa_dir=tmp_path / "06_qa"
+        _runner_manifest(tmp_path, return_code=1), qa_dir=tmp_path / "07_qa"
     )
     assert qa["status"] == "fail"
     failed = {c["id"] for c in qa["checks"] if not c["ok"]}
@@ -71,8 +71,8 @@ def test_top_manifest_schema_keys(tmp_path: Path) -> None:
         source_type=source_type_of(inp),
         runner_manifest=runner_manifest,
         runner_files=runner_manifest["files"],
-        runner_dir=tmp_path / "05_runner",
-        qa_dir=tmp_path / "06_qa",
+        runner_dir=tmp_path / "06_runner",
+        qa_dir=tmp_path / "07_qa",
         run_dir=tmp_path,
         command_trace={"command": "swmm_runner"},
     )

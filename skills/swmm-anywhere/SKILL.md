@@ -19,7 +19,7 @@ Given a bounding box (and optional region name), this skill:
 1. **Downloads public source data** via SWMManywhere: OpenStreetMap streets, a DEM tile (Planetary Computer by default), building footprints, river lines.
 2. **Snapshots the raw inputs** under `runs/<date>/<id>/00_raw/` with a SHA-256 manifest that is **verified after capture** (the result lands in `synth_provenance.json` under `raw_snapshot_verified`), so the exact OSM/DEM inputs that produced this run are pinned and audited (OSM/DEM otherwise drift continuously upstream).
 3. **Runs SWMManywhere's 24-step graph pipeline** to infer subcatchment polygons, manhole nodes, pipe topology, pipe diameters, and outfall locations.
-4. **Writes a SWMM 5.2 `.inp`** under `runs/<date>/<id>/10_swmmanywhere/synth.inp`, post-processed so the aiswmm `swmm5` binary can run it directly (external `storm.dat` is copied next to the INP and its path is rewritten as relative, dodging the macOS path-with-spaces parsing bug).
+4. **Writes a SWMM 5.2 `.inp`** under `runs/<date>/<id>/10_upstream/swmmanywhere/synth.inp` (the canonical upstream box, ADR-0004), post-processed so the aiswmm `swmm5` binary can run it directly (external `storm.dat` is copied next to the INP and its path is rewritten as relative, dodging the macOS path-with-spaces parsing bug).
 5. **Returns** the INP path, raw-snapshot manifest path, and a structured provenance record (which graphfcns ran, parameter overrides used, upstream tool versions).
 
 The synthesized INP is **immediately runnable** through `swmm-runner` and **immediately auditable** through `swmm-experiment-audit`.
@@ -79,13 +79,14 @@ runs/<date>/<id>/
 │   ├── building.geoparquet
 │   ├── river.json
 │   └── raw_manifest.json         # SHA-256 of every file + source URLs
-├── 10_swmmanywhere/
-│   ├── synth.inp                 # the runnable SWMM 5.2 model
-│   ├── storm.dat                 # copied alongside (path-with-spaces fix)
-│   ├── nodes.geoparquet          # for visualization
-│   ├── edges.geoparquet          # for visualization (color by outfall_id)
-│   ├── subcatchments.geoparquet  # for visualization
-│   └── synth_provenance.json     # parameters, tool versions, timings
+├── 10_upstream/
+│   └── swmmanywhere/              # canonical upstream box (ADR-0004)
+│       ├── synth.inp                 # the runnable SWMM 5.2 model
+│       ├── storm.dat                 # copied alongside (path-with-spaces fix)
+│       ├── nodes.geoparquet          # for visualization
+│       ├── edges.geoparquet          # for visualization (color by outfall_id)
+│       ├── subcatchments.geoparquet  # for visualization
+│       └── synth_provenance.json     # parameters, tool versions, timings
 ```
 
 ## Example invocation
@@ -119,7 +120,7 @@ python skills/swmm-anywhere/scripts/synth_from_bbox.py \
 
 ## What to do next
 
-The skill produces a runnable SWMM .inp under `<run-dir>/10_swmmanywhere/synth.inp`. Chain it through aiswmm's standard audit pipeline:
+The skill produces a runnable SWMM .inp under `<run-dir>/10_upstream/swmmanywhere/synth.inp`. Chain it through aiswmm's standard audit pipeline:
 
 ```bash
 # 1. Structural QA of the synthesized network (NO SWMM run needed) — flags
@@ -127,17 +128,17 @@ The skill produces a runnable SWMM .inp under `<run-dir>/10_swmmanywhere/synth.i
 #    and pipe/outfall counts straight off the synthesized INP. This is the
 #    signal for whether to adjust SWMManywhere parameter overrides and
 #    re-synthesize before spending a SWMM run on a structurally broken network.
-python3 skills/swmm-network/scripts/network_qa.py --inp <run-dir>/10_swmmanywhere/synth.inp
+python3 skills/swmm-network/scripts/network_qa.py --inp <run-dir>/10_upstream/swmmanywhere/synth.inp
 
 # 2. Run SWMM (aiswmm's own swmm5 binary, NOT pyswmm)
-aiswmm run --inp <run-dir>/10_swmmanywhere/synth.inp --run-dir <run-dir>/swmm_run
+aiswmm run --inp <run-dir>/10_upstream/swmmanywhere/synth.inp --run-dir <run-dir>/swmm_run
 
 # 3. Audit the run
 aiswmm audit --run-dir <run-dir>/swmm_run
 
 # 4. Plausibility-review the synthesized model (NO observed data needed).
 #    Reference-free: scores velocity / capacity / slope / roughness / diameter
-#    against physical-plausibility bands → <run-dir>/swmm_run/09_review/.
+#    against physical-plausibility bands → <run-dir>/swmm_run/11_review/.
 #    Every finding is a WARN (flag-for-review); continuity stays the postflight gate's job.
 aiswmm review --run-dir <run-dir>/swmm_run \
   --rules skills/swmm-design-review/rulebooks/synth_plausibility.yaml

@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.integrations.inp_source import InpSourceError, InpSourceResult
 from typing import Any, Mapping
 
@@ -399,8 +400,9 @@ def run_synth_from_bbox(
 
     Args:
         bbox: ``[min_lon, min_lat, max_lon, max_lat]`` in WGS84.
-        run_dir: target directory. Will contain ``00_raw/`` and
-            ``10_swmmanywhere/`` subdirectories after the call.
+        run_dir: target directory. Will contain ``00_raw/`` and the
+            canonical upstream box ``10_upstream/swmmanywhere/`` (ADR-0004)
+            subdirectories after the call.
         project_name: human label embedded in the SWMManywhere config and
             its output filesystem layout.
         refresh_raw: not yet used at this layer (SWMManywhere's own
@@ -428,7 +430,9 @@ def run_synth_from_bbox(
     run_dir = Path(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
     raw_dir = run_dir / "00_raw"
-    synth_dir = run_dir / "10_swmmanywhere"
+    # Canonical upstream box (ADR-0004): the synthesized project is upstream
+    # provenance, nested under 10_upstream/ alongside every other source's box.
+    synth_dir = run_layout.upstream_dir(run_dir, run_layout.UPSTREAM_SWMMANYWHERE)
 
     stage_durations: dict = {}
     warnings: list[str] = []

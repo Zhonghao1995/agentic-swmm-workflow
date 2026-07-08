@@ -6,7 +6,7 @@ tests cover:
 * ``aiswmm map --help`` prints the documented flag block.
 * Missing ``--run-dir`` exits with the argparse-standard code 2.
 * A run directory with a minimal INP renders a PNG to the conventional
-  ``07_plots/network_map.png`` location.
+  ``08_plot/network_map.png`` location.
 * ``--out-png`` overrides the default location.
 * ``--no-subcatchments`` and ``--no-vertices`` forward to the renderer.
 * The renderer module is independently importable (catches
@@ -149,7 +149,7 @@ class MapRendererIntegrationTests(unittest.TestCase):
             run_dir = _seed_run_dir(Path(tmp))
             code, _, _ = _capture(["map", "--run-dir", str(run_dir)])
             self.assertEqual(code, 0)
-            out_png = run_dir / "07_plots" / "network_map.png"
+            out_png = run_dir / "08_plot" / "network_map.png"
             self.assertTrue(out_png.is_file(), f"missing {out_png}")
             # Sanity: a real PNG starts with the 8-byte PNG magic header.
             with out_png.open("rb") as fh:
@@ -167,7 +167,7 @@ class MapRendererIntegrationTests(unittest.TestCase):
             self.assertTrue(custom.is_file())
             # Default path must NOT have been created when --out-png is
             # explicit.
-            default = run_dir / "07_plots" / "network_map.png"
+            default = run_dir / "08_plot" / "network_map.png"
             self.assertFalse(default.exists())
 
     def test_no_subcatchments_flag_still_renders(self) -> None:
@@ -186,7 +186,7 @@ class MapRendererIntegrationTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(code, 0)
-            self.assertTrue((run_dir / "07_plots" / "network_map.png").is_file())
+            self.assertTrue((run_dir / "08_plot" / "network_map.png").is_file())
 
     def test_run_dir_without_inp_errors_with_actionable_message(self) -> None:
         # The discovery path must fail fast with a message that names
