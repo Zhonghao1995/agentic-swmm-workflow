@@ -80,11 +80,18 @@ class AgentSnapshotTests(unittest.TestCase):
         self.assertNotIn("SECRET PROMPT", json.dumps(snapshot))
 
     def test_real_registry_snapshot_covers_live_surface(self) -> None:
-        """One integration point against the real registry: 50+ tools,
-        19+ skills, intent map present."""
+        """One integration point against the real registry. The skills
+        assertion is self-consistent (snapshot == SKILL.md set on disk),
+        never an absolute count: local checkouts carry gitignored skills
+        that clean CI checkouts do not (the #315 lesson)."""
         snapshot = sh.build_agent_snapshot(planner="rule")
         self.assertGreaterEqual(len(snapshot["tools"]), 50)
-        self.assertGreaterEqual(len(snapshot["skills"]), 19)
+        expected_skills = {
+            skill_md.parent.name
+            for skill_md in (sh.repo_root() / "skills").glob("*/SKILL.md")
+        }
+        self.assertEqual(set(snapshot["skills"]), expected_skills)
+        self.assertTrue(expected_skills)  # guard against a vacuous pass
         self.assertIsNotNone(snapshot["intent_map_sha256"])
 
 
