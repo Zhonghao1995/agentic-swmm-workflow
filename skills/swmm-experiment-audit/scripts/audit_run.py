@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import subprocess
+import platform
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1122,6 +1123,17 @@ def collect_run(
             "python_executable": sys.executable,
             "python_version": sys.version.replace("\n", " "),
             "swmm5_version": get_swmm_version(repo_root),
+        },
+        # ADR-0003: the runtime writes the environment fingerprint into
+        # manifest.json; the audit copies it verbatim (this script stays
+        # agentic_swmm-import-free). Legacy runs without the block get a
+        # minimal audit-time capture so the key is always present.
+        "environment": top_manifest.get("environment")
+        or {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "swmm5_version": get_swmm_version(repo_root),
+            "captured_by": "audit-fallback",
         },
         "commands": top_manifest.get("commands") or [],
         "inputs": top_manifest.get("inputs") or {},

@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.agent.session_header import environment_fingerprint
+
 from agentic_swmm.utils.paths import repo_root
 
 
@@ -212,6 +214,14 @@ def build_top_manifest(
         "commands": [command_trace],
         "tools": {
             "agentic_swmm_command": "run",
+            "swmm5_version": (runner_manifest.get("swmm5") or {}).get("version"),
+        },
+        # ADR-0003 layer 3: where this run actually executed (captured,
+        # not prescribed). The audit script copies this block verbatim
+        # into experiment_provenance.json (pure JSON read, so the skill
+        # script stays agentic_swmm-import-free).
+        "environment": {
+            **environment_fingerprint(),
             "swmm5_version": (runner_manifest.get("swmm5") or {}).get("version"),
         },
     }

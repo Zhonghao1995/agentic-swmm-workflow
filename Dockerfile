@@ -11,6 +11,10 @@ LABEL org.opencontainers.image.version="${AGENTIC_SWMM_REF}"
 
 ENV PYTHONUNBUFFERED=1
 ENV MPLBACKEND=Agg
+# ADR-0003: in-container runs self-report their image reference in the
+# session/provenance environment fingerprint. The content digest only
+# exists after push; CI / runners may add -e AISWMM_CONTAINER_DIGEST=...
+ENV AISWMM_CONTAINER_IMAGE="ghcr.io/zhonghao1995/agentic-swmm-workflow:${AGENTIC_SWMM_REF}"
 ENV PATH="/usr/local/bin:${PATH}"
 
 WORKDIR /app
