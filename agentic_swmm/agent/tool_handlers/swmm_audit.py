@@ -42,6 +42,13 @@ def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     # side-by-side comparison in a single audit_run call.
     if call.args.get("compare_to"):
         args["compareTo"] = str(call.args["compare_to"])
+    # Issue #328: the audit script's own default writes the modelling note
+    # into the user's real Obsidian vault under $HOME. The CLI verb defaults
+    # to --no-obsidian; the agent path now matches it. Vault mirroring is an
+    # explicit opt-IN (obsidian=true), so a bare agent audit never has side
+    # effects outside the run directory.
+    if not call.args.get("obsidian"):
+        args["noObsidian"] = True
     return args
 
 

@@ -76,10 +76,10 @@ LLM to call ``inspect_plot_options`` first and echo its ``defaults``
 forward) stands between a planner and this failure -- confirmed
 separately: supplying the exact ``rain_ts`` ``inspect_plot_options``
 reports (``"TS_RAIN"`` for this fixture) makes the same ``plot_run`` call
-converge (``ok=True``, PNG written). This is reported per this task's
-instruction not to paper over a non-convergent chain: the assertion is
-marked ``unittest.expectedFailure`` below rather than silently adding the
-missing ``inspect_plot_options`` hop to make the test pass.
+converge (``ok=True``, PNG written). Originally reported as a
+non-convergent chain and marked ``unittest.expectedFailure``; fixed in
+issue #327 by making ``_plot_run_args`` resolve the default series
+itself, so the plot leg below now asserts convergence like the others.
 """
 
 from __future__ import annotations
@@ -192,18 +192,17 @@ class HandlerChainConvergenceTests(unittest.TestCase):
             msg=f"missing audit record at {provenance_path}",
         )
 
-    @unittest.expectedFailure
     def test_plot_run_converges(self) -> None:
-        """``plot_run`` on a bare run_dir+node call -- known non-convergent.
+        """``plot_run`` on a bare run_dir+node call converges (issue #327).
 
-        CONTRACT MISMATCH (see module docstring): ``plot_run``'s own
-        ToolSpec description never tells the planner ``rain_ts`` is
-        needed, and the auto-injection mechanism
+        This leg was born ``expectedFailure``: the script rejected its
+        ``rain_ts`` placeholder because the injection hop
         ``mcp/swmm-plot/server.js`` cites (``planner._extract_plot_choice``)
-        no longer exists in ``agentic_swmm/``. The result is ``ok=False``
-        with the script's placeholder-rejection error. Marked
-        ``expectedFailure`` instead of silently threading an
-        ``inspect_plot_options`` call through to make this pass.
+        no longer exists. Fixed by ``_plot_run_args`` resolving the same
+        default ``inspect_plot_options`` reports (raingage-referenced
+        series, else first) when the caller omits ``rain_ts``
+        (tests/test_plot_run_rain_ts_default.py covers the mapper). This
+        method now guards the fix end-to-end against the real script.
         """
         self.assertTrue(
             self.plot_result.get("ok"),
