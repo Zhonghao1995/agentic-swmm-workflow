@@ -191,6 +191,23 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             args["nodeAttr"] = str(call.args["node_attr"])
     if call.args.get("rain_ts"):
         args["rainTs"] = str(call.args["rain_ts"])
+    else:
+        # Issue #327: a bare ``plot_run`` used to reach the script with its
+        # "<rainfall-series-name>" placeholder and fail. The planner hop that
+        # once injected the choice (``_extract_plot_choice``) no longer
+        # exists, so resolve the same default ``inspect_plot_options``
+        # reports: the raingage-referenced series, else the first one found.
+        # An explicit ``rain_ts`` (the multi-series disambiguation path)
+        # still wins above; when the INP has no series at all we forward
+        # nothing and the script's own error stays the authority.
+        options = rainfall_timeseries_options(inp_path)
+        default = next((o for o in options if o.get("used_by_raingage")), None)
+        if default is None and options:
+            default = options[0]
+        if default is not None:
+            args["rainTs"] = str(default["name"])
+            if default.get("rain_kind"):
+                args["rainKind"] = str(default["rain_kind"])
     if call.args.get("rain_kind"):
         args["rainKind"] = str(call.args["rain_kind"])
     # C6 (issue #246): window-cropping plumb-through. The MCP server

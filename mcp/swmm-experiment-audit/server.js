@@ -45,6 +45,7 @@ server.tool(
     outComparison: z.string().optional(),
     outNote: z.string().optional(),
     outModelDiagnostics: z.string().optional(),
+    noObsidian: z.boolean().optional(),
   },
   async ({
     runDir,
@@ -56,6 +57,7 @@ server.tool(
     outComparison,
     outNote,
     outModelDiagnostics,
+    noObsidian,
   }) => {
     const args = ['--run-dir', runDir];
     if (workflowMode) args.push('--workflow-mode', workflowMode);
@@ -66,6 +68,7 @@ server.tool(
     if (outComparison) args.push('--out-comparison', outComparison);
     if (outNote) args.push('--out-note', outNote);
     if (outModelDiagnostics) args.push('--out-model-diagnostics', outModelDiagnostics);
+    if (noObsidian) args.push('--no-obsidian');
 
     const out = runPython(auditScript, args);
     return {
