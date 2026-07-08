@@ -9,7 +9,7 @@ from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.reporting import write_event
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.agent.ui import Spinner, SpinnerState
+from agentic_swmm.agent.ui import Spinner, SpinnerState, set_active_tool_spinner
 
 # Issue #193 item 2: hoist the denial summary string to a module
 # constant so both the executor and the planner share one source of
@@ -102,6 +102,10 @@ class AgentExecutor:
             self._spinner.__enter__()
         else:
             self._spinner.update(rendered)
+        # Register the live spinner so a blocking handler can repaint the
+        # status line mid-call (ui.update_tool_status). Re-registering per
+        # tool also resets the dedupe state for the new label stream.
+        set_active_tool_spinner(self._spinner)
 
     def _tool_label(self, name: str) -> str:
         # PRD-185: in digest mode the spinner label is just the tool
@@ -120,5 +124,6 @@ class AgentExecutor:
     def close(self) -> None:
         """Close the progress spinner. Called once at the end of a run."""
         if self._spinner is not None:
+            set_active_tool_spinner(None)
             self._spinner.finish()
             self._spinner = None

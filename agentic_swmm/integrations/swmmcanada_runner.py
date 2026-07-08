@@ -51,6 +51,16 @@ _TERMINAL_OK = "SUCCEEDED"
 _TERMINAL_FAIL = "FAILED"
 
 
+def _report(progress: Callable[[str, Any], None] | None, stage: str, pct: Any) -> None:
+    """Fire the progress callback, swallowing its errors (best-effort UI)."""
+    if progress is None:
+        return
+    try:
+        progress(stage, pct)
+    except Exception:
+        pass
+
+
 def _open_with_retry(
     req: urllib.request.Request,
     *,
@@ -121,6 +131,7 @@ def fetch_from_aoi(
     run_dir: Path,
     base_url: str | None = None,
     infiltration: str | None = None,
+    progress: Callable[[str, Any], None] | None = None,
     poll_interval: float = 3.0,
     timeout: float = 600.0,
     opener: Callable[..., Any] = urllib.request.urlopen,
@@ -133,6 +144,11 @@ def fetch_from_aoi(
     method (CURVE_NUMBER / HORTON / GREEN_AMPT, case-insensitive). It is
     passed through verbatim — the service owns the enum and 422s unknown
     values, so this client never drifts from upstream's list.
+
+    ``progress`` is an optional ``(stage, progress_pct)`` callback fired
+    on every poll tick and at download start, so callers can surface the
+    multi-minute upstream build as live status. Callback errors are
+    swallowed: reporting progress must never break the fetch.
 
     Returns a :class:`CanadaFetchResult` with ``model.inp`` extracted under
     ``run_dir`` and the whole ``swmm_model.zip`` kept alongside it.
@@ -151,9 +167,10 @@ def fetch_from_aoi(
     _poll_until_done(
         service_url, task_id,
         poll_interval=poll_interval, timeout=timeout,
-        opener=opener, sleep=sleep, now=now,
+        opener=opener, sleep=sleep, now=now, progress=progress,
     )
 
+    _report(progress, "DOWNLOADING", None)
     run_dir.mkdir(parents=True, exist_ok=True)
     zip_path = _download_zip(service_url, task_id, run_dir, opener=opener, sleep=sleep)
     inp_path, validation = _extract(zip_path, run_dir)
@@ -212,6 +229,7 @@ def _poll_until_done(
     opener: Callable[..., Any],
     sleep: Callable[[float], None],
     now: Callable[[], float],
+    progress: Callable[[str, Any], None] | None = None,
 ) -> None:
     deadline = now() + timeout
     while True:
@@ -226,6 +244,7 @@ def _poll_until_done(
             raise CanadaFetchError("poll", f"bad status response: {exc!r}") from exc
 
         state = str(status.get("state") or "")
+        _report(progress, str(status.get("stage") or state), status.get("progress_pct"))
         if state == _TERMINAL_OK:
             return
         if state == _TERMINAL_FAIL:

@@ -50,6 +50,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -147,6 +148,31 @@ def _resolve_or_create_run_dir(call: ToolCall, key: str) -> Path | dict[str, Any
     resolved = raw.resolve() if raw.is_absolute() else (repo_root() / raw).resolve()
     resolved.mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def _timestamped_run_dir(call: ToolCall, *, prefix: str) -> Path:
+    """Explicit ``run_dir`` argument, or a fresh timestamped default.
+
+    The INP-source fetchers (``synth_swmm_from_bbox``,
+    ``fetch_swmm_from_canada``) default to
+    ``runs/agent/<prefix>-<unix-ts>`` so a re-run under the same name
+    never lands in (and silently overwrites) a previous run's directory
+    (issues #246/#234); a ``-N`` suffix bumps until the name is free.
+    An EXPLICIT ``run_dir`` is passed through untouched: same-dir reuse
+    (e.g. the synth ``00_raw/`` snapshot workflow) stays a deliberate
+    caller choice. One home for the collision policy (issue #296).
+    """
+    raw = call.args.get("run_dir")
+    if isinstance(raw, str) and raw.strip():
+        return Path(raw).expanduser()
+    base = f"{prefix}-{int(time.time())}"
+    root = repo_root() / "runs" / "agent"
+    candidate = root / base
+    bump = 1
+    while candidate.exists():
+        bump += 1
+        candidate = root / f"{base}-{bump}"
+    return candidate
 
 
 def _strip_html(text: str) -> str:
@@ -373,6 +399,7 @@ __all__ = [
     "_repo_output_path",
     "_resolve_run_dir",
     "_resolve_or_create_run_dir",
+    "_timestamped_run_dir",
     "_strip_html",
     "_try_json",
     "_tail",
