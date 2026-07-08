@@ -25,6 +25,10 @@ from agentic_swmm.agent.planner import rule_plan
 from agentic_swmm.agent.reporting import write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
 from agentic_swmm.agent.runtime import run_rule_plan
+from agentic_swmm.agent.session_header import (
+    finalize_session_header,
+    try_write_session_header,
+)
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import compact_plan as _compact_plan
@@ -67,6 +71,28 @@ def run_single_shot(args: argparse.Namespace) -> int:
     )
     session_dir.mkdir(parents=True, exist_ok=True)
     trace_path = session_dir / "agent_trace.jsonl"
+    # ADR-0003: make the session dir self-describing before anything runs.
+    # Provider/model mirror runtime_loop's resolution so the header records
+    # what will actually be used, not just what the flags said. Best-effort:
+    # a header failure must never break the session.
+    header_provider = header_model = None
+    if args.planner in ("llm", "openai"):
+        try:
+            from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+
+            _config = load_config()
+            header_provider = args.provider or _config.get("provider.default", DEFAULT_PROVIDER)
+            header_model = args.model or _config.get(f"{header_provider}.model")
+        except Exception:
+            header_provider, header_model = args.provider, args.model
+    try_write_session_header(
+        session_dir,
+        goal=goal,
+        planner="llm" if args.planner in ("llm", "openai") else "rule",
+        profile="safe" if getattr(args, "safe", False) else "quick",
+        provider=header_provider,
+        model=header_model,
+    )
     # PRD-X: bind a per-process MCP pool so list_mcp_tools / call_mcp_tool
     # reuse one long-running node child per server instead of paying
     # cold-start cost every call. Lazy — pool only spawns on first use.
@@ -77,7 +103,13 @@ def run_single_shot(args: argparse.Namespace) -> int:
         # ``openai`` is the deprecated alias for ``llm``.
         from agentic_swmm.agent.runtime_loop import run_openai_planner
 
-        return run_openai_planner(args, goal, session_dir, trace_path, registry)
+        try:
+            rc = run_openai_planner(args, goal, session_dir, trace_path, registry)
+        except BaseException:
+            finalize_session_header(session_dir, "interrupted")
+            raise
+        finalize_session_header(session_dir, "completed" if rc == 0 else "failed")
+        return rc
 
     preview_plan = rule_plan(goal)
     if len(preview_plan) > args.max_steps:
@@ -95,6 +127,7 @@ def run_single_shot(args: argparse.Namespace) -> int:
     if args.dry_run:
         _write_report(session_dir, goal, preview_plan, [], dry_run=True, allowed_tools=registry.names)
         _agent_say(f"Dry run only. Trace: {_display_path(trace_path)}")
+        finalize_session_header(session_dir, "completed")
         return 0
 
     # Late import keeps the agent runtime free of a CLI-layer dependency
@@ -109,13 +142,17 @@ def run_single_shot(args: argparse.Namespace) -> int:
         dry_run=False,
         profile=profile,
     )
-    outcome = run_rule_plan(
-        goal=goal,
-        registry=registry,
-        executor=executor,
-        max_steps=args.max_steps,
-        trace_path=trace_path,
-    )
+    try:
+        outcome = run_rule_plan(
+            goal=goal,
+            registry=registry,
+            executor=executor,
+            max_steps=args.max_steps,
+            trace_path=trace_path,
+        )
+    except BaseException:
+        finalize_session_header(session_dir, "interrupted")
+        raise
     for index, (call, result) in enumerate(zip(outcome.plan, outcome.results), start=1):
         _agent_say(f"[{index}/{len(outcome.plan)}] {call.name}")
         if result["ok"]:
@@ -141,4 +178,5 @@ def run_single_shot(args: argparse.Namespace) -> int:
 
     _refresh_moc_after_session(session_dir)
     _agent_say(f"Final report: {_display_path(report)}")
+    finalize_session_header(session_dir, "completed" if outcome.ok else "failed")
     return 0 if outcome.ok else 1
