@@ -74,6 +74,15 @@ After an entropy run, `audit/entropy_hotspot_ranking.json` ranks subcatchments b
     - `runs/<case>/02_params/{landuse.csv,soil.csv,landuse.json,soil.json,merged_params.json}`
     - `runs/<case>/04_network/{network.json,network_qa.json}`
     - `runs/<case>/qgis_export_manifest.json`
+  - `import-drainage-assets`: copy a prepared network JSON into `04_network` and run network QA
+  - `export-swmm-intermediates` and `import-drainage-assets` accept `--skills-root <dir>` to relocate the sibling `swmm-params`/`swmm-network` scripts they subprocess-shell into — see "Sibling-skill script location" below
+
+- `scripts/area_weighted_swmm_params.py`
+  - `--subcatchments <file>`, `--landuse <file>`, `--soil <file>` (polygon layers), `--out-dir <dir>`
+  - `--id-field` (default `basin_id`), `--landuse-field` (default `CLASS`), `--soil-field` (default `TEXTURE`)
+  - `--landuse-lookup`, `--soil-lookup`: override the lookup CSVs (default under `swmm-params/references/`)
+  - `--skills-root <dir>`: sibling-skill root used to locate the default lookup CSVs — see "Sibling-skill script location" below
+  - `--strict`: fail on missing overlay coverage or unmapped lookup classes instead of falling back to `DEFAULT`/`-`
 
 - `scripts/flowpath_entropy_partition.py`
   - computes paper-consistent spatial heterogeneity diagnostics:
@@ -123,6 +132,14 @@ After an entropy run, `audit/entropy_hotspot_ranking.json` ranks subcatchments b
 - `scripts/plot_qgis_standard_layers.py`
   - renders the clean `final_layers/overview.png`
   - intended for deliverable figures, not raw audit screenshots
+
+## Sibling-skill script location
+`qgis_prepare_swmm_inputs.py` (`export-swmm-intermediates`, `import-drainage-assets`) subprocess-shells into `swmm-params/scripts/*.py` and `swmm-network/scripts/network_qa.py`. `area_weighted_swmm_params.py` defaults its landuse/soil lookup CSVs from `swmm-params/references/`. Both resolve the sibling skills root through, in order:
+1. `--skills-root <dir>` flag
+2. `AISWMM_SKILLS_ROOT` environment variable
+3. default: the `skills/` directory next to this skill's own checkout (unchanged behavior when neither is set)
+
+Use `--skills-root`/`AISWMM_SKILLS_ROOT` when `swmm-params`/`swmm-network` aren't checked out at the default relative location, e.g. a relocated or standalone deployment.
 
 ## Explicit assumptions for subcatchment preprocessing
 - Coordinates should be in one projected CRS before SWMM geometric quantities are trusted. Use `qgis_normalize_layers` or `--normalize-layers` when raw DEM / land-use / soil / boundary inputs may be mixed CRS or not clipped to the study boundary.

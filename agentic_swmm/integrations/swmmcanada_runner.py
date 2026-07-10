@@ -167,6 +167,9 @@ def fetch_from_aoi(
             f"no SWMMCanada base URL — pass base_url= or set ${BASE_URL_ENV}",
         )
 
+    _announce_preview(
+        service_url, aoi_geojson, opener=opener, sleep=sleep, progress=progress
+    )
     task_id, mode = _submit(
         service_url, aoi_geojson, start, end,
         infiltration=infiltration, opener=opener, sleep=sleep,
@@ -192,6 +195,44 @@ def fetch_from_aoi(
         validation=validation,
         warnings=(),
     )
+
+
+def _announce_preview(
+    service_url: str,
+    aoi_geojson: str,
+    *,
+    opener: Callable[..., Any],
+    sleep: Callable[[float], None],
+    progress: Callable[[str, Any], None] | None,
+) -> None:
+    """Best-effort pre-submit announce of the routing facts (Option B).
+
+    Newer upstreams answer ``/aoi/preview`` with ``mode``/``city``/
+    ``in_canada`` (SWMMCanada #111), letting the status line say
+    "Real municipal network — Ottawa, ON" BEFORE the multi-minute build
+    starts. Strictly an announce, never a gate: the client-side geofence
+    already screens obvious misses and the service stays the authority
+    at submit. Older upstreams (or any error) are silently tolerated —
+    a missing preview can never break a fetch.
+    """
+    if progress is None:
+        return
+    body = urllib.parse.urlencode({"polygon": aoi_geojson}).encode()
+    req = urllib.request.Request(
+        f"{service_url}/api/v1/aoi/preview",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        payload = json.loads(
+            _open_with_retry(req, timeout=30, opener=opener, sleep=sleep, max_attempts=1).decode()
+        )
+        mode = payload.get("mode")
+    except Exception:
+        return
+    if isinstance(mode, str) and mode.strip():
+        _report(progress, f"PREVIEW: {mode.strip()}", None)
 
 
 def _submit(
