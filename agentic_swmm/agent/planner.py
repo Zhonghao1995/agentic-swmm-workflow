@@ -5,6 +5,8 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+import re
+
 from pathlib import Path
 from typing import IO, Any, Callable
 
@@ -45,11 +47,27 @@ class PlannerRun:
     final_text: str
 
 
+_INP_TOKEN_RE = re.compile(r"[\w./\\-]+\.inp\b", re.IGNORECASE)
+
+
 def rule_plan(goal: str) -> list[ToolCall]:
     text = goal.lower()
     calls: list[ToolCall] = []
     if any(word in text for word in ("doctor", "diagnose", "check setup", "runtime")):
         calls.append(ToolCall("doctor", {}))
+    # A goal that names an .inp and asks to run it is unambiguous: route
+    # it to run_swmm_inp instead of the doctor fallback. The rule planner
+    # stays deliberately minimal, but "run <model>.inp" is its bread and
+    # butter (the LLM planner handles everything fuzzier). Bare filenames
+    # resolve under examples/ via the same helper the runtime loop uses.
+    inp_match = _INP_TOKEN_RE.search(goal)
+    if inp_match and any(word in text for word in ("run", "execute", "运行", "跑")):
+        from agentic_swmm.agent.single_shot import _find_repo_inp
+
+        raw = inp_match.group(0)
+        resolved = _find_repo_inp(raw)
+        inp_path = str(resolved) if resolved is not None else raw
+        calls.append(ToolCall("run_swmm_inp", {"inp_path": inp_path}))
     wants_acceptance = "acceptance" in text or "demo" in text
     wants_audit = "audit" in text
     wants_memory = "memory" in text or "summarize" in text
