@@ -65,6 +65,10 @@ from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.audit.chat_note import build_chat_note
 from agentic_swmm.audit.moc_generator import generate_moc
+from agentic_swmm.agent.session_header import (
+    finalize_session_header,
+    try_write_session_header,
+)
 from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 from agentic_swmm.memory.session_sync import sync_session_to_db
 from agentic_swmm.providers.factory import SUPPORTED_PROVIDERS, make_provider
@@ -122,6 +126,16 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     from agentic_swmm.commands.agent import resolve_profile_string
 
     profile_name = resolve_profile_string(args)
+
+    # ADR-0003 leftover: interactive turns get the same session header the
+    # single-shot path writes. Provider/model resolved once per shell with
+    # the exact expressions run_openai_planner applies per turn.
+    try:
+        _header_config = load_config()
+        header_provider = args.provider or _header_config.get("provider.default", DEFAULT_PROVIDER)
+        header_model = args.model or _header_config.get(f"{header_provider}.model")
+    except Exception:
+        header_provider, header_model = args.provider, args.model
 
     # Issue #57 (UX-2): print the logo + first-run welcome (or the
     # compact returning-user banner) before the existing one-line
@@ -188,17 +202,36 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
         trace_path = session_dir / "agent_trace.jsonl"
+        registry = AgentToolRegistry()
+        # The turn dir IS the session dir (agent_trace.jsonl lives here):
+        # it gets the ADR-0003 header exactly like a single-shot session.
+        # Re-running inside an active run dir refreshes the header with
+        # the follow-up goal rather than leaving the original one stale.
+        try_write_session_header(
+            session_dir,
+            goal=prompt,
+            planner="llm",
+            profile=profile_name,
+            provider=header_provider,
+            model=header_model,
+            registry=registry,
+        )
         prior_state = _bootstrap_prior_state(active_run_dir[0])
         print()
-        rc = run_openai_planner(
-            run_args,
-            goal,
-            session_dir,
-            trace_path,
-            AgentToolRegistry(),
-            chat_session=is_chat_turn,
-            prior_session_state=prior_state,
-        )
+        try:
+            rc = run_openai_planner(
+                run_args,
+                goal,
+                session_dir,
+                trace_path,
+                registry,
+                chat_session=is_chat_turn,
+                prior_session_state=prior_state,
+            )
+        except BaseException:
+            finalize_session_header(session_dir, "interrupted")
+            raise
+        finalize_session_header(session_dir, "completed" if rc == 0 else "failed")
         if rc == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
         print()
