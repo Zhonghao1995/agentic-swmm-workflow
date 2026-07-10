@@ -114,7 +114,7 @@ What the planner does:
 
 Expected artefacts under `swmm_run/`:
 
-* `05_runner/model.rpt` (~350 KB), `05_runner/model.out` (~3.7 MB)
+* `06_runner/model.rpt` (~350 KB), `06_runner/model.out` (~3.7 MB)
 * `06_qa/runner_peak.json`, `06_qa/runner_continuity.json`
 * `09_audit/experiment_provenance.json` (14 tracked artefacts)
 * `09_audit/experiment_note.md` (Markdown audit dossier, see Step 5)
@@ -128,7 +128,7 @@ Expected artefacts under `swmm_run/`:
 
 What the planner does:
 
-1. Matches the `map` intent (added in v0.7.1) → calls `aiswmm map --run-dir <run> --out-png <run>/swmm_run/07_plots/network_map.png`.
+1. Matches the `map` intent (added in v0.7.1) → calls `aiswmm map --run-dir <run> --out-png <run>/swmm_run/08_plot/network_map.png`.
 2. The `map` command auto-discovers SWMManywhere's geoparquet trio under `10_swmmanywhere/` and renders subcatchment polygons + conduits coloured by outfall + outfall stars + nodes.
 
 Expected output: a PNG roughly equivalent to [`figs/swmm_anywhere_network_map.png`](figs/swmm_anywhere_network_map.png) in this repo.
@@ -194,7 +194,7 @@ JSON with one entry per tracked artefact. Each entry:
 
 ```json
 {
-  "path": "swmm_run/05_runner/model.rpt",
+  "path": "swmm_run/06_runner/model.rpt",
   "sha256": "…",
   "size_bytes": 359142,
   "role": "swmm_runner_report",
@@ -209,7 +209,7 @@ The file is **append-only**: once an audit pass writes it, subsequent passes nev
 Three SHA-256 fingerprints proving that the INP run by `swmm5` is the same file SWMManywhere wrote:
 
 * `source_inp.sha256` — what SWMManywhere produced under `10_swmmanywhere/synth.inp`
-* `builder_inp.sha256` — what the runner staged into `04_builder/model.inp`
+* `builder_inp.sha256` — what the runner staged into `05_builder/model.inp`
 * `run_inp.sha256` — what swmm5 actually consumed at `00_inputs/model.inp`
 
 For the case-study run, all three matched: `a02839079c576f82e837885afd47692211692629208d50d38d1d83f59dad5247`.
