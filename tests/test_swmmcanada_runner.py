@@ -77,12 +77,18 @@ class _FakeOpener:
         self._status_script = list(status_script)
         self._task_mode = task_mode
         self._default_state = default_state
+        # None -> the endpoint 404s like an older upstream (pre SWMMCanada #111).
+        self.preview_response: dict | None = None
         self.calls: list[tuple[str, str]] = []
 
     def __call__(self, request, timeout=None):  # noqa: ANN001 - urlopen shape
         method = request.get_method()
         url = request.full_url
         self.calls.append((method, url))
+        if method == "POST" and url.endswith("/api/v1/aoi/preview"):
+            if self.preview_response is None:
+                raise urllib.error.HTTPError(url, 404, "no preview on this upstream", {}, io.BytesIO(b""))
+            return _FakeResp(json.dumps(self.preview_response).encode())
         if method == "POST" and url.endswith("/api/v1/tasks"):
             body = json.dumps({"task_id": "t1", "status": "QUEUED", "mode": self._task_mode}).encode()
             return _FakeResp(body, status=202)
@@ -348,6 +354,67 @@ class TransientRetryTests(unittest.TestCase):
                 fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "r", base_url="http://svc", opener=opener, sleep=lambda *_: None)
         self.assertEqual(ctx.exception.stage, "submit")
         self.assertEqual(opener.attempts, DEFAULT_MAX_ATTEMPTS)
+
+
+class PreviewAnnounceTests(unittest.TestCase):
+    """Option B client half: newer upstreams get a pre-submit mode announce;
+    older upstreams (404) and preview-less callers are silently tolerated."""
+
+    def test_preview_mode_announced_before_submit(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        opener.preview_response = {
+            "mode": "Real municipal network — Ottawa, ON",
+            "city": "ottawa",
+            "in_canada": True,
+        }
+        seen: list[tuple[str, object]] = []
+        with TemporaryDirectory() as tmp:
+            fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=lambda *_: None,
+                progress=lambda stage, pct: seen.append((stage, pct)),
+            )
+        self.assertEqual(seen[0], ("PREVIEW: Real municipal network — Ottawa, ON", None))
+        preview_calls = [c for c in opener.calls if c[1].endswith("/aoi/preview")]
+        submit_calls = [c for c in opener.calls if c[1].endswith("/api/v1/tasks")]
+        self.assertEqual(len(preview_calls), 1)
+        self.assertLess(opener.calls.index(preview_calls[0]), opener.calls.index(submit_calls[0]))
+
+    def test_older_upstream_without_preview_is_tolerated(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])  # preview 404s
+        seen: list[tuple[str, object]] = []
+        with TemporaryDirectory() as tmp:
+            result = fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=lambda *_: None,
+                progress=lambda stage, pct: seen.append((stage, pct)),
+            )
+            self.assertTrue(result.inp_path.is_file())
+        self.assertFalse(any(s.startswith("PREVIEW") for s, _ in seen))
+
+    def test_no_progress_callback_skips_the_preview_round_trip(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
+        with TemporaryDirectory() as tmp:
+            fetch_from_aoi(
+                AOI, START, END,
+                run_dir=Path(tmp) / "run",
+                base_url="http://svc",
+                opener=opener,
+                sleep=lambda *_: None,
+            )
+        self.assertFalse(any(u.endswith("/aoi/preview") for _, u in opener.calls))
 
 
 class ProgressCallbackTests(unittest.TestCase):

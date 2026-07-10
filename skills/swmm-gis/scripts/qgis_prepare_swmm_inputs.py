@@ -15,12 +15,33 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GIS_DIR = Path(__file__).resolve().parents[1]
-PARAMS_DIR = REPO_ROOT / "skills/swmm-params"
-NETWORK_DIR = REPO_ROOT / "skills/swmm-network"
+
+# Sibling-skill seam (issue #246): export-swmm-intermediates and
+# import-drainage-assets subprocess-shell into swmm-params/swmm-network
+# scripts. Resolve the skills/ root through --skills-root >
+# AISWMM_SKILLS_ROOT env var > the repo-relative default, so a
+# relocated/standalone deployment can point elsewhere without changing
+# default behavior.
+DEFAULT_SKILLS_ROOT = REPO_ROOT / "skills"
+SKILLS_ROOT_ENV = "AISWMM_SKILLS_ROOT"
 
 DEFAULT_QGIS_PROCESS = "/Applications/QGIS-final-4_0_2.app/Contents/MacOS/qgis_process"
 DEFAULT_PROJ_LIB = "/Applications/QGIS-final-4_0_2.app/Contents/Resources/qgis/proj"
 DEFAULT_GISBASE = "/Applications/GRASS-8.4.app/Contents/Resources"
+
+
+def resolve_skills_root(cli_value: Path | None) -> Path:
+    """Resolve the skills/ root directory holding sibling skills (e.g. swmm-params, swmm-network).
+
+    Precedence: --skills-root flag > AISWMM_SKILLS_ROOT env var > default
+    (repo-relative skills/ next to this skill's checkout).
+    """
+    if cli_value is not None:
+        return cli_value
+    env_value = os.environ.get(SKILLS_ROOT_ENV)
+    if env_value:
+        return Path(env_value)
+    return DEFAULT_SKILLS_ROOT
 
 
 def load_json(path: Path) -> Any:
@@ -515,12 +536,18 @@ def extract_overlay_tables(
     }
 
 
-def copy_network_and_qa(network_json: Path, out_network_json: Path, out_qa_json: Path) -> dict[str, Any]:
+def copy_network_and_qa(
+    network_json: Path,
+    out_network_json: Path,
+    out_qa_json: Path,
+    *,
+    network_skill_dir: Path = DEFAULT_SKILLS_ROOT / "swmm-network",
+) -> dict[str, Any]:
     out_network_json.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(network_json, out_network_json)
     qa = run_python(
         [
-            str(NETWORK_DIR / "scripts/network_qa.py"),
+            str(network_skill_dir / "scripts/network_qa.py"),
             str(out_network_json),
             "--report-json",
             str(out_qa_json),
@@ -535,6 +562,10 @@ def export_swmm_intermediates(args: argparse.Namespace) -> dict[str, Any]:
     gis_dir = run_dir / "01_gis"
     params_dir = run_dir / "02_params"
     network_dir = run_dir / "04_network"
+
+    skills_root = resolve_skills_root(args.skills_root)
+    params_skill_dir = skills_root / "swmm-params"
+    network_skill_dir = skills_root / "swmm-network"
 
     layers = {
         "dem": str(args.dem) if args.dem else None,
@@ -593,7 +624,7 @@ def export_swmm_intermediates(args: argparse.Namespace) -> dict[str, Any]:
 
     landuse = run_python(
         [
-            str(PARAMS_DIR / "scripts/landuse_to_swmm_params.py"),
+            str(params_skill_dir / "scripts/landuse_to_swmm_params.py"),
             "--input",
             str(params_dir / "landuse.csv"),
             "--output",
@@ -602,7 +633,7 @@ def export_swmm_intermediates(args: argparse.Namespace) -> dict[str, Any]:
     )
     soil = run_python(
         [
-            str(PARAMS_DIR / "scripts/soil_to_greenampt.py"),
+            str(params_skill_dir / "scripts/soil_to_greenampt.py"),
             "--input",
             str(params_dir / "soil.csv"),
             "--output",
@@ -611,7 +642,7 @@ def export_swmm_intermediates(args: argparse.Namespace) -> dict[str, Any]:
     )
     merged = run_python(
         [
-            str(PARAMS_DIR / "scripts/merge_swmm_params.py"),
+            str(params_skill_dir / "scripts/merge_swmm_params.py"),
             "--landuse-json",
             str(params_dir / "landuse.json"),
             "--soil-json",
@@ -621,7 +652,12 @@ def export_swmm_intermediates(args: argparse.Namespace) -> dict[str, Any]:
         ]
     )
 
-    network = copy_network_and_qa(args.network_json, network_dir / "network.json", network_dir / "network_qa.json")
+    network = copy_network_and_qa(
+        args.network_json,
+        network_dir / "network.json",
+        network_dir / "network_qa.json",
+        network_skill_dir=network_skill_dir,
+    )
 
     report = {
         "ok": True,
@@ -682,6 +718,15 @@ def add_common_export_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--min-slope-pct", type=float, default=0.1)
     ap.add_argument("--min-width-m", type=float, default=10.0)
     ap.add_argument("--strict-crs", action="store_true")
+    ap.add_argument(
+        "--skills-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory containing sibling skills swmm-params/swmm-network. "
+            f"Overrides: flag > {SKILLS_ROOT_ENV} env var > default '<repo>/skills'."
+        ),
+    )
 
 
 def main() -> None:
@@ -729,6 +774,15 @@ def main() -> None:
     network_ap.add_argument("--network-json", type=Path, required=True)
     network_ap.add_argument("--out-network-json", type=Path, required=True)
     network_ap.add_argument("--out-qa-json", type=Path, required=True)
+    network_ap.add_argument(
+        "--skills-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory containing the sibling swmm-network skill. "
+            f"Overrides: flag > {SKILLS_ROOT_ENV} env var > default '<repo>/skills'."
+        ),
+    )
 
     export_ap = sub.add_parser("export-swmm-intermediates", help="Export 01_gis, 02_params, and 04_network artifacts from QGIS-prepared sources.")
     add_common_export_args(export_ap)
@@ -760,7 +814,13 @@ def main() -> None:
             out_soil_csv=args.out_soil_csv,
         )
     elif args.command == "import-drainage-assets":
-        result = copy_network_and_qa(args.network_json, args.out_network_json, args.out_qa_json)
+        skills_root = resolve_skills_root(args.skills_root)
+        result = copy_network_and_qa(
+            args.network_json,
+            args.out_network_json,
+            args.out_qa_json,
+            network_skill_dir=skills_root / "swmm-network",
+        )
     elif args.command == "export-swmm-intermediates":
         result = export_swmm_intermediates(args)
     else:
