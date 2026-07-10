@@ -39,10 +39,10 @@ runs/2026-05-27/195456_e2e_chain/
 │   ├── subcatchments.geoparquet         # 494 polygons
 │   └── synth_provenance.json            # parameters, tool versions, captured_at
 ├── swmm_run/                            # aiswmm's standard audit-pipeline layout
-│   ├── 04_builder/model.inp
-│   ├── 05_runner/{model.rpt, model.out} # swmm5 5.2.4 outputs (NOT pyswmm)
+│   ├── 05_builder/model.inp
+│   ├── 06_runner/{model.rpt, model.out} # swmm5 5.2.4 outputs (NOT pyswmm)
 │   ├── 06_qa/{runner_peak, runner_continuity}.json
-│   ├── 07_plots/fig_rain_runoff.png     # aiswmm plot (rainfall + runoff)
+│   ├── 08_plot/fig_rain_runoff.png     # aiswmm plot (rainfall + runoff)
 │   └── 09_audit/                        # 14 audit artefacts (see below)
 └── e2e_chain_report.json                # 5-step chain timings + step status
 ```
