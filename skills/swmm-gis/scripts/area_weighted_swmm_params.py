@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,14 @@ import geopandas as gpd
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-PARAMS_DIR = REPO_ROOT / "skills/swmm-params"
-DEFAULT_LANDUSE_LOOKUP = PARAMS_DIR / "references/landuse_class_to_subcatch_params.csv"
-DEFAULT_SOIL_LOOKUP = PARAMS_DIR / "references/soil_texture_to_greenampt.csv"
+
+# Sibling-skill seam (issue #246): this script defaults its landuse/soil
+# lookup CSVs from the swmm-params skill's reference data. Resolve the
+# skills/ root through --skills-root > AISWMM_SKILLS_ROOT env var > the
+# repo-relative default, so a relocated/standalone deployment can point
+# elsewhere without changing default behavior.
+DEFAULT_SKILLS_ROOT = REPO_ROOT / "skills"
+SKILLS_ROOT_ENV = "AISWMM_SKILLS_ROOT"
 NUMERIC_LANDUSE_FIELDS = [
     "imperv_pct",
     "n_imperv",
@@ -24,6 +30,20 @@ NUMERIC_LANDUSE_FIELDS = [
     "pct_routed",
 ]
 NUMERIC_SOIL_FIELDS = ["suction_mm", "ksat_mm_per_hr", "imdmax"]
+
+
+def resolve_skills_root(cli_value: Path | None) -> Path:
+    """Resolve the skills/ root directory holding sibling skills (e.g. swmm-params).
+
+    Precedence: --skills-root flag > AISWMM_SKILLS_ROOT env var > default
+    (repo-relative skills/ next to this skill's checkout).
+    """
+    if cli_value is not None:
+        return cli_value
+    env_value = os.environ.get(SKILLS_ROOT_ENV)
+    if env_value:
+        return Path(env_value)
+    return DEFAULT_SKILLS_ROOT
 
 
 def normalize_key(value: Any) -> str:
@@ -428,10 +448,34 @@ def main() -> None:
     ap.add_argument("--id-field", default="basin_id")
     ap.add_argument("--landuse-field", default="CLASS")
     ap.add_argument("--soil-field", default="TEXTURE")
-    ap.add_argument("--landuse-lookup", type=Path, default=DEFAULT_LANDUSE_LOOKUP)
-    ap.add_argument("--soil-lookup", type=Path, default=DEFAULT_SOIL_LOOKUP)
+    ap.add_argument(
+        "--skills-root",
+        type=Path,
+        default=None,
+        help=(
+            "Root directory containing sibling skills (e.g. swmm-params). "
+            f"Overrides: flag > {SKILLS_ROOT_ENV} env var > default '<repo>/skills'."
+        ),
+    )
+    ap.add_argument(
+        "--landuse-lookup",
+        type=Path,
+        default=None,
+        help="Lookup CSV for land use mapping (default: <skills-root>/swmm-params/references/landuse_class_to_subcatch_params.csv).",
+    )
+    ap.add_argument(
+        "--soil-lookup",
+        type=Path,
+        default=None,
+        help="Lookup CSV for soil texture mapping (default: <skills-root>/swmm-params/references/soil_texture_to_greenampt.csv).",
+    )
     ap.add_argument("--strict", action="store_true", help="Fail on missing overlay coverage or missing lookup classes.")
     args = ap.parse_args()
+
+    skills_root = resolve_skills_root(args.skills_root)
+    params_dir = skills_root / "swmm-params"
+    landuse_lookup_path = args.landuse_lookup or (params_dir / "references/landuse_class_to_subcatch_params.csv")
+    soil_lookup_path = args.soil_lookup or (params_dir / "references/soil_texture_to_greenampt.csv")
 
     sub = read_vector(args.subcatchments, layer_name="subcatchments")
     landuse = read_vector(args.landuse, layer_name="landuse")
@@ -451,12 +495,12 @@ def main() -> None:
             "Use a unique id field or pass --id-field __feature_id__ to generate one id per feature."
         )
 
-    land_lookup, land_default = load_landuse_lookup(args.landuse_lookup)
-    soil_lookup, soil_default = load_soil_lookup(args.soil_lookup)
+    land_lookup, land_default = load_landuse_lookup(landuse_lookup_path)
+    soil_lookup, soil_default = load_soil_lookup(soil_lookup_path)
     if land_default is None and not args.strict:
-        raise ValueError(f"Landuse lookup has no DEFAULT row: {args.landuse_lookup}")
+        raise ValueError(f"Landuse lookup has no DEFAULT row: {landuse_lookup_path}")
     if soil_default is None and not args.strict:
-        raise ValueError(f"Soil lookup has no '-' or DEFAULT row: {args.soil_lookup}")
+        raise ValueError(f"Soil lookup has no '-' or DEFAULT row: {soil_lookup_path}")
 
     land_rows, land_issues = class_area_fractions(
         subcatchments=sub,
@@ -484,8 +528,8 @@ def main() -> None:
         "subcatchments": str(args.subcatchments),
         "landuse": str(args.landuse),
         "soil": str(args.soil),
-        "landuse_lookup": str(args.landuse_lookup),
-        "soil_lookup": str(args.soil_lookup),
+        "landuse_lookup": str(landuse_lookup_path),
+        "soil_lookup": str(soil_lookup_path),
     }
     merged["area_weighting"] = {
         "method": "polygon_intersection_area_fraction",
