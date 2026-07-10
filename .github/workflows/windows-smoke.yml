@@ -1,0 +1,53 @@
+name: Windows Install Smoke
+
+# Issue #3: prove the documented one-line Windows install produces a
+# working toolchain, without waiting for a physical machine. Runs the
+# REAL installer chain (web/install.ps1 -> scripts/bootstrap.ps1 ->
+# scripts/install.ps1 -Yes) on a hosted Windows runner, then smokes the
+# installed CLI. Scheduled weekly + on installer changes, not on every
+# PR (Windows minutes are expensive and the installer is slow).
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-smoke.yml"
+      - "web/install.ps1"
+      - "scripts/bootstrap.ps1"
+      - "scripts/install.ps1"
+  push:
+    branches: [main]
+    paths:
+      - "web/install.ps1"
+      - "scripts/bootstrap.ps1"
+      - "scripts/install.ps1"
+      - ".github/workflows/windows-smoke.yml"
+  schedule:
+    - cron: "0 6 * * 1" # weekly Monday sanity: catches winget/choco drift
+
+jobs:
+  one-line-install:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the documented one-liner (pinned to main)
+        shell: powershell
+        env:
+          # bootstrap clones with `git clone --branch`, which takes a
+          # branch/tag, not a bare sha: main is the honest pin here.
+          AISWMM_INSTALL_REF: main
+        run: ./web/install.ps1
+
+      - name: Smoke the installed CLI
+        shell: powershell
+        run: |
+          $aiswmm = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow\.venv\Scripts\aiswmm.exe"
+          if (-not (Test-Path $aiswmm)) { throw "aiswmm.exe missing at $aiswmm" }
+          & $aiswmm --version
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm --version failed" }
+          & $aiswmm capabilities
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm capabilities failed" }
+          & $aiswmm doctor
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm doctor failed" }
