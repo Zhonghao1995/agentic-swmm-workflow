@@ -29,6 +29,10 @@ def _build_args(run_dir: Path, *, print_every: int = 2, total: int = 6) -> list[
     return [
         "calibrate",
         "--quiet",
+        # ADR-0005: the default engine became the real SCE-UA; these
+        # tests pin the synthetic walker's progress-line contract.
+        "--engine",
+        "synthetic",
         "--run-id",
         "cli-r1",
         "--algorithm",

@@ -46,9 +46,10 @@ from agentic_swmm.memory.run_progress import (
 
 
 _CALIBRATE_EXAMPLE = (
-    "aiswmm calibrate --inp model.inp --run-id calib_001 "
-    "--total-iters 100 --param manning_n=0.010,0.018 "
-    "--run-dir runs/calib_001"
+    "aiswmm calibrate --inp model.inp --observed-csv observed.csv "
+    "--patch-map examples/calibration/patch_map.json --run-id calib_001 "
+    "--total-iters 200 --param n_imperv_s1=0.010,0.030 "
+    "--run-dir runs/agent/calib_001 --progress"
 )
 
 
@@ -73,8 +74,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--algorithm",
         default="sceua",
-        choices=("sceua", "dream_zs"),
-        help="Calibration algorithm label (default sceua).",
+        choices=("sceua", "dream-zs"),
+        help=(
+            "Calibration algorithm (default sceua). dream-zs is not wired "
+            "into this verb yet: use the calibrate_dream_zs agent tool or "
+            "the skill script (ADR-0005)."
+        ),
     )
     parser.add_argument(
         "--total-iters",
@@ -103,10 +108,53 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         type=Path,
         default=None,
         help=(
-            "Observed CSV path (stamped into config; not opened by the "
-            "stub). Optional while the synthetic walker is in place."
+            "Observed series (CSV or headerless datetime,flow). REQUIRED "
+            "for the real engine. UNITS CONTRACT (ADR-0005): values must "
+            "be in the same units as the SWMM output attribute selected "
+            "by --node/--attr; a >100x median-magnitude mismatch triggers "
+            "a loud warning. Only --engine synthetic may omit this."
         ),
     )
+    parser.add_argument(
+        "--engine",
+        default="real",
+        choices=("real", "synthetic"),
+        help=(
+            "'real' (default) runs the SCE-UA engine from "
+            "skills/swmm-calibration. 'synthetic' keeps the historical "
+            "checkpoint-contract walker (still stamped is_stub) for dry "
+            "runs and contract tests."
+        ),
+    )
+    parser.add_argument(
+        "--patch-map",
+        type=Path,
+        default=None,
+        help=(
+            "JSON mapping each --param NAME to its INP location "
+            "({section, object, field_index}); see "
+            "examples/calibration/patch_map.json. REQUIRED for the real "
+            "engine; every --param NAME must exist in it."
+        ),
+    )
+    parser.add_argument("--node", default="O1", help="SWMM node id to compare (default O1).")
+    parser.add_argument(
+        "--attr",
+        default="Total_inflow",
+        help="SWMM node attribute to compare (default Total_inflow).",
+    )
+    parser.add_argument(
+        "--aggregate",
+        default="none",
+        choices=("none", "daily_mean"),
+        help="Aggregation applied to both series before scoring (default none).",
+    )
+    parser.add_argument("--obs-start", default=None, help="Inclusive observed-window start.")
+    parser.add_argument("--obs-end", default=None, help="Inclusive observed-window end.")
+    parser.add_argument("--timestamp-col", default=None, help="Observed CSV timestamp column (default: autodetect).")
+    parser.add_argument("--flow-col", default=None, help="Observed CSV flow column (default: autodetect).")
+    parser.add_argument("--seed", type=int, default=42, help="SCE-UA random seed (default 42).")
+    parser.add_argument("--ngs", type=int, default=5, help="SCE-UA number of complexes (default 5).")
     parser.add_argument(
         "--param",
         action="append",
@@ -196,16 +244,96 @@ def _append_trace_line(run_dir: Path, payload: dict[str, Any]) -> None:
         handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
 
 
+def _run_real(args: argparse.Namespace, parameters: list[tuple[str, float, float]]) -> int:
+    """ADR-0005: drive the real SCE-UA experiment through the facade."""
+    from agentic_swmm.agent.swmm_runtime.calibration_runner import (
+        RealCalibrationConfig,
+        run_real_calibration,
+    )
+
+    run_dir: Path = args.run_dir
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print_every: int = max(1, args.print_every)
+    counter = {"n": 0}
+
+    def _on_progress(ckpt: ProgressCheckpoint) -> None:
+        counter["n"] += 1
+        if not args.progress or counter["n"] % print_every != 0:
+            return
+        line = summarize_progress(ckpt)
+        if _is_tty():
+            print(line)
+        else:
+            _append_trace_line(
+                run_dir,
+                {
+                    "event": "calibrate_progress",
+                    "run_id": ckpt.run_id,
+                    "iter_index": ckpt.iter_index,
+                    "total_iters": ckpt.total_iters,
+                    "best_objective_so_far": ckpt.best_objective_so_far,
+                    "wall_time_s": ckpt.wall_time_s,
+                    "summary": line,
+                },
+            )
+
+    cfg = RealCalibrationConfig(
+        run_id=args.run_id,
+        base_inp=args.inp,
+        observed_csv=args.observed_csv,
+        patch_map_path=args.patch_map,
+        parameters=parameters,
+        total_iters=args.total_iters,
+        algorithm=args.algorithm,
+        node=args.node,
+        attr=args.attr,
+        aggregate=args.aggregate,
+        obs_start=args.obs_start,
+        obs_end=args.obs_end,
+        timestamp_col=args.timestamp_col,
+        flow_col=args.flow_col,
+        seed=args.seed,
+        ngs=args.ngs,
+        checkpoint_every=args.checkpoint_every,
+    )
+    try:
+        result = run_real_calibration(cfg, run_dir, progress_callback=_on_progress)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    for warning in result.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    summary = {
+        "ok": not result.errors,
+        "is_stub": False,
+        "engine": "sceua-spotpy",
+        "run_id": result.run_id,
+        "algorithm": result.algorithm,
+        "iterations_completed": result.iterations_completed,
+        "total_iters": result.total_iters,
+        "best_objective": result.best_objective,
+        "best_parameters": result.best_parameters,
+        "wall_time_s": result.wall_time_s,
+        "warnings": result.warnings,
+        "errors": result.errors,
+        "experiment_dir": str(run_dir),
+    }
+    print(json.dumps(summary, indent=2, sort_keys=True))
+    return 0 if not result.errors else 2
+
+
 def main(args: argparse.Namespace) -> int:
-    # PRD-08 A.1 (audit #2): print the STUB banner to stdout before any
-    # numbers appear so a domain user cannot mistake the synthetic walker
-    # for a real calibration. --quiet suppresses it for scripted callers.
-    if not getattr(args, "quiet", False):
+    engine = getattr(args, "engine", "real")
+    # PRD-08 A.1 (audit #2): the STUB banner now guards ONLY the synthetic
+    # walker; the default engine is the real SCE-UA (ADR-0005) and must not
+    # carry a stub warning it no longer deserves.
+    if engine == "synthetic" and not getattr(args, "quiet", False):
         print(STUB_BANNER)
 
-    # PRD-08 A.1 (audit #2): the synthetic walker historically claimed
-    # success even when --inp pointed at a non-existent file.
-    # Refuse to start with an actionable stderr error.
+    # The synthetic walker historically claimed success even when --inp
+    # pointed at a non-existent file. Refuse to start with an actionable
+    # stderr error (both engines).
     fail_fast_if_path_missing(args.inp, "--inp")
 
     try:
@@ -213,6 +341,25 @@ def main(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    if engine == "real":
+        if args.algorithm != "sceua":
+            print(
+                "error: --algorithm dream-zs is not wired into this verb yet; "
+                "use the calibrate_dream_zs agent tool or the skill script.",
+                file=sys.stderr,
+            )
+            return 1
+        if args.observed_csv is None or args.patch_map is None:
+            print(
+                "error: the real engine requires --observed-csv and --patch-map "
+                "(only --engine synthetic may omit them).",
+                file=sys.stderr,
+            )
+            return 1
+        fail_fast_if_path_missing(args.observed_csv, "--observed-csv")
+        fail_fast_if_path_missing(args.patch_map, "--patch-map")
+        return _run_real(args, parameters)
 
     cfg = CalibrationRunConfig(
         run_id=args.run_id,

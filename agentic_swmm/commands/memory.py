@@ -12,6 +12,7 @@ from typing import Any
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.utils.paths import (
     repo_root,
+    resource_root,
     require_dir,
     resolve_memory_dir,
     resolve_runs_dir,
@@ -336,7 +337,7 @@ def _rebuild_rag_corpus(memory_dir: Path, rag_dir: Path, runs_dir: Path) -> dict
     should not nuke a successful decay pass.
     """
     script = (
-        repo_root() / "skills" / "swmm-rag-memory" / "scripts" / "build_memory_corpus.py"
+        resource_root() / "skills" / "swmm-rag-memory" / "scripts" / "build_memory_corpus.py"
     )
     if not script.is_file():
         return {"returncode": 0, "skipped": True, "reason": "build script missing"}

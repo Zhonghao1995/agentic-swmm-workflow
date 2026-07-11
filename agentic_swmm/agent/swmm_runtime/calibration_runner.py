@@ -34,10 +34,15 @@ Out of scope
 
 from __future__ import annotations
 
+import importlib
+import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
+
+from agentic_swmm.utils.paths import resource_root
 
 from agentic_swmm.memory.run_progress import (
     ProgressCheckpoint,
@@ -102,6 +107,7 @@ class CalibrationResult:
     wall_time_s: float
     final_checkpoint: ProgressCheckpoint | None = None
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -263,3 +269,234 @@ def replay_iterations(
         return materialised[iter_idx - 1]
 
     return _replay
+
+
+# ---------------------------------------------------------------------------
+# Real-engine path (ADR-0005): SCE-UA through the same checkpoint contract
+# ---------------------------------------------------------------------------
+# The facade above owns the loop for the synthetic walker; spotpy owns its
+# own loop, so the real path inverts control: the engine runs, and its
+# per-evaluation progress hook writes the SAME ProgressCheckpoint records.
+# The contract is the on-disk checkpoint + CalibrationResult shape, not the
+# loop mechanics.
+
+CALIBRATION_SCRIPTS_DIR = resource_root() / "skills" / "swmm-calibration" / "scripts"
+
+
+def _load_calibration_script(name: str) -> Any:
+    """Import a swmm-calibration script by its plain module name.
+
+    Differs from ``commands/expert/calibration.py``'s cache-key loader on
+    purpose: these scripts import each other flat (``from inp_patch import
+    ...``), so the scripts dir goes on ``sys.path`` and the plain name is
+    imported once, letting the sibling imports resolve naturally. The
+    import-free rule is directional (skills never import the runtime); the
+    runtime loading skills by path is the documented pattern.
+    """
+    scripts = str(CALIBRATION_SCRIPTS_DIR)
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    return importlib.import_module(name)
+
+
+@dataclass(frozen=True)
+class RealCalibrationConfig:
+    """Inputs for the real-engine calibration experiment (ADR-0005).
+
+    Mirrors the CLI surface: search bounds ride in ``parameters`` as
+    ``(name, low, high)`` and every name must exist in the patch-map
+    (validated before anything runs).
+    """
+
+    run_id: str
+    base_inp: Path
+    observed_csv: Path
+    patch_map_path: Path
+    parameters: list[tuple[str, float, float]]
+    total_iters: int
+    algorithm: str = "sceua"
+    node: str = "O1"
+    attr: str = "Total_inflow"
+    aggregate: str = "none"
+    obs_start: str | None = None
+    obs_end: str | None = None
+    timestamp_col: str | None = None
+    flow_col: str | None = None
+    time_format: str | None = None
+    seed: int = 42
+    ngs: int = 5
+    checkpoint_every: int = 1
+
+
+#: Median |simulated| vs |observed| magnitude ratio beyond which the
+#: same-units contract is loudly presumed broken (catches L/s vs m3/s).
+UNITS_GUARD_RATIO = 100.0
+
+
+def _units_guard_warning(observed_median: float, simulated_median: float) -> str | None:
+    if observed_median <= 0 or simulated_median <= 0:
+        return None
+    ratio = max(observed_median / simulated_median, simulated_median / observed_median)
+    if ratio <= UNITS_GUARD_RATIO:
+        return None
+    return (
+        f"UNITS MISMATCH LIKELY: median simulated flow and median observed flow "
+        f"differ by {ratio:,.0f}x. The calibrate contract is same-units-as-SWMM-"
+        f"output (see --help); check L/s vs m3/s style errors before trusting "
+        f"this experiment."
+    )
+
+
+def run_real_calibration(
+    cfg: RealCalibrationConfig,
+    run_dir: Path,
+    progress_callback: Callable[[ProgressCheckpoint], None] | None = None,
+    *,
+    swmm_runner: Callable | None = None,
+    extract_series: Callable | None = None,
+) -> CalibrationResult:
+    """Run the real SCE-UA experiment under the checkpoint contract.
+
+    ``swmm_runner`` / ``extract_series`` are test seams (the engine's own
+    injection points, passed straight through); production callers leave
+    them None and get the skill's swmm5 subprocess runner + swmmtoolbox
+    extractor.
+    """
+    sceua_mod = _load_calibration_script("sceua")
+    calib_mod = _load_calibration_script("swmm_calibrate")
+    obs_mod = _load_calibration_script("obs_reader")
+    candidate_mod = _load_calibration_script("candidate_writer")
+
+    if cfg.algorithm != "sceua":
+        raise ValueError(
+            f"algorithm {cfg.algorithm!r} is not wired into the CLI facade yet; "
+            "dream-zs stays on the agent tool / skill script for now (ADR-0005)."
+        )
+
+    patch_map = json.loads(cfg.patch_map_path.read_text(encoding="utf-8"))
+    missing = sorted({name for name, _, _ in cfg.parameters} - set(patch_map))
+    if missing:
+        raise ValueError(
+            "parameter(s) not present in the patch-map (the patch-map is the "
+            f"only parameter-definition contract, ADR-0005): {', '.join(missing)}. "
+            f"Available: {', '.join(sorted(patch_map))}"
+        )
+    if not cfg.parameters:
+        raise ValueError("at least one --param name=low,high is required")
+
+    observed = obs_mod.read_series(
+        cfg.observed_csv,
+        timestamp_col=cfg.timestamp_col,
+        flow_col=cfg.flow_col,
+        time_format=cfg.time_format,
+    )
+
+    bounds = {
+        name: calib_mod.ParamBound(name=name, min_value=low, max_value=high)
+        for name, low, high in cfg.parameters
+    }
+
+    runner = swmm_runner if swmm_runner is not None else calib_mod.run_swmm
+
+    def _extract(out_path: Path):
+        if extract_series is not None:
+            return extract_series(out_path)
+        return calib_mod.extract_simulated_series(
+            out_path, swmm_node=cfg.node, swmm_attr=cfg.attr, aggregate=cfg.aggregate
+        )
+
+    trials_dir = run_dir / "trials"
+    trials_dir.mkdir(parents=True, exist_ok=True)
+
+    started = monotonic()
+    state: dict[str, Any] = {"count": 0, "best": float("nan"), "last": {}, "ckpt": None}
+
+    def _on_evaluation(call_index: int, best_kge: float, params: dict) -> None:
+        state["count"] = call_index
+        state["best"] = best_kge
+        state["last"] = dict(params)
+        if call_index % max(1, cfg.checkpoint_every) != 0:
+            return
+        ckpt = ProgressCheckpoint(
+            run_id=cfg.run_id,
+            algorithm=cfg.algorithm,
+            iter_index=call_index,
+            total_iters=cfg.total_iters,
+            best_objective_so_far=best_kge,
+            last_param_set=dict(params),
+            wall_time_s=monotonic() - started,
+        )
+        state["ckpt"] = ckpt
+        write_checkpoint(run_dir, ckpt)
+        if progress_callback is not None:
+            progress_callback(ckpt)
+
+    engine_cfg = sceua_mod.SceuaConfig(
+        base_inp=cfg.base_inp,
+        patch_map=patch_map,
+        observed=observed,
+        run_root=trials_dir,
+        swmm_node=cfg.node,
+        swmm_attr=cfg.attr,
+        aggregate=cfg.aggregate,
+        obs_start=cfg.obs_start,
+        obs_end=cfg.obs_end,
+        bounds=bounds,
+        iterations=cfg.total_iters,
+        seed=cfg.seed,
+        ngs=cfg.ngs,
+        convergence_csv=run_dir / "convergence.csv",
+        swmm_runner=runner,
+        extract_series=_extract,
+        progress_callback=_on_evaluation,
+    )
+
+    result = sceua_mod.run_sceua(engine_cfg)
+    summary = dict(result["summary"])
+    best_params = dict(result["best_params"])
+
+    warnings: list[str] = []
+    try:
+        sim_median = float(observed["flow"].median())  # placeholder if extract fails
+        best_out = trials_dir / "sceua_best" / "model.out"
+        sim_df = _extract(best_out)
+        sim_median = float(sim_df["flow"].abs().median())
+        obs_median = float(observed["flow"].abs().median())
+        guard = _units_guard_warning(obs_median, sim_median)
+        if guard:
+            warnings.append(guard)
+    except Exception:  # pragma: no cover - guard is best-effort by design
+        pass
+
+    summary["engine"] = "sceua-spotpy"
+    summary["is_stub"] = False
+    if warnings:
+        summary["warnings"] = warnings
+    (run_dir / "calibration_summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    (run_dir / "best_params.json").write_text(
+        json.dumps(best_params, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    candidate_mod.write_candidate_artefacts(
+        run_dir=run_dir,
+        canonical_inp=cfg.base_inp,
+        patch_map=patch_map,
+        best_params=best_params,
+        summary=summary,
+        extra_refs={"convergence_csv": "convergence.csv"},
+    )
+
+    best_objective = state["best"]
+    return CalibrationResult(
+        run_id=cfg.run_id,
+        algorithm=cfg.algorithm,
+        iterations_completed=int(state["count"]),
+        total_iters=cfg.total_iters,
+        best_objective=float(best_objective) if best_objective == best_objective else float("nan"),
+        best_parameters=best_params,
+        wall_time_s=monotonic() - started,
+        final_checkpoint=state["ckpt"],
+        errors=[],
+        warnings=warnings,
+    )

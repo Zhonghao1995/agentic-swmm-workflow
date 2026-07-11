@@ -41,6 +41,9 @@ def _calibrate_namespace(**overrides) -> argparse.Namespace:
         "progress": False,
         "print_every": 1,
         "quiet": False,
+        # ADR-0005: the default engine is now the real SCE-UA; these
+        # tests pin the SYNTHETIC walker's honesty contract explicitly.
+        "engine": "synthetic",
     }
     # Test shim: a caller that still passes ``base_inp=`` overrides
     # ``inp`` so existing test bodies do not have to be rewritten in
