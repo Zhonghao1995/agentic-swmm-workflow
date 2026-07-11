@@ -2,6 +2,35 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.7.6 - Real calibration, self-describing sessions, one canonical run layout (2026-07-10)
+
+The biggest bundle since the runtime rework: 14 PRs across three themes. Two behaviour changes to know about (below). Full suite green (**3,060 passed**), 46 new deterministic-core tests plus dispatch guards.
+
+### Added
+
+- **`aiswmm calibrate` drives the real SCE-UA engine** (#339, #340; ADR-0005). Give it a model, an observed series, and a patch-map, and it runs a genuine spotpy SCE-UA experiment with live progress (`progress.json` checkpoints, `--progress` lines), leaving a self-describing experiment dir: `convergence.csv`, `calibration_summary.json` (`engine: sceua-spotpy`, `is_stub: false`), `best_params.json`, `09_audit/` candidate artifacts, `trials/`. A same-units guard screams on >100x magnitude mismatches (the L/s vs m3/s classic). The historical synthetic walker survives behind explicit `--engine synthetic`. Verified end to end against the real swmm5 binary.
+- **Self-describing sessions** (#330, #331, #336; ADR-0003). Every session dir now carries `session.yaml` (verbatim goal, status lifecycle) plus an auto-derived `agent_snapshot.json` (resolved provider/model, prompt hash, tool-schema hash, per-SKILL.md hashes, permission profile) and an environment fingerprint (python, platform, version, git commit, container identity) that flows into `manifest.json` and `experiment_provenance.json`. Interactive turns included.
+- **`aiswmm runs tidy`** (#333): archives stale unaudited agent runs to `runs/archive/` (audited runs never move, nothing is ever deleted, `--dry-run` previews). First real run archived 320 of 553 accumulated directories.
+- **SWMMCanada pre-submit route announce** (#337): with a current upstream, the status line reports "PREVIEW: Real municipal network - Ottawa, ON" before the multi-minute build starts; older upstreams are silently tolerated.
+- **Windows install smoke in CI** (#335): the documented one-liner runs weekly on a hosted Windows runner and smokes the installed CLI; closed the oldest open issue (#3).
+- **Docker Hub mirror** (#338): tagged images dual-publish to docker.io/zhonghao0901 with README sync alongside ghcr.
+
+### Changed (behaviour)
+
+- **`aiswmm calibrate` defaults to the real engine**: a bare invocation now requires `--observed-csv` and `--patch-map`. Scripts that relied on the synthetic walker add `--engine synthetic` (unchanged semantics, still stamped `is_stub: true`).
+- **One canonical run-directory layout** (#332; ADR-0004): new runs use the reserved stage numbers (`05_builder`, `06_runner`, `07_qa`, `08_plot`, `09_audit`, `10_upstream/{swmmanywhere,swmmcanada}`, `11_review`) on every path; the agent runner no longer writes engine outputs flat at the run root. Historical runs stay readable forever (alias-tolerant readers); nothing writes legacy names again, and a real-swmm5 CI guard rejects any new scheme.
+- The rule planner routes "run <model>.inp" to `run_swmm_inp` instead of the doctor fallback (#334); SWMMCanada builds report live stage/percent on the status line (#325).
+
+### Fixed
+
+- Bare `plot_run` converges (the rain-series default resolves itself) and agent-path `audit_run` no longer writes the user's Obsidian vault by default (#329): both found by the new handler-chain convergence test.
+- Skill-directory lookups are resource-aware for pip installs (four call sites moved to `resource_root()`, grep-guarded), so wheel users reach the calibration engine and full agent snapshots (#339).
+- Audit artifacts no longer scatter into the MCP server's working directory on relative paths (#332); swmm-gis no longer hardcodes sibling-skill paths (closed #246); `_resolve_run_dir` deduplicated (closed #296).
+
+### Upstream: SWMMCanada
+
+Option B landed on both sides: upstream `/aoi/preview` now reports `mode`/`city`/`in_canada` from the same dispatcher submit uses, and `GET /api/v1/coverage` exposes the live city registry (8 real-network cities incl. Regina's dual sanitary system) so client city lists can never drift again. The aiswmm client consumes preview best-effort today; coverage consumption follows the production redeploy.
+
 ## v0.7.5 - SWMMCanada integration hardened: retry, infiltration choice, Canada geofence (2026-07-05)
 
 A hardening release for the SWMMCanada real-pipe INP source introduced in v0.7.4, plus the completed architecture-deepening pass across runtime, memory, CLI, and agent internals (#301-#320). Tool surface unchanged (56 typed tools, 19 skills); full suite green (**2,932 passed**).
