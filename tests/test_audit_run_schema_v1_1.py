@@ -12,50 +12,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from conftest import seed_runner_manifest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
-
-
-def _seed_runner(run_dir: Path) -> None:
-    runner = run_dir / "05_runner"
-    runner.mkdir(parents=True)
-    (runner / "model.rpt").write_text(
-        """
-        ***** Node Inflow Summary *****
-        ------------------------------------------------
-          O1              OUTFALL       0.001       1.250      2    12:47
-
-        ***** Flow Routing Continuity *****
-        Continuity Error (%) ............. 0.00
-        """,
-        encoding="utf-8",
-    )
-    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-    (runner / "stdout.txt").write_text("", encoding="utf-8")
-    (runner / "stderr.txt").write_text("", encoding="utf-8")
-    (runner / "manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "rpt": str(runner / "model.rpt"),
-                    "out": str(runner / "model.out"),
-                    "stdout": str(runner / "stdout.txt"),
-                    "stderr": str(runner / "stderr.txt"),
-                },
-                "metrics": {
-                    "peak": {
-                        "node": "O1",
-                        "peak": 1.25,
-                        "time_hhmm": "12:47",
-                        "source": "Node Inflow Summary",
-                    }
-                },
-                "return_code": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
 
 
 class SchemaBumpTests(unittest.TestCase):
@@ -64,7 +25,7 @@ class SchemaBumpTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-a"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -104,7 +65,7 @@ class PreMigrationValidatorTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "legacy-case"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             # Seed a pre-1.1 root-level audit footprint (P1).
             (run_dir / "experiment_note.md").write_text("legacy note", encoding="utf-8")
             (run_dir / "experiment_provenance.json").write_text(
@@ -135,7 +96,7 @@ class PreMigrationValidatorTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-b"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             # Already-migrated layout: 09_audit/ exists with a prior 1.1 note.
             audit = run_dir / "09_audit"
             audit.mkdir()

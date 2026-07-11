@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import math
 from pathlib import Path
 from typing import Any
+
+from _hash_util import sha256_file
 
 
 def load_json(path: Path) -> Any:
@@ -17,16 +18,6 @@ def load_json(path: Path) -> Any:
 def save_json(path: Path, obj: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
-
-
-def sha256_file(path: Path | None) -> str | None:
-    if path is None:
-        return None
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def read_csv_rows(path: Path | None) -> list[dict[str, str]]:

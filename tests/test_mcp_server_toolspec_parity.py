@@ -87,16 +87,22 @@ _ALLOWLISTED_CALL_MCP_TOOL_ONLY_SERVERS: frozenset[str] = frozenset(
 
 
 def _servers_shipped_on_disk() -> set[str]:
-    """Every ``mcp/<name>/`` directory -- the ground truth for "exists".
+    """Every ``mcp/<name>/`` directory that is an actual server -- the
+    ground truth for "exists".
 
     Mirrors ``test_intent_map_mcp_enabled_skills_covers_all_servers.py``:
-    skip non-directories (e.g. a stray ``mcp/.DS_Store``) and dotfiles.
+    skip non-directories (e.g. a stray ``mcp/.DS_Store``), dotfiles, and
+    non-server helper directories (``mcp/_lib/``, the shared
+    ``python-tool-server.mjs`` prologue -- ADR-0006 D5) that hold no
+    ``server.js`` of their own.
     """
 
     return {
         child.name
         for child in MCP_ROOT.iterdir()
-        if child.is_dir() and not child.name.startswith(".")
+        if child.is_dir()
+        and not child.name.startswith(".")
+        and (child / "server.js").is_file()
     }
 
 

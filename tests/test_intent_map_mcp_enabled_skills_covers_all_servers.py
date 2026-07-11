@@ -36,6 +36,10 @@ class IntentMapMcpEnabledSkillsCoversAllServersTests(unittest.TestCase):
             # node_modules and similar tooling dirs are not MCP servers.
             if child.name.startswith("."):
                 continue
+            # mcp/_lib/ holds the shared python-tool-server.mjs prologue
+            # (ADR-0006 D5) -- a helper module, not a server of its own.
+            if not (child / "server.js").is_file():
+                continue
             shipped.add(child.name)
 
         missing = shipped - enabled

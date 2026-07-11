@@ -12,7 +12,6 @@ clip + reproject-check + template fill only.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -20,13 +19,7 @@ from pathlib import Path
 import geopandas as gpd
 from shapely.geometry import shape
 
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from _hash_util import sha256_file
 
 
 def load_basin_polygon(path: Path) -> tuple[gpd.GeoDataFrame, "CRS"]:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
@@ -14,6 +13,12 @@ from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Make the package importable when this script runs from the repo root
+# without an editable install. Mirrors scripts/backfill_sessions.py.
+sys.path.insert(0, str(REPO_ROOT))
+
+from agentic_swmm.utils.hashing import sha256_of_file as sha256_file  # noqa: E402
 
 
 @dataclass
@@ -47,14 +52,6 @@ def write_json(path: Path, obj: Any) -> None:
 def write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def path_record(path: Path) -> dict[str, str]:

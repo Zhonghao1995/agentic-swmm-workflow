@@ -141,7 +141,7 @@ A calibration run can feed uncertainty / sensitivity analysis back by exporting:
 - `ranking.json` for candidate performance
 - narrowed or acceptable parameter ranges for calibration-informed Monte Carlo
 
-## MVP assumptions / limitations
+## Known limitations
 - This is intentionally a **transparent scaffold**, not a black-box optimizer.
 - Internal search supports bounded random, LHS-like sampling, simple adaptive LHS refinement, SCE-UA (Shuffled Complex Evolution) for global optimisation against KGE, and DREAM-ZS (DiffeRential Evolution Adaptive Metropolis) for KGE-likelihood posterior sampling. SCE-UA produces a point estimate; DREAM-ZS produces a posterior plus a MAP point estimate.
 - INP patching is line-oriented and works best for one-line table records with stable object names.

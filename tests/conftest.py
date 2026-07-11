@@ -157,6 +157,69 @@ def seed_minimal_run_dir(
     return run_dir
 
 
+def seed_runner_manifest(
+    run_dir: Path,
+    *,
+    runner_dir_name: str = "06_runner",
+    **overrides: Any,
+) -> None:
+    """Build the ``O1``/``OUTFALL`` runner-stage fixture the audit_run.py
+    CLI accepts: model.rpt + model.out + stdout/stderr + manifest.json.
+
+    Four audit-CLI subprocess test files (``test_commands_audit_moc_and_bak``,
+    ``test_case_id_provenance``, ``test_audit_run_schema_v1_1``,
+    ``test_audit_note_human_decisions_section``) previously hand-rolled a
+    byte-for-byte-identical ``_seed_runner`` each -- only
+    ``test_case_id_provenance`` differs, in the manifest's ``metrics``
+    (adds a ``source: "rpt"`` peak and a ``continuity`` key) and a
+    top-level ``swmm5`` key. Consolidated here per ADR-0006 D5.
+
+    ADR-0004: the canonical runner stage is ``06_runner``; the four
+    existing callers all pre-date the rename and pass
+    ``runner_dir_name="05_runner"`` explicitly.
+
+    ``overrides`` are shallow-merged into the manifest dict's top level
+    after the base ``files``/``metrics``/``return_code`` are built --
+    e.g. passing ``metrics={...}`` replaces the default metrics dict
+    wholesale, and ``swmm5={...}`` adds a new top-level key.
+    """
+    runner = run_dir / runner_dir_name
+    runner.mkdir(parents=True)
+    (runner / "model.rpt").write_text(
+        """
+        ***** Node Inflow Summary *****
+        ------------------------------------------------
+          O1              OUTFALL       0.001       1.250      2    12:47
+
+        ***** Flow Routing Continuity *****
+        Continuity Error (%) ............. 0.00
+        """,
+        encoding="utf-8",
+    )
+    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
+    (runner / "stdout.txt").write_text("", encoding="utf-8")
+    (runner / "stderr.txt").write_text("", encoding="utf-8")
+    manifest: dict[str, Any] = {
+        "files": {
+            "rpt": str(runner / "model.rpt"),
+            "out": str(runner / "model.out"),
+            "stdout": str(runner / "stdout.txt"),
+            "stderr": str(runner / "stderr.txt"),
+        },
+        "metrics": {
+            "peak": {
+                "node": "O1",
+                "peak": 1.25,
+                "time_hhmm": "12:47",
+                "source": "Node Inflow Summary",
+            }
+        },
+        "return_code": 0,
+    }
+    manifest.update(overrides)
+    (runner / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
 def seed_provenance_run_dir(project_root: Path, provenance: dict[str, Any]) -> Path:
     """Build the minimal run dir ``trigger_memory_refresh`` accepts.
 

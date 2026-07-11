@@ -39,6 +39,7 @@ from typing import Any
 import yaml
 
 from agentic_swmm import __version__ as _DIST_VERSION
+from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.paths import repo_root, resource_root
 
 
@@ -78,7 +79,7 @@ def _sha256_text(text: str) -> str:
 
 def _sha256_file(path: Path) -> str | None:
     try:
-        return hashlib.sha256(path.read_bytes()).hexdigest()
+        return sha256_of_file(path)
     except OSError:
         return None
 

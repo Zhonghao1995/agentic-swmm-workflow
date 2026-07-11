@@ -27,16 +27,16 @@ changes incompatibly.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+from agentic_swmm.utils.hashing import sha256_of_file
+
 _MANIFEST_FILENAME = "raw_manifest.json"
 _MANIFEST_VERSION = "1.0"
-_HASH_CHUNK = 64 * 1024
 
 
 @dataclass(frozen=True)
@@ -67,15 +67,7 @@ class VerifyResult:
     mismatched: tuple[str, ...]
 
 
-def _sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(_HASH_CHUNK)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha256_of = sha256_of_file
 
 
 def snapshot_to(snapshot_dir: Path, sources: Sequence[RawSource]) -> RawManifest:

@@ -18,7 +18,6 @@ numbers in documentation and in the human-readable notes below.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +26,7 @@ from typing import Any
 from agentic_swmm.agent.session_header import environment_fingerprint
 from agentic_swmm.agent.swmm_runtime import run_layout
 
+from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.paths import repo_root
 
 
@@ -42,12 +42,7 @@ def rel_to_repo(path: Path) -> str:
         return str(path.resolve())
 
 
-def sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+sha256_of = sha256_of_file
 
 
 def source_type_of(path: Path) -> str:

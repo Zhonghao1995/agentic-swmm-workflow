@@ -31,7 +31,6 @@ real LLM client behind the same seam.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -48,6 +47,7 @@ from agentic_swmm.memory.lessons_metadata import (
     apply_reflection_change,
     read_metadata,
 )
+from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.paths import resolve_memory_dir, resolve_runs_dir
 
 
@@ -427,13 +427,7 @@ def _confirm_change(
 # Helpers — small utilities
 
 
-def _sha256(path: Path) -> str:
-    """Return a hex SHA-256 digest of ``path``'s bytes."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(65536), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha256 = sha256_of_file
 
 
 def _now_utc_iso() -> str:

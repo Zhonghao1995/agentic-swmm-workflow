@@ -20,52 +20,13 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from conftest import seed_runner_manifest
+
 from agentic_swmm.hitl.decision_recorder import HumanDecision, append_decision
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
-
-
-def _seed_runner(run_dir: Path) -> None:
-    runner = run_dir / "05_runner"
-    runner.mkdir(parents=True)
-    (runner / "model.rpt").write_text(
-        """
-        ***** Node Inflow Summary *****
-        ------------------------------------------------
-          O1              OUTFALL       0.001       1.250      2    12:47
-
-        ***** Flow Routing Continuity *****
-        Continuity Error (%) ............. 0.00
-        """,
-        encoding="utf-8",
-    )
-    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-    (runner / "stdout.txt").write_text("", encoding="utf-8")
-    (runner / "stderr.txt").write_text("", encoding="utf-8")
-    (runner / "manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "rpt": str(runner / "model.rpt"),
-                    "out": str(runner / "model.out"),
-                    "stdout": str(runner / "stdout.txt"),
-                    "stderr": str(runner / "stderr.txt"),
-                },
-                "metrics": {
-                    "peak": {
-                        "node": "O1",
-                        "peak": 1.25,
-                        "time_hhmm": "12:47",
-                        "source": "Node Inflow Summary",
-                    }
-                },
-                "return_code": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
 
 
 def _run_audit(repo: Path, run_dir: Path) -> None:
@@ -92,7 +53,7 @@ class HumanDecisionsSectionTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-a"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             _run_audit(repo, run_dir)
             note = (run_dir / "09_audit" / "experiment_note.md").read_text(
                 encoding="utf-8"
@@ -104,7 +65,7 @@ class HumanDecisionsSectionTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-a"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             _run_audit(repo, run_dir)
             # Append a human decision.
             prov_path = run_dir / "09_audit" / "experiment_provenance.json"
