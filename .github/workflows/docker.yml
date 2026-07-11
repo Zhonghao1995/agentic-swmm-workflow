@@ -67,7 +67,7 @@ jobs:
           images="ghcr.io/zhonghao1995/agentic-swmm-workflow"
           dockerhub="false"
           if [[ -n "${DOCKERHUB_TOKEN}" ]]; then
-            images="${images}"$'\n'"docker.io/zhonghao1995/agentic-swmm-workflow"
+            images="${images}"$'\n'"docker.io/zhonghao0901/agentic-swmm-workflow"
             dockerhub="true"
           fi
           echo "dockerhub=${dockerhub}" >> "$GITHUB_OUTPUT"
@@ -136,7 +136,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: zhonghao1995/agentic-swmm-workflow
+          repository: zhonghao0901/agentic-swmm-workflow
           short-description: "Reproducible container for Agentic SWMM: AI-agent-driven, auditable SWMM stormwater modeling."
           readme-filepath: ./README.md
           enable-url-completion: true
