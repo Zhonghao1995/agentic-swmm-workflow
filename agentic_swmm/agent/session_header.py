@@ -39,7 +39,7 @@ from typing import Any
 import yaml
 
 from agentic_swmm import __version__ as _DIST_VERSION
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_root
 
 
 def _aiswmm_version() -> str:
@@ -125,7 +125,7 @@ def build_agent_snapshot(
     tools_sha256 = _sha256_text(json.dumps(schemas, sort_keys=True, default=str))
 
     skills: dict[str, str] = {}
-    skills_root = repo_root() / "skills"
+    skills_root = resource_root() / "skills"
     if skills_root.is_dir():
         for skill_md in sorted(skills_root.glob("*/SKILL.md")):
             digest = _sha256_file(skill_md)

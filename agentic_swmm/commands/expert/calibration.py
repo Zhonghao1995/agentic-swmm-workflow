@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.utils.paths import resource_root
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.commands.expert._shared import (
     record_and_print,
@@ -41,8 +42,9 @@ from agentic_swmm.commands.expert._shared import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-CALIBRATION_SCRIPTS_DIR = REPO_ROOT / "skills" / "swmm-calibration" / "scripts"
+# resource_root() prefers the source checkout and falls back to the
+# packaged data dir (<prefix>/aiswmm), so pip installs resolve skills too.
+CALIBRATION_SCRIPTS_DIR = resource_root() / "skills" / "swmm-calibration" / "scripts"
 
 
 def _load_calibration_module(name: str):

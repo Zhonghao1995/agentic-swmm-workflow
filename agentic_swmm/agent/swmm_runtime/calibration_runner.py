@@ -42,7 +42,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Callable, Iterable
 
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import resource_root
 
 from agentic_swmm.memory.run_progress import (
     ProgressCheckpoint,
@@ -280,7 +280,7 @@ def replay_iterations(
 # The contract is the on-disk checkpoint + CalibrationResult shape, not the
 # loop mechanics.
 
-CALIBRATION_SCRIPTS_DIR = repo_root() / "skills" / "swmm-calibration" / "scripts"
+CALIBRATION_SCRIPTS_DIR = resource_root() / "skills" / "swmm-calibration" / "scripts"
 
 
 def _load_calibration_script(name: str) -> Any:

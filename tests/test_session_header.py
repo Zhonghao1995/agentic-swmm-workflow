@@ -63,7 +63,7 @@ class AgentSnapshotTests(unittest.TestCase):
             skill_dir.mkdir(parents=True)
             skill_md = skill_dir / "SKILL.md"
             skill_md.write_text("# demo v1\n", encoding="utf-8")
-            with mock.patch.object(sh, "repo_root", return_value=fake_root):
+            with mock.patch.object(sh, "resource_root", return_value=fake_root):
                 before = sh.build_agent_snapshot(registry=_FakeRegistry(_SCHEMAS), planner="rule")
                 skill_md.write_text("# demo v2\n", encoding="utf-8")
                 after = sh.build_agent_snapshot(registry=_FakeRegistry(_SCHEMAS), planner="rule")
