@@ -18,10 +18,15 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _count_mcp_servers() -> int:
     mcp_root = REPO_ROOT / "mcp"
+    # mcp/_lib/ holds the shared python-tool-server.mjs prologue
+    # (ADR-0006 D5) -- a helper module, not a server of its own, so it
+    # must not inflate the count this test checks against the README.
     return sum(
         1
         for child in mcp_root.iterdir()
-        if child.is_dir() and not child.name.startswith(".")
+        if child.is_dir()
+        and not child.name.startswith(".")
+        and (child / "server.js").is_file()
     )
 
 

@@ -141,7 +141,7 @@ After an entropy run, `audit/entropy_hotspot_ranking.json` ranks subcatchments b
 
 Use `--skills-root`/`AISWMM_SKILLS_ROOT` when `swmm-params`/`swmm-network` aren't checked out at the default relative location, e.g. a relocated or standalone deployment.
 
-## Explicit assumptions for subcatchment preprocessing
+## Known limitations
 - Coordinates should be in one projected CRS before SWMM geometric quantities are trusted. Use `qgis_normalize_layers` or `--normalize-layers` when raw DEM / land-use / soil / boundary inputs may be mixed CRS or not clipped to the study boundary.
 - Width helper priority:
   1. `properties.width_m` / `properties.hydraulic_width_m`

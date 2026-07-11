@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,18 +13,17 @@ from swmmtoolbox import extract
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Make the package importable when this script runs from the repo root
+# without an editable install. Mirrors scripts/backfill_sessions.py.
+sys.path.insert(0, str(REPO_ROOT))
+
+from agentic_swmm.utils.hashing import sha256_of_file as sha256_file  # noqa: E402
+
 EXAMPLE_DIR = REPO_ROOT / "examples" / "tecnopolo"
 DEFAULT_RUN_DIR = REPO_ROOT / "runs" / "benchmarks" / "tecnopolo-199401-prepared"
 NODE_TARGET = "J22"
 OUTFALL_TARGET = "OUT_0"
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def rel(path: Path) -> str:

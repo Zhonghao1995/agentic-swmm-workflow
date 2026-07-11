@@ -9,7 +9,6 @@ PRD M7:
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -17,49 +16,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from conftest import seed_runner_manifest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _seed_runner(run_dir: Path) -> None:
-    runner = run_dir / "05_runner"
-    runner.mkdir(parents=True)
-    (runner / "model.rpt").write_text(
-        """
-        ***** Node Inflow Summary *****
-        ------------------------------------------------
-          O1              OUTFALL       0.001       1.250      2    12:47
-
-        ***** Flow Routing Continuity *****
-        Continuity Error (%) ............. 0.00
-        """,
-        encoding="utf-8",
-    )
-    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-    (runner / "stdout.txt").write_text("", encoding="utf-8")
-    (runner / "stderr.txt").write_text("", encoding="utf-8")
-    (runner / "manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "rpt": str(runner / "model.rpt"),
-                    "out": str(runner / "model.out"),
-                    "stdout": str(runner / "stdout.txt"),
-                    "stderr": str(runner / "stderr.txt"),
-                },
-                "metrics": {
-                    "peak": {
-                        "node": "O1",
-                        "peak": 1.25,
-                        "time_hhmm": "12:47",
-                        "source": "Node Inflow Summary",
-                    }
-                },
-                "return_code": 0,
-            }
-        ),
-        encoding="utf-8",
-    )
 
 
 def _run_audit_cli(run_dir: Path, *, cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -76,7 +36,7 @@ class AuditCommandAuditDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "runs" / "case-a"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             proc = _run_audit_cli(run_dir, cwd=REPO_ROOT)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             audit = run_dir / "09_audit"
@@ -94,7 +54,7 @@ class ReauditBakRenameTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "runs" / "case-b"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             # First audit.
             first = _run_audit_cli(run_dir, cwd=REPO_ROOT)
             self.assertEqual(first.returncode, 0, first.stderr)
@@ -130,7 +90,7 @@ class IndexMocTests(unittest.TestCase):
             runs_root = tmp_path / "runs"
             run_dir = runs_root / "case-c"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(run_dir, runner_dir_name="05_runner")
             env = os.environ.copy()
             # The MOC writer must use the run-dir's parent (runs/) as the
             # MOC root. We point AISWMM_RUNS_ROOT so the test does not

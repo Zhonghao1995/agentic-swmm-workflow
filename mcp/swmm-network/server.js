@@ -4,8 +4,9 @@ import { z } from 'zod';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+import { runPython } from '../_lib/python-tool-server.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,16 +20,6 @@ const reorientPipesScript = path.join(scriptsDir, 'reorient_pipes.py');
 const inferOutfallScript = path.join(scriptsDir, 'infer_outfall.py');
 const assignSubcatchmentOutletsScript = path.join(scriptsDir, 'assign_subcatchment_outlets.py');
 const snapPipeEndpointsScript = path.join(scriptsDir, 'snap_pipe_endpoints.py');
-
-const PY = process.env.PYTHON || 'python3';
-
-function runPython(script, args) {
-  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
-  if (proc.status !== 0) {
-    throw new Error((proc.stderr || proc.stdout || `python failed: ${proc.status}`).trim());
-  }
-  return proc.stdout;
-}
 
 const server = new McpServer({ name: 'swmm-network-mcp', version: '0.1.0' });
 

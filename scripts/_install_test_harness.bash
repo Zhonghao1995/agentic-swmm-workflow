@@ -195,8 +195,13 @@ fi
 exit 0
 MOCKPY
   chmod +x "$SANDBOX/bin/python3"
-  # python3.12 alias for resolve_python loop preference
-  cp "$SANDBOX/bin/python3" "$SANDBOX/bin/python3.12"
+  # Mock EVERY candidate name resolve_python tries. PATH keeps /usr/bin
+  # for coreutils, so any unmocked name would leak the runner's real
+  # python and defeat the too-old-python simulation (bit us on the
+  # ubuntu-24.04 CI image, where the prereq test installed to completion).
+  for alias in python3.12 python3.11 python3.10 python; do
+    cp "$SANDBOX/bin/python3" "$SANDBOX/bin/$alias"
+  done
 
   cat >"$SANDBOX/bin/node" <<MOCKNODE
 #!/usr/bin/env bash

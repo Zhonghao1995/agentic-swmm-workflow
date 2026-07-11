@@ -19,54 +19,28 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from conftest import seed_runner_manifest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUDIT_SCRIPT = REPO_ROOT / "skills" / "swmm-experiment-audit" / "scripts" / "audit_run.py"
 
-
-def _seed_runner(run_dir: Path) -> None:
-    runner = run_dir / "05_runner"
-    runner.mkdir(parents=True)
-    (runner / "model.rpt").write_text(
-        """
-        ***** Node Inflow Summary *****
-        ------------------------------------------------
-          O1              OUTFALL       0.001       1.250      2    12:47
-
-        ***** Flow Routing Continuity *****
-        Continuity Error (%) ............. 0.00
-        """,
-        encoding="utf-8",
-    )
-    (runner / "model.out").write_text("binary-placeholder", encoding="utf-8")
-    (runner / "stdout.txt").write_text("", encoding="utf-8")
-    (runner / "stderr.txt").write_text("", encoding="utf-8")
-    (runner / "manifest.json").write_text(
-        json.dumps(
-            {
-                "files": {
-                    "rpt": str(runner / "model.rpt"),
-                    "out": str(runner / "model.out"),
-                    "stdout": str(runner / "stdout.txt"),
-                    "stderr": str(runner / "stderr.txt"),
-                },
-                "metrics": {
-                    "peak": {
-                        "node": "O1",
-                        "peak": 1.25,
-                        "time_hhmm": "12:47",
-                        "source": "rpt",
-                    },
-                    "continuity": {
-                        "continuity_error_percent": {"flow_routing": 0.0},
-                    },
-                },
-                "return_code": 0,
-                "swmm5": {"version": "5.2.x"},
-            }
-        ),
-        encoding="utf-8",
-    )
+# This file's manifest fixture differs from the other three
+# seed_runner_manifest() callers (test_commands_audit_moc_and_bak /
+# test_audit_run_schema_v1_1 / test_audit_note_human_decisions_section)
+# in these two keys -- passed as overrides below.
+_METRICS_OVERRIDE = {
+    "peak": {
+        "node": "O1",
+        "peak": 1.25,
+        "time_hhmm": "12:47",
+        "source": "rpt",
+    },
+    "continuity": {
+        "continuity_error_percent": {"flow_routing": 0.0},
+    },
+}
+_SWMM5_OVERRIDE = {"version": "5.2.x"}
 
 
 class V1_3SchemaBumpTests(unittest.TestCase):
@@ -75,7 +49,12 @@ class V1_3SchemaBumpTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-a"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(
+                run_dir,
+                runner_dir_name="05_runner",
+                metrics=_METRICS_OVERRIDE,
+                swmm5=_SWMM5_OVERRIDE,
+            )
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -107,7 +86,12 @@ class V1_3SchemaBumpTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-b"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(
+                run_dir,
+                runner_dir_name="05_runner",
+                metrics=_METRICS_OVERRIDE,
+                swmm5=_SWMM5_OVERRIDE,
+            )
             proc = subprocess.run(
                 [
                     sys.executable,
@@ -144,7 +128,12 @@ class V1_2BackCompatTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "legacy"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(
+                run_dir,
+                runner_dir_name="05_runner",
+                metrics=_METRICS_OVERRIDE,
+                swmm5=_SWMM5_OVERRIDE,
+            )
             # Seed a pre-existing v1.2 provenance file alongside the
             # required 09_audit layout — same shape the audit script
             # would have produced before this PRD landed.
@@ -193,7 +182,12 @@ class V1_2BackCompatTests(unittest.TestCase):
             repo = Path(tmp)
             run_dir = repo / "runs" / "case-c"
             run_dir.mkdir(parents=True)
-            _seed_runner(run_dir)
+            seed_runner_manifest(
+                run_dir,
+                runner_dir_name="05_runner",
+                metrics=_METRICS_OVERRIDE,
+                swmm5=_SWMM5_OVERRIDE,
+            )
             # First audit declares the case.
             subprocess.run(
                 [

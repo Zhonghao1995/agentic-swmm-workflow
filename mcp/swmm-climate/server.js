@@ -4,8 +4,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+
+import { runPython } from '../_lib/python-tool-server.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,19 +14,6 @@ const scriptsDir = path.resolve(__dirname, '../../skills/swmm-climate/scripts');
 const formatScript = path.join(scriptsDir, 'format_rainfall.py');
 const raingageScript = path.join(scriptsDir, 'build_raingage_section.py');
 const designStormScript = path.join(scriptsDir, 'design_storm.py');
-
-const PY = process.env.PYTHON || 'python3';
-
-function runPython(script, args) {
-  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
-  if (proc.error) {
-    throw new Error(proc.error.message);
-  }
-  if (proc.status !== 0) {
-    throw new Error((proc.stderr || proc.stdout || `python failed: ${proc.status}`).trim());
-  }
-  return (proc.stdout || '').trim();
-}
 
 const server = new McpServer({ name: 'swmm-climate-mcp', version: '0.1.0' });
 

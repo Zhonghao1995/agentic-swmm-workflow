@@ -59,16 +59,7 @@ VERB_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict(
                 "bootstrap",
             ],
         ),
-        (
-            "Expert",
-            [
-                "pour_point",
-                "thresholds",
-                "gap",
-                "publish",
-                "calibration",
-            ],
-        ),
+        ("Expert", ["expert"]),
         ("Inspection", ["doctor", "capabilities", "list", "memory", "trace"]),
         ("Case namespace", ["case"]),
         (
@@ -112,11 +103,10 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     "model": "View or change the active LLM provider/model.",
     "config": "View or edit ~/.aiswmm/config.toml.",
     "agent": "Drop into the agent planner (interactive or one-shot).",
-    "pour_point": "Expert: pour-point promotion workflow.",
-    "thresholds": "Expert: edit memory-derived QA thresholds.",
-    "gap": "Expert: gap-fill case-level promotion.",
-    "publish": "Expert: publish a case to the case registry.",
-    "calibration": "Expert: low-level calibration workspace.",
+    "expert": (
+        "Expert-only namespace: calibration, pour_point, thresholds, "
+        "publish, gap (ADR-0006 D3)."
+    ),
 }
 
 
