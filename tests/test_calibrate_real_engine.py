@@ -234,5 +234,116 @@ class RealEngineCliValidationTests(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class RealEngineCliHappyPathTests(unittest.TestCase):
+    """CLI-layer coverage of _run_real: the facade is stubbed (it has its
+    own real-loop tests above); what's under test here is the verb's own
+    plumbing: config mapping, progress fan-out, warning surfacing, and
+    the machine-readable summary contract."""
+
+    def _drive(self, tmp: Path, *, warnings=(), progress=False):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        from unittest import mock
+
+        from agentic_swmm.agent.swmm_runtime import calibration_runner as cr
+        from agentic_swmm.commands import calibrate as calibrate_cmd
+        from agentic_swmm.memory.run_progress import ProgressCheckpoint
+
+        inp = tmp / "base.inp"
+        inp.write_text(BASE_INP, encoding="utf-8")
+        observed = tmp / "obs.csv"
+        observed.write_text("timestamp,flow\n2024-06-01 00:00,1.0\n", encoding="utf-8")
+        patch_map = tmp / "pm.json"
+        patch_map.write_text(json.dumps(PATCH_MAP), encoding="utf-8")
+        run_dir = tmp / "exp"
+
+        def fake_run(cfg, run_dir_arg, progress_callback=None, **_kw):
+            if progress_callback is not None:
+                for i in (2, 4):
+                    progress_callback(
+                        ProgressCheckpoint(
+                            run_id=cfg.run_id,
+                            algorithm=cfg.algorithm,
+                            iter_index=i,
+                            total_iters=cfg.total_iters,
+                            best_objective_so_far=0.5 + i / 10,
+                            last_param_set={"n_imperv_s1": 0.05},
+                            wall_time_s=float(i),
+                        )
+                    )
+            return cr.CalibrationResult(
+                run_id=cfg.run_id,
+                algorithm=cfg.algorithm,
+                iterations_completed=4,
+                total_iters=cfg.total_iters,
+                best_objective=0.9,
+                best_parameters={"n_imperv_s1": 0.05},
+                wall_time_s=1.0,
+                final_checkpoint=None,
+                errors=[],
+                warnings=list(warnings),
+            )
+
+        import argparse
+
+        ns = argparse.Namespace(
+            run_id="t",
+            algorithm="sceua",
+            total_iters=5,
+            checkpoint_every=1,
+            inp=inp,
+            observed_csv=observed,
+            engine="real",
+            patch_map=patch_map,
+            node="O1",
+            attr="Total_inflow",
+            aggregate="none",
+            obs_start=None,
+            obs_end=None,
+            timestamp_col=None,
+            flow_col=None,
+            seed=1,
+            ngs=2,
+            param=["n_imperv_s1=0.01,0.1"],
+            objective="kge",
+            run_dir=run_dir,
+            progress=progress,
+            print_every=1,
+            quiet=True,
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(cr, "run_real_calibration", fake_run), \
+             mock.patch.object(calibrate_cmd, "_is_tty", return_value=False), \
+             redirect_stdout(out), redirect_stderr(err):
+            rc = calibrate_cmd.main(ns)
+        return rc, out.getvalue(), err.getvalue(), run_dir
+
+    def test_happy_path_summary_contract(self) -> None:
+        with TemporaryDirectory() as raw:
+            rc, out, err, _ = self._drive(Path(raw))
+        self.assertEqual(rc, 0)
+        summary = json.loads(out)
+        self.assertIs(summary["is_stub"], False)
+        self.assertEqual(summary["engine"], "sceua-spotpy")
+        self.assertEqual(summary["best_parameters"], {"n_imperv_s1": 0.05})
+        self.assertIn("experiment_dir", summary)
+
+    def test_warnings_surface_on_stderr_and_summary(self) -> None:
+        with TemporaryDirectory() as raw:
+            rc, out, err, _ = self._drive(Path(raw), warnings=["UNITS MISMATCH LIKELY: 1,000x"])
+        self.assertEqual(rc, 0)
+        self.assertIn("UNITS MISMATCH", err)
+        self.assertIn("UNITS MISMATCH", json.loads(out)["warnings"][0])
+
+    def test_progress_lines_reach_the_trace_on_non_tty(self) -> None:
+        with TemporaryDirectory() as raw:
+            rc, _, _, run_dir = self._drive(Path(raw), progress=True)
+            self.assertEqual(rc, 0)
+            trace = (run_dir / "agent_trace.jsonl").read_text(encoding="utf-8").splitlines()
+        events = [json.loads(line) for line in trace]
+        self.assertEqual([e["iter_index"] for e in events], [2, 4])
+        self.assertTrue(all(e["event"] == "calibrate_progress" for e in events))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
