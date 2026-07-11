@@ -51,9 +51,11 @@ fi
 
 # --- 3. web/install.ps1 must not splat unsupported keys into bootstrap -----
 # The crash came from splatting $args (with Skip*/Swmm*/SourceRef) into a
-# bootstrap that only took -TargetDir. Lock the curated $bootstrapArgs path.
-if ! grep -q '@bootstrapArgs' "$WEB"; then
-  echo "FAIL: web/install.ps1 should splat the curated \$bootstrapArgs hashtable" >&2
+# bootstrap that only took -TargetDir. The curated-hashtable era was later
+# replaced by an even narrower contract (v0.7.3+): pass ONLY -Ref, and only
+# when the fetched bootstrap actually declares that parameter. Lock that.
+if ! grep -q 'declares it' "$WEB" || ! grep -q -- '-Ref \$Ref' "$WEB"; then
+  echo "FAIL: web/install.ps1 should pass only -Ref, gated on the fetched bootstrap declaring it" >&2
   exit 1
 fi
 if grep -q '@args' "$WEB"; then

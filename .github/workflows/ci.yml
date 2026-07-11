@@ -55,6 +55,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-cov
+          # ADR-0006 PR-B (CI honesty): the report suite importorskips on
+          # docx; without the extra its 29 tests silently skip en masse.
+          pip install "python-docx>=1.1"
 
       - name: Install MCP server dependencies
         run: bash scripts/install_mcp_deps.sh
@@ -110,9 +113,21 @@ jobs:
           git ls-files '*.py' | xargs python -m py_compile
 
       - name: Unit tests
+        # ADR-0006 PR-B (CI honesty): `pytest tests/` alone missed every
+        # suite under skills/*/tests (54 public tests were collected by no
+        # workflow; the separate unittest-discover line covered only
+        # uncertainty's 14). One pytest invocation now collects both trees;
+        # the embargoed local-only skill dir simply doesn't exist in a
+        # clean checkout and is skipped naturally.
         run: |
-          python -m unittest discover -s skills/swmm-uncertainty/tests -v
-          python -m pytest tests/ -v --cov=agentic_swmm --cov-report=xml --cov-report=term
+          python -m pytest tests/ skills/ -v --cov=agentic_swmm --cov-report=xml --cov-report=term
+
+      - name: Installer script tests
+        # ADR-0006 PR-B: this bash harness existed with zero CI wiring
+        # (maintained but inert); its first wired run immediately caught a
+        # stale assertion, which is the point.
+        run: |
+          for f in tests/test_install_*.bash; do bash "$f"; done
 
       - name: Upload coverage to Codecov
         if: always()
