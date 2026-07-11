@@ -37,6 +37,9 @@ def _namespace(inp: Path, run_dir: Path, **overrides) -> argparse.Namespace:
         "progress": False,
         "print_every": 1,
         "quiet": True,  # suppress the banner so stdout is pure JSON
+        # ADR-0005: the default engine is now the real SCE-UA; these
+        # tests pin the SYNTHETIC walker's honesty contract explicitly.
+        "engine": "synthetic",
     }
     base.update(overrides)
     return argparse.Namespace(**base)

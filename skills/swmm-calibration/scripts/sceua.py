@@ -140,6 +140,11 @@ class SceuaConfig:
     convergence_csv: Path
     swmm_runner: Callable  # signature: (inp_path) -> (rc, rpt, out_path)
     extract_series: Callable  # signature: (out_path) -> pd.DataFrame[timestamp, flow]
+    # Optional per-evaluation hook: (call_index, best_kge_so_far, named_params).
+    # Injected by callers that want live progress (e.g. the aiswmm calibrate
+    # facade, ADR-0005); errors in the callback are swallowed so progress
+    # reporting can never break a calibration.
+    progress_callback: Callable | None = None
 
 
 class SwmmSpotSetup:
@@ -168,6 +173,7 @@ class SwmmSpotSetup:
         # The trace records each rep's primary KGE so we can write convergence.csv.
         self._convergence: list[tuple[int, float]] = []
         self._call_count = 0
+        self._last_named_params: dict | None = None
 
     # spotpy hook: return the parameter generator list.
     def parameters(self):
@@ -189,6 +195,7 @@ class SwmmSpotSetup:
     def _run_swmm_for_params(self, params: dict[str, float | int]) -> pd.DataFrame | None:
         cfg = self.config
         self._call_count += 1
+        self._last_named_params = dict(params)
         trial_dir = cfg.run_root / f"sceua_{self._call_count:04d}"
         trial_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -236,12 +243,27 @@ class SwmmSpotSetup:
     def evaluation(self) -> np.ndarray:
         return self._observed["flow"].astype(float).to_numpy()
 
+    def _record_evaluation(self, kge_value: float) -> None:
+        """Append to the convergence trace and fire the optional progress
+        hook (ADR-0005): best-KGE-so-far plus the params of THIS call.
+        Callback errors are swallowed: progress can never break a run."""
+        self._convergence.append((self._call_count, kge_value))
+        callback = getattr(self.config, "progress_callback", None)
+        if callback is None:
+            return
+        finite = [k for _, k in self._convergence if math.isfinite(k)]
+        best = max(finite) if finite else float("nan")
+        try:
+            callback(self._call_count, best, dict(self._last_named_params or {}))
+        except Exception:
+            pass
+
     def objectivefunction(self, simulation, evaluation, params=None) -> float:
         sim = np.asarray(simulation, dtype=float)
         obs = np.asarray(evaluation, dtype=float)
         mask = np.isfinite(sim) & np.isfinite(obs)
         if mask.sum() < 2:
-            self._convergence.append((self._call_count, float("nan")))
+            self._record_evaluation(float("nan"))
             return 1.0e6  # large penalty: minimisation drives this down
         sim_ok = sim[mask]
         obs_ok = obs[mask]
@@ -251,9 +273,9 @@ class SwmmSpotSetup:
         kge_result = kge(obs_df, sim_df)
         kge_value = kge_result["kge"]
         if kge_value is None or not math.isfinite(kge_value):
-            self._convergence.append((self._call_count, float("nan")))
+            self._record_evaluation(float("nan"))
             return 1.0e6
-        self._convergence.append((self._call_count, float(kge_value)))
+        self._record_evaluation(float(kge_value))
         return float(1.0 - kge_value)  # spotpy sceua minimises this
 
     # Accessors used by run_sceua after sampling completes.

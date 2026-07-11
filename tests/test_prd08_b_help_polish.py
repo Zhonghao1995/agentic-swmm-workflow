@@ -111,6 +111,9 @@ class CalibrateObservedCsvOptionalTests(unittest.TestCase):
             argv = [
                 "calibrate",
                 "--quiet",
+                # ADR-0005: only the synthetic engine may omit --observed-csv.
+                "--engine",
+                "synthetic",
                 "--run-id",
                 "no-obs",
                 "--total-iters",
