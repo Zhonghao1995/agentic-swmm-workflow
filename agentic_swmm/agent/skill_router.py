@@ -22,47 +22,35 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 
 
 # ---------------------------------------------------------------------------
-# Static mapping: ToolSpec name -> skill name. Mirror of
-# ``mcp_coverage.EXPECTED_BINDINGS``; kept here as a small table so that
-# changes to one source need a matching change to the other (test in
-# ``tests/test_skill_router.py`` cross-checks both).
+# ToolSpec name -> skill name. ADR-0006 D2: the MCP-routed rows are
+# DERIVED from ``mcp_coverage.EXPECTED_BINDINGS`` (the single
+# authoritative skill/server/tool map; server name == skill name), so
+# the same fact is never hand-maintained twice. Only tools with NO
+# EXPECTED_BINDINGS row (direct-subprocess handlers) live in the
+# explicit supplement below.
 # ---------------------------------------------------------------------------
 
+from agentic_swmm.agent.mcp_coverage import EXPECTED_BINDINGS as _EXPECTED_BINDINGS
 
-_DETERMINISTIC_BINDINGS: dict[str, str] = {
-    "audit_run": "swmm-experiment-audit",
-    "build_inp": "swmm-builder",
-    # C1 (issue #246): build_raingage_section registered under swmm-climate
-    "build_raingage_section": "swmm-climate",
-    "format_rainfall": "swmm-climate",
-    # PR #256 follow-up: generate_design_storm MCP-routed via swmm-climate
-    "generate_design_storm": "swmm-climate",
-    "network_qa": "swmm-network",
-    "network_to_inp": "swmm-network",
-    "plot_run": "swmm-plot",
-    # C5 (issue #246): retrieve_memory skill binding — handler is direct-subprocess
-    # (not MCP-routed via pool), so no EXPECTED_BINDINGS row needed.
+_DIRECT_SUBPROCESS_BINDINGS: dict[str, str] = {
+    # C5 (issue #246): retrieve_memory is direct-subprocess (no MCP row).
     "retrieve_memory": "swmm-rag-memory",
-    "run_swmm_inp": "swmm-runner",
-    "summarize_memory": "swmm-modeling-memory",
-    # dark-MCP registration (PR 1, issue #246): 6 calibration tools
-    "swmm_calibrate": "swmm-calibration",
-    "swmm_calibrate_dream_zs": "swmm-calibration",
-    "swmm_calibrate_search": "swmm-calibration",
-    "swmm_calibrate_sceua": "swmm-calibration",
-    "swmm_sensitivity_scan": "swmm-calibration",
-    "swmm_validate": "swmm-calibration",
-    # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools
-    "swmm_rainfall_ensemble": "swmm-uncertainty",
-    "swmm_sensitivity_morris": "swmm-uncertainty",
-    "swmm_sensitivity_oat": "swmm-uncertainty",
-    "swmm_sensitivity_sobol": "swmm-uncertainty",
-    "swmm_uncertainty_source_decomposition": "swmm-uncertainty",
-    # PRD_water_quality.md PR3 / PRD_design_review.md PR2 / PRD_report_export.md PR2
-    # All three are direct-subprocess handlers (not MCP-routed).
+    # PRD_water_quality PR3 / PRD_design_review PR2 / PRD_report_export PR2:
+    # all direct-subprocess handlers.
     "read_wq_loads": "swmm-water-quality",
     "review_run": "swmm-design-review",
     "generate_report": "swmm-report",
+    # ADR-0006 D2: map_run shares the swmm-plot renderer skill with
+    # plot_run (swmm_map.py's own docstring) but is CLI-subprocess wired,
+    # so it never had an EXPECTED_BINDINGS row; before this supplement it
+    # silently fell into the agent-internal bucket and
+    # select_skill("swmm-plot") never listed it.
+    "map_run": "swmm-plot",
+}
+
+_DETERMINISTIC_BINDINGS: dict[str, str] = {
+    **{b.tool_spec_name: b.mcp_server for b in _EXPECTED_BINDINGS},
+    **_DIRECT_SUBPROCESS_BINDINGS,
 }
 
 

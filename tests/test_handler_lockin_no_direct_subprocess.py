@@ -20,16 +20,14 @@ from __future__ import annotations
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 
 # Deterministic-SWMM tool → the MCP server that owns its script.
-_DETERMINISTIC_TO_SKILL = {
-    "audit_run": "swmm-experiment-audit",
-    "build_inp": "swmm-builder",
-    "format_rainfall": "swmm-climate",
-    "network_qa": "swmm-network",
-    "network_to_inp": "swmm-network",
-    "plot_run": "swmm-plot",
-    "run_swmm_inp": "swmm-runner",
-    "summarize_memory": "swmm-modeling-memory",
-}
+# ADR-0006 D2: derived from the authoritative binding table instead of a
+# third hand-maintained copy of the same facts. This test's contract is
+# specifically about MCP-ROUTED tools (they must route through the pool,
+# never spawn their script directly), so it derives the MCP subset, not
+# the router table's direct-subprocess supplement.
+from agentic_swmm.agent.mcp_coverage import EXPECTED_BINDINGS as _BINDINGS
+
+_DETERMINISTIC_TO_SKILL = {b.tool_spec_name: b.mcp_server for b in _BINDINGS}
 
 
 def test_deterministic_handlers_are_mcp_routed() -> None:

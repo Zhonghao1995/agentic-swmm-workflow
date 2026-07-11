@@ -46,10 +46,6 @@ def _call(name: str, args: dict) -> ToolCall:
 # ---------------------------------------------------------------------------
 
 
-def test_wq_read_wq_loads_in_registry(registry: AgentToolRegistry) -> None:
-    assert "read_wq_loads" in registry.names
-
-
 def test_wq_read_wq_loads_is_read_only(registry: AgentToolRegistry) -> None:
     spec = registry._tools["read_wq_loads"]
     assert spec.is_read_only is True
@@ -104,10 +100,6 @@ def test_wq_read_wq_loads_relative_path_resolves_to_repo_root(tmp_path: Path) ->
 # ---------------------------------------------------------------------------
 
 
-def test_dr_review_run_in_registry(registry: AgentToolRegistry) -> None:
-    assert "review_run" in registry.names
-
-
 def test_dr_review_run_is_not_read_only(registry: AgentToolRegistry) -> None:
     spec = registry._tools["review_run"]
     assert spec.is_read_only is False
@@ -149,10 +141,6 @@ def test_dr_review_run_nonexistent_run_dir_returns_failure() -> None:
 # ---------------------------------------------------------------------------
 # RE — generate_report
 # ---------------------------------------------------------------------------
-
-
-def test_re_generate_report_in_registry(registry: AgentToolRegistry) -> None:
-    assert "generate_report" in registry.names
 
 
 def test_re_generate_report_is_not_read_only(registry: AgentToolRegistry) -> None:

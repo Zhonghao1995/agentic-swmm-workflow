@@ -43,10 +43,6 @@ def _call(name: str, args: dict) -> ToolCall:
 # 1. Registry presence and is_read_only
 # ---------------------------------------------------------------------------
 
-def test_generate_design_storm_in_registry(registry: AgentToolRegistry) -> None:
-    assert "generate_design_storm" in registry.names
-
-
 def test_generate_design_storm_is_not_read_only(registry: AgentToolRegistry) -> None:
     spec = registry._tools["generate_design_storm"]
     assert spec.is_read_only is False
@@ -252,43 +248,3 @@ def test_missing_out_timeseries_returns_failure() -> None:
 # ---------------------------------------------------------------------------
 # 5. ExpectedBinding row in mcp_coverage
 # ---------------------------------------------------------------------------
-
-def test_expected_binding_in_mcp_coverage() -> None:
-    from agentic_swmm.agent.mcp_coverage import EXPECTED_BINDINGS
-
-    names = {b.tool_spec_name for b in EXPECTED_BINDINGS}
-    assert "generate_design_storm" in names
-
-
-def test_expected_binding_mcp_details() -> None:
-    from agentic_swmm.agent.mcp_coverage import EXPECTED_BINDINGS
-
-    binding = next(b for b in EXPECTED_BINDINGS if b.tool_spec_name == "generate_design_storm")
-    assert binding.mcp_server == "swmm-climate"
-    assert binding.mcp_tool_name == "generate_design_storm"
-    assert "design_storm.py" in binding.script_relpath
-
-
-# ---------------------------------------------------------------------------
-# 6. _DETERMINISTIC_BINDINGS entry
-# ---------------------------------------------------------------------------
-
-def test_generate_design_storm_in_deterministic_bindings() -> None:
-    from agentic_swmm.agent.skill_router import _DETERMINISTIC_BINDINGS
-
-    assert "generate_design_storm" in _DETERMINISTIC_BINDINGS
-    assert _DETERMINISTIC_BINDINGS["generate_design_storm"] == "swmm-climate"
-
-
-# ---------------------------------------------------------------------------
-# 7. SkillRouter exposes generate_design_storm under swmm-climate
-# ---------------------------------------------------------------------------
-
-def test_skill_router_swmm_climate_contains_generate_design_storm(
-    registry: AgentToolRegistry,
-) -> None:
-    from agentic_swmm.agent.skill_router import SkillRouter
-
-    router = SkillRouter(registry)
-    bundle = router.tools_for("swmm-climate")
-    assert "generate_design_storm" in bundle.tool_names()

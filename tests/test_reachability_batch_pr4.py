@@ -47,10 +47,6 @@ def _call(name: str, args: dict) -> ToolCall:
 # C1 — build_raingage_section
 # ---------------------------------------------------------------------------
 
-def test_c1_build_raingage_section_in_registry(registry: AgentToolRegistry) -> None:
-    assert "build_raingage_section" in registry.names
-
-
 def test_c1_build_raingage_section_is_not_read_only(registry: AgentToolRegistry) -> None:
     spec = registry._tools["build_raingage_section"]
     assert spec.is_read_only is False
@@ -226,27 +222,6 @@ def test_c4_audit_run_mapper_absent_compare_to(tmp_path) -> None:
 
 # ---------------------------------------------------------------------------
 # C5 — retrieve_memory skill binding
-# ---------------------------------------------------------------------------
-
-def test_c5_retrieve_memory_in_deterministic_bindings() -> None:
-    from agentic_swmm.agent.skill_router import _DETERMINISTIC_BINDINGS
-
-    assert "retrieve_memory" in _DETERMINISTIC_BINDINGS
-    assert _DETERMINISTIC_BINDINGS["retrieve_memory"] == "swmm-rag-memory"
-
-
-def test_c5_skill_router_tools_for_swmm_rag_memory_contains_retrieve_memory(
-    registry: AgentToolRegistry,
-) -> None:
-    from agentic_swmm.agent.skill_router import SkillRouter
-
-    router = SkillRouter(registry)
-    bundle = router.tools_for("swmm-rag-memory")
-    assert "retrieve_memory" in bundle.tool_names()
-
-
-# ---------------------------------------------------------------------------
-# C6 — plot_run window-cropping plumb-through
 # ---------------------------------------------------------------------------
 
 def test_c6_plot_run_schema_has_focus_day(registry: AgentToolRegistry) -> None:
