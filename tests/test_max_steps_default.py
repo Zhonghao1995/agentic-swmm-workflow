@@ -55,20 +55,10 @@ class MaxStepsDefaultPinTests(unittest.TestCase):
             f"failure mode.",
         )
 
-    def test_chat_compatibility_alias_default_max_steps_is_40(self) -> None:
-        """``commands/chat.py`` is a stand-by compatibility alias not
-        currently wired into the top-level CLI, but its default must
-        track the agent default so a future re-wire doesn't surprise
-        users with the legacy 16-step ceiling."""
-        import argparse as _argparse
-
-        from agentic_swmm.commands import chat as chat_cmd
-
-        ap = _argparse.ArgumentParser()
-        sub = ap.add_subparsers()
-        chat_cmd.register(sub)
-        args = ap.parse_args(["chat", "hello"])
-        self.assertEqual(args.max_steps, _EXPECTED_DEFAULT)
+    # The stand-by commands/chat.py module was deleted by ADR-0006 D3;
+    # ``chat`` is a pure router alias to ``agent --planner llm`` (rewrite
+    # pinned in test_agentic_swmm_cli.py), so the agent default asserted
+    # above IS the chat default by construction.
 
     def test_max_steps_can_still_be_overridden(self) -> None:
         """Sanity: bumping the default didn't break the override path."""

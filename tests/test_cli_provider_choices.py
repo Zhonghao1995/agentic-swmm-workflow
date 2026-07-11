@@ -15,7 +15,6 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from agentic_swmm.cli import build_parser
-from agentic_swmm.commands import chat as chat_cmd
 from agentic_swmm.config import CONFIG_DIR_ENV, load_config, set_config_value
 
 
@@ -38,14 +37,10 @@ class ProviderChoiceParsingTests(unittest.TestCase):
         args = parser.parse_args(["agent", "--provider", "openai", "hi"])
         self.assertEqual(args.provider, "openai")
 
-    def test_chat_subcommand_accepts_anthropic(self) -> None:
-        # ``chat`` is dispatched via the argv router, not ``build_parser``;
-        # exercise its ``register`` directly.
-        parser = _register_one(chat_cmd.register)
-        args = parser.parse_args(["chat", "--provider", "anthropic"])
-        self.assertEqual(args.provider, "anthropic")
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["chat", "--provider", "bogus"])
+    # ``chat`` is a router-level alias for ``agent --planner llm`` since
+    # ADR-0006 D3 deleted the stand-by commands/chat.py module; its
+    # provider choices are the agent verb's (tested above) and the alias
+    # rewrite itself is pinned in test_agentic_swmm_cli.py.
 
     def test_model_subcommand_accepts_anthropic(self) -> None:
         parser = build_parser()
