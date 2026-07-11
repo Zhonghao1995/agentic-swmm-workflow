@@ -7,6 +7,38 @@ description: Calibration and validation scaffold for EPA SWMM. Use when an agent
 
 Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
 
+
+## CLI verb: aiswmm calibrate (real engine)
+
+Since ADR-0005 the top-level verb drives this skill's SCE-UA engine directly:
+
+```
+aiswmm calibrate --inp model.inp --observed-csv observed.csv \
+  --patch-map examples/calibration/patch_map.json \
+  --run-id calib_001 --total-iters 200 \
+  --param pct_imperv_s1=20,70 --run-dir runs/agent/calib_001 --progress
+```
+
+Contract highlights:
+
+- **Units**: observed values MUST be in the same units as the SWMM output
+  attribute selected by `--node`/`--attr`. There is no conversion layer; a
+  greater-than-100x median magnitude mismatch between the best trial and the
+  observed series triggers a loud `UNITS MISMATCH` warning (stderr + summary)
+  to catch L/s vs m3/s style errors.
+- **Parameters**: `--param name=low,high` supplies search bounds only; every
+  name must exist in the `--patch-map` file (the sole parameter-definition
+  contract). Unknown names fail fast and list what IS available.
+- **Experiment layout**: `progress.json` (live checkpoint), `convergence.csv`,
+  `calibration_summary.json` (`engine: sceua-spotpy`, `is_stub: false`),
+  `best_params.json`, `09_audit/` candidate artifacts, `trials/sceua_NNNN/`
+  working evaluations. Trials are engine working area; only the candidate in
+  `09_audit/` is audit-grade and feeds `aiswmm calibration accept`.
+- The historical synthetic walker remains available behind
+  `--engine synthetic` (still stamped `is_stub: true`) for dry runs.
+- `--algorithm dream-zs` is not wired into the verb yet: use the
+  `calibrate_dream_zs` agent tool or this skill's script directly.
+
 ## What this skill provides
 - A practical calibration scaffold around the existing SWMM runner workflow.
 - A strict calibration boundary: calibration and validation require observed data. Without observed flow, depth, soil-moisture, or volume data, use `swmm-uncertainty` for prior uncertainty propagation instead of calling the run calibrated.
