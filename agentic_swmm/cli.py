@@ -140,14 +140,27 @@ def build_parser() -> argparse.ArgumentParser:
     review.register(subparsers)
     # Client-deliverable Word report (PRD_report_export.md).
     report.register(subparsers)
-    # Expert-only commands (PRD-Z). Surfaced as top-level subcommands
-    # so the help renders an "expert-only" grouping naturally; none of
-    # them is registered as an agent ToolSpec or as an MCP tool.
-    expert_calibration.register(subparsers)
-    expert_pour_point.register(subparsers)
-    expert_thresholds.register(subparsers)
-    expert_publish.register(subparsers)
-    expert_gap_promote.register(subparsers)
+    # Expert-only commands (PRD-Z). ADR-0006 D3: folded under ONE
+    # top-level ``expert`` namespace (they were five flat verbs, growing
+    # the surface without a gate); each module's register() is reused
+    # unchanged against the nested subparsers, and the old flat
+    # spellings survive one release as router aliases (see
+    # _EXPERT_VERB_ALIASES). None of them is an agent ToolSpec or MCP
+    # tool (guarded by test_expert_only_commands_not_in_registry).
+    from agentic_swmm.agent.flag_naming import register_example_flag as _reg_example
+
+    expert_parser = subparsers.add_parser(
+        "expert",
+        help="Expert-only namespace (calibration, pour_point, thresholds, publish, gap).",
+    )
+    _reg_example(expert_parser, example_text="aiswmm expert calibration accept runs/<case>")
+    expert_sub = expert_parser.add_subparsers(dest="expert_command")
+    expert_parser.set_defaults(func=_expert_namespace_main)
+    expert_calibration.register(expert_sub)
+    expert_pour_point.register(expert_sub)
+    expert_thresholds.register(expert_sub)
+    expert_publish.register(expert_sub)
+    expert_gap_promote.register(expert_sub)
     # CONCURRENCY-OWNER: PRD-CASE-ID
     _register_case_commands(subparsers)
     # CONCURRENCY-OWNER: PRD-CASE-ID — attach --case-id to existing
@@ -196,6 +209,15 @@ def _help_main(args: argparse.Namespace) -> int:
 
 
 # CONCURRENCY-OWNER: PRD-CASE-ID
+def _expert_namespace_main(args: argparse.Namespace) -> int:
+    """Bare ``aiswmm expert``: point at the subcommands instead of argparse's error."""
+    print(
+        "usage: aiswmm expert <calibration|pour_point|thresholds|publish|gap> ...\n"
+        "Expert-only workflows; see `aiswmm expert <sub> --help`."
+    )
+    return 0
+
+
 def _register_case_commands(
     subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
@@ -621,6 +643,12 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
     return 2
 
 
+# ADR-0006 D3: former flat expert verbs, now `aiswmm expert <sub>`.
+_EXPERT_VERB_ALIASES = frozenset(
+    {"pour_point", "thresholds", "gap", "publish", "calibration"}
+)
+
+
 def _route_default_to_agent(argv: list[str]) -> list[str]:
     if not argv:
         # PRD-08 A.3 (audit #6): when the user types bare ``aiswmm`` we
@@ -631,6 +659,15 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
         return _preflight_interactive_dispatch(
             ["agent", "--planner", "llm", "--interactive"]
         )
+    if argv[0] in _EXPERT_VERB_ALIASES:
+        # ADR-0006 D3: the five expert verbs folded under `aiswmm expert`;
+        # old flat spellings stay as aliases for one release.
+        print(
+            f"note: `aiswmm {argv[0]}` moved to `aiswmm expert {argv[0]}` "
+            "(alias kept for one release).",
+            file=sys.stderr,
+        )
+        return ["expert", *argv]
     if argv[0] == "chat":
         dispatched = (
             ["agent", "--planner", "llm", *argv[1:]]

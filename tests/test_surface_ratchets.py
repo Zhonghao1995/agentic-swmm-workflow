@@ -18,11 +18,11 @@ import unittest
 # Great: add it here IN THE SAME PR with a one-line justification in
 # the PR body. Removing one: same deal (aliases stay in the router).
 PINNED_CLI_VERBS = [
-    "agent", "audit", "bootstrap", "calibrate", "calibration",
+    "agent", "audit", "bootstrap", "calibrate",
     "capabilities", "case", "cite", "cite-param", "compare", "config",
-    "demo", "doctor", "gap", "help", "list", "login", "map", "mcp",
-    "memory", "model", "plot", "pour_point", "publish", "report",
-    "review", "run", "runs", "setup", "skill", "storm", "thresholds",
+    "demo", "doctor", "expert", "help", "list", "login", "map", "mcp",
+    "memory", "model", "plot", "report",
+    "review", "run", "runs", "setup", "skill", "storm",
     "trace", "transfer", "uncertainty",
 ]
 
