@@ -1,6 +1,7 @@
 """Top-level help grouping + ``aiswmm help <verb>`` router (PRD-08 A.2).
 
-The historical top-level ``aiswmm --help`` listed all 28 verbs in a
+The historical top-level ``aiswmm --help`` listed all verbs (28 at the
+time; 35 as of ADR-0006, ratcheted by tests/test_surface_ratchets.py) in a
 flat alphabetical block. A first-time user could not tell which verbs
 were core (``run``/``audit``/``plot``) from which were memory-store
 inspection or expert escape hatches. This module replaces the flat
