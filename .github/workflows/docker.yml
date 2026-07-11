@@ -48,6 +48,35 @@ jobs:
           fi
           echo "ref=$source_ref" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve target registries
+        id: registries
+        shell: bash
+        env:
+          # Presence of this secret is the opt-in switch for the Docker Hub
+          # mirror. It is needed to actually push, so gating on it (rather than
+          # on the username) guarantees we never emit a docker.io tag we cannot
+          # authenticate for.
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          # GHCR is the canonical registry and the provenance reference baked
+          # into the image (AISWMM_CONTAINER_IMAGE). We additionally mirror to
+          # Docker Hub when DOCKERHUB_TOKEN is configured, purely so pull-count
+          # telemetry has a home: GHCR exposes no pull counts, Docker Hub does.
+          # With no secret set this workflow behaves exactly as before (GHCR
+          # only), and forks / PRs never attempt a mirror they cannot push.
+          images="ghcr.io/zhonghao1995/agentic-swmm-workflow"
+          dockerhub="false"
+          if [[ -n "${DOCKERHUB_TOKEN}" ]]; then
+            images="${images}"$'\n'"docker.io/zhonghao0901/agentic-swmm-workflow"
+            dockerhub="true"
+          fi
+          echo "dockerhub=${dockerhub}" >> "$GITHUB_OUTPUT"
+          {
+            echo "images<<EOF"
+            echo "${images}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -62,11 +91,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: ${{ github.event_name != 'pull_request' && steps.registries.outputs.dockerhub == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/zhonghao1995/agentic-swmm-workflow
+          images: ${{ steps.registries.outputs.images }}
           tags: |
             type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.image_tag != '' }}
             type=raw,value=${{ inputs.source_ref }},enable=${{ github.event_name == 'workflow_dispatch' }}
@@ -89,3 +125,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Keep the Docker Hub landing page in lockstep with the repo README so
+      # the mirror never drifts from GitHub. Runs after every successful push;
+      # url-completion rewrites the README's relative image links (docs/figs/…)
+      # to absolute GitHub URLs so they render on hub.docker.com.
+      - name: Sync Docker Hub description from README
+        if: ${{ github.event_name != 'pull_request' && steps.registries.outputs.dockerhub == 'true' }}
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: zhonghao0901/agentic-swmm-workflow
+          short-description: "Reproducible container for Agentic SWMM: AI-agent-driven, auditable SWMM stormwater modeling."
+          readme-filepath: ./README.md
+          enable-url-completion: true
