@@ -16,6 +16,24 @@ from pathlib import Path
 from typing import Any
 
 
+# SWMM [RAINGAGES] Format token -> the plot layer's rain_kind. INTENSITY is
+# mm/hr, VOLUME is depth (mm) already accumulated over the recording interval,
+# and CUMULATIVE is a running total. Getting this mapping wrong (review P1-9)
+# made VOLUME series get re-scaled by dt/60 as if they were intensity.
+_RAIN_FORMAT_KINDS = {
+    "INTENSITY": "intensity_mm_per_hr",
+    "VOLUME": "depth_mm_per_dt",
+    "CUMULATIVE": "cumulative_depth_mm",
+}
+
+
+def _rain_kind_from_format(upper_parts: list[str]) -> str | None:
+    for token, kind in _RAIN_FORMAT_KINDS.items():
+        if token in upper_parts:
+            return kind
+    return None
+
+
 def infer_rain_timeseries(inp: Path) -> tuple[str, str | None]:
     options = rainfall_timeseries_options(inp)
     for option in options:
@@ -55,7 +73,7 @@ def rainfall_timeseries_options(inp: Path) -> list[dict[str, Any]]:
                 gage = parts[0].strip('"')
                 raingage_series[name] = {
                     "gage": gage,
-                    "rain_kind": "cumulative_depth_mm" if "CUMULATIVE" in upper_parts else None,
+                    "rain_kind": _rain_kind_from_format(upper_parts),
                 }
         elif "FILE" in upper_parts:
             # ``rg1 INTENSITY 0:05 1.0 FILE "storm.dat"`` — the gage
@@ -64,12 +82,7 @@ def rainfall_timeseries_options(inp: Path) -> list[dict[str, Any]]:
             # because SWMM5's RAINGAGES FILE values are intensity (mm/h)
             # when ``Format == INTENSITY``; cumulative if CUMULATIVE.
             gage = parts[0].strip('"')
-            if "INTENSITY" in upper_parts:
-                rain_kind = "intensity_mm_per_hr"
-            elif "CUMULATIVE" in upper_parts:
-                rain_kind = "cumulative_depth_mm"
-            else:
-                rain_kind = None
+            rain_kind = _rain_kind_from_format(upper_parts)
             raingage_file_entries[gage] = {
                 "gage": gage,
                 "rain_kind": rain_kind,

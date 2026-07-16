@@ -32,7 +32,9 @@ from pathlib import Path
 from typing import Any
 
 
-_SECTION_RE = re.compile(r"^\s*\[([A-Z_]+)\]\s*$")
+# SWMM accepts section headers in any case (e.g. [subcatchments]); match
+# case-insensitively and the parser upper-cases the captured name (review P2-7).
+_SECTION_RE = re.compile(r"^\s*\[([A-Za-z_]+)\]\s*$")
 _PASS = "PASS"
 _WARN = "WARN"
 _FAIL = "FAIL"
@@ -144,13 +146,16 @@ def _check_undefined_raingages(
     runoff for that subcatchment is silently zero, which a calibrator
     chases for hours before noticing.
     """
-    declared = {row.split()[0] for row in sections.get("RAINGAGES", []) if row.split()}
+    # SWMM matches object IDs case-insensitively, so compare with casefold to
+    # avoid a false "undefined_raingage" when the two sections differ only in
+    # case (review P2-7).
+    declared = {row.split()[0].casefold() for row in sections.get("RAINGAGES", []) if row.split()}
     for row in sections.get("SUBCATCHMENTS", []):
         cols = row.split()
         if len(cols) < 2:
             continue
         name, gage = cols[0], cols[1]
-        if gage not in declared:
+        if gage.casefold() not in declared:
             report.add_fail(
                 "undefined_raingage",
                 f"Subcatchment {name!r} references raingage {gage!r} "

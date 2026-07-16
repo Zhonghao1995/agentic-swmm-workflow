@@ -182,3 +182,25 @@ class TimeStepSanityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CaseSensitivityTests(unittest.TestCase):
+    """SWMM accepts lowercase section headers and case-insensitive IDs (review P2-7)."""
+
+    def test_lowercase_section_headers_still_pass(self) -> None:
+        import re
+
+        lowered = re.sub(r"\[([A-Z_]+)\]", lambda m: "[" + m.group(1).lower() + "]", _VALID_INP)
+        with TemporaryDirectory() as tmp:
+            inp = _write_inp(tmp, lowered)
+            report = preflight_inp(inp)
+        self.assertEqual(report.status, "PASS", report.failures)
+
+    def test_case_mismatched_raingage_not_flagged(self) -> None:
+        # Declared RG1 in [RAINGAGES], referenced rg1 in [SUBCATCHMENTS].
+        mixed = _VALID_INP.replace("RG1              J1", "rg1              J1")
+        with TemporaryDirectory() as tmp:
+            inp = _write_inp(tmp, mixed)
+            report = preflight_inp(inp)
+        codes = [f["code"] for f in report.failures]
+        self.assertNotIn("undefined_raingage", codes)

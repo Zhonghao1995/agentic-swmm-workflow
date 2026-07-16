@@ -314,17 +314,23 @@ def main():
     rain_t, rain_v = parse_timeseries_from_inp(args.inp, args.rain_ts)
     rain_v = np.asarray(rain_v, dtype=float)
 
-    # For hyetograph we usually show intensity (mm/hr) inverted.
+    # Render every gage format as depth (mm) per recording interval so bar
+    # heights are comparable. Only INTENSITY (mm/hr) needs a unit conversion;
+    # VOLUME is already depth-per-interval and CUMULATIVE is a running total.
     if args.rain_kind == 'intensity_mm_per_hr':
-        rain_plot = rain_v
-        rain_ylabel = 'Rainfall intensity (mm/h)'
+        # mm/hr -> depth over the interval. This is the ONLY branch that may
+        # multiply by dt/60 (review P1-9).
+        rain_plot = rain_v * (args.dt_min / 60.0)
+        rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
     elif args.rain_kind == 'cumulative_depth_mm':
         rain_plot = np.diff(rain_v, prepend=rain_v[0])
         rain_plot = np.where(rain_plot < 0, 0.0, rain_plot)
         rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
     else:
-        # values are assumed intensity mm/hr by our generator; convert to mm per dt for bar area readability
-        rain_plot = rain_v * (args.dt_min / 60.0)
+        # depth_mm_per_dt: values are already depth (mm) per interval (e.g. a
+        # VOLUME-format gage). Plot as-is; a second dt/60 multiply here would
+        # double-convert and shrink the hyetograph (review P1-9).
+        rain_plot = rain_v
         rain_ylabel = f'Rainfall depth (mm/{int(args.dt_min)} min)'
 
     # Flow series (SI): CMS = m^3/s.

@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 import random
+import re
 import subprocess
 import sys
 import time
@@ -386,13 +387,48 @@ def extract_simulated_series(out_path: Path, swmm_node: str, swmm_attr: str, agg
     return df
 
 
+# Canonical SWMM ``ERROR <digits>:`` marker. SWMM 5.x writes these into the
+# ``.rpt`` whenever it refuses to advance, and it can still exit 0 while doing
+# so. Mirrors ``agentic_swmm/agent/honesty.py`` (skill scripts stay import-free
+# from the package per ADR-0006, so the scan is duplicated locally).
+_RPT_ERROR_RE = re.compile(r"^\s*(ERROR\s+\d+:.*)$")
+
+
+def rpt_error_lines(rpt: Path) -> list[str]:
+    """Return the verbatim ``ERROR <digits>:`` lines in a SWMM ``.rpt``.
+
+    Empty list when the file is missing, unreadable, or clean.
+    """
+    try:
+        text = rpt.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return [m.group(1).rstrip() for m in (_RPT_ERROR_RE.match(r) for r in text.splitlines()) if m]
+
+
 def run_swmm(inp: Path, run_dir: Path, rpt_name: str = "model.rpt", out_name: str = "model.out") -> tuple[int, Path, Path]:
     run_dir.mkdir(parents=True, exist_ok=True)
     rpt = run_dir / rpt_name
     out = run_dir / out_name
+    # Honesty (review P1-10): never score a stale ``.rpt``/``.out`` left in a
+    # reused trial directory. Clear both before the run so a failed or errored
+    # run cannot inherit the previous trial's outputs and get its score.
+    for stale in (rpt, out):
+        try:
+            stale.unlink()
+        except FileNotFoundError:
+            pass
     proc = subprocess.run(["swmm5", str(inp), str(rpt), str(out)], capture_output=True, text=True)
     (run_dir / "stdout.txt").write_text(proc.stdout, encoding="utf-8", errors="ignore")
     (run_dir / "stderr.txt").write_text(proc.stderr, encoding="utf-8", errors="ignore")
+    # Honesty: swmm5 can exit 0 while writing ``ERROR <digits>:`` lines and no
+    # usable ``.out``. Drop the ``.out`` so no caller scores an invalid run;
+    # every caller either checks ``rc``/output existence or fails to extract.
+    if proc.returncode == 0 and rpt_error_lines(rpt):
+        try:
+            out.unlink()
+        except FileNotFoundError:
+            pass
     return proc.returncode, rpt, out
 
 
@@ -538,12 +574,31 @@ def evaluate_trial(
 
     result["return_code"] = rc
     result["files"].update({"rpt": str(rpt), "out": str(out)})
+    # Honesty (review P1-10): a run that wrote SWMM ERROR lines, or produced no
+    # fresh .out, is not scorable no matter what the process exit code was.
+    rpt_errors = rpt_error_lines(rpt)
+    if rpt_errors:
+        return finalize_trial(
+            result,
+            status="failed",
+            reason_code="swmm_reported_error",
+            reason_detail=f"SWMM reported {len(rpt_errors)} error line(s); first: {rpt_errors[0]}",
+            started_perf=started_perf,
+        )
     if rc != 0:
         return finalize_trial(
             result,
             status="failed",
             reason_code="swmm_execution_failed",
             reason_detail=f"swmm5 returned non-zero exit code {rc}",
+            started_perf=started_perf,
+        )
+    if not out.exists():
+        return finalize_trial(
+            result,
+            status="failed",
+            reason_code="swmm_output_missing",
+            reason_detail="SWMM produced no .out for this trial; nothing to score",
             started_perf=started_perf,
         )
 
