@@ -13,7 +13,7 @@ modeling op, leaving 0-1 step for the actual chain. Concretely:
   ``plot_run`` could render the conduit hydrograph the prompt asked
   for.
 
-Both surfaces (interactive ``aiswmm chat`` and one-shot ``aiswmm
+Both surfaces (interactive bare ``aiswmm`` and one-shot ``aiswmm
 agent``) now default to 40, leaving ~25 steps for real operations
 after the introspection overhead. This test locks the bump in so a
 silent revert to 16 fails CI loudly.

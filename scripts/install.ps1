@@ -509,7 +509,7 @@ Write-Host "  2. Run: aiswmm doctor"
 Write-Host "  3. Choose your AI provider and store your key (the only manual step):"
 Write-Host "       OpenAI:  aiswmm login              (optional: pick a model with 'aiswmm model')"
 Write-Host "       Claude:  aiswmm login --anthropic"
-Write-Host "  4. Start: aiswmm chat"
+Write-Host "  4. Start: aiswmm"
 Write-Host ""
 
 exit 0
