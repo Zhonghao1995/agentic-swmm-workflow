@@ -449,7 +449,7 @@ class Planner:
             outputs: list[dict[str, Any]] = []
             step_had_failure = False
             giveup_tool: str | None = None
-            for provider_call in response.tool_calls:
+            for _call_index, provider_call in enumerate(response.tool_calls):
                 call = self.registry.validate(provider_call)
                 plan.append(call)
                 result = executor.execute(call, index=len(plan))
@@ -501,9 +501,21 @@ class Planner:
                         consecutive_failures = 1
                     if consecutive_failures >= SAME_TOOL_RETRY_LIMIT:
                         giveup_tool = call.name
-                    # Stop running the rest of this step's tool batch —
-                    # the failed tool's output likely changes context
-                    # for siblings.
+                    # Stop running the rest of this step's tool batch — the
+                    # failed tool's output likely changes context for siblings.
+                    # But every tool call the model emitted must still get
+                    # exactly one output, or the next provider turn is a
+                    # protocol error (review P1-8). Emit a skipped result for
+                    # each sibling we are not executing.
+                    for skipped in response.tool_calls[_call_index + 1:]:
+                        outputs.append({
+                            "type": "function_call_output",
+                            "call_id": skipped.call_id,
+                            "output": json.dumps(
+                                {"ok": False, "skipped": True, "summary": "skipped: an earlier tool in this batch failed"},
+                                sort_keys=True,
+                            ),
+                        })
                     break
                 # A successful tool resets the same-tool failure streak and
                 # clears the open-failure flag: the model recovered.

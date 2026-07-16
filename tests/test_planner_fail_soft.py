@@ -192,6 +192,38 @@ class PlannerFailSoftTests(unittest.TestCase):
             )
         self.assertFalse(outcome.ok, "unrecovered tool failure must not report ok")
 
+    def test_parallel_batch_gives_every_call_an_output(self) -> None:
+        # Model emits two tool calls in one turn; the first fails. Every
+        # emitted call_id must still get exactly one output or the next
+        # provider turn is a protocol error (review P1-8).
+        provider = _ScriptedProvider(
+            [
+                _tool_response(
+                    [
+                        _tool_call("read_file", {"path": "no.txt"}, call_id="c1"),
+                        _tool_call("list_dir", {"path": "."}, call_id="c2"),
+                    ]
+                ),
+                _final("done"),
+            ]
+        )
+        executor = _ScriptedExecutor(
+            {"read_file": [{"ok": False, "summary": "boom", "stderr_tail": "boom"}]}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            _planner(provider).run(
+                goal=NON_SWMM_GOAL,
+                session_dir=session_dir,
+                trace_path=session_dir / "agent_trace.jsonl",
+                executor=executor,
+            )
+        second_input = provider.calls_received[1]
+        call_ids = [item.get("call_id") for item in second_input if item.get("type") == "function_call_output"]
+        self.assertEqual(sorted(call_ids), ["c1", "c2"], "every emitted call needs exactly one output")
+        skipped = next(json.loads(i["output"]) for i in second_input if i.get("call_id") == "c2")
+        self.assertTrue(skipped.get("skipped"))
+
     def test_planner_retries_pivot(self) -> None:
         # Round 1: read_file fails.
         # Round 2: model pivots to list_dir, which succeeds.
