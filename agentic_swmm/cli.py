@@ -638,7 +638,7 @@ def _reject_unknown_verb(argv: list[str]) -> int | None:
         f"error: unknown command '{token}'.{hint} "
         "See 'aiswmm --help' for available commands.\n"
         "To send a free-form goal to the agent, use: "
-        f"aiswmm chat \"{token}\"\n"
+        f"aiswmm agent --planner llm \"{token}\"\n"
     )
     return 2
 

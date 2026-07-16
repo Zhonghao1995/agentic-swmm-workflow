@@ -327,7 +327,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
         with redirect_stderr(buf):
             code = _reject_unknown_verb(["bogusverb"])
         self.assertEqual(code, 2)
-        self.assertIn('aiswmm chat "bogusverb"', buf.getvalue())
+        self.assertIn('aiswmm agent --planner llm "bogusverb"', buf.getvalue())
 
     def test_turn_preamble_is_two_lines_in_process(self) -> None:
         """The per-turn preamble is Goal + one Session line (provider,

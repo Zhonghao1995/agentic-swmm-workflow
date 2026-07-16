@@ -464,12 +464,12 @@ SUMMARY
 #   - openai with a key already configured -> just start chatting
 if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
   echo "  3. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
-  echo "  4. Run: aiswmm chat --provider $AISWMM_PROVIDER"
+  echo "  4. Run: aiswmm"
 elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
   echo "  3. Add your OpenAI API key: aiswmm login --openai"
-  echo "  4. Run: aiswmm chat --provider openai"
+  echo "  4. Run: aiswmm"
 else
-  echo "  3. Run: aiswmm chat --provider openai"
+  echo "  3. Run: aiswmm"
 fi
 echo ""
 
