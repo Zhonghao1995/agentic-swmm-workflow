@@ -23,6 +23,19 @@ const basinShpToSubcatchmentsPy = path.resolve(__dirname, "../../skills/swmm-gis
 
 const PY = process.env.PYTHON || "python3";
 
+// Optional GIS stack (the `aiswmm[gis]` extra). When it is not installed the
+// scripts fail with a raw ModuleNotFoundError; turn that into an actionable
+// install hint instead (review P1-1).
+const GIS_MODULES = ["geopandas", "rasterio", "shapely", "pyproj", "shapefile", "pysheds", "pyogrio", "fiona"];
+
+function gisDependencyHint(stderr) {
+  const match = /ModuleNotFoundError: No module named '([^']+)'/.exec(stderr || "");
+  if (!match) return null;
+  const mod = match[1];
+  if (!GIS_MODULES.some((m) => mod === m || mod.startsWith(m + "."))) return null;
+  return `The swmm-gis tools need the optional GIS stack (missing: ${mod}). Install it with:  pip install 'aiswmm[gis]'\n\n${stderr}`;
+}
+
 function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
     const p = spawn(PY, [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
@@ -32,7 +45,7 @@ function runPy(scriptPath, args) {
     p.stderr.on("data", (d) => (stderr += d.toString()));
     p.on("error", reject);
     p.on("close", (code) => {
-      if (code !== 0) reject(new Error(stderr || `python rc=${code}`));
+      if (code !== 0) reject(new Error(gisDependencyHint(stderr) || stderr || `python rc=${code}`));
       else resolve(stdout);
     });
   });
