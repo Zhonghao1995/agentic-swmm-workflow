@@ -346,11 +346,15 @@ def _wrap_mcp_result(
                 if text:
                     chunks.append(text)
         excerpt = "\n".join(chunks)[:4000]
-    summary = f"called {server}.{tool}"
+    # An MCP tool signals a tool-level failure with ``isError: true`` in an
+    # otherwise well-formed result. Hardcoding ok=True here made the planner
+    # count a failed call as success (review P1-6); honour the flag instead.
+    is_error = bool(result.get("isError")) if isinstance(result, dict) else False
+    summary = f"{server}.{tool} reported an error" if is_error else f"called {server}.{tool}"
     return {
         "tool": call.name,
         "args": call.args,
-        "ok": True,
+        "ok": not is_error,
         "results": result,
         "excerpt": excerpt,
         "summary": summary,

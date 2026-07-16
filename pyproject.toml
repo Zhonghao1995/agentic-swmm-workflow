@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiswmm"
-version = "0.7.6"
+version = "0.7.7"
 description = "Unified CLI for reproducible and auditable Agentic SWMM workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,6 +49,11 @@ anywhere = ["swmmanywhere>=0.2.2,<0.3"]
 # Pure-Python; no system binary required.
 # Install with: pip install aiswmm[report]
 report = ["python-docx>=1.1"]
+
+# `swmm-gis` skill: shapefile/raster preprocessing into SWMM subcatchments.
+# Heavy geospatial stack, kept optional so the core install stays light.
+# Install with: pip install aiswmm[gis]
+gis = ["geopandas", "rasterio", "shapely", "pyshp", "pysheds", "pyogrio"]
 
 [project.urls]
 Homepage = "https://github.com/Zhonghao1995/agentic-swmm-workflow"

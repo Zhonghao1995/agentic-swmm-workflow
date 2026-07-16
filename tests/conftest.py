@@ -22,6 +22,13 @@ from unittest import mock
 import pytest
 
 
+# The suite runs headless (non-TTY), where ``permissions.prompt_user`` now
+# fails closed (review P1-2). Tests intend for tool calls to execute, so opt
+# the whole suite into trusted auto-approval, exactly as CI/Docker automation
+# does. Individual tests that exercise the denial path unset it themselves.
+os.environ.setdefault("AISWMM_AUTO_APPROVE", "1")
+
+
 @contextlib.contextmanager
 def env_overrides(**overrides: str | None):
     """Snapshot + restore ``os.environ`` for the duration of the block.

@@ -13,6 +13,9 @@ mcp/*/node_modules/
 # MCP server run artifacts
 mcp/*/runs/
 
+# Machine-specific MCP launcher configs — regenerated locally, contain absolute paths
+integrations/mcp/generated/
+
 # Local-only
 .claude/
 data/Saanich/

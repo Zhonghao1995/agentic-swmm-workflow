@@ -91,6 +91,10 @@ class AnthropicProvider:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.timeout = timeout
         self._mock_tool_calls_consumed = False
+        # The Messages API is stateless, so this provider accumulates the full
+        # conversation locally and replays it every turn (review P1-5). Reset at
+        # each session start (previous_response_id is None on the first turn).
+        self._history: list[dict[str, Any]] = []
 
     def complete(self, *, system_prompt: str, prompt: str) -> ProviderResult:
         mock_response = os.environ.get("AISWMM_ANTHROPIC_MOCK_RESPONSE")
@@ -139,19 +143,32 @@ class AnthropicProvider:
                 "AISWMM_ANTHROPIC_MOCK_TOOL_CALLS for local tests."
             )
 
-        # No server-side state on the Messages API: pass the full
-        # history every turn. ``previous_response_id`` is accepted for
-        # Protocol parity with the OpenAI provider and ignored.
+        # The Messages API keeps no server-side state, and it requires each
+        # ``tool_result`` to follow the matching ``tool_use`` in the same
+        # ``messages`` array. The planner passes only the delta each turn
+        # (the goal on turn 1, then just tool outputs), which is correct for
+        # the stateful OpenAI provider but would drop all prior context here.
+        # So we keep the full history locally: reset at session start, append
+        # the incoming delta, send everything, then record our own assistant
+        # turn so the next turn's tool_result lands after its tool_use.
+        if previous_response_id is None:
+            self._history = []
+        self._history.extend(_translate_input_items(input_items))
         payload: dict[str, Any] = {
             "model": self.model,
             "max_tokens": ANTHROPIC_MAX_TOKENS,
             "system": system_prompt,
-            "messages": _translate_input_items(input_items),
+            # Snapshot the history for this request so the post-response
+            # assistant append does not mutate the payload we just sent.
+            "messages": list(self._history),
         }
         translated_tools = _translate_tools(tools)
         if translated_tools:
             payload["tools"] = translated_tools
         raw = self._post(payload)
+        assistant_content = raw.get("content") if isinstance(raw, dict) else None
+        if isinstance(assistant_content, list) and assistant_content:
+            self._history.append({"role": "assistant", "content": assistant_content})
         return ProviderToolResponse(
             text=_extract_output_text(raw),
             model=self.model,

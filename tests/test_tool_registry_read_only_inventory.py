@@ -105,7 +105,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "retrieve_memory": True,
     "search_files": True,
     "select_skill": True,
-    "web_fetch_url": True,
+    # web_fetch_url is NOT read-only: fetching a model-chosen URL is network
+    # egress, so it goes through the approval gate (review P1-3).
+    "web_fetch_url": False,
     "web_search": True,
 }
 

@@ -23,6 +23,19 @@ const basinShpToSubcatchmentsPy = path.resolve(__dirname, "../../skills/swmm-gis
 
 const PY = process.env.PYTHON || "python3";
 
+// Optional GIS stack (the `aiswmm[gis]` extra). When it is not installed the
+// scripts fail with a raw ModuleNotFoundError; turn that into an actionable
+// install hint instead (review P1-1).
+const GIS_MODULES = ["geopandas", "rasterio", "shapely", "pyproj", "shapefile", "pysheds", "pyogrio", "fiona"];
+
+function gisDependencyHint(stderr) {
+  const match = /ModuleNotFoundError: No module named '([^']+)'/.exec(stderr || "");
+  if (!match) return null;
+  const mod = match[1];
+  if (!GIS_MODULES.some((m) => mod === m || mod.startsWith(m + "."))) return null;
+  return `The swmm-gis tools need the optional GIS stack (missing: ${mod}). Install it with:  pip install 'aiswmm[gis]'\n\n${stderr}`;
+}
+
 function runPy(scriptPath, args) {
   return new Promise((resolve, reject) => {
     const p = spawn(PY, [scriptPath, ...args], { stdio: ["ignore", "pipe", "pipe"] });
@@ -32,7 +45,7 @@ function runPy(scriptPath, args) {
     p.stderr.on("data", (d) => (stderr += d.toString()));
     p.on("error", reject);
     p.on("close", (code) => {
-      if (code !== 0) reject(new Error(stderr || `python rc=${code}`));
+      if (code !== 0) reject(new Error(gisDependencyHint(stderr) || stderr || `python rc=${code}`));
       else resolve(stdout);
     });
   });
@@ -81,10 +94,10 @@ const QgisNormalizeLayersArgs = z.object({
   targetCrs: z.string().optional(),
   targetResolution: z.number().positive().optional(),
   demResampling: z.number().int().min(0).max(11).default(1),
-  categoricalResampling: z.number().int().min(0).max(11).default(0),
-  qgisProcess: z.string().optional(),
-  projLib: z.string().optional(),
-  gisbase: z.string().optional()
+  categoricalResampling: z.number().int().min(0).max(11).default(0)
+  // qgisProcess/projLib/gisbase are deliberately NOT caller-suppliable: a
+  // model-chosen executable path is code execution by tool call (review P1-4).
+  // Overrides come from trusted server-side env (see runtime args below).
 });
 
 const QgisOverlayArgs = z.object({
@@ -239,10 +252,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             targetCrs: { type: "string", description: "Optional target CRS auth id, WKT/PROJ string, or layer path. Defaults to boundary CRS." },
             targetResolution: { type: "number", minimum: 0 },
             demResampling: { type: "integer", minimum: 0, maximum: 11, default: 1 },
-            categoricalResampling: { type: "integer", minimum: 0, maximum: 11, default: 0 },
-            qgisProcess: { type: "string" },
-            projLib: { type: "string" },
-            gisbase: { type: "string" }
+            categoricalResampling: { type: "integer", minimum: 0, maximum: 11, default: 0 }
           },
           required: ["dem", "boundary", "landuse", "soil", "outDir"]
         }
@@ -464,9 +474,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     ];
     if (a.targetCrs !== undefined) args.push("--target-crs", a.targetCrs);
     if (a.targetResolution !== undefined) args.push("--target-resolution", String(a.targetResolution));
-    if (a.qgisProcess !== undefined) args.push("--qgis-process", a.qgisProcess);
-    if (a.projLib !== undefined) args.push("--proj-lib", a.projLib);
-    if (a.gisbase !== undefined) args.push("--gisbase", a.gisbase);
+    // Executable/env overrides come only from trusted server-side config, never
+    // from the model-supplied tool arguments (review P1-4).
+    if (process.env.AISWMM_QGIS_PROCESS) args.push("--qgis-process", process.env.AISWMM_QGIS_PROCESS);
+    if (process.env.AISWMM_PROJ_LIB) args.push("--proj-lib", process.env.AISWMM_PROJ_LIB);
+    if (process.env.AISWMM_GISBASE) args.push("--gisbase", process.env.AISWMM_GISBASE);
     const stdout = await runPy(qgisPrepPy, args);
     return { content: [{ type: "text", text: stdout }] };
   }

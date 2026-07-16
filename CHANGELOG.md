@@ -2,6 +2,35 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.7.7 - Honesty, security, and install hardening (2026-07-16)
+
+A hardening pass across five cross-cutting seams: run honesty, headless safety, provider correctness, scientific-result integrity, and the pip install path. Full suite green (**3,213 passed**), with a focused regression test behind every fix. One behaviour change to know about (below).
+
+### Fixed
+
+- **Calibration never scores a stale or errored run.** Each trial clears its previous `.rpt`/`.out` before running, and a run that writes SWMM `ERROR` lines (even on a zero exit code) or produces no fresh `.out` is reported as a failed trial instead of being scored. A reused trial directory can no longer let an invalid parameter set inherit a previous run's result.
+- **Failure no longer reads as success.** An MCP tool result with `isError: true` is recorded as a failure instead of silently `ok`, a tool handler that raises becomes a normal failed tool result instead of ending the session, and an unresolved tool failure is no longer washed into a clean exit by a closing natural-language turn.
+- **`pip install aiswmm` works out of the box.** The report, design-review, water-quality and RAG-memory tools resolve their bundled scripts from an installed wheel (not only a source checkout), and the wheel now ships the memory files the runtime requires, so `aiswmm setup` reports ready after a fresh install. A new `aiswmm[gis]` extra installs the geospatial stack, with an actionable hint when it is missing.
+- **Rainfall hyetographs match the simulated rain.** Gage `Format` (INTENSITY / VOLUME / CUMULATIVE) and interval are read correctly, so a VOLUME series plots as depth instead of being re-scaled. Visualization only: no simulated or calibrated value changes.
+- **Preflight matches SWMM's own parsing:** section headers are case-insensitive and object IDs compare case-insensitively.
+- **Anthropic multi-turn tool use** replays full conversation history each turn (the Messages API is stateless), and a parallel tool batch always returns exactly one output per call.
+
+### Security
+
+- **`web_fetch_url`** resolves the target host and refuses private, loopback, link-local (including the cloud-metadata address) and other non-public targets, re-validates every redirect, rejects embedded credentials, and goes through the approval gate rather than auto-approving as read-only.
+- **The command allowlist validates arguments:** `pytest` targets must resolve inside the repository, plugin/config-injection flags are refused, and the node script path is normalized before the sandbox check.
+- **The GIS MCP server** no longer accepts a caller-supplied executable path; overrides come only from trusted server-side configuration. Runner output filenames are constrained to the run directory.
+- MCP subprocesses gain a wall timeout and output cap, and the launcher forwards termination signals to its child.
+
+### Changed (behaviour)
+
+- **Non-interactive tool approval now fails closed.** When there is no human on the other end (non-TTY stdin), a side-effecting tool is denied unless trusted automation sets `AISWMM_AUTO_APPROVE=1`. Interactive local use is unchanged. Headless, CI, background, or scripted automation that drives the agent loop must set this variable.
+
+### Also
+
+- CI path filters include `setup.py` and `requirements.lock`, and the test job enforces a coverage floor.
+- Release notes fall back to auto-generated content when a curated file is absent, and the Docker default build ref tracks the stable release.
+
 ## v0.7.6 - Real calibration, self-describing sessions, one canonical run layout (2026-07-10)
 
 The biggest bundle since the runtime rework: 14 PRs across three themes. Two behaviour changes to know about (below). Full suite green (**3,060 passed**), 46 new deterministic-core tests plus dispatch guards.

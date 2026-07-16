@@ -1,7 +1,9 @@
 FROM python:3.11-slim-bookworm
 
 ARG AGENTIC_SWMM_REPO=https://github.com/Zhonghao1995/agentic-swmm-workflow.git
-ARG AGENTIC_SWMM_REF=v0.6.4
+# Keep in step with README's stable version; a bare `docker build` with no
+# --build-arg must not silently pin an old release (review P2-6).
+ARG AGENTIC_SWMM_REF=v0.7.7
 ARG SWMM_REF=v5.2.4
 
 LABEL org.opencontainers.image.title="Agentic SWMM Workflow"

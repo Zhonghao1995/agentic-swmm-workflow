@@ -280,13 +280,25 @@ def _parse_memories_applied(raw: str | None) -> list[str]:
     return []
 
 
+def _safe_output_name(name: str | None, default: str) -> str:
+    """Constrain a caller-supplied run-output name to a bare filename.
+
+    An absolute path or ``..`` segment would let the MCP caller write outside
+    ``run_dir`` (review P2-1). Only a plain filename is allowed.
+    """
+    candidate = (name or default).strip()
+    if candidate in {"", ".", ".."} or candidate != Path(candidate).name:
+        raise ValueError(f"output name must be a bare filename, got {name!r}")
+    return candidate
+
+
 def cmd_run(args):
     inp = args.inp.resolve()
     run_dir = args.run_dir.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    rpt = run_dir / (args.rpt_name or "model.rpt")
-    out = run_dir / (args.out_name or "model.out")
+    rpt = run_dir / _safe_output_name(args.rpt_name, "model.rpt")
+    out = run_dir / _safe_output_name(args.out_name, "model.out")
     stdout_path = run_dir / "stdout.txt"
     stderr_path = run_dir / "stderr.txt"
 

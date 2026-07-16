@@ -386,6 +386,11 @@ class Planner:
         # ``SAME_TOOL_RETRY_LIMIT``.
         last_failed_tool: str | None = None
         consecutive_failures = 0
+        # Session-level honesty (review P1-7): a tool failure that is never
+        # recovered must not be washed into a clean success by a closing
+        # natural-language turn. Set on any failed tool, cleared when a later
+        # tool succeeds.
+        unresolved_failure = False
 
         for step in range(1, self.max_steps + 1):
             # Issue #58 (UX-3): the LLM call is the longest silent
@@ -436,12 +441,15 @@ class Planner:
             )
             if not response.tool_calls:
                 final_text = response.text.strip()
+                # A closing text turn does not clear an open tool failure.
+                if unresolved_failure:
+                    ok = False
                 break
 
             outputs: list[dict[str, Any]] = []
             step_had_failure = False
             giveup_tool: str | None = None
-            for provider_call in response.tool_calls:
+            for _call_index, provider_call in enumerate(response.tool_calls):
                 call = self.registry.validate(provider_call)
                 plan.append(call)
                 result = executor.execute(call, index=len(plan))
@@ -484,6 +492,7 @@ class Planner:
                         outputs.append(_user_clarification)
                 if not result.get("ok"):
                     step_had_failure = True
+                    unresolved_failure = True
                     # Track consecutive failures of the same tool name.
                     if last_failed_tool == call.name:
                         consecutive_failures += 1
@@ -492,13 +501,27 @@ class Planner:
                         consecutive_failures = 1
                     if consecutive_failures >= SAME_TOOL_RETRY_LIMIT:
                         giveup_tool = call.name
-                    # Stop running the rest of this step's tool batch —
-                    # the failed tool's output likely changes context
-                    # for siblings.
+                    # Stop running the rest of this step's tool batch — the
+                    # failed tool's output likely changes context for siblings.
+                    # But every tool call the model emitted must still get
+                    # exactly one output, or the next provider turn is a
+                    # protocol error (review P1-8). Emit a skipped result for
+                    # each sibling we are not executing.
+                    for skipped in response.tool_calls[_call_index + 1:]:
+                        outputs.append({
+                            "type": "function_call_output",
+                            "call_id": skipped.call_id,
+                            "output": json.dumps(
+                                {"ok": False, "skipped": True, "summary": "skipped: an earlier tool in this batch failed"},
+                                sort_keys=True,
+                            ),
+                        })
                     break
-                # A successful tool resets the same-tool failure streak.
+                # A successful tool resets the same-tool failure streak and
+                # clears the open-failure flag: the model recovered.
                 last_failed_tool = None
                 consecutive_failures = 0
+                unresolved_failure = False
 
             input_items = outputs
 

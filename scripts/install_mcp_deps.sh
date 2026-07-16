@@ -16,6 +16,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Private per-run temp log. A fixed /tmp path is a symlink-overwrite risk on a
+# shared host (review P3); mktemp gives an unpredictable 0600 file we own.
+LOG="$(mktemp "${TMPDIR:-/tmp}/install_mcp_deps.XXXXXX")"
+trap 'rm -f "$LOG"' EXIT
+
 if ! command -v npm >/dev/null 2>&1; then
   echo "ERROR: npm not on PATH" >&2
   exit 2
@@ -47,18 +52,17 @@ for dir in "${targets[@]}"; do
     continue
   fi
   printf "INSTALL %s ... " "${dir}"
-  if (cd "${dir}" && npm install --silent --no-audit --no-fund) >/tmp/install_mcp_deps.log 2>&1; then
+  if (cd "${dir}" && npm install --silent --no-audit --no-fund) >"$LOG" 2>&1; then
     pkg_count=$(ls "${dir}/node_modules" 2>/dev/null | wc -l | tr -d ' ')
     echo "ok (${pkg_count} pkgs)"
     ok=$((ok + 1))
   else
     echo "FAILED"
-    sed 's/^/    /' /tmp/install_mcp_deps.log >&2
+    sed 's/^/    /' "$LOG" >&2
     fail=$((fail + 1))
   fi
 done
 
-rm -f /tmp/install_mcp_deps.log
 echo "---"
 echo "summary: ${ok} ok, ${fail} failed"
 [ "$fail" -eq 0 ]
