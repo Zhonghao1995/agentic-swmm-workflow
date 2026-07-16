@@ -1037,7 +1037,10 @@ def _calibration_tools() -> list[ToolSpec]:
 def _web_uncertainty_tools() -> list[ToolSpec]:
     """Web fetch/search plus the five swmm-uncertainty ToolSpecs (OAT/Morris/Sobol sensitivity, rainfall ensemble, source decomposition)."""
     return [
-        ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool, is_read_only=True),
+        # Not is_read_only: fetching a model-chosen URL is network egress (a
+        # sensitive effect and an exfiltration channel), so it goes through the
+        # approval gate rather than auto-approving (review P1-3).
+        ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool),
         ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
         # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
         # All is_read_only=False — each writes artefacts.
@@ -1606,14 +1609,50 @@ def _resolve_existing_inp(value: str) -> Path | None:
 # (its sole caller). Re-exported above via runtime_ops.
 
 
+# pytest flags that can load arbitrary code (plugins) or point pytest at an
+# attacker-controlled config/ini. Refused so ``run_allowed_command`` cannot be
+# turned into an arbitrary-code-execution primitive (review P1-2).
+_PYTEST_BANNED_FLAGS = {"-p", "-c", "--config-file", "-o", "--override-ini", "--pyargs"}
+
+
+def _pytest_args_ok(args: list[str]) -> bool:
+    """Every positional target must resolve inside the repo; no plugin/config injection."""
+    for arg in args:
+        if arg.startswith("-"):
+            flag = arg.split("=", 1)[0]
+            if flag in _PYTEST_BANNED_FLAGS:
+                return False
+            continue
+        # Positional: a path or a nodeid (``path::Class::test``). Only the file
+        # part is a path; it must resolve inside the repo.
+        path_part = arg.split("::", 1)[0]
+        if path_part and _repo_path(path_part) is None:
+            return False
+    return True
+
+
+def _node_script_ok(target: str) -> bool:
+    """Allow only ``.mjs`` files that resolve to something under ``scripts/``."""
+    resolved = _repo_path(target)
+    if resolved is None or resolved.suffix != ".mjs":
+        return False
+    try:
+        rel = resolved.relative_to(repo_root().resolve())
+    except ValueError:
+        return False
+    return rel.parts[:1] == ("scripts",)
+
+
 def _command_allowed(command: list[str]) -> bool:
     exe = Path(command[0]).name.lower()
     if exe in {"pytest", "pytest.exe"}:
-        return True
+        return _pytest_args_ok(command[1:])
     if exe in {"python", "python.exe"} or command[0] == sys.executable:
-        return len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}
+        if not (len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}):
+            return False
+        return _pytest_args_ok(command[3:]) if command[2] == "pytest" else True
     if exe in {"node", "node.exe"}:
-        return len(command) >= 2 and _repo_path(command[1]) is not None and Path(command[1]).suffix == ".mjs" and str(Path(command[1])).replace("\\", "/").startswith("scripts/")
+        return len(command) >= 2 and _node_script_ok(command[1])
     if exe in {"swmm5", "swmm5.exe", "swmm5.cmd"}:
         return True
     return False

@@ -50,19 +50,20 @@ def is_evidence_path(path: Path) -> bool:
 def prompt_user(tool_name: str) -> bool:
     """Ask the user whether to execute ``tool_name``.
 
-    The agent always called tools auto-approve before the Runtime UX
-    PRD; this function is the new opt-in confirmation seam. To preserve
-    test and CI behaviour (where stdin is not a TTY), non-interactive
-    callers receive an automatic ``True``. Interactive shells get a
-    minimal y/N prompt. Setting ``AISWMM_AUTO_APPROVE=1`` skips the
-    prompt entirely (handy for ``--quick`` runs piped through scripts).
+    This is the opt-in confirmation seam. Interactive shells get a
+    minimal y/N prompt. When there is no human on the other end (stdin is
+    not a TTY, or the prompt hits EOF) the call FAILS CLOSED — a
+    side-effecting tool is denied rather than silently auto-approved
+    (review P1-2), because a headless / CI / background / injection-driven
+    run has no one to catch a bad call. Trusted automation opts back into
+    auto-approval explicitly with ``AISWMM_AUTO_APPROVE=1``.
     """
     if os.environ.get("AISWMM_AUTO_APPROVE") == "1":
         return True
     if not sys.stdin.isatty():
-        return True
+        return False
     try:
         answer = input(f"Run {tool_name}? [Y/n] ").strip().lower()
     except EOFError:
-        return True
+        return False
     return answer in {"", "y", "yes"}

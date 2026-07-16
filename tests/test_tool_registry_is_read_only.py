@@ -39,7 +39,7 @@ EXPECTED_READ_ONLY: set[str] = {
     "retrieve_memory",
     "search_files",
     "select_skill",
-    "web_fetch_url",
+    # web_fetch_url removed: network egress goes through the approval gate (review P1-3).
     "web_search",
     # PRD_water_quality.md PR3: extract_wq_loads shells out in stdout-JSON
     # mode only — no file writes. is_read_only=True.
