@@ -30,7 +30,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _run_script_tool,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import resource_path
 
 
 def _doctor_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -60,9 +60,12 @@ def _retrieve_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     query = call.args.get("query")
     if not isinstance(query, str) or not query.strip():
         return _failure(call, "missing required argument: query")
-    script_path = repo_root().joinpath(*_RAG_SKILL_DIR_RELATIVE, "retrieve_memory.py")
-    if not script_path.is_file():
-        return _failure(call, f"retrieve_memory script not found at {script_path}")
+    # Resolve against the source tree OR the installed package (review P1-1):
+    # swmm-rag-memory ships in the public wheel, so this must work post-install.
+    try:
+        script_path = resource_path(*_RAG_SKILL_DIR_RELATIVE, "retrieve_memory.py")
+    except FileNotFoundError as exc:
+        return _failure(call, str(exc))
     cli_args: list[str] = [str(script_path), "--query", query]
     top_k = call.args.get("top_k")
     if isinstance(top_k, int) and top_k > 0:

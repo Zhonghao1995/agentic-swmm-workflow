@@ -46,6 +46,25 @@ PUBLIC_AGENT_FILES = {
     Path("agent/memory/curated/facts.md"),
 }
 
+# The runtime declares these as REQUIRED resources (agentic_swmm/runtime/
+# registry.py: LONG_TERM_MEMORY_FILES + MODELING_MEMORY_FILES). They are all
+# git-tracked/public, so the public wheel must ship them or `aiswmm setup`
+# reports incomplete after a real pip install (review P1-1). Keep this set in
+# sync with the registry; test_wheel_ships_registry_memory pins that.
+PUBLIC_MEMORY_FILES = {
+    Path("agent/memory/identification_memory.md"),
+    Path("agent/memory/operational_memory.md"),
+    Path("agent/memory/evidence_memory.md"),
+    Path("agent/memory/soul.md"),
+    Path("agent/memory/modeling_workflow_memory.md"),
+    Path("agent/memory/user_bridge_memory.md"),
+    Path("agent/memory/README.md"),
+    Path("memory/modeling-memory/modeling_memory_index.md"),
+    Path("memory/modeling-memory/lessons_learned.md"),
+    Path("memory/modeling-memory/benchmark_verification_plan.md"),
+    Path("memory/modeling-memory/skill_update_proposals.md"),
+}
+
 EXCLUDED_DIRS = {
     "__pycache__",
     ".pytest_cache",
@@ -127,12 +146,14 @@ def _include_public_resource(relative: Path) -> bool:
     if not parts:
         return False
     if parts[0] == "agent":
-        return relative in PUBLIC_AGENT_FILES
+        return relative in PUBLIC_AGENT_FILES or relative in PUBLIC_MEMORY_FILES
     if parts[0] == "skills":
         return len(parts) >= 2 and parts[1] in PUBLIC_SKILLS
     if parts[0] == "scripts":
         return len(parts) == 2 or (len(parts) >= 2 and parts[1] == "acceptance")
-    if parts[0] in {"data", "memory"}:
+    if parts[0] == "memory":
+        return relative in PUBLIC_MEMORY_FILES
+    if parts[0] == "data":
         return False
     return parts[0] in {"examples", "integrations", "mcp", "web"}
 

@@ -21,7 +21,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
 )
 from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_path
 
 _WQ_EXTRACT_SCRIPT = ("skills", "swmm-water-quality", "scripts", "extract_wq_loads.py")
 
@@ -49,9 +49,11 @@ def _read_wq_loads_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         )
         return _failure(call, err.summary, hint=err.hint, cause=err.cause)
 
-    script_path = repo_root().joinpath(*_WQ_EXTRACT_SCRIPT)
-    if not script_path.is_file():
-        return _failure(call, f"extract_wq_loads script not found at {script_path}")
+    # Resolve against the source tree OR the installed package (review P1-1).
+    try:
+        script_path = resource_path(*_WQ_EXTRACT_SCRIPT)
+    except FileNotFoundError as exc:
+        return _failure(call, str(exc))
 
     cli_args: list[str] = [str(script_path), "--rpt", str(rpt_path)]
     return _run_script_tool(call, session_dir, cli_args)

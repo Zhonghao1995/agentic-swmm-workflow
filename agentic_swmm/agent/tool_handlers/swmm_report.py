@@ -24,7 +24,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _run_script_tool,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_path
 
 _REPORT_SCRIPT = ("skills", "swmm-report", "scripts", "generate_report.py")
 
@@ -41,9 +41,12 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if isinstance(run_dir, dict):
         return run_dir
 
-    script_path = repo_root().joinpath(*_REPORT_SCRIPT)
-    if not script_path.is_file():
-        return _failure(call, f"generate_report script not found at {script_path}")
+    # Resolve against the source tree OR the installed package (review P1-1);
+    # repo_root() alone is source-tree only and fails from a pip-installed wheel.
+    try:
+        script_path = resource_path(*_REPORT_SCRIPT)
+    except FileNotFoundError as exc:
+        return _failure(call, str(exc))
 
     cli_args: list[str] = [str(script_path), "--run-dir", str(run_dir)]
 
