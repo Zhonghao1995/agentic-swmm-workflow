@@ -92,6 +92,20 @@ class ToolSpec:
         return {"type": "function", "name": self.name, "description": self.description, "parameters": self.parameters}
 
 
+def _control_flow_exception_types() -> tuple[type[BaseException], ...]:
+    """Exceptions the tool-execution boundary must re-raise, not swallow.
+
+    These are deliberate control-flow signals (human-in-the-loop escalation and
+    gap-fill resolution), not tool failures. Imported lazily to avoid an
+    import cycle with the gap-fill and policy modules.
+    """
+    from agentic_swmm.agent.memory_informed_policy import MemoryHITLRequired
+    from agentic_swmm.gap_fill.proposer import GapFillRegistryOnlyMiss
+    from agentic_swmm.gap_fill.ui import GapFillNonInteractive, GapFillRejected
+
+    return (MemoryHITLRequired, GapFillRejected, GapFillNonInteractive, GapFillRegistryOnlyMiss)
+
+
 class AgentToolRegistry:
     def __init__(self) -> None:
         self._tools = _build_tools()
@@ -122,13 +136,29 @@ class AgentToolRegistry:
         # is untouched. The wrapper itself is a no-op when neither L1
         # pre-flight nor in-band ``gap_signal`` is in play, so the
         # branch below is cheap.
-        if getattr(spec, "supports_gap_fill", False):
-            from agentic_swmm.agent.runtime_loop import invoke_tool_with_gap_fill
+        try:
+            if getattr(spec, "supports_gap_fill", False):
+                from agentic_swmm.agent.runtime_loop import invoke_tool_with_gap_fill
 
-            return invoke_tool_with_gap_fill(
-                spec, call, session_dir, lambda c, sd: spec.handler(c, sd)
-            )
-        return spec.handler(call, session_dir)
+                return invoke_tool_with_gap_fill(
+                    spec, call, session_dir, lambda c, sd: spec.handler(c, sd)
+                )
+            return spec.handler(call, session_dir)
+        except Exception as exc:  # noqa: BLE001
+            # HITL/gap-fill signals are deliberate control flow — let them
+            # propagate. Everything else (e.g. a missing required argument the
+            # model omitted, review P2-3) must become a normal failed tool
+            # result the planner can see, not an uncaught exception that kills
+            # the whole session and bypasses the fail-soft machinery.
+            if isinstance(exc, _control_flow_exception_types()):
+                raise
+            return {
+                "tool": call.name,
+                "args": call.args,
+                "ok": False,
+                "summary": f"{call.name} raised {type(exc).__name__}: {exc}",
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
 
     def is_read_only(self, name: str) -> bool:
         """Return whether ``name`` is a read-only tool.

@@ -169,6 +169,29 @@ class PlannerFailSoftTests(unittest.TestCase):
         # The session terminates cleanly with the model's final text.
         self.assertEqual(outcome.final_text, "acknowledged the failure")
 
+    def test_unrecovered_failure_is_not_reported_as_success(self) -> None:
+        # A tool fails and the model immediately gives final text without
+        # recovering. The final natural-language turn must NOT wash the
+        # failure into a success (review P1-7).
+        provider = _ScriptedProvider(
+            [
+                _tool_response([_tool_call("read_file", {"path": "no.txt"}, call_id="c1")]),
+                _final("sorry, that did not work"),
+            ]
+        )
+        executor = _ScriptedExecutor(
+            {"read_file": [{"ok": False, "summary": "boom", "stderr_tail": "boom"}]}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            outcome = _planner(provider).run(
+                goal=NON_SWMM_GOAL,
+                session_dir=session_dir,
+                trace_path=session_dir / "agent_trace.jsonl",
+                executor=executor,
+            )
+        self.assertFalse(outcome.ok, "unrecovered tool failure must not report ok")
+
     def test_planner_retries_pivot(self) -> None:
         # Round 1: read_file fails.
         # Round 2: model pivots to list_dir, which succeeds.

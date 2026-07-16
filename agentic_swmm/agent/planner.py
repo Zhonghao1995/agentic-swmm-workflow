@@ -386,6 +386,11 @@ class Planner:
         # ``SAME_TOOL_RETRY_LIMIT``.
         last_failed_tool: str | None = None
         consecutive_failures = 0
+        # Session-level honesty (review P1-7): a tool failure that is never
+        # recovered must not be washed into a clean success by a closing
+        # natural-language turn. Set on any failed tool, cleared when a later
+        # tool succeeds.
+        unresolved_failure = False
 
         for step in range(1, self.max_steps + 1):
             # Issue #58 (UX-3): the LLM call is the longest silent
@@ -436,6 +441,9 @@ class Planner:
             )
             if not response.tool_calls:
                 final_text = response.text.strip()
+                # A closing text turn does not clear an open tool failure.
+                if unresolved_failure:
+                    ok = False
                 break
 
             outputs: list[dict[str, Any]] = []
@@ -484,6 +492,7 @@ class Planner:
                         outputs.append(_user_clarification)
                 if not result.get("ok"):
                     step_had_failure = True
+                    unresolved_failure = True
                     # Track consecutive failures of the same tool name.
                     if last_failed_tool == call.name:
                         consecutive_failures += 1
@@ -496,9 +505,11 @@ class Planner:
                     # the failed tool's output likely changes context
                     # for siblings.
                     break
-                # A successful tool resets the same-tool failure streak.
+                # A successful tool resets the same-tool failure streak and
+                # clears the open-failure flag: the model recovered.
                 last_failed_tool = None
                 consecutive_failures = 0
+                unresolved_failure = False
 
             input_items = outputs
 
