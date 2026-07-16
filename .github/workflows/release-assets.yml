@@ -46,12 +46,26 @@ jobs:
           python -m build
           python -m twine check dist/*
 
+      - name: Resolve release notes
+        id: notes
+        shell: bash
+        run: |
+          notes="docs/releases/${{ steps.release.outputs.tag_name }}.md"
+          if [[ -f "$notes" ]]; then
+            echo "path=$notes" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+            echo "No curated notes at $notes; using auto-generated release notes."
+          fi
+
       - name: Publish GitHub Release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag_name }}
           name: ${{ steps.release.outputs.tag_name }}
-          body_path: docs/releases/${{ steps.release.outputs.tag_name }}.md
+          # Curated notes when present, else GitHub auto-generates them. Never
+          # fail the release on a missing docs/releases/<tag>.md (review P2-6).
+          body_path: ${{ steps.notes.outputs.path }}
           files: dist/*
-          generate_release_notes: false
+          generate_release_notes: true
           make_latest: true

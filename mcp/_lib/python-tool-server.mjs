@@ -14,7 +14,13 @@ import { spawnSync } from 'node:child_process';
 const PY = process.env.PYTHON || 'python3';
 
 export function runPython(script, args) {
-  const proc = spawnSync(PY, [script, ...args], { encoding: 'utf8' });
+  // Bound the call: a hung script must not block the server's event loop
+  // forever, and runaway output must not exhaust memory (review P2-2).
+  const proc = spawnSync(PY, [script, ...args], {
+    encoding: 'utf8',
+    timeout: Number(process.env.AISWMM_PY_TOOL_TIMEOUT_MS || 300000),
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (proc.error) {
     throw new Error(proc.error.message);
   }

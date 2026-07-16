@@ -9,6 +9,8 @@ on:
       - "Dockerfile"
       - "pyproject.toml"
       - "requirements.txt"
+      - "requirements.lock"
+      - "setup.py"
       - "agentic_swmm/**"
       - "docs/releases/**"
       - "scripts/**"
@@ -24,6 +26,8 @@ on:
       - "Dockerfile"
       - "pyproject.toml"
       - "requirements.txt"
+      - "requirements.lock"
+      - "setup.py"
       - "agentic_swmm/**"
       - "docs/releases/**"
       - "scripts/**"
@@ -120,7 +124,7 @@ jobs:
         # the embargoed local-only skill dir simply doesn't exist in a
         # clean checkout and is skipped naturally.
         run: |
-          python -m pytest tests/ skills/ -v --cov=agentic_swmm --cov-report=xml --cov-report=term
+          python -m pytest tests/ skills/ -v --cov=agentic_swmm --cov-report=xml --cov-report=term --cov-fail-under=80
 
       - name: Installer script tests
         # ADR-0006 PR-B: this bash harness existed with zero CI wiring
