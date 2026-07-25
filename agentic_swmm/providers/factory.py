@@ -38,21 +38,30 @@ def make_provider(provider_name: str, *, model: str | None = None) -> ChatProvid
     """Return a :class:`ChatProvider` for the requested backend name.
 
     Supported names: ``"openai"`` (default) and ``"anthropic"``. Both
-    are pure-Python ``urllib`` paths that read their API key from the
-    environment.
+    are pure-Python ``urllib`` paths.
+
+    The API key is resolved here, at the one construction seam, using the
+    same resolver ``doctor`` and ``login --status`` report from. That
+    shared resolver is the point: when the providers read only
+    ``os.environ`` while the diagnostics also read ``~/.aiswmm/env``, a
+    user who had completed `aiswmm login` was told the key was present
+    and then handed "<VAR> is not set" by the runtime.
 
     Raises:
         ValueError: when ``provider_name`` is not in
             :data:`SUPPORTED_PROVIDERS`.
     """
+    from agentic_swmm.agent.provider_preflight import provider_key_value
+
+    api_key = provider_key_value(provider_name)
     if provider_name == "openai":
         from agentic_swmm.providers.openai_api import OpenAIProvider
 
-        return OpenAIProvider(model=model)  # type: ignore[arg-type]
+        return OpenAIProvider(model=model, api_key=api_key)  # type: ignore[arg-type]
     if provider_name == "anthropic":
         from agentic_swmm.providers.anthropic_api import AnthropicProvider
 
-        return AnthropicProvider(model=model)  # type: ignore[arg-type]
+        return AnthropicProvider(model=model, api_key=api_key)  # type: ignore[arg-type]
     raise ValueError(
         f"unsupported provider: {provider_name!r}. "
         f"Supported providers: {', '.join(SUPPORTED_PROVIDERS)}."
