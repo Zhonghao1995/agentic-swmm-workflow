@@ -78,7 +78,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help=(
             "Calibration algorithm (default sceua). dream-zs is not wired "
             "into this verb yet: use the calibrate_dream_zs agent tool or "
-            "the skill script (ADR-0005)."
+            "the skill script."  # ADR-0005
         ),
     )
     parser.add_argument(
@@ -109,7 +109,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Observed series (CSV or headerless datetime,flow). REQUIRED "
-            "for the real engine. UNITS CONTRACT (ADR-0005): values must "
+            "for the real engine. UNITS CONTRACT: values must "  # ADR-0005
             "be in the same units as the SWMM output attribute selected "
             "by --node/--attr; a >100x median-magnitude mismatch triggers "
             "a loud warning. Only --engine synthetic may omit this."

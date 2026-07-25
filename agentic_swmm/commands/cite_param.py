@@ -53,7 +53,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "cite-param",
         help=(
             "Reverse-lookup: given a parameter name + value, print the "
-            "matching reference range and citation (PRD-06 §2.2)."
+            # PRD-06 section 2.2
+            "matching reference range and citation."
         ),
     )
     parser.add_argument(
