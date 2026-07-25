@@ -2,12 +2,18 @@
 
 Now that QUICK is the default, the user has no other on-screen cue that
 the agent is auto-approving read-only tools on their behalf. The
-PRD requires extending the existing one-line banner with a
-``profile=quick`` / ``profile=safe`` segment.
+PRD requires the one-line banner to carry a ``profile=quick`` /
+``profile=safe`` segment.
 
 The segment must respect ``ui_colors``: dim ANSI on a real tty, plain
 text on non-tty / ``NO_COLOR`` (so log scrapers and tests don't see
 escape sequences).
+
+These behaviours were originally pinned against
+``runtime_loop.format_startup_banner``. That renderer is gone: it was
+the second of two startup banners, and the facts it carried moved into
+``welcome.render_returning_banner``, which is now the whole first
+screen. The assertions follow the behaviour to its new home.
 """
 from __future__ import annotations
 
@@ -16,42 +22,41 @@ import unittest
 from unittest import mock
 
 from agentic_swmm.agent import ui_colors
-from agentic_swmm.agent.runtime_loop import format_startup_banner
+from agentic_swmm.agent.welcome import render_returning_banner
 
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+_LAST_SESSION = {"case_name": "demo", "end_utc": "2026-05-14T00:00:00Z"}
 
-class FormatStartupBannerTests(unittest.TestCase):
+
+def _banner(*, session_label="session-123456", profile_name="quick"):
+    return render_returning_banner(
+        session_label=session_label,
+        profile_name=profile_name,
+        run_dir_display="runs/2026-05-14",
+        last_session=_LAST_SESSION,
+    )
+
+
+class StartupBannerTests(unittest.TestCase):
     def test_banner_includes_profile_quick(self) -> None:
         with mock.patch.object(ui_colors, "supports_color", return_value=False):
-            banner = format_startup_banner(
-                session_label="session-123456",
-                date_dir_display="runs/2026-05-14",
-                profile_name="quick",
-            )
+            banner = _banner(profile_name="quick")
         self.assertIn("profile=quick", banner)
 
     def test_banner_includes_profile_safe(self) -> None:
         with mock.patch.object(ui_colors, "supports_color", return_value=False):
-            banner = format_startup_banner(
-                session_label="session-123456",
-                date_dir_display="runs/2026-05-14",
-                profile_name="safe",
-            )
+            banner = _banner(profile_name="safe")
         self.assertIn("profile=safe", banner)
 
     def test_banner_keeps_session_and_date_segments(self) -> None:
-        # We are extending the banner, not replacing it. The existing
-        # session_label + date_dir + slash-commands segments must still
-        # be present (PRD_runtime user story 6).
+        # The merge must not lose facts. Session label, run directory and
+        # the slash-command hints all survived from the two former
+        # banners into the one that remains.
         with mock.patch.object(ui_colors, "supports_color", return_value=False):
-            banner = format_startup_banner(
-                session_label="session-654321",
-                date_dir_display="runs/2026-05-14",
-                profile_name="quick",
-            )
-        self.assertIn("aiswmm interactive", banner)
+            banner = _banner(session_label="session-654321")
+        self.assertIn("AISWMM v", banner)
         self.assertIn("session-654321", banner)
         self.assertIn("runs/2026-05-14", banner)
         self.assertIn("/exit", banner)
@@ -62,11 +67,7 @@ class FormatStartupBannerTests(unittest.TestCase):
         # banner must come back with zero ANSI escapes. This is what
         # CI log scrapers and tests will see.
         with mock.patch.object(ui_colors, "supports_color", return_value=False):
-            banner = format_startup_banner(
-                session_label="session-000000",
-                date_dir_display="runs/2026-05-14",
-                profile_name="quick",
-            )
+            banner = _banner(session_label="session-000000")
         self.assertEqual(banner, _ANSI_RE.sub("", banner))
         self.assertNotIn("\x1b[", banner)
 
@@ -75,11 +76,7 @@ class FormatStartupBannerTests(unittest.TestCase):
         # doesn't dominate the line. The exact placement is internal;
         # all we assert is that DIM appears around the segment.
         with mock.patch.object(ui_colors, "supports_color", return_value=True):
-            banner = format_startup_banner(
-                session_label="session-000000",
-                date_dir_display="runs/2026-05-14",
-                profile_name="quick",
-            )
+            banner = _banner(session_label="session-000000")
         self.assertIn(ui_colors.DIM, banner)
         self.assertIn("profile=quick", banner)
         self.assertIn(ui_colors.RESET, banner)
