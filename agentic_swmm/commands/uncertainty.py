@@ -88,10 +88,11 @@ _UNCERTAINTY_EPILOG = (
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "uncertainty",
+        # 'source' is issue #55; 'plan' is PRD-06 B.4.
         help=(
             "Uncertainty verbs. 'source' rebuilds the source decomposition "
-            "for an existing run (issue #55); 'plan' produces a sample plan "
-            "for a parameter scan without running SWMM (PRD-06 B.4)."
+            "for an existing run; 'plan' produces a sample plan for a "
+            "parameter scan without running SWMM."
         ),
         epilog=_UNCERTAINTY_EPILOG,
         formatter_class=WidthSafeRawDescriptionFormatter,

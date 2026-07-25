@@ -69,7 +69,8 @@ _SHAPE_CHOICES = (
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "storm",
-        help="Generate an algorithmic design storm in SWMM DAT format (PRD-06 B.4).",
+        # PRD-06 B.4
+        help="Generate an algorithmic design storm in SWMM DAT format.",
         # PRD-08 Phase B (audit #26): keep ``--from-library KEY`` and
         # similar flag/metavar pairs together when the usage wraps.
         formatter_class=WidthSafeFormatter,

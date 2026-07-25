@@ -88,7 +88,10 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     "storm": "Generate a design hyetograph (uniform/triangular/chicago/huff/scs).",
     "transfer": "Suggest starter parameters for a new case from similar past cases.",
     "uncertainty": "Plan or rebuild uncertainty runs (SALib, Morris/Sobol).",
-    "calibrate": "Calibrate parameters against observed data (stub today).",
+    # ADR-0005 replaced the placeholder loop with the real SCE-UA engine
+    # in v0.7.6. The description said "stub today" for two releases after
+    # that, so the product was talking its own newest capability down.
+    "calibrate": "Fit parameters to observed data (SCE-UA, checkpointed).",
     "bootstrap": "Scaffold memory stores in a project directory.",
     "doctor": "Diagnose install, memory stores, opt-out knobs.",
     "capabilities": "Print the agent's registered tool capabilities.",
@@ -103,9 +106,10 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     "model": "View or change the active LLM provider/model.",
     "config": "View or edit ~/.aiswmm/config.toml.",
     "agent": "Drop into the agent planner (interactive or one-shot).",
+    # ADR-0006 D3 folded five flat verbs under this namespace.
     "expert": (
         "Expert-only namespace: calibration, pour_point, thresholds, "
-        "publish, gap (ADR-0006 D3)."
+        "publish, gap."
     ),
 }
 

@@ -26,7 +26,8 @@ _CITE_EXAMPLE = "aiswmm cite huber_dickinson_1988"
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "cite",
-        help="Print a citation entry from citations.yaml (PRD-06 B.2).",
+        # PRD-06 B.2
+        help="Print a citation entry from citations.yaml.",
     )
     parser.add_argument(
         "citation_key",

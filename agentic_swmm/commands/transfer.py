@@ -40,7 +40,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "transfer",
         help=(
             "Recommend warm-start parameters for a new INP by ranking "
-            "calibrated prior cases by watershed similarity (PRD-07 Phase 5)."
+            # PRD-07 Phase 5
+            "calibrated prior cases by watershed similarity."
         ),
     )
     register_inp_flag(

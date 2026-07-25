@@ -32,7 +32,8 @@ _COMPARE_EXAMPLE = (
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "compare",
-        help="Compare two SWMM runs on continuity metrics (PRD-06 B.1).",
+        # PRD-06 B.1
+        help="Compare two SWMM runs on continuity metrics.",
     )
     parser.add_argument(
         "--run-a",
