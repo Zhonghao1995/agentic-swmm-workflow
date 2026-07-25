@@ -21,6 +21,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
 
+from agentic_swmm.agent import permissions
 from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -88,11 +89,16 @@ class ExecutorPublishesPermissionTests(unittest.TestCase):
                 dry_run=False,
                 profile=Profile.SAFE,
             )
-            # Steer permissions.prompt_user toward denial. ``write_file``
-            # is registered as a write tool that SAFE always prompts on.
+            # Steer the approval seam toward denial. ``write_file`` is
+            # registered as a write tool that SAFE always prompts on.
+            # "declined" is a human saying no, which is the case this
+            # test covers; the headless variant is covered in
+            # tests/test_headless_denial_guidance.py.
             with mock.patch(
-                "agentic_swmm.agent.permissions.prompt_user",
-                return_value=False,
+                "agentic_swmm.agent.permissions.request_approval",
+                return_value=permissions.ApprovalDecision(
+                    approved=False, reason="declined"
+                ),
             ):
                 result = executor.execute(
                     ToolCall(

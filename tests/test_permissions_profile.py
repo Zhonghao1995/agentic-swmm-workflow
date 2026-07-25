@@ -77,14 +77,18 @@ class QuickProfileSkipsPromptWiringTests(unittest.TestCase):
             )
 
             with mock.patch.object(
-                permissions, "prompt_user", return_value=True
+                permissions,
+                "request_approval",
+                return_value=permissions.ApprovalDecision(
+                    approved=True, reason="granted"
+                ),
             ) as patched:
                 # Read-only tool: must be auto-approved, no prompt.
                 executor.execute(ToolCall("read_file", {"path": "README.md"}), index=1)
                 self.assertEqual(
                     patched.call_count,
                     0,
-                    "prompt_user must NOT be called for read-only tools under QUICK",
+                    "approval must NOT be requested for read-only tools under QUICK",
                 )
 
                 # Write tool: prompt must fire.
@@ -94,7 +98,7 @@ class QuickProfileSkipsPromptWiringTests(unittest.TestCase):
                 self.assertEqual(
                     patched.call_count,
                     1,
-                    "prompt_user must be called for write tools under QUICK",
+                    "approval must be requested for write tools under QUICK",
                 )
                 ((tool_name,), _kwargs) = patched.call_args
                 self.assertEqual(tool_name, "plot_run")
