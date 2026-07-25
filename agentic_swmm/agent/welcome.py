@@ -195,16 +195,24 @@ def render_logo() -> str:
     return ui_colors.colorize(body, ui_colors.FG_BLUE)
 
 
-def _compact_header(*, session_label: str, profile_name: str) -> str:
+def _compact_header(
+    *, session_label: str, profile_name: str, run_dir_display: str | None = None
+) -> str:
     """Render the one-line returning-user header.
 
-    Mirrors the existing ``format_startup_banner`` shape but lifts the
-    AISWMM version forward so the user sees what they're running on
-    every launch.
+    Carries the version, the session, where the run lands, and the
+    profile. ``runtime_loop`` used to print a second banner solely to
+    add the run directory, which meant the session label and the
+    profile were stated twice on the first screen; the directory is
+    folded in here instead so one line owns all four facts.
     """
     version_tag = ui_colors.colorize(f"AISWMM v{__version__}", ui_colors.BOLD)
     profile_segment = ui_colors.colorize(f"profile={profile_name}", ui_colors.DIM)
-    return f"{version_tag}  ({session_label}, {profile_segment})"
+    segments = [session_label]
+    if run_dir_display:
+        segments.append(run_dir_display)
+    segments.append(profile_segment)
+    return f"{version_tag}  ({', '.join(segments)})"
 
 
 def _format_last_session_line(last_session: dict[str, Any] | None) -> str:
@@ -272,18 +280,29 @@ def render_returning_banner(
     session_label: str,
     profile_name: str,
     last_session: dict[str, Any] | None,
+    run_dir_display: str | None = None,
 ) -> str:
-    """Render the compact returning-user banner (4 short lines).
+    """Render the compact returning-user banner (3 short lines).
+
+    This is the whole first screen. It used to be followed by a second
+    banner from ``runtime_loop`` that restated the session and the
+    profile in order to add the run directory, so those facts appeared
+    twice and the second block printed after the first prompt had been
+    drawn.
 
     Layout:
 
-        AISWMM v<X>  (session-XXXXXX, profile=quick)
+        AISWMM v<X>  (session-XXXXXX, runs/<date>, profile=quick)
         Last session: 2 hours ago -- case "<your-watershed>"
         (/help  /exit  /new-session  --safe)
     """
     return "\n".join(
         [
-            _compact_header(session_label=session_label, profile_name=profile_name),
+            _compact_header(
+                session_label=session_label,
+                profile_name=profile_name,
+                run_dir_display=run_dir_display,
+            ),
             _format_last_session_line(last_session),
             _tip_line(),
         ]
@@ -429,6 +448,7 @@ def print_welcome(
     stream: IO[str] | None = None,
     session_label: str = "",
     profile_name: str = "quick",
+    run_dir_display: str | None = None,
     db_path: Path | None = None,
 ) -> None:
     """Print the welcome (first-run or returning) to ``stream``.
@@ -469,6 +489,7 @@ def print_welcome(
                 session_label=session_label,
                 profile_name=profile_name,
                 last_session=last_session,
+                run_dir_display=run_dir_display,
             )
         )
         stream.write("\n")

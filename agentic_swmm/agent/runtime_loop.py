@@ -23,7 +23,7 @@ turns persist a ``session_state.json`` skeleton and an Obsidian-ready
 
 Public-name compatibility: every name external callers used before
 PRD-02 (``is_open_shaped_prompt``, ``maybe_warm_intro``,
-``WARM_INTRO_TEMPLATE``, ``format_startup_banner``,
+``WARM_INTRO_TEMPLATE``,
 ``run_interactive_shell``, ``run_openai_planner``, ``_case_slug``,
 ``_new_interactive_session``, ``_display_path``, ``_safe_name``,
 ``_refresh_moc_after_session``, ``_build_system_prompt_extras``,
@@ -137,24 +137,22 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     except Exception:
         header_provider, header_model = args.provider, args.model
 
-    # Issue #57 (UX-2): print the logo + first-run welcome (or the
-    # compact returning-user banner) before the existing one-line
-    # startup banner. The welcome module owns its own NO_COLOR /
-    # AISWMM_DISABLE_WELCOME / first-run-marker handling, so the
-    # call here is a single line and any failure inside the welcome
-    # is swallowed (decoration must not block the agent from booting).
+    # Issue #57 (UX-2): the welcome module owns the entire first screen.
+    # It used to be followed by a second one-line banner from this
+    # module, which restated the session label and the profile in order
+    # to add the run directory; the directory is now a segment of the
+    # welcome header, so those facts are stated once. That second banner
+    # also printed unconditionally, leaking through
+    # AISWMM_DISABLE_WELCOME, whose acceptance is that a scripted run
+    # boots with no banner at all.
+    #
+    # The welcome owns its own NO_COLOR / AISWMM_DISABLE_WELCOME /
+    # first-run-marker handling, and any failure inside it is swallowed
+    # (decoration must not block the agent from booting).
     _welcome.print_welcome(
         session_label=session_label,
         profile_name=profile_name,
-    )
-
-    # PRD_runtime user story 6: one-line startup banner.
-    _agent_say(
-        format_startup_banner(
-            session_label=session_label,
-            date_dir_display=_display_path(date_dir),
-            profile_name=profile_name,
-        )
+        run_dir_display=_display_path(date_dir),
     )
 
     # Per-turn planner runner: dispatches each prompt through the real
@@ -245,27 +243,6 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         planner_runner=planner_runner,
         output=_agent_say,
         on_new_session=on_new_session,
-    )
-
-
-def format_startup_banner(
-    *,
-    session_label: str,
-    date_dir_display: str,
-    profile_name: str,
-) -> str:
-    """Render the one-line startup banner for the interactive shell.
-
-    Extracted from ``run_interactive_shell`` so the profile-segment
-    rendering can be unit-tested without spinning up a session. The
-    ``profile=`` segment is dimmed on a real tty (``ui_colors.DIM``)
-    and falls back to plain text on non-tty / ``NO_COLOR`` per the
-    ``colorize`` contract.
-    """
-    profile_segment = ui_colors.colorize(f"profile={profile_name}", ui_colors.DIM)
-    return (
-        f"aiswmm interactive ({session_label}, {date_dir_display}, "
-        f"{profile_segment}) — /exit, /new-session"
     )
 
 

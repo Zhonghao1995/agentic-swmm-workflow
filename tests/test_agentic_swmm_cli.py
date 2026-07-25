@@ -159,9 +159,14 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 check=True,
             )
 
-            # Runtime UX PRD trimmed the startup banner to a single line —
-            # match the new "aiswmm interactive (...)" header.
-            self.assertIn("aiswmm interactive", proc.stdout)
+            # The bare CLI must land in the interactive shell, which is
+            # what the prompt proves. This used to match the string
+            # "aiswmm interactive" from a second startup banner; that
+            # banner was removed because it restated the session and
+            # profile the welcome had already printed, and on a first
+            # run it never described what the user was looking at
+            # anyway (the extended welcome owns that screen).
+            self.assertIn("you> ", proc.stdout)
             self.assertIn("aiswmm> Session:", proc.stdout)
             self.assertIn("aiswmm> Session: openai", proc.stdout)
             self.assertIn("aiswmm> Goal: inspect project", proc.stdout)
