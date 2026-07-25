@@ -5,6 +5,7 @@ import difflib
 import functools
 import os
 import sys
+from pathlib import Path
 
 from agentic_swmm import __version__
 from agentic_swmm.memory.run_progress import (
@@ -649,6 +650,56 @@ _EXPERT_VERB_ALIASES = frozenset(
 )
 
 
+def _is_explicit_path(token: str) -> bool:
+    """True when ``token`` names a location, not just a file.
+
+    Requires an explicit separator. A bare ``model.inp`` is deliberately
+    excluded: ``single_shot._find_repo_inp`` resolves bare names against
+    ``examples/``, so "does not exist in the working directory" is not
+    the same as "does not exist" for those, and rejecting them here would
+    break a documented convenience.
+
+    Also deliberately narrow on the other side. A false positive rejects
+    a legitimate prose goal, which is worse than letting an odd one reach
+    the planner.
+    """
+    if token.startswith("-") or any(ch.isspace() for ch in token):
+        return False
+    return "/" in token or os.sep in token
+
+
+def _precheck_run_goal(rest: list[str]) -> None:
+    """Answer a bare or mistyped ``run`` before the planner spends tokens.
+
+    ``run <prose>`` reaching the natural-language planner is intended and
+    unchanged. But a planner session costs an API round trip plus skill
+    and MCP discovery, and neither a missing argument nor a typo needs
+    any of that to be diagnosed. Sibling verbs answer both from argparse
+    already; this closes the gap for ``run``.
+
+    Exits 2 (argparse's usage-error code) rather than returning, so the
+    caller cannot accidentally continue into the planner.
+    """
+    from agentic_swmm.commands.run import _RUN_EXAMPLE
+
+    if not rest:
+        print(
+            "error: run needs an INP file.\n"
+            f"  {_RUN_EXAMPLE}\n"
+            'Or describe the model in prose: aiswmm run "my latest model".',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    for token in rest:
+        if _is_explicit_path(token) and not Path(token).expanduser().exists():
+            print(
+                f"error: no such file: {token}\n"
+                f"  {_RUN_EXAMPLE}",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+
 def _route_default_to_agent(argv: list[str]) -> list[str]:
     if not argv:
         # PRD-08 A.3 (audit #6): when the user types bare ``aiswmm`` we
@@ -690,6 +741,7 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
             # natural-language planner so the user can describe the
             # model in prose. ``--help``/``-h``/``--example`` short-
             # circuit this so each lands in the run subparser.
+            _precheck_run_goal(argv[1:])
             return ["agent", "--planner", "llm", *argv]
         return argv
     if argv[0] in {"-h", "--help", "--version"}:
