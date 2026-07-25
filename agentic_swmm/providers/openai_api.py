@@ -24,7 +24,7 @@ class OpenAIProvider:
         if mock_response is not None:
             return ProviderResult(text=mock_response, model=self.model, raw={"mock": True})
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set. Run `aiswmm config set openai.model <model>` after setting your API key.")
+            raise RuntimeError("OPENAI_API_KEY is not set. Run `aiswmm login` to store a key.")
 
         payload = {
             "model": self.model,
@@ -71,7 +71,7 @@ class OpenAIProvider:
                 raw={"mock": True, "output_text": mock_response},
             )
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set. Set it or use AISWMM_OPENAI_MOCK_TOOL_CALLS for local tests.")
+            raise RuntimeError("OPENAI_API_KEY is not set. Run `aiswmm login` to store a key.")
 
         payload: dict[str, Any] = {
             "model": self.model,

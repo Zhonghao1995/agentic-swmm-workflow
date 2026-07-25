@@ -139,8 +139,8 @@ class AnthropicProvider:
             )
         if not self.api_key:
             raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set. Set it or use "
-                "AISWMM_ANTHROPIC_MOCK_TOOL_CALLS for local tests."
+                "ANTHROPIC_API_KEY is not set. "
+                "Run `aiswmm login --anthropic` to store a key."
             )
 
         # The Messages API keeps no server-side state, and it requires each

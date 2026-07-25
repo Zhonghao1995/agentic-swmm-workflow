@@ -136,18 +136,19 @@ def _config_default_provider(path: Path) -> str | None:
     return None
 
 
-def _env_file_has_key(path: Path, var_name: str) -> bool:
-    """Return True when the env file declares a non-empty ``var_name``.
+def _env_file_key_value(path: Path, var_name: str) -> str | None:
+    """Return the non-empty ``var_name`` declared in the env file.
 
     Tolerant of ``export FOO=bar`` and ``FOO="bar"`` shapes; a malformed
-    line is ignored rather than crashing the preflight.
+    line is ignored rather than crashing the preflight. Returns ``None``
+    when the file is missing, unreadable, or declares no usable value.
     """
     if not path.is_file():
-        return False
+        return None
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return False
+        return None
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -161,12 +162,12 @@ def _env_file_has_key(path: Path, var_name: str) -> bool:
             continue
         value = value.strip().strip("'\"")
         if value:
-            return True
-    return False
+            return value
+    return None
 
 
-def _config_file_has_key(path: Path, section: str) -> bool:
-    """Return True when the config TOML declares an API key for ``section``.
+def _config_file_key_value(path: Path, section: str) -> str | None:
+    """Return the API key the config TOML declares for ``section``.
 
     We do not import a TOML parser to keep dependencies flat; the
     config is shallow and the wizard writes a stable shape. A literal
@@ -174,11 +175,11 @@ def _config_file_has_key(path: Path, section: str) -> bool:
     the ``[<section>]`` section counts as configured.
     """
     if not path.is_file():
-        return False
+        return None
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
-        return False
+        return None
     section_key = f"{section}_api_key"
     in_section = False
     for raw in text.splitlines():
@@ -196,25 +197,48 @@ def _config_file_has_key(path: Path, section: str) -> bool:
         if not value:
             continue
         if key == section_key or (in_section and key == "api_key"):
-            return True
-    return False
+            return value
+    return None
+
+
+def provider_key_value(provider_name: str) -> str | None:
+    """Return ``provider_name``'s API key, or ``None`` when unreachable.
+
+    This is the resolver the runtime and the diagnostics share. Before it
+    existed, `aiswmm login` wrote ``~/.aiswmm/env`` and the providers read
+    only ``os.environ``, so a fully onboarded user was told the key was
+    present by ``doctor`` and missing by the runtime.
+
+    Precedence, highest first:
+
+    1. the provider's environment variable, so a shell ``export``
+       overrides stored state for one session without editing files;
+    2. ``~/.aiswmm/env``, where ``aiswmm login`` writes;
+    3. the ``[<provider>]`` section of ``~/.aiswmm/config.toml``.
+
+    Unknown providers (no key mapping) return ``None``.
+    """
+    var_name = _PROVIDER_KEY_ENV.get(provider_name)
+    if not var_name:
+        return None
+    from_env = os.environ.get(var_name, "").strip()
+    if from_env:
+        return from_env
+    from_env_file = _env_file_key_value(_aiswmm_env_path(), var_name)
+    if from_env_file:
+        return from_env_file
+    return _config_file_key_value(_aiswmm_config_path(), provider_name)
 
 
 def provider_key_present(provider_name: str) -> bool:
     """Return True when ``provider_name``'s API key is reachable.
 
-    Checks the provider's env var, then ``~/.aiswmm/env``, then the
-    ``[<provider>]`` section of ``~/.aiswmm/config.toml``. Unknown
-    providers (no key mapping) return ``False``.
+    Deliberately derived from :func:`provider_key_value` rather than
+    re-deriving presence on its own. What ``doctor`` reports is then, by
+    construction, an answer about the very value the runtime will use:
+    the two cannot drift into disagreeing again.
     """
-    var_name = _PROVIDER_KEY_ENV.get(provider_name)
-    if not var_name:
-        return False
-    if os.environ.get(var_name, "").strip():
-        return True
-    if _env_file_has_key(_aiswmm_env_path(), var_name):
-        return True
-    return _config_file_has_key(_aiswmm_config_path(), provider_name)
+    return provider_key_value(provider_name) is not None
 
 
 def _openai_key_present() -> bool:
