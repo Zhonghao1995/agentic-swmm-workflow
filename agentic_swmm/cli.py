@@ -78,8 +78,15 @@ def build_parser() -> argparse.ArgumentParser:
     # VERB_GROUPS is sufficient because every grouped verb is also
     # registered below.
     parser = argparse.ArgumentParser(
-        prog="agentic-swmm",
+        prog="aiswmm",
+        # The console script, the docs and the curated block all say
+        # "aiswmm"; "agentic-swmm" was surfacing in the usage line and
+        # in every argparse error, naming a command nobody types.
         formatter_class=GroupedHelpFormatter,
+        # The curated block below opens with its own usage line and is
+        # the single top-level map. argparse's generated usage would
+        # dump all 30 verbs above it as a second copy.
+        usage=argparse.SUPPRESS,
         description=render_top_level_help(),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -176,6 +183,14 @@ def build_parser() -> argparse.ArgumentParser:
     # via :func:`route_help_verb`. Listed last so help registration
     # cannot perturb the verb registration order.
     _register_help_subcommand(subparsers)
+    # Hide argparse's own "positional arguments:" rendering of the verb
+    # set. It repeated all 30 verbs a third time, below the curated
+    # grouped block that already describes each one. Suppressing the
+    # action's help drops the whole section; the verbs stay fully
+    # parseable, and their detail stays reachable through
+    # ``aiswmm help <verb>`` and ``aiswmm <verb> --help``, which the
+    # block's footer advertises.
+    subparsers.help = argparse.SUPPRESS
     return parser
 
 

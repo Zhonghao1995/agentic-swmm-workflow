@@ -46,16 +46,18 @@ from collections import OrderedDict
 VERB_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict(
     [
         ("Core workflow", ["run", "audit", "plot", "map", "demo", "review", "report", "runs"]),
+        # storm, uncertainty and calibrate sat under "Memory" for a long
+        # time. None of them reads a memory store: they generate an
+        # input, plan a scan, and fit parameters. A user scanning for
+        # "how do I calibrate" had no reason to look under Memory.
+        ("Analysis", ["storm", "calibrate", "uncertainty"]),
         (
             "Memory",
             [
                 "compare",
                 "cite",
                 "cite-param",
-                "storm",
                 "transfer",
-                "uncertainty",
-                "calibrate",
                 "bootstrap",
             ],
         ),
@@ -153,10 +155,13 @@ def render_top_level_help(
     )
     # PRD-08 Phase B (cross-cutting): point at the memory runtime
     # docs so a user reading top-level --help knows where the
-    # substrate contract + opt-out env vars are documented.
+    # substrate contract + opt-out env vars are documented. A repo
+    # path is unreachable for anyone who installed the wheel, so the
+    # pointer has to be a URL.
     lines.append(
-        "Memory runtime docs: docs/memory_runtime.md  "
-        "(opt-out flags, four confidence quadrants)"
+        "Memory runtime docs (opt-out flags, four confidence quadrants):\n"
+        "  https://github.com/Zhonghao1995/agentic-swmm-workflow"
+        "/blob/main/docs/memory_runtime.md"
     )
     return "\n".join(lines)
 
