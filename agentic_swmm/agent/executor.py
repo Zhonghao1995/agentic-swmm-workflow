@@ -58,11 +58,12 @@ class AgentExecutor:
         approved = True
         # PRD_runtime: consult the permission profile before prompting.
         # QUICK auto-approves read-only tools; SAFE always defers to
-        # ``permissions.prompt_user`` (which itself auto-allows in
-        # non-TTY contexts so CI never blocks on stdin).
+        # ``permissions.request_approval`` (which fails closed in non-TTY
+        # contexts rather than running unattended).
         if not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
             prompted = True
-            if not permissions.prompt_user(call.name):
+            decision = permissions.request_approval(call.name)
+            if not decision.approved:
                 approved = False
                 result = {
                     "tool": call.name,
@@ -71,6 +72,14 @@ class AgentExecutor:
                     "summary": DENIED_SUMMARY,
                     "permission": {"prompted": True, "approved": False},
                 }
+                # A refusal with nobody at the keyboard is the one worth
+                # explaining: the summary alone reads identically to a
+                # human typing `n`, so a CI run would learn neither the
+                # cause nor the documented opt-in. Carried alongside the
+                # summary, never inside it, because `run_failures`
+                # recognises denials by exact string equality.
+                if decision.needs_guidance:
+                    result["hint"] = permissions.HEADLESS_DENIAL_HINT
                 self.results.append(result)
                 write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
                 return result

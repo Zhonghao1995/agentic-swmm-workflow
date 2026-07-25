@@ -695,6 +695,12 @@ def execute_with_chrome(
             file=out,
             flush=True,
         )
+        # The shell can be driven through a pipe, where approval fails
+        # closed. Surface the same guidance the one-shot path gives so a
+        # refusal is never a dead end in either surface.
+        hint = result.get("hint")
+        if hint:
+            print(_chrome.err(hint), file=out, flush=True)
     else:
         print(
             _chrome.inf(f"COMPLETE  {tool_name}  ({elapsed:.2f}s)"),

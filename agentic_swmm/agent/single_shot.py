@@ -60,6 +60,27 @@ def _find_repo_inp(value: str) -> Path | None:
 ALLOWED_TOOLS = AgentToolRegistry().names
 
 
+def _render_tool_outcome(*, index: int, total: int, name: str, result: dict) -> bool:
+    """Print one tool's outcome. Returns False when the run should stop.
+
+    A result may carry a ``hint``: guidance that explains a refusal the
+    summary alone cannot. It is kept out of the summary because
+    ``run_failures`` matches denials by exact string equality, so the
+    explanation has to travel beside that string rather than inside it.
+    """
+    _agent_say(f"[{index}/{total}] {name}")
+    if result.get("ok"):
+        _agent_say(f"OK: {result.get('summary') or result.get('stdout_tail') or 'ok'}")
+        return True
+    _agent_say(
+        f"FAILED: {result.get('summary') or result.get('stderr_tail') or 'tool failed'}"
+    )
+    hint = result.get("hint")
+    if hint:
+        _agent_say(hint)
+    return False
+
+
 def run_single_shot(args: argparse.Namespace) -> int:
     """Execute the non-interactive rule-planner flow."""
     goal = " ".join(args.goal).strip() or "run doctor"
@@ -154,12 +175,9 @@ def run_single_shot(args: argparse.Namespace) -> int:
         finalize_session_header(session_dir, "interrupted")
         raise
     for index, (call, result) in enumerate(zip(outcome.plan, outcome.results), start=1):
-        _agent_say(f"[{index}/{len(outcome.plan)}] {call.name}")
-        if result["ok"]:
-            detail = result.get("summary") or result.get("stdout_tail") or "ok"
-            _agent_say(f"OK: {detail}")
-        else:
-            _agent_say(f"FAILED: {result.get('summary') or result.get('stderr_tail') or 'tool failed'}")
+        if not _render_tool_outcome(
+            index=index, total=len(outcome.plan), name=call.name, result=result
+        ):
             break
 
     report = _write_report(
