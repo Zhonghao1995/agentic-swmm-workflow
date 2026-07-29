@@ -38,6 +38,55 @@ from agentic_swmm.providers.base import ChatProvider
 # being at least 1.
 SAME_TOOL_RETRY_LIMIT = 3
 
+# Issue #355: cumulative tool failures within one turn before the
+# planner pauses for the user. Unlike ``SAME_TOOL_RETRY_LIMIT`` this
+# budget survives pivots to a different tool AND interleaved
+# successes — the reported session chained six failures across four
+# tools without ever tripping the same-tool guard because successful
+# ``list_dir``/``read_file`` probes kept resetting it.
+PIVOT_CHECKPOINT_LIMIT = 3
+
+# Same switch as agentic_swmm/hitl/request_expert_review.py: opting a
+# headless run out of expert-review pauses also lets it continue past
+# failure checkpoints. One autonomy knob, not two.
+_HITL_AUTO_APPROVE_ENV = "AISWMM_HITL_AUTO_APPROVE"
+
+
+def _stdin_is_interactive() -> bool:
+    """TTY check behind a seam so tests can force either mode."""
+    return sys.stdin.isatty()
+
+
+def _hitl_auto_approve() -> bool:
+    return os.environ.get(_HITL_AUTO_APPROVE_ENV, "").strip() in {"1", "true", "True", "yes"}
+
+
+def _prompt_continue_past_failures(prompt: str) -> bool:
+    """Fail-closed continue prompt: only an explicit yes proceeds."""
+    try:
+        answer = input(prompt).strip().lower()
+    except EOFError:
+        return False
+    return answer in {"y", "yes"}
+
+
+def _format_failure_inventory(failures: list[tuple[str, str]]) -> str:
+    """Collapse (tool, summary) pairs into ``tool ×N (first summary)`` parts."""
+    order: list[str] = []
+    counts: dict[str, int] = {}
+    first_summary: dict[str, str] = {}
+    for tool, summary in failures:
+        if tool not in counts:
+            order.append(tool)
+            counts[tool] = 0
+            first_summary[tool] = (summary or "unspecified failure")[:100]
+        counts[tool] += 1
+    parts: list[str] = []
+    for tool in order:
+        label = f"{tool} ×{counts[tool]}" if counts[tool] > 1 else tool
+        parts.append(f"{label} ({first_summary[tool]})")
+    return "; ".join(parts)
+
 
 @dataclass
 class PlannerRun:
@@ -391,6 +440,13 @@ class Planner:
         # natural-language turn. Set on any failed tool, cleared when a later
         # tool succeeds.
         unresolved_failure = False
+        # Issue #355: cumulative failure ledger for this turn. Never reset
+        # by pivots or interleaved successes (unlike the same-tool counters
+        # above) — it powers the failure checkpoint and the honest
+        # max_steps epitaph.
+        failure_log: list[tuple[str, str]] = []
+        failures_since_checkpoint = 0
+        checkpoint_pending = False
 
         for step in range(1, self.max_steps + 1):
             # Issue #58 (UX-3): the LLM call is the longest silent
@@ -446,6 +502,38 @@ class Planner:
                     ok = False
                 break
 
+            if checkpoint_pending:
+                # Issue #355 interactive path: the prompt waits for this
+                # response so the user decides with the full picture —
+                # the blockers so far plus the proposed pivot.
+                proposed = [call.name for call in response.tool_calls]
+                inventory = _format_failure_inventory(failure_log)
+                print(
+                    f"\n{len(failure_log)} tool failures this turn: {inventory}\n"
+                    f"Planner proposes next: {', '.join(proposed)}",
+                    file=self._progress_stream,
+                )
+                approved = _prompt_continue_past_failures("Continue past these failures? [y/N] ")
+                write_event(
+                    trace_path,
+                    {
+                        "event": "planner_failure_checkpoint",
+                        "step": step,
+                        "decision": "user_continue" if approved else "user_stop",
+                        "failures": [{"tool": t, "summary": s} for t, s in failure_log],
+                        "proposed": proposed,
+                    },
+                )
+                if not approved:
+                    ok = False
+                    final_text = (
+                        f"stopped by user at failure checkpoint after "
+                        f"{len(failure_log)} tool failures: {inventory}"
+                    )
+                    break
+                checkpoint_pending = False
+                failures_since_checkpoint = 0
+
             outputs: list[dict[str, Any]] = []
             step_had_failure = False
             giveup_tool: str | None = None
@@ -493,6 +581,8 @@ class Planner:
                 if not result.get("ok"):
                     step_had_failure = True
                     unresolved_failure = True
+                    failure_log.append((call.name, str(result.get("summary") or "")))
+                    failures_since_checkpoint += 1
                     # Track consecutive failures of the same tool name.
                     if last_failed_tool == call.name:
                         consecutive_failures += 1
@@ -539,6 +629,49 @@ class Planner:
                 )
                 break
 
+            # Issue #355: cumulative-failure checkpoint. Runs after the
+            # same-tool guard so the stricter, older contract keeps
+            # precedence when both trip on the same step.
+            if failures_since_checkpoint >= PIVOT_CHECKPOINT_LIMIT:
+                if _stdin_is_interactive():
+                    # Defer the question one response so the prompt can
+                    # show the proposed pivot alongside the blockers.
+                    checkpoint_pending = True
+                elif _hitl_auto_approve():
+                    write_event(
+                        trace_path,
+                        {
+                            "event": "planner_failure_checkpoint",
+                            "step": step,
+                            "decision": "auto_approve",
+                            "failures": [{"tool": t, "summary": s} for t, s in failure_log],
+                        },
+                    )
+                    failures_since_checkpoint = 0
+                else:
+                    # Headless without the switch: stop right here — no
+                    # point spending another LLM call on a turn nobody
+                    # can approve (mirrors request_expert_review's
+                    # fail-closed contract).
+                    inventory = _format_failure_inventory(failure_log)
+                    ok = False
+                    final_text = (
+                        f"stopped at failure checkpoint after {len(failure_log)} tool "
+                        f"failures (non-interactive): {inventory}. Set "
+                        f"{_HITL_AUTO_APPROVE_ENV}=1 to continue past failure "
+                        "checkpoints in headless runs."
+                    )
+                    write_event(
+                        trace_path,
+                        {
+                            "event": "planner_failure_checkpoint",
+                            "step": step,
+                            "decision": "headless_stop",
+                            "failures": [{"tool": t, "summary": s} for t, s in failure_log],
+                        },
+                    )
+                    break
+
             if executor.dry_run:
                 # Existing short-circuit: dry-run produces no further
                 # tool evidence, so a second LLM turn is pointless.
@@ -553,6 +686,23 @@ class Planner:
         else:
             ok = False
             final_text = f"planner stopped after max_steps={self.max_steps}"
+            # Issue #355: the exhaustion epitaph must name what blocked
+            # the turn, not just the step counter. The give-up path
+            # writes ``planner_giveup``; this path gets its own event so
+            # an auditor can tell a bounded loop from a starved one.
+            if failure_log:
+                final_text += (
+                    f"; unresolved blockers ({len(failure_log)}): "
+                    f"{_format_failure_inventory(failure_log)}"
+                )
+            write_event(
+                trace_path,
+                {
+                    "event": "planner_max_steps_exhausted",
+                    "step": self.max_steps,
+                    "failures": [{"tool": t, "summary": s} for t, s in failure_log],
+                },
+            )
 
         return PlannerRun(ok=ok, plan=plan, results=executor.results, final_text=final_text)
 
