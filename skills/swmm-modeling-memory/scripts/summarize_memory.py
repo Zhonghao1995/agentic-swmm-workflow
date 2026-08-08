@@ -491,11 +491,20 @@ def detect_failure_patterns(
     if not (run_dir / "manifest.json").exists() and artifact_status(provenance, "top_manifest") != "found":
         patterns.add("missing_manifest")
 
-    if "model_inp" in artifacts_missing or not provenance and not list(run_dir.rglob("*.inp")):
+    # Filesystem ground truth beats a stale provenance record: legacy
+    # flat-layout runs (and canonical runs re-audited by an older audit
+    # version) can hold physical artifacts the recorded audit marked as
+    # missing. Only claim a physical artifact is missing when it is also
+    # absent from the run dir itself (2026-08-08 mining: provenance-only
+    # trust made complete runs read as failures).
+    def _absent(glob_pattern: str) -> bool:
+        return next(run_dir.rglob(glob_pattern), None) is None
+
+    if ("model_inp" in artifacts_missing or not provenance) and _absent("*.inp"):
         patterns.add("missing_inp")
-    if "runner_rpt" in artifacts_missing:
+    if "runner_rpt" in artifacts_missing and _absent("*.rpt"):
         patterns.add("missing_rpt")
-    if "runner_out" in artifacts_missing:
+    if "runner_out" in artifacts_missing and _absent("*.out"):
         patterns.add("missing_out")
 
     qa_status = infer_qa_status(provenance)
@@ -510,11 +519,11 @@ def detect_failure_patterns(
         patterns.add("swmm_execution_failed")
 
     if isinstance(metrics, dict):
-        peak = metrics.get("peak_flow")
-        continuity = metrics.get("continuity_error")
-        if not peak:
+        # ``is None``, not falsiness: a parsed 0.0 (dry-run peak flow,
+        # perfect continuity) is a legitimate value, not a parse gap.
+        if metrics.get("peak_flow") is None:
             patterns.add("peak_flow_parse_missing")
-        if not continuity:
+        if metrics.get("continuity_error") is None:
             patterns.add("continuity_parse_missing")
 
     if comparison_status(comparison) == "mismatch":
@@ -523,6 +532,12 @@ def detect_failure_patterns(
     if model_diagnostics.get("status") == "fail":
         patterns.add("swmm_model_diagnostic_error")
 
+    # ``partial_run`` means run ARTIFACTS are incomplete. Metric-parse
+    # gaps (peak/continuity not extracted by the audit) are evidence
+    # gaps, not missing artifacts: a run with qa=pass and rpt/out on
+    # disk is complete even when a metric went unparsed, so they no
+    # longer escalate here (2026-08-08: the escalation made the
+    # memory's top "failure patterns" mostly noise from healthy runs).
     if patterns & {
         "missing_provenance",
         "missing_manifest",
@@ -530,8 +545,6 @@ def detect_failure_patterns(
         "missing_rpt",
         "missing_out",
         "qa_missing",
-        "peak_flow_parse_missing",
-        "continuity_parse_missing",
     }:
         patterns.add("partial_run")
 
