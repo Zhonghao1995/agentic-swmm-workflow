@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.hitl.decision_recorder import HumanDecision, append_decision, make_decision
+from agentic_swmm.hitl import HumanDecision, append_decision, make_decision
 
 
 def resolve_provenance_path(run_dir: Path, *, require_exists: bool) -> Path | None:

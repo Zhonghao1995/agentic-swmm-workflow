@@ -32,6 +32,13 @@ from agentic_swmm.hitl.threshold_evaluator import (
     load_thresholds_from_md,
 )
 
+# Deliberately NOT re-exported: ``request_expert_review`` (the function)
+# collides with ``request_expert_review`` (its submodule). Python's
+# submodule binding shadows any package-level re-export of the same name
+# once the submodule has been imported, so a facade route would return
+# the module or the function depending on import order. Callers import
+# it from the submodule; the import-surface guard documents this as the
+# single sanctioned hitl submodule import (issue #359).
 __all__ = [
     "HumanDecision",
     "ThresholdHit",
