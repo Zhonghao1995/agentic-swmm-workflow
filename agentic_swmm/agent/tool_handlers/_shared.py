@@ -394,6 +394,253 @@ def _inp_source_tool(
     }
 
 
+# ---------------------------------------------------------------------------
+# Leaf helpers extracted from tool_registry.py (issue #358 PR A)
+# ---------------------------------------------------------------------------
+#
+# These were the reason the family modules lazily imported back into the
+# registry (the documented end-of-file cycle). They are pure utilities:
+# schema building, repo-sandboxed path/INP resolution, plot-option
+# derivation, MCP schema mapping, and the run_allowed_command allowlist.
+# tool_registry re-imports every name so historical
+# ``from agentic_swmm.agent.tool_registry import X`` sites (and the
+# ``monkeypatch.setattr(tool_registry, "X", ...)`` seam in tests) keep
+# working byte-for-byte.
+#
+# Note the near-miss that is NOT a duplicate: ``_required_repo_file``
+# is repo-SANDBOXED input resolution (inside-repo enforcement), while
+# ``_resolve_run_dir`` / ``_resolve_or_create_run_dir`` above are the
+# deliberately non-sandboxed run-dir seam (Bug #238). Keep them apart.
+
+
+def _object(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    schema: dict[str, Any] = {"type": "object", "properties": properties, "additionalProperties": False}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def _mcp_failure(call: ToolCall, summary: str, *, server: str | None = None) -> dict[str, Any]:
+    result = _failure(call, summary)
+    result["recovery"] = "Use list_mcp_servers/list_mcp_tools to refresh available MCP tools, then retry with corrected server/tool/arguments or fall back to the CLI wrapper."
+    result["fallback_tools"] = _mcp_fallback_tools(server or str(call.args.get("server") or ""))
+    return result
+
+
+def _map_mcp_tool_schema(server_name: str, tool: dict[str, Any]) -> dict[str, Any]:
+    name = str(tool.get("name") or "tool")
+    description = str(tool.get("description") or f"MCP tool exposed by {server_name}.")
+    schema = tool.get("inputSchema")
+    if not isinstance(schema, dict):
+        schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
+    parameters = _normalize_json_schema(schema)
+    return {
+        "server": server_name,
+        "mcp_tool": name,
+        "planner_tool": "call_mcp_tool",
+        "description": description,
+        "arguments": {"server": server_name, "tool": name, "arguments_schema": parameters},
+    }
+
+
+def _normalize_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    if not schema:
+        return {"type": "object", "properties": {}, "additionalProperties": True}
+    normalized = dict(schema)
+    normalized.setdefault("type", "object")
+    normalized.setdefault("properties", {})
+    normalized.setdefault("additionalProperties", True)
+    if not isinstance(normalized.get("properties"), dict):
+        normalized["properties"] = {}
+    return normalized
+
+
+def _mcp_fallback_tools(server_name: str) -> list[str]:
+    mapping = {
+        "swmm-builder": ["build_inp"],
+        "swmm-climate": ["format_rainfall"],
+        "swmm-network": ["network_qa", "network_to_inp"],
+        "swmm-plot": ["plot_run"],
+        "swmm-runner": ["run_swmm_inp"],
+    }
+    return mapping.get(server_name, ["list_mcp_servers", "list_mcp_tools"])
+
+
+def _mcp_server(name: str) -> dict[str, Any] | None:
+    from agentic_swmm.runtime.registry import load_mcp_registry
+
+    for server in load_mcp_registry():
+        if str(server.get("name")) == name:
+            return server
+    return None
+
+
+def _find_repo_inp(value: str) -> Path | None:
+    if not value or Path(value).is_absolute() or "/" in value:
+        return None
+    root = repo_root() / "examples"
+    if not root.exists():
+        return None
+    matches = sorted(path for path in root.rglob(value) if path.is_file() and path.suffix.lower() == ".inp")
+    return matches[0] if matches else None
+
+
+def _resolve_existing_inp(value: str) -> Path | None:
+    path = _repo_path(value)
+    if path is not None and path.exists() and path.is_file() and path.suffix.lower() == ".inp":
+        return path
+    external = Path(value).expanduser()
+    try:
+        external = external.resolve()
+    except OSError:
+        return None
+    if external.exists() and external.is_file() and external.suffix.lower() == ".inp":
+        return external
+    return _find_repo_inp(value)
+
+
+def _node_suggestions(inp_path: str | None, limit: int = 8) -> list[str]:
+    if not inp_path:
+        return []
+    candidate = _resolve_existing_inp(inp_path)
+    if candidate is None:
+        return []
+    sections: dict[str, list[str]] = {"[OUTFALLS]": [], "[JUNCTIONS]": []}
+    section: str | None = None
+    for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped.upper()
+            continue
+        if section in {"[OUTFALLS]", "[JUNCTIONS]"}:
+            name = stripped.split()[0]
+            if name not in sections[section]:
+                sections[section].append(name)
+    suggestions = [*sections["[OUTFALLS]"], *sections["[JUNCTIONS]"]]
+    deduped = list(dict.fromkeys(suggestions))
+    return deduped[:limit]
+
+
+def _node_attribute_options(out_file: Path | None, node_options: list[str]) -> list[dict[str, Any]]:
+    from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS
+
+    if out_file is None or not out_file.exists():
+        return _default_node_attribute_options()
+    try:
+        from swmmtoolbox import catalog
+
+        rows = catalog(str(out_file), "node")
+    except Exception:
+        return _default_node_attribute_options()
+    attrs: list[str] = []
+    for row in rows:
+        if len(row) < 3 or row[0] != "node":
+            continue
+        node, attr = str(row[1]), str(row[2])
+        if node_options and node not in node_options:
+            continue
+        if attr not in attrs:
+            attrs.append(attr)
+    if not attrs:
+        return _default_node_attribute_options()
+    preferred = [attr for attr in NODE_ATTRIBUTE_CHOICES if attr in attrs]
+    remainder = [attr for attr in attrs if attr not in preferred]
+    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in [*preferred, *remainder]]
+
+
+def _default_node_attribute_options() -> list[dict[str, str]]:
+    from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS
+
+    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in NODE_ATTRIBUTE_CHOICES]
+
+
+def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) -> Path | dict[str, Any]:
+    value = call.args.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return _failure(call, f"missing required file argument: {key}")
+    path = _repo_path(value)
+    if path is None:
+        return _failure(call, f"{key} must be inside repository")
+    if suffix and path.suffix.lower() != suffix:
+        return _failure(call, f"{key} must end with {suffix}")
+    if not path.exists() or not path.is_file():
+        return _failure(call, f"file not found: {path}")
+    return path
+
+
+def _resolve_inp_for_run(call: ToolCall) -> Path | dict[str, Any]:
+    raw = str(call.args.get("inp_path", "")).strip()
+    if not raw:
+        return _failure(call, "missing required file argument: inp_path")
+    repo_file = _required_repo_file(call, "inp_path", suffix=".inp")
+    if not isinstance(repo_file, dict):
+        return repo_file
+    resolved = _find_repo_inp(raw)
+    if resolved is not None:
+        return resolved
+    external = Path(raw).expanduser()
+    try:
+        external = external.resolve()
+    except OSError:
+        return _failure(call, f"inp_path could not be resolved: {raw}")
+    if external.suffix.lower() != ".inp":
+        return _failure(call, "inp_path must end with .inp")
+    if not external.exists() or not external.is_file():
+        return _failure(call, f"external INP file not found: {external}")
+    return external
+
+
+# pytest flags that can load arbitrary code (plugins) or point pytest at an
+# attacker-controlled config/ini. Refused so ``run_allowed_command`` cannot be
+# turned into an arbitrary-code-execution primitive (review P1-2).
+_PYTEST_BANNED_FLAGS = {"-p", "-c", "--config-file", "-o", "--override-ini", "--pyargs"}
+
+
+def _pytest_args_ok(args: list[str]) -> bool:
+    """Every positional target must resolve inside the repo; no plugin/config injection."""
+    for arg in args:
+        if arg.startswith("-"):
+            flag = arg.split("=", 1)[0]
+            if flag in _PYTEST_BANNED_FLAGS:
+                return False
+            continue
+        # Positional: a path or a nodeid (``path::Class::test``). Only the file
+        # part is a path; it must resolve inside the repo.
+        path_part = arg.split("::", 1)[0]
+        if path_part and _repo_path(path_part) is None:
+            return False
+    return True
+
+
+def _node_script_ok(target: str) -> bool:
+    """Allow only ``.mjs`` files that resolve to something under ``scripts/``."""
+    resolved = _repo_path(target)
+    if resolved is None or resolved.suffix != ".mjs":
+        return False
+    try:
+        rel = resolved.relative_to(repo_root().resolve())
+    except ValueError:
+        return False
+    return rel.parts[:1] == ("scripts",)
+
+
+def _command_allowed(command: list[str]) -> bool:
+    exe = Path(command[0]).name.lower()
+    if exe in {"pytest", "pytest.exe"}:
+        return _pytest_args_ok(command[1:])
+    if exe in {"python", "python.exe"} or command[0] == sys.executable:
+        if not (len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}):
+            return False
+        return _pytest_args_ok(command[3:]) if command[2] == "pytest" else True
+    if exe in {"node", "node.exe"}:
+        return len(command) >= 2 and _node_script_ok(command[1])
+    if exe in {"swmm5", "swmm5.exe", "swmm5.cmd"}:
+        return True
+    return False
+
+
 __all__ = [
     "_inp_source_tool",
     "_make_mcp_routed_handler",
@@ -413,4 +660,21 @@ __all__ = [
     "_run_process_tool",
     "_run_cli_tool",
     "_run_script_tool",
+    "_object",
+    "_mcp_failure",
+    "_map_mcp_tool_schema",
+    "_normalize_json_schema",
+    "_mcp_fallback_tools",
+    "_mcp_server",
+    "_find_repo_inp",
+    "_resolve_existing_inp",
+    "_node_suggestions",
+    "_node_attribute_options",
+    "_default_node_attribute_options",
+    "_required_repo_file",
+    "_resolve_inp_for_run",
+    "_PYTEST_BANNED_FLAGS",
+    "_pytest_args_ok",
+    "_node_script_ok",
+    "_command_allowed",
 ]
