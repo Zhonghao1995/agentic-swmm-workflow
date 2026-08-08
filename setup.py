@@ -30,6 +30,7 @@ PRIVATE_RESOURCE_DIRS = PUBLIC_RESOURCE_DIRS + (
 PUBLIC_SKILLS = {
     "swmm-builder",
     "swmm-calibration",
+    "swmm-canada",
     "swmm-climate",
     "swmm-end-to-end",
     "swmm-experiment-audit",

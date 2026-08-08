@@ -92,7 +92,7 @@
     },
     {
       "id": "fetch-canada",
-      "skills": [],
+      "skills": ["swmm-canada"],
       "keywords": ["canada", "canadian", "real network", "real pipes", "municipal storm", "真实管网", "真实管道", "加拿大", "victoria", "ottawa", "toronto", "calgary", "vancouver", "surrey", "kitchener", "waterloo", "kelowna", "regina", "coquitlam", "burnaby", "new westminster", "white rock", "north vancouver", "nanaimo", "penticton", "esquimalt", "kamloops", "langley", "chilliwack", "strathcona", "barrie", "abbotsford", "saskatoon", "kingston", "peterborough", "sarnia", "windsor", "whitby", "sudbury", "moncton", "reykjavik"],
       "required_inputs": ["bbox_or_aoi_geojson", "start_date", "end_date"],
       "optional_inputs": ["run_dir", "infiltration", "base_url"],
