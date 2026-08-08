@@ -35,6 +35,24 @@ Chinese phrasing works the same way for the natural-language door: the
 planner's intent vocabulary is bilingual (for example, "给我渥太华市中心的模型,
 跑一遍然后审计" walks the first three rows in one goal).
 
+## Run-health verdicts: three dimensions, one precedence
+
+Whichever door produced a run, its health is described by exactly three
+fields, each answering a different question:
+
+| Field | Written by | Question it answers |
+| --- | --- | --- |
+| `run_ok` (+ `solver_errors`) in the runner manifest | `swmm-runner` | Did the solver complete cleanly? (`swmm5` exits 0 even on `ERROR n:` lines, so `run_ok` is the solver truth, never `return_code` alone) |
+| `qa.status` in the audit provenance | `swmm-experiment-audit` | Do the run's artifacts pass the audit checks? |
+| `model_diagnostics.status` | `swmm-experiment-audit` | Is the model behavior physically plausible? (soft signal: `warning` flags review items) |
+
+Precedence when a single verdict is needed: a solver error outranks
+everything, then a qa failure, then a diagnostics `fail`; a diagnostics
+`warning` never flips an otherwise healthy run. If both solver and qa
+are unknown, the run is incomplete rather than healthy. New tooling
+must map into one of these three dimensions instead of inventing a
+fourth verdict field.
+
 ## Why both exist
 
 The natural-language door is for humans mid-thought: it chains steps, asks
