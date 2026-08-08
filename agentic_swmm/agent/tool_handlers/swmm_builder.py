@@ -24,8 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object, _repo_output_path
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _build_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -107,4 +107,23 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["_build_inp_args", "_build_inp_tool"]
+__all__ = ["_build_inp_args", "_build_inp_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration).
+
+    ``_build_inp_tool`` is built lazily by this module's PEP 562
+    ``__getattr__``; module attribute access (not a bare-name globals
+    lookup) is what triggers it.
+    """
+    import agentic_swmm.agent.tool_handlers.swmm_builder as _self
+
+    return [
+        ToolSpec(
+            "build_inp",
+            "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.",
+            _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "water_quality_json": {"type": "string", "description": "Optional path to a WQ config JSON enabling pollutant buildup/washoff simulation ([POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/[LOADINGS] sections)."}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]),
+            _self._build_inp_tool,
+        ),
+    ]

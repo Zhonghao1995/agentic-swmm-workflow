@@ -35,8 +35,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _network_qa_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -116,4 +116,23 @@ __all__ = [
     "_network_qa_tool",
     "_network_to_inp_args",
     "_network_to_inp_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        ToolSpec(
+            "network_qa",
+            "Validate a SWMM network JSON using the swmm-network QA script.",
+            _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]),
+            _network_qa_tool,
+        ),
+        ToolSpec(
+            "network_to_inp",
+            "Export a SWMM network JSON to INP section text using the swmm-network script.",
+            _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]),
+            _network_to_inp_tool,
+        ),
+    ]

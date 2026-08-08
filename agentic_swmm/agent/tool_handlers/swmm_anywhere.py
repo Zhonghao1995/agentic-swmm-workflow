@@ -39,7 +39,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _safe_name,
     _timestamped_run_dir,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _stage_hint(stage: str) -> str:
@@ -171,4 +171,67 @@ __all__ = [
     "_stage_hint",
     "_validate_bbox",
     "_resolve_run_dir",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "synth_swmm_from_bbox",
+            (
+                "Synthesise a SWMM .inp file from a WGS84 bounding box using the "
+                "swmm-anywhere skill, which wraps ImperialCollegeLondon/SWMManywhere "
+                "(BSD-3-Clause).\n"
+                "USE WHEN: the user wants to build a SWMM model from a geographic "
+                "region and has not supplied a shapefile or pre-built network — "
+                "i.e. there is no SHP / GeoJSON / network_json input, just a bbox "
+                "or a place name with coordinates.\n"
+                "DO NOT USE WHEN: the user supplied a SHP / network_json / "
+                "existing .inp (those flow through build_inp, network_to_inp, "
+                "run_swmm_inp instead).\n"
+                "Requires the optional [anywhere] extra; the tool returns a "
+                "stage-tagged hint if the extra is missing."
+            ),
+            _object(
+                {
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat].",
+                    },
+                    "run_dir": {"type": "string"},
+                    "project_name": {"type": "string"},
+                    "refresh_raw": {"type": "boolean"},
+                    "upstream_defaults": {
+                        "type": "boolean",
+                        "description": "When true, skip aiswmm's tuned outfall_derivation overrides and use SWMManywhere's upstream defaults.",
+                    },
+                    "rain_file": {
+                        "type": "string",
+                        "description": "Optional absolute path to a SWMM-format DAT rainfall file to replace the bundled storm.dat.",
+                    },
+                    "config_overrides": {
+                        "type": "object",
+                        "description": (
+                            "Per-call SWMManywhere parameter overrides, shape {group: {param: value}}, "
+                            "merged onto the resolved config. Use to fix structural complaints from "
+                            "network_qa, then re-synthesise: LOWER outfall_derivation.outfall_length "
+                            "(default 200) for more outfalls / fewer orphan / no-outfall-path nodes; "
+                            "RAISE subcatchment_derivation.node_merge_distance (default 10, keep < "
+                            "max_street_length) or max_street_length (default 60) for fewer pipes. "
+                            "Shortcut: pass upstream_defaults=true to drop aiswmm's tuned outfall "
+                            "overrides entirely. Full symptom->knob table in swmm-anywhere SKILL.md."
+                        ),
+                    },
+                },
+                ["bbox"],
+            ),
+            _synth_swmm_from_bbox_tool,
+        ),
+    ]
