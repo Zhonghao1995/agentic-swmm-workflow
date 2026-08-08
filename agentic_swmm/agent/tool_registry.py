@@ -758,6 +758,43 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
             ),
             fetch_swmm_from_canada_tool,
         ),
+        ToolSpec(
+            "run_climate_scenarios",
+            (
+                "Batch-run precipitation-scaled climate scenarios of a SWMM model "
+                "and write a comparison summary into the canonical 03_climate stage.\n"
+                "USE WHEN: the user wants climate-change forcing, rainfall uplift "
+                "scenarios, or a what-if comparison over an existing model. "
+                "Calibrate first (aiswmm calibrate) so the deltas mean something, "
+                "then force the calibrated INP.\n"
+                "factors like \"1.0,1.1,1.2,1.35\" scale every rainfall input "
+                "(inline TIMESERIES and FILE-referenced .dat); each scenario runs "
+                "through the audited SWMM runner; the summary compares precip, "
+                "runoff, flooding, outflow, and peak per scenario."
+            ),
+            _object(
+                {
+                    "inp_path": {
+                        "type": "string",
+                        "description": "Base model INP (typically the calibrated model).",
+                    },
+                    "run_dir": {"type": "string"},
+                    "factors": {
+                        "type": "string",
+                        "description": (
+                            "Comma-separated precipitation multipliers; default "
+                            "1.0,1.10,1.20,1.35."
+                        ),
+                    },
+                    "node": {
+                        "type": "string",
+                        "description": "Report node (default: the INP's first outfall).",
+                    },
+                },
+                ["inp_path"],
+            ),
+            run_climate_scenarios_tool,
+        ),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
@@ -1777,6 +1814,11 @@ from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
 # clean re-export shape as swmm-anywhere, no MCP routing.
 from agentic_swmm.agent.tool_handlers.swmm_canada import (  # noqa: E402,F401
     fetch_swmm_from_canada_tool,
+)
+# ADR-0010: climate scenario batches are in-process orchestration over
+# the audited runner script (no MCP routing, no new binding).
+from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
+    run_climate_scenarios_tool,
 )
 # ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
 # no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;

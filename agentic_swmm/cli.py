@@ -16,7 +16,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, report, review, run, runs_tidy, setup, skill, storm, trace, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, climate, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, report, review, run, runs_tidy, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -140,6 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     uncertainty.register(subparsers)
     # PRD-06 Phase C.5 — checkpoint-aware calibration runner facade.
     calibrate.register(subparsers)
+    climate.register(subparsers)
     # PRD-08 Phase B (#31) — trace pretty-printer for a run directory.
     trace.register(subparsers)
     # ADR-0004 follow-up: runs-directory housekeeping (archive, never delete).
