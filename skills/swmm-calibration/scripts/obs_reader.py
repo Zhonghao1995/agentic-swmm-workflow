@@ -82,9 +82,35 @@ def read_series(path: str | Path, timestamp_col: str | None = None, flow_col: st
     rev = {v: k for k, v in cols.items()}
 
     if timestamp_col is None:
-        timestamp_col = next((rev[c] for c in cols.values() if c in TIME_CANDIDATES), None)
+        # Column inference walks CANDIDATE PRIORITY, not file order:
+        # iterating the file's own column order picked whichever
+        # candidate appeared first in the header, so a standard
+        # hydrometric "Date,Time,Flow" export selected the bare Date
+        # column (same-day rows collapsed onto midnight) and
+        # "Time,Date,Flow" selected bare times that pandas stamped
+        # with TODAY's date (found 2026-08-08, reproduced). A split
+        # Date+Time pair is combined into one timestamp — neither
+        # half alone is the observation time.
+        combined = next(
+            (rev[c] for c in ("timestamp", "datetime", "date_time") if c in rev),
+            None,
+        )
+        date_col = rev.get("date")
+        time_col = rev.get("time")
+        if combined is not None:
+            timestamp_col = combined
+        elif date_col is not None and time_col is not None:
+            combined_name = "__aiswmm_combined_timestamp"
+            df[combined_name] = (
+                df[date_col].astype(str).str.strip()
+                + " "
+                + df[time_col].astype(str).str.strip()
+            )
+            timestamp_col = combined_name
+        else:
+            timestamp_col = next((rev[c] for c in TIME_CANDIDATES if c in rev), None)
     if flow_col is None:
-        flow_col = next((rev[c] for c in cols.values() if c in FLOW_CANDIDATES), None)
+        flow_col = next((rev[c] for c in FLOW_CANDIDATES if c in rev), None)
 
     if timestamp_col is None or flow_col is None:
         raise ValueError(f"Could not infer timestamp/flow columns from {list(df.columns)}")

@@ -156,24 +156,50 @@ def _read_csv(path: Path) -> RainfallSeries:
         raise ValueError(f"empty rainfall CSV: {path}")
     header = [c.strip() for c in rows[0]]
     lower = [c.lower() for c in header]
-    ts_idx = next(
-        (i for i, c in enumerate(lower) if c in {"timestamp", "time", "date", "datetime"}),
+    # Column inference walks CANDIDATE PRIORITY, not file order, and a
+    # split Date+Time pair is combined into one timestamp (same defect
+    # class as the calibration obs_reader, found 2026-08-08). The old
+    # first-in-file scan also let the OTHER time column be chosen as
+    # the value column for "Date,Time,Rainfall" headers.
+    name_to_idx: dict[str, int] = {}
+    for i, c in enumerate(lower):
+        name_to_idx.setdefault(c, i)
+    combined_idx = next(
+        (name_to_idx[n] for n in ("timestamp", "datetime", "date_time") if n in name_to_idx),
         None,
     )
-    if ts_idx is None:
+    date_idx = name_to_idx.get("date")
+    time_idx = name_to_idx.get("time")
+    ts_idx: int | None = None
+    ts_pair: tuple[int, int] | None = None
+    if combined_idx is not None:
+        ts_idx = combined_idx
+    elif date_idx is not None and time_idx is not None:
+        ts_pair = (date_idx, time_idx)
+    elif time_idx is not None:
+        ts_idx = time_idx
+    elif date_idx is not None:
+        ts_idx = date_idx
+    if ts_idx is None and ts_pair is None:
         # assume column 0 is timestamp, column 1 is value
         ts_idx, val_idx = 0, 1
     else:
-        # value column is the first non-timestamp numeric-looking column
+        time_columns = {
+            i for i in (combined_idx, date_idx, time_idx) if i is not None
+        }
         val_idx = next(
-            (i for i in range(len(header)) if i != ts_idx),
+            (i for i in range(len(header)) if i not in time_columns),
             1,
         )
     for row in rows[1:]:
         if not row or all(not c.strip() for c in row):
             continue
         try:
-            ts = _parse_timestamp(row[ts_idx])
+            if ts_pair is not None:
+                d_idx, t_idx = ts_pair
+                ts = _parse_timestamp(f"{row[d_idx].strip()} {row[t_idx].strip()}")
+            else:
+                ts = _parse_timestamp(row[ts_idx])
         except (IndexError, ValueError) as exc:
             raise ValueError(f"row {row}: cannot parse timestamp ({exc})") from exc
         try:
