@@ -5,6 +5,8 @@
   "excluded_swmm_keywords": ["test", "pytest", "skill", "capabilities", "runtime", "diff", "search"],
   "swmm_request_keywords": [
     "swmm",
+    "canada",
+    "加拿大",
     ".inp",
     "audit",
     "plot",
@@ -89,13 +91,13 @@
     {
       "id": "fetch-canada",
       "skills": [],
-      "keywords": ["canada", "canadian", "real network", "real pipes", "municipal storm", "真实管网", "真实管道", "加拿大", "victoria", "ottawa", "calgary", "surrey", "kitchener", "waterloo", "kelowna", "regina"],
+      "keywords": ["canada", "canadian", "real network", "real pipes", "municipal storm", "真实管网", "真实管道", "加拿大", "victoria", "ottawa", "toronto", "calgary", "vancouver", "surrey", "kitchener", "waterloo", "kelowna", "regina", "coquitlam", "burnaby", "new westminster", "white rock", "north vancouver", "nanaimo", "penticton", "esquimalt", "kamloops", "langley", "chilliwack", "strathcona", "barrie", "abbotsford", "saskatoon", "kingston", "peterborough", "sarnia", "windsor", "whitby", "sudbury", "moncton", "reykjavik"],
       "required_inputs": ["bbox_or_aoi_geojson", "start_date", "end_date"],
       "optional_inputs": ["run_dir", "infiltration", "base_url"],
       "preferred_tools": ["fetch_swmm_from_canada"],
       "stop_conditions": ["AOI outside Canada (use synth-from-bbox)", "SWMMCanada service unreachable"],
       "next_user_prompt": "Please provide the Canadian area (bbox or GeoJSON polygon) and a rainfall date window (start and end dates, YYYY-MM-DD).",
-      "exclusive_when": "the AOI is in Canada and the user wants the city's real published storm network — outside Canada or outside a supported city, synth-from-bbox is the path"
+      "exclusive_when": "the AOI is in Canada: the service auto-selects the city's real published storm network where covered and synthesizes elsewhere in Canada — outside Canada, synth-from-bbox is the path"
     },
     {
       "id": "runner",

@@ -47,10 +47,15 @@ class StageHintTests(unittest.TestCase):
     def test_config_missing_hint_points_at_env_var(self) -> None:
         self.assertIn("AISWMM_SWMMCANADA_URL", _stage_hint("config_missing"))
 
-    def test_task_failed_hint_mentions_supported_cities(self) -> None:
+    def test_task_failed_hint_explains_coverage_without_pinning_cities(self) -> None:
+        # The upstream city list grows on its own release cadence (35 at
+        # the 2026-08 sync, up from 8); the hint describes the coverage
+        # model instead of embedding a list that drifts stale.
         hint = _stage_hint("task_failed")
         self.assertIn("Canadian", hint)
-        self.assertIn("Regina", hint)  # 8th city, added upstream after v0.7.4
+        self.assertIn("synthesized", hint)
+        self.assertIn("synth_swmm_from_bbox", hint)
+        self.assertNotIn("Kitchener", hint)
 
     def test_extract_hint_points_at_zip_not_service(self) -> None:
         hint = _stage_hint("extract")

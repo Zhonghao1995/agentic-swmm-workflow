@@ -65,6 +65,7 @@ def openai_planner_prompt(
         "If the user's request is missing a required input for the tool you want to call (e.g. an INP path, a bbox, a run directory), stop and ask for that concrete input instead of guessing or running a different tool. "
         "If the user names an examples/<case>/ directory, inspect that directory and run the contained .inp directly; do not substitute the acceptance demo unless the user explicitly asks for the acceptance demo. "
         "Use run_swmm_inp, build_inp, format_rainfall, network_qa, network_to_inp, inspect_plot_options, and plot_run as constrained wrappers around existing skills. "
+        "For a Canadian area, fetch_swmm_from_canada returns a ready-to-run model from the SWMMCanada upstream (real municipal pipes where covered, synthesized elsewhere in Canada); pass its returned run_dir and inp_path into run_swmm_inp and then audit_run so the whole chain lands in one run folder. Outside Canada use synth_swmm_from_bbox. "
         "run_swmm_inp may accept a user-provided absolute .inp path; it must import that file into the run directory and run only the run-local copy. "
         "Before plotting, use inspect_plot_options when rainfall series, node, or node_attr is not explicit. If there are multiple selectable rainfall series, nodes, or node attributes, ask the user to choose instead of silently defaulting. "
         "Use list_dir, search_files, read_file, and git_diff for repository workspace inspection. "

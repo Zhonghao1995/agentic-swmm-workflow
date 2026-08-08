@@ -252,6 +252,42 @@ def _runs_dir(root: Path) -> Path:
     return root / "runs"
 
 
+def _swmmcanada_upstream_check() -> tuple[str, bool, str, bool]:
+    """One install-check row for the SWMMCanada upstream service.
+
+    Before this row, the only signal that ``AISWMM_SWMMCANADA_URL`` was
+    wrong or the service was down was ``fetch_swmm_from_canada`` failing
+    at call time. Unset stays a quiet OK (the upstream is optional);
+    when set, a 2 s ``GET /api/v1/healthz`` probe reports reachability.
+    """
+    url = os.environ.get("AISWMM_SWMMCANADA_URL", "").strip().rstrip("/")
+    if not url:
+        return (
+            "SWMMCanada upstream",
+            True,
+            "not configured (optional; set AISWMM_SWMMCANADA_URL to enable fetch_swmm_from_canada)",
+            False,
+        )
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{url}/api/v1/healthz", timeout=2.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        status = str(payload.get("status", "")) if isinstance(payload, dict) else ""
+        healthy = status == "ok"
+        detail = f"{url} healthy" if healthy else f"{url} answered but status={status!r}"
+        return ("SWMMCanada upstream", healthy, detail, False)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        reason = getattr(exc, "reason", exc)
+        return (
+            "SWMMCanada upstream",
+            False,
+            f"{url} unreachable ({reason}); fetch_swmm_from_canada will fail until the service is up",
+            False,
+        )
+
+
 def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     """The historical install-checks block, factored so the JSON path
     and the text path share one source of truth."""
@@ -287,6 +323,7 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
             f"(aiswmm login {default_provider})"
         )
     checks.append((default_key_env, default_key_present, detail, False))
+    checks.append(_swmmcanada_upstream_check())
     node = shutil.which("node")
     checks.append(
         (

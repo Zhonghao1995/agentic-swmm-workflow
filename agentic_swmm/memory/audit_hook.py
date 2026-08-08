@@ -177,26 +177,49 @@ def _summarize_memory_cli(runs_dir: Path, memory_dir: Path) -> tuple[int, str]:
         return 1, str(exc)
 
 
-def _refresh_rag_corpus(memory_dir: Path, rag_dir: Path, runs_dir: Path) -> tuple[int, str]:
+def _refresh_rag_corpus(
+    memory_dir: Path, rag_dir: Path, runs_dir: Path, run_dir: Path | None = None
+) -> tuple[int, str]:
     repo_root = Path(__file__).resolve().parents[2]
     script = repo_root / "skills" / "swmm-rag-memory" / "scripts" / "refresh_after_run.py"
-    if not script.is_file():
+    if script.is_file() and run_dir is not None:
+        # The refresh entry point takes the audited run (--run-dir) plus
+        # the store locations, with the corpus destination spelled
+        # --rag-dir. Before 2026-08-08 this call reused the fallback
+        # script's flags (--out-dir, no --run-dir), so every audit's RAG
+        # refresh exited with an argparse usage error that the
+        # best-effort contract then swallowed.
+        cmd = [
+            sys.executable,
+            str(script),
+            "--run-dir",
+            str(run_dir),
+            "--memory-dir",
+            str(memory_dir),
+            "--runs-dir",
+            str(runs_dir),
+            "--rag-dir",
+            str(rag_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    else:
         # Fallback: run build_memory_corpus.py directly so the corpus is at
         # least rebuilt. Tests that do not install the refresh entry point
         # still get a deterministic mtime bump.
         script = repo_root / "skills" / "swmm-rag-memory" / "scripts" / "build_memory_corpus.py"
-    cmd = [
-        sys.executable,
-        str(script),
-        "--memory-dir",
-        str(memory_dir),
-        "--runs-dir",
-        str(runs_dir),
-        "--out-dir",
-        str(rag_dir),
-        "--repo-root",
-        str(repo_root),
-    ]
+        cmd = [
+            sys.executable,
+            str(script),
+            "--memory-dir",
+            str(memory_dir),
+            "--runs-dir",
+            str(runs_dir),
+            "--out-dir",
+            str(rag_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         return proc.returncode, (proc.stderr or proc.stdout or "")
@@ -955,7 +978,7 @@ def trigger_memory_refresh(
     if no_rag:
         return result
 
-    rc, stderr = _refresh_rag_corpus(memory_dir, rag_dir, runs_dir)
+    rc, stderr = _refresh_rag_corpus(memory_dir, rag_dir, runs_dir, run_dir)
     if rc != 0:
         # Per PRD M2: corrupt RAG rebuild must not block audit. Log and
         # carry on. We still bump corpus mtime so the success-path
