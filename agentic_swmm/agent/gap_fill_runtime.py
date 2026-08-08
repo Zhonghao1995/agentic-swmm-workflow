@@ -128,7 +128,7 @@ def invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke):
             )
 
         if l1_signals:
-            resolved = _resolve_gap_batch(
+            resolved, failed_stage = _resolve_gap_batch(
                 l1_signals,
                 tool_name=spec.name,
                 session_dir=session_dir,
@@ -137,13 +137,14 @@ def invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke):
                 record_gap_decisions=record_gap_decisions,
             )
             if resolved is None:
-                # User rejected / non-interactive failure — fall back
-                # to a fail-soft result the planner can surface.
+                # User rejected / non-interactive failure / ledger
+                # write failure — fail-soft result the planner can
+                # surface, with the true failed stage named.
                 return {
                     "tool": call.name,
                     "args": call.args,
                     "ok": False,
-                    "summary": "gap-fill aborted (L1 paths could not be resolved)",
+                    "summary": _gap_abort_summary(failed_stage, "L1 paths"),
                 }
             for dec in resolved:
                 merged_args[dec.field] = dec.final_value
@@ -191,7 +192,7 @@ def invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke):
             # rather than guessing.
             return result
 
-        resolved = _resolve_gap_batch(
+        resolved, failed_stage = _resolve_gap_batch(
             [signal],
             tool_name=spec.name,
             session_dir=session_dir,
@@ -204,7 +205,7 @@ def invoke_tool_with_gap_fill(spec, call, session_dir, base_invoke):
                 "tool": call.name,
                 "args": call.args,
                 "ok": False,
-                "summary": "gap-fill aborted (L3 parameters could not be resolved)",
+                "summary": _gap_abort_summary(failed_stage, "L3 parameters"),
             }
         for dec in resolved:
             merged_args[dec.field] = dec.final_value
@@ -234,11 +235,16 @@ def _resolve_gap_batch(
 ):
     """Run propose → ui → record over a batch of signals.
 
-    Returns the list of :class:`GapDecision` with ``final_value`` set,
-    or ``None`` if the user rejected the batch or the non-interactive
-    path failed. Errors are folded to ``None`` so the caller can
-    return a fail-soft result; the exception messages are written to
-    the planner trace via stderr.
+    Returns ``(resolved, failed_stage)``. On success ``resolved`` is
+    the list of :class:`GapDecision` with ``final_value`` set and
+    ``failed_stage`` is ``None``. On failure ``resolved`` is ``None``
+    and ``failed_stage`` names what broke: ``"propose"`` / ``"review"``
+    (no resolution happened — user rejected, non-interactive, or the
+    proposer errored) or ``"record"`` (the user DID answer but the
+    decision ledger write failed — callers must not report this as an
+    unresolved gap). Errors are folded rather than raised so the
+    caller can return a fail-soft result; the exception messages are
+    written to the planner trace via stderr.
     """
     try:
         proposals = propose_batch(
@@ -249,7 +255,7 @@ def _resolve_gap_batch(
     except Exception as exc:  # pragma: no cover - defensive
         _sys.stderr.write(f"GAP_FILL_PROPOSE_ERROR: {exc}\n")
         _sys.stderr.flush()
-        return None
+        return None, "propose"
     try:
         # Indirect via the runtime_loop re-export so existing tests
         # that ``mock.patch("agentic_swmm.agent.runtime_loop._is_tty")``
@@ -267,11 +273,30 @@ def _resolve_gap_batch(
     except Exception as exc:
         _sys.stderr.write(f"GAP_FILL_UI_ERROR: {exc}\n")
         _sys.stderr.flush()
-        return None
+        return None, "review"
     try:
         recorded = record_gap_decisions(session_dir, resolved)
     except Exception as exc:  # pragma: no cover - defensive
         _sys.stderr.write(f"GAP_FILL_RECORD_ERROR: {exc}\n")
         _sys.stderr.flush()
-        return None
-    return recorded
+        return None, "record"
+    return recorded, None
+
+
+def _gap_abort_summary(failed_stage: str | None, level_text: str) -> str:
+    """Honest abort message per failed stage.
+
+    ``record`` failures must not read as "could not be resolved" — the
+    user answered; persisting the decision to the ledger failed. The
+    ledger is the audit trail (decisions are never backfillable), so
+    the call still aborts, but the summary has to name the real fault
+    so the operator fixes the disk/permissions problem instead of
+    re-answering the same questions.
+    """
+    if failed_stage == "record":
+        return (
+            "gap-fill aborted (answers were provided but writing them to "
+            "the decision ledger failed; see GAP_FILL_RECORD_ERROR on "
+            "stderr, fix the cause, then re-run)"
+        )
+    return f"gap-fill aborted ({level_text} could not be resolved)"
