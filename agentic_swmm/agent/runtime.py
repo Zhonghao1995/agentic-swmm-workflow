@@ -47,6 +47,7 @@ def run_openai_plan(
     emit,
     prior_session_state: dict | None = None,
     system_prompt_extras: list[str] | None = None,
+    provider_route: str | None = None,
 ) -> PlannerRun:
     write_event(
         trace_path,
@@ -54,7 +55,11 @@ def run_openai_plan(
             "event": "session_start",
             "goal": goal,
             "session_dir": str(executor.session_dir),
-            "planner": "openai",
+            # "llm" = the LLM planner ran (legacy traces say "openai"
+            # here regardless of backend); provider_route names the
+            # ADR-0008 route that actually served the turns.
+            "planner": "llm",
+            "provider_route": provider_route,
             "model": model,
             "allowed_tools": registry.sorted_names(),
         },
@@ -135,10 +140,11 @@ def run_openai_plan(
     state_path, context_path = write_session_state(
         session_dir=executor.session_dir,
         goal=goal,
-        planner="openai",
+        planner="llm",
         model=model,
         allowed_tools=registry.sorted_names(),
         outcome=outcome,
+        provider_route=provider_route,
     )
     write_event(trace_path, {"event": "session_state", "state": str(state_path), "context_summary": str(context_path)})
 

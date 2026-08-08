@@ -538,7 +538,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("aiswmm> Session: openai", proc.stdout)
             self.assertIn("doctor", proc.stdout)
             report = (session_dir / "final_report.md").read_text(encoding="utf-8")
-            self.assertIn("- planner: openai", report)
+            # "llm" = the LLM planner ran (ADR-0009 honest labels).
+            self.assertIn("- planner: llm", report)
             # Runtime UX PRD: inline allowed_tools list dropped; report
             # now references agent_trace.jsonl in a footer line.
             self.assertIn("agent_trace.jsonl", report)
@@ -814,7 +815,11 @@ class AgenticSwmmCliTests(unittest.TestCase):
 
             self.assertIn("state checked", proc.stdout)
             state = json.loads((session_dir / "session_state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["planner"], "openai")
+            # "llm" = the LLM planner ran; the route that served it is
+            # recorded separately since ADR-0009 (legacy traces carried
+            # the literal "openai" for both meanings).
+            self.assertEqual(state["planner"], "llm")
+            self.assertEqual(state["provider_route"], "openai")
             self.assertIn("retry_policy", state)
             self.assertIn("intent_contracts", state)
             self.assertIn("workflow_state", state)

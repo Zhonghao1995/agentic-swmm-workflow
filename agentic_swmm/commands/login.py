@@ -109,7 +109,9 @@ def _current_default_provider() -> str:
     the shipped default so a bare ``aiswmm login`` always lands on a
     handler we can run.
     """
-    default = str(load_config().get("provider.default", DEFAULT_PROVIDER))
+    from agentic_swmm.providers.selection import resolve_selection
+
+    default = resolve_selection().route
     return default if default in ROUTES else DEFAULT_PROVIDER
 
 
