@@ -167,57 +167,28 @@ class ToolHandlersSkillFamilyTests(unittest.TestCase):
                         "longer registered — _build_tools() missed an import.",
                     )
 
-    def test_tool_registry_reexports_migrated_handlers(self) -> None:
-        """``tool_registry`` keeps the private ``_*_tool`` import paths so
-        existing test fixtures and callers do not need to migrate.
+    def test_registry_compat_reexports_are_exactly_the_documented_set(self) -> None:
+        """Families own their symbols since the issue #358 final sweep.
 
-        Exception (issue #358 seam era): families that self-register via
-        ``tool_specs()`` own their handler symbols in-module and the
-        registry no longer re-exports them (a repo-wide grep confirmed
-        zero external importers before each removal). Their registration
-        is guarded by ``test_family_tool_specs_seam.py`` instead; the
-        ``*_args`` mappers keep their registry re-exports.
+        The registry re-exports ONLY the names external consumers still
+        import or monkeypatch through it (grep sweep 2026-08-08):
+        ``_is_tty_for_l5`` (L5 headless tests), ``_list_dir_tool``
+        (digest extractor test), ``_plot_run_args`` (plot handler
+        tests). Everything else lives with its family and is guarded by
+        ``test_family_tool_specs_seam.py``. Grow or shrink this set only
+        with a fresh grep of consumers, in the same PR.
         """
         from agentic_swmm.agent import tool_registry
 
-        seam_owned = {
-            "_run_swmm_inp_tool",
-            "_inspect_plot_options_tool",
-            "_plot_run_tool",
-            "_map_run_tool",
-            "_read_rpt_summary_tool",
-            # issue #358 C2
-            "_apply_onboarding_tool",
-            "_build_inp_tool",
-            "_network_qa_tool",
-            "_network_to_inp_tool",
-            "_synth_swmm_from_bbox_tool",
-            # issue #358 C3 (the family also owns its shared schema fn)
-            "_swmm_calibrate_common_schema",
-            "_swmm_calibrate_dream_zs_tool",
-            "_swmm_calibrate_search_tool",
-            "_swmm_calibrate_sceua_tool",
-            "_swmm_calibrate_tool",
-            "_swmm_sensitivity_scan_tool",
-            "_swmm_validate_tool",
-            # issue #358 C4
-            "_web_fetch_url_tool",
-            "_web_search_tool",
-            "_swmm_uncertainty_common_schema",
-            "_swmm_sensitivity_oat_tool",
-            "_swmm_sensitivity_morris_tool",
-            "_swmm_sensitivity_sobol_tool",
-            "_swmm_rainfall_ensemble_tool",
-            "_swmm_uncertainty_source_decomposition_tool",
-        }
+        compat = {"_is_tty_for_l5", "_list_dir_tool", "_plot_run_args"}
         for _, symbols, _ in _MIGRATED_FAMILIES:
             for symbol in symbols:
-                if symbol in seam_owned:
-                    continue
                 with self.subTest(symbol=symbol):
-                    self.assertTrue(
+                    self.assertEqual(
                         hasattr(tool_registry, symbol),
-                        f"tool_registry.{symbol} re-export missing.",
+                        symbol in compat,
+                        f"tool_registry.{symbol}: re-export state diverges "
+                        "from the documented compat set.",
                     )
 
 
