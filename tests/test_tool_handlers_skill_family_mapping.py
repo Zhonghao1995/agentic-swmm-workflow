@@ -192,6 +192,14 @@ class ToolHandlersSkillFamilyTests(unittest.TestCase):
             "_network_qa_tool",
             "_network_to_inp_tool",
             "_synth_swmm_from_bbox_tool",
+            # issue #358 C3 (the family also owns its shared schema fn)
+            "_swmm_calibrate_common_schema",
+            "_swmm_calibrate_dream_zs_tool",
+            "_swmm_calibrate_search_tool",
+            "_swmm_calibrate_sceua_tool",
+            "_swmm_calibrate_tool",
+            "_swmm_sensitivity_scan_tool",
+            "_swmm_validate_tool",
         }
         for _, symbols, _ in _MIGRATED_FAMILIES:
             for symbol in symbols:
