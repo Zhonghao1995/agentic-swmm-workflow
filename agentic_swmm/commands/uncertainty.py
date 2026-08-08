@@ -404,7 +404,17 @@ def plan_main(args: argparse.Namespace) -> int:
             _print_error(str(exc))
             return 1
 
-        print(format_estimate_block(estimate))
+        # The estimate block is consent chrome: it must stay visible
+        # whenever the y/N prompt will run (the user consents to THESE
+        # numbers) and when --abort-on-estimate makes it the product.
+        # Only --quiet together with --yes suppresses it; the numbers
+        # remain machine-readable in the payload's resource_estimate.
+        if not (
+            getattr(args, "quiet", False)
+            and args.yes
+            and not args.abort_on_estimate
+        ):
+            print(format_estimate_block(estimate))
         payload["resource_estimate"] = estimate.to_dict()
         text = json.dumps(payload, indent=2, sort_keys=True)
 
@@ -427,9 +437,10 @@ def plan_main(args: argparse.Namespace) -> int:
     else:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="utf-8")
-        print(
-            f"wrote {plan.n_samples_actual}-sample plan to {args.out}"
-        )
+        if not getattr(args, "quiet", False):
+            print(
+                f"wrote {plan.n_samples_actual}-sample plan to {args.out}"
+            )
     return 0
 
 

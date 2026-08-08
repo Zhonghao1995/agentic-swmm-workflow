@@ -183,12 +183,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "lessons_learned.md. Useful when the RAG step is the slow part.",
     )
     parser.add_argument(
-        "--rebuild",
-        action="store_true",
-        help="Full-rebuild fallback: force re-scan of all runs by the "
-        "memory summariser (clears .last_sync.json).",
-    )
-    parser.add_argument(
         "--refresh-moc",
         action="store_true",
         help="Force-refresh runs/INDEX.md (the Obsidian MOC) without "
