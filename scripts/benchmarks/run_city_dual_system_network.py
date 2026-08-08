@@ -188,7 +188,23 @@ def main() -> None:
                 "model.out",
             ]
         )
-        runner = {"attempted": True, "ok": True, "reason": None}
+        # The runner script's manifest is the structured source of truth:
+        # swmm5 exits 0 even when it writes "ERROR n:" lines, so a
+        # hardcoded ok=True here reported a fatally-broken network as a
+        # passing benchmark (found 2026-08-08: rpt ERROR 141/145 vs
+        # manifest ok=true).
+        runner_manifest_path = paths["runner_dir"] / "manifest.json"
+        try:
+            runner_manifest = json.loads(runner_manifest_path.read_text(encoding="utf-8"))
+            run_ok = bool(runner_manifest.get("run_ok"))
+            solver_errors = runner_manifest.get("solver_errors") or []
+            runner = {
+                "attempted": True,
+                "ok": run_ok,
+                "reason": None if run_ok else ("; ".join(str(e) for e in solver_errors)[:400] or "swmm reported errors"),
+            }
+        except (OSError, json.JSONDecodeError) as exc:
+            runner = {"attempted": True, "ok": False, "reason": f"runner manifest unreadable: {exc}"}
     else:
         runner = {"attempted": False, "ok": None, "reason": "swmm5 not found; build and QA completed"}
 
@@ -196,7 +212,9 @@ def main() -> None:
     network_qa = json.loads(paths["network_qa"].read_text(encoding="utf-8"))
     builder_manifest = json.loads(paths["builder_manifest"].read_text(encoding="utf-8"))
     summary = {
-        "ok": bool(network_qa.get("ok")) and bool(builder_manifest.get("ok")),
+        # A failed simulation fails the benchmark; runner ok=None (swmm5
+        # absent) keeps the historical build+QA-only meaning.
+        "ok": bool(network_qa.get("ok")) and bool(builder_manifest.get("ok")) and runner["ok"] is not False,
         "benchmark": "city-dual-system-network",
         "run_dir": str(RUN_DIR.relative_to(REPO_ROOT)),
         "network_counts": network["meta"]["counts"],

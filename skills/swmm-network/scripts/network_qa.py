@@ -108,6 +108,30 @@ def run_qa(network: dict) -> dict:
         if incoming[jid] == 0 and outgoing[jid] == 0:
             add_issue(issues, "warning", "isolated_node", "Junction is isolated", jid)
 
+    # SWMM allows exactly one inlet link and zero outlet links per outfall
+    # (engine ERROR 141; a system with no acceptable outlet then dies with
+    # ERROR 145). This structural rule was missing, which let an unrunnable
+    # network sail through QA with ok=true (found 2026-08-08 by mining the
+    # city-dual-system benchmark's rpt against its manifest).
+    for o in network.get("outfalls", []):
+        oid = o["id"]
+        if incoming[oid] > 1:
+            add_issue(
+                issues,
+                "error",
+                "outfall_multiple_inlets",
+                f"Outfall has {incoming[oid]} inlet links; SWMM allows exactly one (engine ERROR 141)",
+                oid,
+            )
+        if outgoing[oid] > 0:
+            add_issue(
+                issues,
+                "error",
+                "outfall_has_outlet",
+                "Outfall has an outgoing link; SWMM allows none (engine ERROR 141)",
+                oid,
+            )
+
     for start in [j["id"] for j in network.get("junctions", [])]:
         q = deque([start])
         seen = {start}
