@@ -51,6 +51,19 @@ def test_data_dir_still_excluded_from_public_wheel() -> None:
     assert _setup._include_public_resource(Path("data/anything.csv")) is False
 
 
+def test_every_registry_memory_dir_is_actually_scanned() -> None:
+    """Passing the filter is not enough: a directory absent from
+    PUBLIC_RESOURCE_DIRS never reaches the filter at all. That is how
+    the four modeling-memory files silently dropped out of the public
+    wheel (caught by the v0.8.0 pre-release wheel smoke)."""
+    for relative in _registry_memory_paths():
+        top = relative.parts[0]
+        assert top in _setup.PUBLIC_RESOURCE_DIRS, (
+            f"{relative} passes the public filter but its top-level dir "
+            f"{top!r} is not scanned by tracked_resource_files()"
+        )
+
+
 if __name__ == "__main__":
     import sys
 

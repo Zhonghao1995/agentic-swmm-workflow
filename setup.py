@@ -12,6 +12,12 @@ PUBLIC_RESOURCE_DIRS = (
     "examples",
     "integrations",
     "mcp",
+    # "memory" must be scanned for the public wheel too:
+    # _include_public_resource narrows it to exactly PUBLIC_MEMORY_FILES,
+    # but a directory absent from this tuple never reaches that filter at
+    # all, which is how the four required modeling-memory files silently
+    # dropped out of the public wheel (caught by the v0.8.0 wheel smoke).
+    "memory",
     "scripts",
     "skills",
     "web",
@@ -19,7 +25,6 @@ PUBLIC_RESOURCE_DIRS = (
 
 PRIVATE_RESOURCE_DIRS = PUBLIC_RESOURCE_DIRS + (
     "data",
-    "memory",
 )
 
 PUBLIC_SKILLS = {
