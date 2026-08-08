@@ -37,9 +37,15 @@ import re
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _repo_output_path, _repo_path, _resolve_run_dir
+from agentic_swmm.agent.tool_handlers._shared import (
+    _failure,
+    _object,
+    _repo_output_path,
+    _repo_path,
+    _resolve_run_dir,
+)
 from agentic_swmm.agent.error_remediation import file_resolution_error
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
 from agentic_swmm.agent.swmm_runtime.run_artifacts import (
@@ -261,4 +267,52 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["_inspect_plot_options_tool", "_plot_run_args", "_plot_run_tool"]
+__all__ = ["_inspect_plot_options_tool", "_plot_run_args", "_plot_run_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration).
+
+    ``_plot_run_tool`` is built lazily by this module's PEP 562
+    ``__getattr__``; a bare-name reference here would be a plain globals
+    lookup that never triggers it, so the handler is resolved through
+    module attribute access instead.
+    """
+    import agentic_swmm.agent.tool_handlers.swmm_plot as _self
+
+    return [
+        ToolSpec(
+            "inspect_plot_options",
+            "Inspect a run directory or INP file and return selectable rainfall series, nodes, and node output attributes for plotting.",
+            _object({"run_dir": {"type": "string"}, "inp_path": {"type": "string"}, "out_file": {"type": "string"}}, []),
+            _inspect_plot_options_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "plot_run",
+            "Create a rainfall + flow hydrograph plot from a run directory. "
+            "The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) "
+            "OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). "
+            "'node' and 'link' are mutually exclusive; pass one. "
+            "Pick conduit IDs from the .rpt Link Flow Summary; pick node IDs from inspect_plot_options. "
+            "Optional day-window cropping: supply focus_day (YYYY-MM-DD) to crop to one day; "
+            "window_start and window_end (HH:MM) further narrow to a sub-day window — "
+            "both require focus_day (the server rejects window_start/window_end without focus_day).",
+            _object(
+                {
+                    "run_dir": {"type": "string"},
+                    "node": {"type": "string"},
+                    "node_attr": {"type": "string"},
+                    "link": {"type": "string"},
+                    "rain_ts": {"type": "string"},
+                    "rain_kind": {"type": "string", "enum": ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"]},
+                    "out_png": {"type": "string"},
+                    "focus_day": {"type": "string", "description": "Crop plot axis to this day (YYYY-MM-DD format)."},
+                    "window_start": {"type": "string", "description": "Sub-day window start (HH:MM). Only valid together with focus_day; rejected without it."},
+                    "window_end": {"type": "string", "description": "Sub-day window end (HH:MM). Only valid together with focus_day; rejected without it."},
+                },
+                ["run_dir"],
+            ),
+            _self._plot_run_tool,
+        ),
+    ]

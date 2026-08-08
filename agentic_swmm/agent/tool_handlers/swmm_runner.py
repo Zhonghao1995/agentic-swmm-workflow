@@ -37,7 +37,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _resolve_or_create_run_dir,
     _safe_name,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.utils.paths import repo_root
 
 _log = logging.getLogger(__name__)
@@ -161,4 +161,24 @@ def __getattr__(name: str) -> Any:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-__all__ = ["_run_swmm_inp_args", "_run_swmm_inp_tool"]
+__all__ = ["_run_swmm_inp_args", "_run_swmm_inp_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration).
+
+    ``_run_swmm_inp_tool`` is built lazily by this module's PEP 562
+    ``__getattr__``; module attribute access (not a bare-name globals
+    lookup) is what triggers it.
+    """
+    import agentic_swmm.agent.tool_handlers.swmm_runner as _self
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "run_swmm_inp",
+            "Run a repository or imported external .inp file through the constrained swmm-runner CLI wrapper.",
+            _object({"inp_path": {"type": "string"}, "run_id": {"type": "string"}, "run_dir": {"type": "string"}, "node": {"type": "string"}}, ["inp_path"]),
+            _self._run_swmm_inp_tool,
+        ),
+    ]

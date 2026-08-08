@@ -28,7 +28,24 @@ def test_pilot_families_register_through_the_seam():
 
 def test_family_specs_come_from_the_family_modules():
     specs = {spec.name for spec in tool_registry._family_specs()}
-    assert specs == {"fetch_swmm_from_canada", "run_climate_scenarios"}
+    assert specs == {
+        "fetch_swmm_from_canada",
+        "run_climate_scenarios",
+        "map_run",
+        "inspect_plot_options",
+        "plot_run",
+        "read_rpt_summary",
+        "run_swmm_inp",
+    }
+
+
+def test_c1_families_keep_their_read_only_grants():
+    tools = tool_registry._build_tools()
+    assert tools["inspect_plot_options"].is_read_only is True
+    assert tools["read_rpt_summary"].is_read_only is True
+    assert tools["plot_run"].is_read_only is False
+    assert tools["map_run"].is_read_only is False
+    assert tools["run_swmm_inp"].is_read_only is False
 
 
 def test_duplicate_family_tool_name_fails_loudly(monkeypatch):

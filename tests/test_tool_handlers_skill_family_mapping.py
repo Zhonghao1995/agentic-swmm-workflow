@@ -169,11 +169,28 @@ class ToolHandlersSkillFamilyTests(unittest.TestCase):
 
     def test_tool_registry_reexports_migrated_handlers(self) -> None:
         """``tool_registry`` keeps the private ``_*_tool`` import paths so
-        existing test fixtures and callers do not need to migrate."""
+        existing test fixtures and callers do not need to migrate.
+
+        Exception (issue #358 seam era): families that self-register via
+        ``tool_specs()`` own their handler symbols in-module and the
+        registry no longer re-exports them (a repo-wide grep confirmed
+        zero external importers before each removal). Their registration
+        is guarded by ``test_family_tool_specs_seam.py`` instead; the
+        ``*_args`` mappers keep their registry re-exports.
+        """
         from agentic_swmm.agent import tool_registry
 
+        seam_owned = {
+            "_run_swmm_inp_tool",
+            "_inspect_plot_options_tool",
+            "_plot_run_tool",
+            "_map_run_tool",
+            "_read_rpt_summary_tool",
+        }
         for _, symbols, _ in _MIGRATED_FAMILIES:
             for symbol in symbols:
+                if symbol in seam_owned:
+                    continue
                 with self.subTest(symbol=symbol):
                     self.assertTrue(
                         hasattr(tool_registry, symbol),

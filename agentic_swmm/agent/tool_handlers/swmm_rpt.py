@@ -60,8 +60,8 @@ from agentic_swmm.agent.swmm_runtime.rpt_summary import (
     parse_section as _parse_section,
     parse_variable_section as _parse_variable_section,
 )
-from agentic_swmm.agent.tool_handlers._shared import _failure
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 # ---------------------------------------------------------------------------
@@ -196,4 +196,43 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-__all__ = ["_read_rpt_summary_tool", "_parse_variable_section"]
+__all__ = ["_read_rpt_summary_tool", "_parse_variable_section", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        ToolSpec(
+            "read_rpt_summary",
+            (
+                "Parse a structured summary section from a SWMM .rpt file. "
+                "AVAILABLE SECTIONS (the 'section' enum): "
+                "'Link Flow Summary' = every conduit's peak flow / time-of-peak / Max-Full ratio (use to find the busiest pipe); "
+                "'Outfall Loading Summary' = every outfall node's flow frequency / avg / max / total volume + pollutant loads when water quality is enabled; "
+                "'Node Inflow Summary' = every node's lateral and total inflow (use for upstream-network diagnostics); "
+                "'Runoff Quality Continuity' = pollutant mass balance at the land surface (one column per pollutant, kg); "
+                "'Quality Routing Continuity' = pollutant mass balance through the pipe network (one column per pollutant, kg); "
+                "'Subcatchment Washoff Summary' = total pollutant load washed off each subcatchment (kg per pollutant); "
+                "'Link Pollutant Load Summary' = total pollutant load transported through each link (kg per pollutant). "
+                "CALL THIS TOOL ONCE PER SECTION YOU NEED — the tool is stateless, so issuing multiple calls with different 'section' values is the correct and cheap pattern; do NOT try to fetch 'Outfall Loading' by re-reading the rpt with read_file. "
+                "Returns top N rows (default 5) as typed JSON objects sorted by the per-section peak/max column. "
+                "USE THIS, NOT read_file or search_files, for ALL .rpt data extraction in agent flows."
+            ),
+            _object({
+                "rpt_path": {"type": "string"},
+                "section": {"type": "string", "enum": [
+                    "Link Flow Summary",
+                    "Outfall Loading Summary",
+                    "Node Inflow Summary",
+                    "Runoff Quality Continuity",
+                    "Quality Routing Continuity",
+                    "Subcatchment Washoff Summary",
+                    "Link Pollutant Load Summary",
+                ]},
+                "top_n": {"type": "integer"},
+                "sort_by": {"type": "string"},
+            }, ["rpt_path", "section"]),
+            _read_rpt_summary_tool,
+            is_read_only=True,
+        ),
+    ]
