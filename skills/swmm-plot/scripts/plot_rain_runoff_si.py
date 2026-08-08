@@ -346,7 +346,29 @@ def main():
         key = f'node,{args.node},{args.node_attr}'
         flow_label = 'Flow'
         flow_ylabel = 'Flow (m³/s)'
-    flow_df = extract(str(args.out_file), key)
+    try:
+        flow_df = extract(str(args.out_file), key)
+    except Exception:
+        # swmmtoolbox surfaces a missing id as a raw pandas
+        # "No objects to concatenate" ValueError. Turn that into an
+        # actionable message listing what the .out actually contains.
+        kind = 'link' if args.link else 'node'
+        ident = args.link or args.node
+        try:
+            from swmmtoolbox import catalog
+
+            available = sorted({str(row[1]) for row in catalog(str(args.out_file), kind) if len(row) > 1})
+        except Exception:
+            available = []
+        listing = ', '.join(available[:20]) if available else '(could not list ids)'
+        print(
+            f"error: {kind} '{ident}' not found in {args.out_file}. "
+            f"Available {kind} ids: {listing}. "
+            "Pick one with --node/--link, or run `aiswmm plot` without "
+            "--node to use the model's first outfall.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
 
