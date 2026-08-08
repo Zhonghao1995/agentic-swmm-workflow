@@ -29,8 +29,22 @@ from agentic_swmm.utils.paths import repo_root
 
 
 def read_manifest(run_dir: Path) -> dict[str, Any]:
-    """Return the run's manifest dict, or ``{}`` when none parses."""
-    candidates = [run_dir / "manifest.json", *sorted(run_dir.glob("**/manifest.json"))]
+    """Return the run's manifest dict, or ``{}`` when none parses.
+
+    Runner-stage manifest first: ``find_inp``/``find_out`` read the
+    runner schema's ``inp`` / ``files`` keys, and on the canonical
+    layout the root ``manifest.json`` is the CLI top-manifest (no such
+    keys) while the sorted ``**`` glob surfaced ``05_builder`` before
+    ``06_runner`` — either way the manifest fast-path was dead and
+    every lookup fell through to the convention globs (2026-08-08).
+    Root-first order remains for legacy flat runs via the fallback.
+    """
+    candidates: list[Path] = []
+    runner_dir = run_layout.find_stage(run_dir, run_layout.RUNNER)
+    if runner_dir is not None:
+        candidates.append(runner_dir / "manifest.json")
+    candidates.append(run_dir / "manifest.json")
+    candidates.extend(sorted(run_dir.glob("**/manifest.json")))
     for path in candidates:
         if path.exists():
             try:
