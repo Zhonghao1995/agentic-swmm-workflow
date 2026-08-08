@@ -272,3 +272,47 @@ def test_is_skip_memory_run_matches_agent_pattern(
     skip, reason = is_skip_memory_run(runs_dir)
     assert skip is True
     assert "agent" in reason.lower()
+
+
+def test_is_skip_memory_run_acceptance_under_nested_runs_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated ancestor named ``runs`` must not defeat the
+    ``runs/acceptance/`` skip: ``parts.index("runs")`` anchored the
+    FIRST occurrence, so acceptance-run data under a nested
+    ``.../runs/.../runs/acceptance/...`` path leaked into long-term
+    memory (found 2026-08-08, reproduced)."""
+    from agentic_swmm.memory.audit_hook import is_skip_memory_run
+
+    monkeypatch.delenv("AISWMM_SKIP_MEMORY", raising=False)
+    run_dir = tmp_path / "runs" / "archive" / "project" / "runs" / "acceptance" / "case-x"
+    run_dir.mkdir(parents=True)
+    skip, reason = is_skip_memory_run(run_dir)
+    assert skip is True
+    assert "acceptance" in reason
+
+
+def test_is_skip_memory_run_plain_acceptance_path_still_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentic_swmm.memory.audit_hook import is_skip_memory_run
+
+    monkeypatch.delenv("AISWMM_SKIP_MEMORY", raising=False)
+    run_dir = tmp_path / "runs" / "acceptance" / "case-y"
+    run_dir.mkdir(parents=True)
+    skip, _reason = is_skip_memory_run(run_dir)
+    assert skip is True
+
+
+def test_is_skip_memory_run_ordinary_run_not_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``acceptance`` elsewhere in the path (not adjacent to a runs/
+    component) must not trigger the skip."""
+    from agentic_swmm.memory.audit_hook import is_skip_memory_run
+
+    monkeypatch.delenv("AISWMM_SKIP_MEMORY", raising=False)
+    run_dir = tmp_path / "acceptance" / "runs" / "real-case"
+    run_dir.mkdir(parents=True)
+    skip, _reason = is_skip_memory_run(run_dir)
+    assert skip is False
