@@ -32,11 +32,10 @@ from agentic_swmm.agent.types import ToolCall
 def _format_rainfall_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Map ``format_rainfall`` args to ``swmm-climate.format_rainfall`` MCP."""
 
-    # Lazy import — see ``swmm_network`` module docstring.
-    from agentic_swmm.agent.tool_registry import (
-        _repo_output_path,
-        _required_repo_file,
-    )
+    # Lazy import — see ``swmm_network`` module docstring. (#358 PR A
+    # dropped ``_required_repo_file`` here: it was imported but never
+    # called in this mapper.)
+    from agentic_swmm.agent.tool_registry import _repo_output_path
 
     # At least one of input_csv, input_glob_patterns, or input_dat_paths is
     # required at the MCP layer; we validate the single-CSV case explicitly

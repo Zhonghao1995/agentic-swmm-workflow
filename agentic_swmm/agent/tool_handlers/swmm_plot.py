@@ -19,9 +19,10 @@ Two handler shapes live here:
   can choose them explicitly before plotting (see issue #125).
 
 ``_make_mcp_routed_handler`` and the cross-family path/INP resolver
-helpers (``_required_repo_dir``, ``_resolve_existing_inp``,
-``_node_suggestions``, ``_node_attribute_options``) still live in
-``tool_registry`` (deferred per #211 / shared across other groups).
+helpers (``_resolve_existing_inp``, ``_node_suggestions``,
+``_node_attribute_options``) live in ``tool_handlers/_shared.py``
+(issue #358 PR A); ``tool_registry`` re-exports them for the
+historical lazy-import sites.
 They are imported lazily from inside the handler bodies and from the
 factory-build helper so the family-module load does not race the
 ``tool_registry`` partial-module load.

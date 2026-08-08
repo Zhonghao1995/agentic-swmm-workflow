@@ -9,15 +9,19 @@ extraction under that plan:
 * ``_capabilities_tool`` — surfaces the registry's own ToolSpec listing,
   so it logically belongs in the registry that owns the data.
 * ``_list_mcp_servers_tool``, ``_list_mcp_tools_tool``,
-  ``_call_mcp_tool_tool``, ``_mcp_failure`` — the MCP bridge. These
-  proxy through to ``mcp_client`` / ``mcp_pool`` and only exist to wrap
-  external MCP calls into the local ToolCall shape; splitting them out
-  would gain nothing.
-* ``_node_suggestions``, ``_plot_selection_options_for_inp``,
-  ``_run_tests_tool``, ``_run_allowed_command_tool`` — registry-internal
-  helpers consumed by the deep-module args mappers (Group A's
-  ``plot_run`` / ``run_swmm_inp``); moving them would create an upward
-  dependency from a deep module back into the registry.
+  ``_call_mcp_tool_tool`` — the MCP bridge. These proxy through to
+  ``mcp_client`` / ``mcp_pool`` and only exist to wrap external MCP
+  calls into the local ToolCall shape; splitting them out would gain
+  nothing.
+* ``_run_tests_tool``, ``_run_allowed_command_tool`` — thin registered
+  handlers over the shared allowlist helpers.
+
+The pure leaf helpers that used to live here (schema building, the
+repo-sandboxed path/INP resolvers, node/plot option derivation, MCP
+schema mapping, the command allowlist) moved to
+``tool_handlers/_shared.py`` in issue #358 PR A and are re-imported at
+the top of this file, which is what finally lets family modules import
+them without riding the registry's end-of-file cycle.
 
 If a future refactor wants to revisit this, this docstring is the
 record of the intentional decision — it isn't an oversight from the
@@ -43,10 +47,31 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _repo_path,
     _run_process_tool,
     _safe_name,
+    # Leaf helpers extracted in issue #358 PR A. Re-imported here so every
+    # historical ``from agentic_swmm.agent.tool_registry import X`` site
+    # (family modules' lazy imports, tests, and the
+    # ``monkeypatch.setattr(tool_registry, "_resolve_inp_for_run", ...)``
+    # seam) keeps working byte-for-byte, and so the names are bound on the
+    # partial module before the end-of-file family imports execute.
+    _PYTEST_BANNED_FLAGS,
+    _command_allowed,
+    _default_node_attribute_options,
+    _find_repo_inp,
+    _map_mcp_tool_schema,
+    _mcp_failure,
+    _mcp_fallback_tools,
+    _mcp_server,
+    _node_attribute_options,
+    _node_script_ok,
+    _node_suggestions,
+    _normalize_json_schema,
+    _object,
+    _pytest_args_ok,
+    _required_repo_file,
+    _resolve_existing_inp,
+    _resolve_inp_for_run,
 )
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_options
-from agentic_swmm.commands.plot import NODE_ATTRIBUTE_CHOICES, NODE_ATTRIBUTE_LABELS
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import load_mcp_registry
 from agentic_swmm.utils.paths import repo_root
@@ -243,11 +268,9 @@ class AgentToolRegistry:
         return {key: value for key, value in result.items() if key in allowed_keys}
 
 
-def _object(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
-    schema: dict[str, Any] = {"type": "object", "properties": properties, "additionalProperties": False}
-    if required:
-        schema["required"] = required
-    return schema
+# ``_object`` and the other leaf schema/path/allowlist helpers moved to
+# ``tool_handlers/_shared.py`` (issue #358 PR A); they are re-imported at
+# the top of this file.
 
 
 # ---------------------------------------------------------------------------
@@ -1485,50 +1508,8 @@ def _call_mcp_tool_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"called MCP tool {server['name']}.{call.args['tool']}"}
 
 
-def _mcp_failure(call: ToolCall, summary: str, *, server: str | None = None) -> dict[str, Any]:
-    result = _failure(call, summary)
-    result["recovery"] = "Use list_mcp_servers/list_mcp_tools to refresh available MCP tools, then retry with corrected server/tool/arguments or fall back to the CLI wrapper."
-    result["fallback_tools"] = _mcp_fallback_tools(server or str(call.args.get("server") or ""))
-    return result
-
-
-def _map_mcp_tool_schema(server_name: str, tool: dict[str, Any]) -> dict[str, Any]:
-    name = str(tool.get("name") or "tool")
-    description = str(tool.get("description") or f"MCP tool exposed by {server_name}.")
-    schema = tool.get("inputSchema")
-    if not isinstance(schema, dict):
-        schema = tool.get("schema") if isinstance(tool.get("schema"), dict) else {}
-    parameters = _normalize_json_schema(schema)
-    return {
-        "server": server_name,
-        "mcp_tool": name,
-        "planner_tool": "call_mcp_tool",
-        "description": description,
-        "arguments": {"server": server_name, "tool": name, "arguments_schema": parameters},
-    }
-
-
-def _normalize_json_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    if not schema:
-        return {"type": "object", "properties": {}, "additionalProperties": True}
-    normalized = dict(schema)
-    normalized.setdefault("type", "object")
-    normalized.setdefault("properties", {})
-    normalized.setdefault("additionalProperties", True)
-    if not isinstance(normalized.get("properties"), dict):
-        normalized["properties"] = {}
-    return normalized
-
-
-def _mcp_fallback_tools(server_name: str) -> list[str]:
-    mapping = {
-        "swmm-builder": ["build_inp"],
-        "swmm-climate": ["format_rainfall"],
-        "swmm-network": ["network_qa", "network_to_inp"],
-        "swmm-plot": ["plot_run"],
-        "swmm-runner": ["run_swmm_inp"],
-    }
-    return mapping.get(server_name, ["list_mcp_servers", "list_mcp_tools"])
+# MCP failure/schema mapping helpers moved to ``tool_handlers/_shared.py``
+# (issue #358 PR A); re-imported at the top of this file.
 
 
 def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -1564,83 +1545,13 @@ def _run_allowed_command_tool(call: ToolCall, session_dir: Path) -> dict[str, An
     return _run_process_tool(call, session_dir, command, cwd=repo_root(), timeout=timeout)
 
 
-def _node_suggestions(inp_path: str | None, limit: int = 8) -> list[str]:
-    if not inp_path:
-        return []
-    candidate = _resolve_existing_inp(inp_path)
-    if candidate is None:
-        return []
-    sections: dict[str, list[str]] = {"[OUTFALLS]": [], "[JUNCTIONS]": []}
-    section: str | None = None
-    for line in candidate.read_text(encoding="utf-8", errors="ignore").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith(";"):
-            continue
-        if stripped.startswith("[") and stripped.endswith("]"):
-            section = stripped.upper()
-            continue
-        if section in {"[OUTFALLS]", "[JUNCTIONS]"}:
-            name = stripped.split()[0]
-            if name not in sections[section]:
-                sections[section].append(name)
-    suggestions = [*sections["[OUTFALLS]"], *sections["[JUNCTIONS]"]]
-    deduped = list(dict.fromkeys(suggestions))
-    return deduped[:limit]
-
-
-def _plot_selection_options_for_inp(inp_path: str | None) -> dict[str, Any]:
-    if not inp_path:
-        return {"rainfall_options": [], "node_attribute_options": _default_node_attribute_options()}
-    inp = _resolve_existing_inp(inp_path)
-    if inp is None:
-        return {"rainfall_options": [], "node_attribute_options": _default_node_attribute_options()}
-    return {
-        "rainfall_options": rainfall_timeseries_options(inp),
-        "node_attribute_options": _default_node_attribute_options(),
-    }
-
-
-def _node_attribute_options(out_file: Path | None, node_options: list[str]) -> list[dict[str, Any]]:
-    if out_file is None or not out_file.exists():
-        return _default_node_attribute_options()
-    try:
-        from swmmtoolbox import catalog
-
-        rows = catalog(str(out_file), "node")
-    except Exception:
-        return _default_node_attribute_options()
-    attrs: list[str] = []
-    for row in rows:
-        if len(row) < 3 or row[0] != "node":
-            continue
-        node, attr = str(row[1]), str(row[2])
-        if node_options and node not in node_options:
-            continue
-        if attr not in attrs:
-            attrs.append(attr)
-    if not attrs:
-        return _default_node_attribute_options()
-    preferred = [attr for attr in NODE_ATTRIBUTE_CHOICES if attr in attrs]
-    remainder = [attr for attr in attrs if attr not in preferred]
-    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in [*preferred, *remainder]]
-
-
-def _default_node_attribute_options() -> list[dict[str, str]]:
-    return [{"name": attr, "label": NODE_ATTRIBUTE_LABELS.get(attr, attr.replace("_", " "))} for attr in NODE_ATTRIBUTE_CHOICES]
-
-
-def _resolve_existing_inp(value: str) -> Path | None:
-    path = _repo_path(value)
-    if path is not None and path.exists() and path.is_file() and path.suffix.lower() == ".inp":
-        return path
-    external = Path(value).expanduser()
-    try:
-        external = external.resolve()
-    except OSError:
-        return None
-    if external.exists() and external.is_file() and external.suffix.lower() == ".inp":
-        return external
-    return _find_repo_inp(value)
+# INP/node resolution and plot-option helpers moved to
+# ``tool_handlers/_shared.py`` (issue #358 PR A); re-imported at the top
+# of this file. ``_plot_selection_options_for_inp`` was deleted outright:
+# the dependency map found zero callers anywhere in the repo (the
+# ``_inspect_plot_options_tool`` in swmm_plot.py inlines the equivalent
+# logic), and this file's old header docstring claiming otherwise was
+# stale.
 
 
 # PRD #128 Phase 2 Group C: ``_patch_paths`` moved to
@@ -1648,145 +1559,26 @@ def _resolve_existing_inp(value: str) -> Path | None:
 # (its sole caller). Re-exported above via runtime_ops.
 
 
-# pytest flags that can load arbitrary code (plugins) or point pytest at an
-# attacker-controlled config/ini. Refused so ``run_allowed_command`` cannot be
-# turned into an arbitrary-code-execution primitive (review P1-2).
-_PYTEST_BANNED_FLAGS = {"-p", "-c", "--config-file", "-o", "--override-ini", "--pyargs"}
-
-
-def _pytest_args_ok(args: list[str]) -> bool:
-    """Every positional target must resolve inside the repo; no plugin/config injection."""
-    for arg in args:
-        if arg.startswith("-"):
-            flag = arg.split("=", 1)[0]
-            if flag in _PYTEST_BANNED_FLAGS:
-                return False
-            continue
-        # Positional: a path or a nodeid (``path::Class::test``). Only the file
-        # part is a path; it must resolve inside the repo.
-        path_part = arg.split("::", 1)[0]
-        if path_part and _repo_path(path_part) is None:
-            return False
-    return True
-
-
-def _node_script_ok(target: str) -> bool:
-    """Allow only ``.mjs`` files that resolve to something under ``scripts/``."""
-    resolved = _repo_path(target)
-    if resolved is None or resolved.suffix != ".mjs":
-        return False
-    try:
-        rel = resolved.relative_to(repo_root().resolve())
-    except ValueError:
-        return False
-    return rel.parts[:1] == ("scripts",)
-
-
-def _command_allowed(command: list[str]) -> bool:
-    exe = Path(command[0]).name.lower()
-    if exe in {"pytest", "pytest.exe"}:
-        return _pytest_args_ok(command[1:])
-    if exe in {"python", "python.exe"} or command[0] == sys.executable:
-        if not (len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}):
-            return False
-        return _pytest_args_ok(command[3:]) if command[2] == "pytest" else True
-    if exe in {"node", "node.exe"}:
-        return len(command) >= 2 and _node_script_ok(command[1])
-    if exe in {"swmm5", "swmm5.exe", "swmm5.cmd"}:
-        return True
-    return False
-
-
-def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) -> Path | dict[str, Any]:
-    value = call.args.get(key)
-    if not isinstance(value, str) or not value.strip():
-        return _failure(call, f"missing required file argument: {key}")
-    path = _repo_path(value)
-    if path is None:
-        return _failure(call, f"{key} must be inside repository")
-    if suffix and path.suffix.lower() != suffix:
-        return _failure(call, f"{key} must end with {suffix}")
-    if not path.exists() or not path.is_file():
-        return _failure(call, f"file not found: {path}")
-    return path
-
-
-def _resolve_inp_for_run(call: ToolCall) -> Path | dict[str, Any]:
-    raw = str(call.args.get("inp_path", "")).strip()
-    if not raw:
-        return _failure(call, "missing required file argument: inp_path")
-    repo_file = _required_repo_file(call, "inp_path", suffix=".inp")
-    if not isinstance(repo_file, dict):
-        return repo_file
-    resolved = _find_repo_inp(raw)
-    if resolved is not None:
-        return resolved
-    external = Path(raw).expanduser()
-    try:
-        external = external.resolve()
-    except OSError:
-        return _failure(call, f"inp_path could not be resolved: {raw}")
-    if external.suffix.lower() != ".inp":
-        return _failure(call, "inp_path must end with .inp")
-    if not external.exists() or not external.is_file():
-        return _failure(call, f"external INP file not found: {external}")
-    return external
-
-
-def _find_repo_inp(value: str) -> Path | None:
-    if not value or Path(value).is_absolute() or "/" in value:
-        return None
-    root = repo_root() / "examples"
-    if not root.exists():
-        return None
-    matches = sorted(path for path in root.rglob(value) if path.is_file() and path.suffix.lower() == ".inp")
-    return matches[0] if matches else None
-
-
-def _required_repo_dir(call: ToolCall, key: str) -> Path | dict[str, Any]:
-    value = call.args.get(key)
-    if not isinstance(value, str) or not value.strip():
-        return _failure(call, f"missing required directory argument: {key}")
-    path = _repo_path(value)
-    if path is None:
-        return _failure(call, f"{key} must be inside repository")
-    if not path.exists() or not path.is_dir():
-        return _failure(call, f"directory not found: {path}")
-    return path
-
-
-def _optional_repo_output_dir(call: ToolCall, key: str) -> Path | dict[str, Any] | None:
-    value = call.args.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        return _failure(call, f"{key} must be a non-empty string")
-    path = _repo_path(value)
-    if path is None:
-        return _failure(call, f"{key} must be inside repository")
-    path.mkdir(parents=True, exist_ok=True)
-    return path
-
-
-def _mcp_server(name: str) -> dict[str, Any] | None:
-    for server in load_mcp_registry():
-        if str(server.get("name")) == name:
-            return server
-    return None
+# The run_allowed_command allowlist (security review P1-2), the
+# repo-sandboxed file/INP resolvers, and ``_mcp_server`` moved to
+# ``tool_handlers/_shared.py`` (issue #358 PR A); re-imported at the top
+# of this file. ``_required_repo_dir`` and ``_optional_repo_output_dir``
+# were deleted outright: the dependency map found zero callers anywhere
+# in the repo or tests (only stale comment mentions).
 
 
 # PRD #128 Phase 2 Group A: family-module re-exports.
 #
-# These imports sit at the very end of this file so every helper the
-# family modules pull back in (``_resolve_inp_for_run``,
+# These imports sit at the very end of this file so the handler symbols
+# they re-export are bound on the partial ``tool_registry`` module by
+# the time ``_build_tools()`` references them. Since issue #358 PR A the
+# leaf helpers the family modules pull back in (``_resolve_inp_for_run``,
 # ``_node_suggestions``, ``_node_attribute_options``,
-# ``_resolve_existing_inp``, ``_required_repo_file``,
-# ``_required_repo_dir``, ``_optional_repo_output_dir``) is already
-# bound on the partial ``tool_registry`` module by the time the family
-# submodules execute their ``from agentic_swmm.agent.tool_registry
-# import ...`` statements. (``_make_mcp_routed_handler`` no longer
-# rides this cycle — it lives in ``tool_handlers/_shared.py`` and the
-# family modules import it from there directly.)
+# ``_resolve_existing_inp``, ``_required_repo_file``) live in
+# ``tool_handlers/_shared.py`` and are re-imported at the TOP of this
+# file, so those lazy back-imports resolve without depending on this
+# block at all; family modules can equally import them from ``_shared``
+# directly, which is where the follow-up PRs take them.
 # Re-exporting the handler symbols here keeps ``_build_tools()`` and
 # any existing ``from agentic_swmm.agent.tool_registry import _*_args``
 # call sites working byte-for-byte after the move.
