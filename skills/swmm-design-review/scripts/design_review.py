@@ -172,7 +172,13 @@ def _parse_rpt_section(rpt_text: str, title: str, raw_columns: int) -> list[list
             break
         tokens = stripped.split()
         if len(tokens) != raw_columns:
-            break
+            # A mismatched count used to end the section, silently dropping
+            # every row after e.g. a zero-volume "0.000 ltr" line (11 tokens
+            # vs 9). Real terminators (blank/dashes/banner) are handled
+            # above, so skip just this row (mirrors rpt_summary's canonical
+            # walker, fixed the same day).
+            cursor += 1
+            continue
         if tokens[0] == "System":
             cursor += 1
             continue
@@ -239,12 +245,12 @@ def _parse_node_inflow_summary(rpt_text: str) -> list[dict[str, Any]] | None:
 
     NOTE: SWMM sometimes writes the volume columns as bare integers (e.g. ``0``)
     or with a unit suffix (``0.000 ltr``) when volumes are zero.  The ``ltr``
-    suffix produces 11 tokens instead of 9, which causes the token-count guard
-    in ``_parse_rpt_section`` to stop the section early.  Rows with non-zero
-    volumes always use the 9-token format and are captured correctly; zero-volume
-    rows are skipped by both this parser and by ``rpt_summary.parse_section``
-    (which uses the same token-count guard).  The parity test therefore asserts
-    agreement on the set of *captured* nodes, not on every node in the file.
+    suffix produces 11 tokens instead of 9.  Historically the token-count guard
+    stopped the WHOLE section at such a row, silently dropping every node after
+    it; since 2026-08-08 both this parser and ``rpt_summary`` skip only the
+    mismatched row and keep walking, so rows with non-zero volumes are captured
+    wherever they appear.  Zero-volume unit-suffix rows themselves remain
+    unparsed (skipped), which the parity test's captured-set comparison covers.
     """
     if not _section_exists(rpt_text, "Node Inflow Summary"):
         return None

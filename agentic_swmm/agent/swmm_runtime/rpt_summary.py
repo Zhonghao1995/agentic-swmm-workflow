@@ -44,14 +44,18 @@ sorting (e.g. ``swmm_rpt.py``) sort after calling the parse function.
 Section end is detected by:
   * blank line,
   * line starting ``---`` (Outfall closing rule),
-  * token-count mismatch vs expected row width,
   * next section's asterisk banner (``***``).
 
 ``System`` totals rows (first token == ``"System"``) are skipped so callers
 see real-node rows only.
 
-On a per-row parse error (non-numeric token where a float is expected) the
-row is skipped — a single malformed line does not fail the whole call.
+A row whose token count does not match the schema, or whose per-row parse
+raises (non-numeric token where a float is expected), is skipped and counted
+— it does NOT terminate the section. SWMM writes real data rows with odd
+token counts (e.g. zero-volume rows with a unit suffix), so treating a
+mismatch as end-of-section silently dropped every row after it (2026-08-08).
+``parse_section_with_stats`` returns ``(rows, skipped)`` so callers can
+surface the completeness signal; ``parse_section`` keeps the old signature.
 """
 
 from __future__ import annotations
@@ -349,6 +353,14 @@ def parse_continuity(text: str) -> dict[str, float]:
 
 
 def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
+    """Locate ``schema.title`` and return its data rows (skip stats dropped)."""
+    rows, _skipped = parse_section_with_stats(rpt_text, schema)
+    return rows
+
+
+def parse_section_with_stats(
+    rpt_text: str, schema: SectionSchema
+) -> tuple[list[dict[str, Any]], int]:
     """Locate ``schema.title`` in ``rpt_text`` and return its data rows.
 
     The SWMM writer formats each section as::
@@ -456,6 +468,7 @@ def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
     cursor = _skip_to_second_dash_row(lines, title_line_idx + 1)
 
     rows: list[dict[str, Any]] = []
+    skipped = 0
     while cursor < len(lines):
         line = lines[cursor]
         stripped = line.strip()
@@ -465,14 +478,21 @@ def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
             break
         tokens = stripped.split()
         n = len(tokens)
-        if schema.min_columns:
-            if n < schema.raw_columns:
-                break
-        else:
-            if n != schema.raw_columns:
-                # End-of-section marker — most often blank line / next
-                # section / System totals row with a different token count.
-                break
+        if (schema.min_columns and n < schema.raw_columns) or (
+            not schema.min_columns and n != schema.raw_columns
+        ):
+            # A mismatched token count used to BREAK the whole loop as an
+            # end-of-section marker. But genuine terminators (blank line,
+            # dashes, banner) are already handled above, and SWMM emits
+            # real data rows with odd counts — e.g. zero-volume rows as
+            # "0.000 ltr" (11 tokens instead of 9) — so breaking silently
+            # dropped every node AFTER such a row (found 2026-08-08 static
+            # sweep; the design-review twin documented the symptom). Skip
+            # just this row and keep walking; the caller can surface the
+            # skip count.
+            skipped += 1
+            cursor += 1
+            continue
         # Outfall ``System`` totals row is a roll-up, not an individual node.
         if tokens[0] == "System":
             cursor += 1
@@ -494,9 +514,9 @@ def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
             rows.append(row)
         except (ValueError, IndexError):
             # Malformed row — skip; one bad line must not fail the section.
-            pass
+            skipped += 1
         cursor += 1
-    return rows
+    return rows, skipped
 
 
 def parse_variable_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
