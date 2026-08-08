@@ -105,6 +105,14 @@ class WithinLookbackNaiveTests(unittest.TestCase):
             _within_lookback(row, cutoff_iso="2026-07-01T00:00:00Z")
         )
 
+    def test_naive_cutoff_is_read_as_utc_too(self) -> None:
+        # A caller-supplied naive cutoff gets the same UTC default as
+        # row stamps: aware row vs naive cutoff must not raise either.
+        row = {"recorded_utc": "2026-06-30T00:00:00+00:00"}
+        self.assertFalse(
+            _within_lookback(row, cutoff_iso="2026-07-01T00:00:00")
+        )
+
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
