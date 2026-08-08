@@ -19,7 +19,8 @@ import unittest
 # the PR body. Removing one: same deal (aliases stay in the router).
 PINNED_CLI_VERBS = [
     "agent", "audit", "bootstrap", "calibrate",
-    "capabilities", "case", "cite", "cite-param", "compare", "config",
+    "capabilities", "case", "cite", "cite-param", "climate", "compare",
+    "config",
     "demo", "doctor", "expert", "help", "list", "login", "map", "mcp",
     "memory", "model", "plot", "report",
     "review", "run", "runs", "setup", "skill", "storm",

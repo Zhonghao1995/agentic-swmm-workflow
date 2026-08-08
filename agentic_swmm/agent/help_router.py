@@ -50,7 +50,7 @@ VERB_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict(
         # time. None of them reads a memory store: they generate an
         # input, plan a scan, and fit parameters. A user scanning for
         # "how do I calibrate" had no reason to look under Memory.
-        ("Analysis", ["storm", "calibrate", "uncertainty"]),
+        ("Analysis", ["storm", "calibrate", "climate", "uncertainty"]),
         (
             "Memory",
             [
@@ -94,6 +94,7 @@ VERB_DESCRIPTIONS: dict[str, str] = {
     # in v0.7.6. The description said "stub today" for two releases after
     # that, so the product was talking its own newest capability down.
     "calibrate": "Fit parameters to observed data (SCE-UA, checkpointed).",
+    "climate": "Batch precipitation-scaled climate scenarios and compare responses.",
     "bootstrap": "Scaffold memory stores in a project directory.",
     "doctor": "Diagnose install, memory stores, opt-out knobs.",
     "capabilities": "Print the agent's registered tool capabilities.",

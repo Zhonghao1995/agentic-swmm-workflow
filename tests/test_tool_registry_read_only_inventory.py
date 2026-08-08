@@ -63,6 +63,9 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     # model.inp (05_builder/) + swmm_model.zip (10_upstream/swmmcanada/)
     # into the run dir, so not read-only.
     "fetch_swmm_from_canada": False,
+    # Climate scenario batches (ADR-0010): writes scenario INPs, runs
+    # SWMM per scenario, writes the 03_climate summary — not read-only.
+    "run_climate_scenarios": False,
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools.
     # All is_read_only=False — calibration runs SWMM and writes files.
     "swmm_calibrate": False,

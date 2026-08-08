@@ -7,6 +7,8 @@
     "swmm",
     "canada",
     "加拿大",
+    "climate",
+    "气候",
     ".inp",
     "audit",
     "plot",
@@ -98,6 +100,17 @@
       "stop_conditions": ["AOI outside Canada (use synth-from-bbox)", "SWMMCanada service unreachable"],
       "next_user_prompt": "Please provide the Canadian area (bbox or GeoJSON polygon) and a rainfall date window (start and end dates, YYYY-MM-DD).",
       "exclusive_when": "the AOI is in Canada: the service auto-selects the city's real published storm network where covered and synthesizes elsewhere in Canada — outside Canada, synth-from-bbox is the path"
+    },
+    {
+      "id": "climate-batch",
+      "skills": ["swmm-runner"],
+      "keywords": ["climate change", "climate scenario", "climate scenarios", "climate forcing", "uplift", "rcp", "ssp", "气候变化", "气候情景", "未来降雨", "增雨"],
+      "required_inputs": ["inp_path"],
+      "optional_inputs": ["factors", "node", "run_dir"],
+      "preferred_tools": ["run_climate_scenarios"],
+      "stop_conditions": ["missing inp_path", "scenario run failure"],
+      "next_user_prompt": "Please provide the model INP (ideally the calibrated one) and optionally the precipitation factors, e.g. 1.0,1.1,1.2,1.35.",
+      "exclusive_when": "the user wants to compare the model's response under scaled future rainfall — calibrate first, then force the calibrated model"
     },
     {
       "id": "runner",

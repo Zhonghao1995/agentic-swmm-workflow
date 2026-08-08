@@ -215,6 +215,78 @@ _build_raingage_section_tool = _build_raingage_handler()
 _generate_design_storm_tool = _build_design_storm_handler()
 
 
+def run_climate_scenarios_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """In-process handler for ``run_climate_scenarios`` (ADR-0010).
+
+    Batch-runs precipitation-scaled scenarios of an INP through the
+    audited runner script and writes the comparison summary into the
+    canonical ``03_climate/`` stage. Pure in-process orchestration
+    (like ``fetch_swmm_from_canada``), so it needs no MCP routing and
+    no new binding in EXPECTED_BINDINGS.
+    """
+    from agentic_swmm.agent.tool_handlers._shared import _timestamped_run_dir
+    from agentic_swmm.agent.tool_registry import _resolve_existing_inp
+
+    inp_raw = call.args.get("inp_path")
+    if not isinstance(inp_raw, str) or not inp_raw.strip():
+        return _failure(call, "run_climate_scenarios requires inp_path")
+    inp = _resolve_existing_inp(inp_raw)
+    if inp is None:
+        return _failure(call, f"INP not found (in-repo paths only): {inp_raw}")
+
+    from agentic_swmm.agent.swmm_runtime.climate_scenarios import (
+        DEFAULT_SCENARIOS,
+        parse_factors,
+        run_climate_batch,
+    )
+
+    factors_raw = call.args.get("factors")
+    try:
+        scenarios = (
+            parse_factors(str(factors_raw)) if factors_raw else DEFAULT_SCENARIOS
+        )
+    except ValueError as exc:
+        return _failure(call, f"bad factors: {exc}")
+
+    explicit_run_dir = call.args.get("run_dir")
+    if isinstance(explicit_run_dir, str) and explicit_run_dir.strip():
+        run_dir = Path(explicit_run_dir)
+    else:
+        run_dir = _timestamped_run_dir(call, prefix="climate")
+
+    node_raw = call.args.get("node")
+    node = node_raw.strip() if isinstance(node_raw, str) and node_raw.strip() else None
+
+    result = run_climate_batch(
+        base_inp=inp,
+        run_dir=run_dir,
+        scenarios=scenarios,
+        node=node,
+    )
+    return {
+        "tool": call.name,
+        "ok": result.ok,
+        "run_dir": result.run_dir,
+        "node": result.node,
+        "summary_json": result.summary_json,
+        "summary_md": result.summary_md,
+        "scenarios": [
+            {
+                "name": run.name,
+                "precip_factor": run.precip_factor,
+                "run_ok": run.run_ok,
+                "metrics": run.metrics,
+                "error": run.error,
+            }
+            for run in result.scenarios
+        ],
+        "summary": (
+            f"{sum(1 for r in result.scenarios if r.run_ok)}/{len(result.scenarios)} "
+            f"scenarios ran; summary at {result.summary_md}"
+        ),
+    }
+
+
 __all__ = [
     "_build_raingage_section_args",
     "_build_raingage_section_tool",
@@ -222,4 +294,5 @@ __all__ = [
     "_format_rainfall_tool",
     "_generate_design_storm_args",
     "_generate_design_storm_tool",
+    "run_climate_scenarios_tool",
 ]
