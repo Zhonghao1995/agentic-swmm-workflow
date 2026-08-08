@@ -764,7 +764,16 @@ class OptOutFlagStatus:
 # Knobs whose value is a secret and must never be echoed to stdout (doctor
 # prints presence only for these). Config flags below are NOT secret — seeing
 # their value (e.g. SET=1) is useful.
-_SECRET_KNOBS: frozenset[str] = frozenset({"ANTHROPIC_API_KEY"})
+def _route_key_envs() -> frozenset[str]:
+    from agentic_swmm.providers.routes import ROUTES
+
+    return frozenset(spec.key_env for spec in ROUTES.values() if spec.key_env)
+
+
+# Every provider route's key env is secret by construction (ADR-0008
+# table), so any of them that appears in the knobs table now or in the
+# future is presence-only, never echoed.
+_SECRET_KNOBS: frozenset[str] = _route_key_envs()
 
 
 _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (

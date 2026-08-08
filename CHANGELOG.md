@@ -2,6 +2,89 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.8.0 - Provider routes, the SWMMCanada chain, climate scenarios (2026-08-08)
+
+Four feature PRs in one day (#357, #360, #361, #362): connect any LLM the way
+you already pay for it, get a real Canadian model from a bounding box, and take
+it from calibration to climate-change what-ifs. Full suite green
+(**3,289 passed**) with a real-swmm5 end-to-end behind each new pipeline.
+
+### Added
+
+- **Ten LLM provider routes from one table** (#357). `openai` (default),
+  `anthropic`, `codex` (a local OpenAI-compatible gateway in front of a
+  ChatGPT subscription), `openrouter`, `deepseek`, `groq`, `gemini`, local
+  keyless `ollama` and `lmstudio`, and `custom` (any `/v1` endpoint: vLLM,
+  proxies, corporate gateways). Three pure-stdlib wire clients cover all of
+  them, including a new chat/completions client with function calling. Adding
+  a provider is one route-table entry.
+- **A detect-first setup wizard.** Bare `aiswmm setup` on a terminal now
+  probes what you already have (exported keys, a running Ollama or LM Studio,
+  a local gateway on :8317/:20128), lists the models local endpoints actually
+  serve, asks only for what is missing, and verifies the connection at the
+  end. Every non-interactive invocation keeps its historical behavior
+  byte for byte.
+- **A local fallback chain.** `provider.fallback = ollama` keeps a session
+  alive through outages, quota windows, and missing keys: the switch engages
+  only on structural failures (401/403/429/5xx, connection loss, absent
+  credentials), replays the full conversation into the fallback, and warns
+  loudly. Request bugs still surface.
+- **`aiswmm login <route>`** for every route, a per-route `login --status`
+  table, and a route-aware doctor.
+- **The SWMMCanada chain, wired and validated live** (#361). One goal can now
+  fetch a real municipal model for a Canadian area, simulate it, and audit it
+  in one run folder. Validated against the hosted service: a downtown
+  Victoria AOI became a real 423-subcatchment network in 173 s, ran under
+  swmm5 unmodified, and audited cleanly; the whole chain took 178 s. Coverage
+  wording now describes the service's model (real pipes where a supported
+  city covers the AOI, 35 cities at last sync, synthesized elsewhere in
+  Canada) instead of embedding a list that goes stale, the natural-language
+  route understands Canadian city phrasing (English and Chinese), and doctor
+  probes the upstream's health endpoint when configured. An opt-in live
+  smoke test (`AISWMM_SWMMCANADA_LIVE=1`) encodes the validation.
+- **`aiswmm climate`: calibrate first, then force** (#362). Batch a model
+  under precipitation-scaled climate scenarios (default 1.0/1.10/1.20/1.35,
+  any `--factors` list) and get a per-scenario comparison of precipitation,
+  runoff, flooding, outflow, and peak flow. `--params-json best_params.json
+  --patch-map patch_map.json` applies calibrated parameters first through
+  the same patch-map contract `aiswmm calibrate` produces, so the deltas are
+  measured on the model that matches reality. Scenario folders are
+  self-contained, land in the canonical `03_climate/` stage, and a failed
+  scenario keeps its row instead of vanishing. Also available to the agent
+  as the `run_climate_scenarios` tool with English and Chinese intent
+  phrasing.
+
+### Fixed
+
+- **`aiswmm run` without `--node` reports a real peak.** The historical
+  literal default `O1` silently produced a null peak on any model that names
+  its outfalls differently, which includes every SWMMCanada and swmmanywhere
+  build. The default now resolves the INP's first outfall.
+- **The audit hook's RAG refresh actually runs.** It invoked
+  `refresh_after_run.py` with the fallback script's flags, so with the
+  refresh entry point installed every audit's corpus refresh exited on a
+  usage error that best-effort handling swallowed. Both invocation shapes
+  are now correct and pinned by tests.
+- **Session labels tell the truth** (#360). Traces and session state write
+  `planner: llm|rule` plus a `provider_route` field naming the route that
+  actually served the turns, instead of the historical `"openai"` literal
+  that meant "an LLM ran" on any backend.
+
+### Changed
+
+- **Provider and model resolution has one seam** (#360).
+  `resolve_selection()` replaces fourteen hand-rolled config lookups, and
+  selecting a route in config without storing a model now resolves the
+  route's shipped default instead of erroring downstream.
+- `agent/swmm_runtime` exposes a lazy package facade; package-level imports
+  are the blessed form and stay import-cheap.
+
+### Also
+
+- Deliberate deferrals are tracked with measured inventories instead of left
+  implicit: #358 (a per-family registration seam for the tool registry) and
+  #359 (closing package-facade bypasses).
+
 ## v0.7.7 - Honesty, security, and install hardening (2026-07-16)
 
 A hardening pass across five cross-cutting seams: run honesty, headless safety, provider correctness, scientific-result integrity, and the pip install path. Full suite green (**3,213 passed**), with a focused regression test behind every fix. One behaviour change to know about (below).

@@ -31,7 +31,7 @@
   </a>
 </p>
 
-> **Pre-1.0** · stable **v0.7.7** · `pip install aiswmm==0.7.7` · [CHANGELOG](CHANGELOG.md)
+> **Pre-1.0** · stable **v0.8.0** · `pip install aiswmm==0.8.0` · [CHANGELOG](CHANGELOG.md)
 
 > [!TIP]
 > **Headaches from tedious model setup?** Try our another project [**SWMMCanada**](https://github.com/Zhonghao1995/SWMMCanada), our automated model-building project: draw an area anywhere in Canada and get a ready-to-run SWMM model. Up and running now.
@@ -41,14 +41,16 @@
 - **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, with a verification-first workflow and Obsidian-compatible audit trail.
 - **Five minutes, one command:** an Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.
 - **Live demo (no install, offline case replay):** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
-- **[SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) upstream, ready to use:** inside Canada, real municipal storm networks for 8 cities or synthesis anywhere else in the country, built from Canadian open data and fetched directly into aiswmm through the `fetch_swmm_from_canada` tool; outside Canada, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)-based synthesis covers the rest of the globe. Two complementary upstream sources.
+- **[SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) upstream, ready to use:** inside Canada, real municipal storm networks for 35 cities or synthesis anywhere else in the country, built from Canadian open data and fetched directly into aiswmm through the `fetch_swmm_from_canada` tool; outside Canada, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)-based synthesis covers the rest of the globe. Two complementary upstream sources, and one goal can chain fetch, simulate, and audit into a single run folder.
+- **Bring the LLM you already pay for:** ten provider routes behind one detect-first `aiswmm setup` wizard (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini, local Ollama and LM Studio, OpenAI-compatible gateways, custom endpoints), with an optional local fallback chain that keeps sessions alive through outages and quota windows.
+- **Calibrate, then force:** `aiswmm climate` batches precipitation-scaled climate scenarios over a calibrated model and writes a per-scenario comparison of runoff, flooding, outflow, and peak flow.
 - **A domain-specific agent runtime, managed-agent style:** every session is self-describing (verbatim goal, auto-derived agent snapshot with tool/skill/prompt hashes, environment fingerprint, append-only event log, status lifecycle), and the orchestration plus verification rules are open source and auditable.
 - **Runtime-portable:** the Skills and MCP servers also work with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 - **Published research:** our paper is published in *AI for Engineering* (MDPI), June 9, 2026: [read the paper](https://doi.org/10.3390/aieng1010005).
 
 ## Project Overview
 
-Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, upstream model generation from [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) inside Canada (real storm networks for 8 cities, synthesis anywhere else in the country) and SWMManywhere-based synthesis outside Canada, deterministic SWMM execution, QA checks, provenance tracking, calibration support, documentation, and modelling memory, while keeping human modellers in control.
+Agentic SWMM is an open-source, verification-first framework for reproducible and extensible stormwater modelling, starting with EPA SWMM. It connects QGIS-based preprocessing, upstream model generation from [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) inside Canada (real storm networks for 35 cities, synthesis anywhere else in the country) and SWMManywhere-based synthesis outside Canada, deterministic SWMM execution, QA checks, provenance tracking, calibration and climate-scenario support, documentation, and modelling memory, while keeping human modellers in control.
 
 **The goal is not to replace SWMM or the modeller, but to build an agentic modelling layer that makes stormwater-modelling workflows easier to reproduce, audit, extend, remember, and trust.**  Agentic SWMM comes with aiswmm as its built-in runtime. Users can describe a modelling goal in natural language, while model execution remains deterministic, inspectable, and artifact-based. The repository's MCP servers and Skills can also be used with other agent runtimes, including Codex, Claude, OpenClaw, and Hermes.
 
@@ -62,7 +64,7 @@ License: **MIT**
   <a href="https://doi.org/10.3390/aieng1010005"><img src="https://img.shields.io/badge/Published-AI%20for%20Engineering-2DA44E" alt="Published in AI for Engineering" /></a>
   <a href="https://doi.org/10.31223/X5F47G"><img src="https://img.shields.io/badge/Preprint-EarthArXiv-1F6FEB" alt="Preprint on EarthArXiv" /></a>
   <a href="https://doi.org/10.5281/zenodo.20337281"><img src="https://img.shields.io/badge/Zenodo-DOI-1682D4" alt="Zenodo DOI" /></a>
-  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.7.7-1F6FEB" alt="latest release v0.7.7" /></a>
+  <a href="https://github.com/Zhonghao1995/agentic-swmm-workflow/releases/latest"><img src="https://img.shields.io/badge/release-v0.8.0-1F6FEB" alt="latest release v0.8.0" /></a>
 </p>
 
 
@@ -94,10 +96,10 @@ Windows PowerShell:
 irm https://aiswmm.com/install.ps1 | iex
 ```
 
-Reproducible run (pinned Docker image, v0.7.7), no local install:
+Reproducible run (pinned Docker image, v0.8.0), no local install:
 
 ```bash
-docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.7.7 acceptance
+docker run --rm -v "$PWD/runs:/app/runs" ghcr.io/zhonghao1995/agentic-swmm-workflow:v0.8.0 acceptance
 ```
 
 After installation, launch the runtime with `aiswmm`.
@@ -170,7 +172,7 @@ Agentic SWMM is the **SWMM engine** within a larger effort toward a *trustworthy
 | --- | --- | --- |
 | [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer:** top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
 | [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer:** ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal pipes for 8 Canadian cities) | SWMM today; extending to MIKE+ and InfoWorks ICM |
-| **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.7.7 |
+| **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.8.0 |
 | [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine:** headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
 
 ## Codex / Claude / OpenClaw / Hermes ready

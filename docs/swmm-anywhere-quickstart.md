@@ -78,13 +78,14 @@ Launch the interactive runtime:
 aiswmm
 ```
 
-The four-prompt sequence below is the recommended walkthrough; it mirrors the case-study run and exercises every part of the synth-data path. Replace the bbox with one of your own when you want to try a different region.
+The four-prompt sequence below is the recommended walkthrough; it mirrors the case-study run and exercises every part of the synth-data path. Replace the bbox with one of your own when you want to try a different region. (The planner's intent vocabulary is bilingual, so the equivalent Chinese phrasing works verbatim too.)
 
 ### Prompt 1 — ask SWMManywhere (via aiswmm) to synthesise a plausible network
 
 ```
-我要给伦敦 Greenwich 区一个 1×1 km 的范围建一个 SWMM 模型，没有真实管网数据。
-bbox 是 [0.04020, 51.55759, 0.05450, 51.56660]。请你用 SWMManywhere 从 OSM + DEM 推一个 plausible 的管网。
+I want a SWMM model for a 1x1 km area in Greenwich, London, and I have no real
+pipe data. The bbox is [0.04020, 51.55759, 0.05450, 51.56660]. Use SWMManywhere
+to derive a plausible network from OSM + DEM.
 ```
 
 What the planner does:
@@ -104,7 +105,7 @@ Expected end-state (the contents of `10_swmmanywhere/` are SWMManywhere's output
 ### Prompt 2 — run SWMM with aiswmm's own swmm5 binary
 
 ```
-跑这个 synth.inp，用你自己的 swmm5 不要 pyswmm，然后审计这个 run。
+Run this synth.inp with your own swmm5 binary (not pyswmm), then audit the run.
 ```
 
 What the planner does:
@@ -123,7 +124,7 @@ Expected artefacts under `swmm_run/`:
 ### Prompt 3 — render the spatial network layout
 
 ```
-给我看一下这个网络长什么样，画一张布局图。
+Show me what this network looks like: draw a layout map.
 ```
 
 What the planner does:
@@ -136,8 +137,8 @@ Expected output: a PNG roughly equivalent to [`figs/swmm_anywhere_network_map.pn
 ### Prompt 4 — peak-flow hydrograph for one conduit
 
 ```
-RPT 里面 peak 流量最大的 conduit 是哪个？给我画那一条以及它上游 3 段的 hydrograph，
-范围 00:00 到 02:00。
+Which conduit has the highest peak flow in the RPT? Plot its hydrograph plus
+its 3 upstream segments, window 00:00 to 02:00.
 ```
 
 This is where the **HITL pattern in `skills/swmm-plot/SKILL.md`** kicks in. The planner does **not** silently pick defaults; it inspects the RPT `Link Flow Summary`, lists the top 3–5 candidate conduits with their peak values + times, and asks you to confirm before it draws anything. After you confirm, it calls `aiswmm plot --run-dir <run>/swmm_run --link <id> --window-start 00:00 --window-end 02:00`.
@@ -149,8 +150,9 @@ Expected output: a two-panel PNG with conduit flow on top and the 15-minute stor
 You can compress the 4 prompts into one if you want one-shot behaviour:
 
 ```
-我有伦敦 Greenwich 区 1×1 km 的 bbox [0.04020, 51.55759, 0.05450, 51.56660] 但没有管网数据。
-请帮我合成一个 SWMM 模型，跑 24 小时，做 audit，画网络图和峰值 conduit 的水文图。
+I have a 1x1 km bbox in Greenwich, London [0.04020, 51.55759, 0.05450, 51.56660]
+and no pipe data. Synthesise a SWMM model, run 24 hours, audit it, and plot the
+network map plus the peak conduit's hydrograph.
 ```
 
 Single-prompt mode trades the HITL plot interaction for speed — the planner will pick the highest-peak conduit automatically and explain its choice in the response.
