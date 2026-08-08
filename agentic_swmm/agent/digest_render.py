@@ -270,7 +270,21 @@ def _format_continuity(payload: dict[str, Any]) -> str | None:
 
 
 def _block_for_run(run_dir: Path) -> str:
+    # The peak/continuity fields live in the RUNNER manifest. On the
+    # canonical layout that is <run_dir>/06_runner/manifest.json; the
+    # CLI's top-level manifest.json carries no metrics at all, and
+    # agent-path runs have no root manifest whatsoever (the MCP runner
+    # writes straight into the runner stage). Root-only lookup meant
+    # the session-end digest silently dropped peak/continuity for CLI
+    # runs and vanished entirely for agent runs (found 2026-08-08).
+    # Root stays as the fallback for legacy flat runs, whose root
+    # manifest IS the runner manifest.
+    from agentic_swmm.agent.swmm_runtime import run_layout
+
+    runner_dir = run_layout.find_stage(run_dir, run_layout.RUNNER)
     manifest_path = run_dir / "manifest.json"
+    if runner_dir is not None and (runner_dir / "manifest.json").exists():
+        manifest_path = runner_dir / "manifest.json"
     if not manifest_path.exists():
         return ""
     try:

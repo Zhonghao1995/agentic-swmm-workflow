@@ -488,7 +488,17 @@ def detect_failure_patterns(
         patterns.add("missing_provenance")
     if "experiment_note.md" not in audit_files_found:
         patterns.add("missing_evidence_boundary")
-    if not (run_dir / "manifest.json").exists() and artifact_status(provenance, "top_manifest") != "found":
+    # "Has a manifest" must accept stage manifests: agent-path runs
+    # never write a root manifest.json (only `aiswmm run` does), but
+    # they DO carry the runner manifest under 06_runner/. Root-only
+    # lookup stamped missing_manifest -> partial_run on every healthy
+    # agent-driven run (found 2026-08-08). Stage names mirror the
+    # audit script's RUNNER/BUILDER lists.
+    manifest_on_disk = (run_dir / "manifest.json").exists() or any(
+        (run_dir / stage / "manifest.json").exists()
+        for stage in ("06_runner", "05_runner", "05_builder", "04_builder")
+    )
+    if not manifest_on_disk and artifact_status(provenance, "top_manifest") != "found":
         patterns.add("missing_manifest")
 
     # Filesystem ground truth beats a stale provenance record: legacy
