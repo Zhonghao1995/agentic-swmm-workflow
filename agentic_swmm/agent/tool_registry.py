@@ -364,10 +364,6 @@ def _build_tools() -> dict[str, ToolSpec]:
 # PRD #128 Phase 2 Group C: ``_doctor_tool`` and ``_retrieve_memory_tool``
 # moved to ``tool_handlers/introspection.py``. Re-exported here so import
 # paths stay stable.
-from agentic_swmm.agent.tool_handlers.introspection import (  # noqa: E402,F401
-    _doctor_tool,
-    _retrieve_memory_tool,
-)
 
 
 # PRD #128 Phase 2 Group C: HITL / L5 gap-fill governance handlers moved
@@ -375,52 +371,22 @@ from agentic_swmm.agent.tool_handlers.introspection import (  # noqa: E402,F401
 # stable — ``_is_tty_for_l5`` is monkeypatched by the L5 headless-block
 # tests at ``agentic_swmm.agent.tool_registry._is_tty_for_l5`` and that
 # path must keep resolving.
-from agentic_swmm.agent.tool_handlers.gap_fill import (  # noqa: E402,F401
-    _build_default_llm_provider,
-    _is_tty_for_l5,
-    _request_expert_review_tool,
-    _request_gap_judgement_tool,
-    _restitch_l5_fields_in_ledger,
-)
 
 
 # PRD #128 Phase 2 Group C: runtime file/repo/skill ops moved to
 # ``tool_handlers/runtime_ops.py`` (together with the
 # ``_patch_paths`` / ``_normalize_search_glob`` helpers). Re-exported
 # here so import paths stay stable.
-from agentic_swmm.agent.tool_handlers.runtime_ops import (  # noqa: E402,F401
-    _apply_patch_tool,
-    _git_diff_tool,
-    _list_dir_tool,
-    _list_skills_tool,
-    _normalize_search_glob,
-    _patch_paths,
-    _read_file_tool,
-    _read_skill_tool,
-    _search_files_tool,
-)
 
 
 
 # PRD #128: ``_demo_acceptance_tool`` moved to ``tool_handlers/demo.py``.
 # Re-exported here so import paths stay stable.
-from agentic_swmm.agent.tool_handlers.demo import (  # noqa: E402,F401
-    _demo_acceptance_tool,
-)
 
 
 # Water-quality / design-review / report-export handlers
 # (PRD_water_quality.md PR3, PRD_design_review.md PR2, PRD_report_export.md PR2).
 # All three are direct-subprocess handlers (not MCP-routed).
-from agentic_swmm.agent.tool_handlers.swmm_wq import (  # noqa: E402,F401
-    _read_wq_loads_tool,
-)
-from agentic_swmm.agent.tool_handlers.swmm_review import (  # noqa: E402,F401
-    _review_run_tool,
-)
-from agentic_swmm.agent.tool_handlers.swmm_report import (  # noqa: E402,F401
-    _generate_report_tool,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -441,10 +407,6 @@ from agentic_swmm.agent.tool_handlers.swmm_report import (  # noqa: E402,F401
 # PRD #128 Phase 2 Group B: ``_audit_run_args`` / ``_audit_run_tool``
 # moved to ``tool_handlers/swmm_audit.py``. Re-exported here so import
 # paths stay stable for ``_build_tools`` and downstream code.
-from agentic_swmm.agent.tool_handlers.swmm_audit import (  # noqa: E402,F401
-    _audit_run_args,
-    _audit_run_tool,
-)
 
 
 def _summarize_memory_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -487,12 +449,6 @@ _summarize_memory_tool = _make_mcp_routed_handler(
 # with their token-budget / lessons-path helpers. Re-exported here so
 # import paths stay stable for ``_build_tools`` and downstream code.
 
-from agentic_swmm.agent.tool_handlers.swmm_memory import (  # noqa: E402,F401
-    _recall_memory_search_tool,
-    _recall_memory_tool,
-    _recall_session_history_tool,
-    _record_fact_tool,
-)
 
 
 # PRD #128 Phase 2 Group C: ``_read_file_tool``, ``_list_skills_tool``,
@@ -567,50 +523,12 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 # of this file (after all helpers are defined).
 
 
-# PRD #128 Phase 2 Group B: ``_network_qa_args`` / ``_network_qa_tool``
-# and ``_network_to_inp_args`` / ``_network_to_inp_tool`` moved to
-# ``tool_handlers/swmm_network.py``. Re-exported here so import paths
-# stay stable for ``_build_tools`` and downstream code.
-# Handlers self-register via tool_specs() since issue #358 C2; the
-# *_args mappers stay re-exported for historical import sites.
-from agentic_swmm.agent.tool_handlers.swmm_network import (  # noqa: E402,F401
-    _network_qa_args,
-    _network_to_inp_args,
-)
+# Family spec/handler history for the tools above lives with each
+# family module since issue #358 (tool_specs() self-registration); the
+# only registry-path compat re-exports that remain are listed in the
+# block at the end of this file.
 
 
-# PRD #128 Phase 2 Group B: ``_format_rainfall_args`` / ``_format_rainfall_tool``
-# moved to ``tool_handlers/swmm_climate.py``. Re-exported here so import
-# paths stay stable for ``_build_tools`` and downstream code.
-# C1 (issue #246): ``_build_raingage_section_tool`` also imported here.
-# PR #256 follow-up: ``_generate_design_storm_tool`` MCP-routed via swmm-climate.
-from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
-    _build_raingage_section_args,
-    _build_raingage_section_tool,
-    _format_rainfall_args,
-    _format_rainfall_tool,
-    _generate_design_storm_tool,
-)
-
-# The legacy in-process shape-library generator (PRD-06 B.4, ``aiswmm storm``)
-# stays registered under ``generate_storm_shape`` — it covers explicit-depth
-# shapes (uniform/triangular/huff/scs) the IDF-driven tool does not.
-from agentic_swmm.agent.tool_handlers.swmm_storm import (  # noqa: E402,F401
-    _generate_design_storm_tool as _generate_storm_shape_tool,
-)
-
-
-# PRD #128 Phase 2 Group A: ``_build_inp_args`` / ``_build_inp_tool``
-# moved to ``tool_handlers/swmm_builder.py``. Re-exported at the
-# bottom of this file (after all helpers are defined).
-
-
-# PRD #128 Phase 2 Group C: ``_list_dir_tool``, ``_search_files_tool``,
-# ``_normalize_search_glob``, ``_git_diff_tool`` moved to
-# ``tool_handlers/runtime_ops.py``. Re-exported above via runtime_ops.
-
-
-# The web family self-registers via tool_specs() since issue #358 C4.
 
 
 def _list_mcp_servers_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -727,73 +645,22 @@ def _run_allowed_command_tool(call: ToolCall, session_dir: Path) -> dict[str, An
 # in the repo or tests (only stale comment mentions).
 
 
-# PRD #128 Phase 2 Group A: family-module re-exports.
+# ---------------------------------------------------------------------------
+# Compat re-exports (issue #358 final sweep)
+# ---------------------------------------------------------------------------
 #
-# These imports sit at the very end of this file so the handler symbols
-# they re-export are bound on the partial ``tool_registry`` module by
-# the time ``_build_tools()`` references them. Since issue #358 PR A the
-# leaf helpers the family modules pull back in (``_resolve_inp_for_run``,
-# ``_node_suggestions``, ``_node_attribute_options``,
-# ``_resolve_existing_inp``, ``_required_repo_file``) live in
-# ``tool_handlers/_shared.py`` and are re-imported at the TOP of this
-# file, so those lazy back-imports resolve without depending on this
-# block at all; family modules can equally import them from ``_shared``
-# directly, which is where the follow-up PRs take them.
-# Re-exporting the handler symbols here keeps ``_build_tools()`` and
-# any existing ``from agentic_swmm.agent.tool_registry import _*_args``
-# call sites working byte-for-byte after the move.
-# swmm_runner / swmm_plot handler symbols left this block in issue #358
-# C1 (they self-register via tool_specs()); the *_args mappers stay
-# re-exported for historical import sites.
-from agentic_swmm.agent.tool_handlers.swmm_runner import (  # noqa: E402,F401
-    _run_swmm_inp_args,
+# The historical family-module re-export block is gone: every family
+# self-registers via ``tool_specs()`` and owns its handler symbols.
+# Exactly three names keep a registry-path re-export because external
+# consumers (tests) import or monkeypatch them through this module; a
+# grep sweep on 2026-08-08 found no others. Remove a consumer, remove
+# its line here.
+from agentic_swmm.agent.tool_handlers.gap_fill import (  # noqa: E402,F401
+    _is_tty_for_l5,
+)
+from agentic_swmm.agent.tool_handlers.runtime_ops import (  # noqa: E402,F401
+    _list_dir_tool,
 )
 from agentic_swmm.agent.tool_handlers.swmm_plot import (  # noqa: E402,F401
     _plot_run_args,
 )
-# swmm_builder's handler and swmm_anywhere's handler self-register via
-# tool_specs() since issue #358 C2; only the args mapper keeps its
-# re-export.
-from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
-    _build_inp_args,
-)
-# ``swmm_canada`` / ``swmm_climate`` no longer appear in this block:
-# they are the issue #358 PR B pilot families and self-register through
-# ``_FAMILY_SPEC_MODULES`` / ``tool_specs()`` instead.
-# ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
-# no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;
-# sibling of ``plot_run`` at the LLM-facing-tool level.
-# swmm_map / swmm_rpt left this block in issue #358 C1: their only
-# imported symbols were the handlers, which now self-register via
-# tool_specs().
-# Note: ``_generate_design_storm_tool`` imported above with swmm_climate tools.
-# dark-MCP registration (PR 1, issue #246): 6 calibration tools registered
-# as first-class typed ToolSpecs so the LLM planner can select them by name.
-# The handler module uses the same lazy-import dance as swmm_runner / swmm_plot.
-# Handlers and the common schema self-register via tool_specs() since
-# issue #358 C3; the *_args mappers stay re-exported for historical
-# import sites (tests).
-from agentic_swmm.agent.tool_handlers.swmm_calibration import (  # noqa: E402,F401
-    _calibrate_args,
-    _calibrate_dream_zs_args,
-    _calibrate_search_args,
-    _calibrate_sceua_args,
-    _sensitivity_scan_args,
-    _validate_args,
-)
-# dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
-# Handlers, schema fn, and the required-args alias self-register with
-# the family via tool_specs() since issue #358 C4; the *_args mappers
-# stay re-exported for historical import sites (tests).
-from agentic_swmm.agent.tool_handlers.swmm_uncertainty import (  # noqa: E402,F401
-    _sensitivity_oat_args,
-    _sensitivity_morris_args,
-    _sensitivity_sobol_args,
-    _rainfall_ensemble_args,
-    _source_decomposition_args,
-)
-
-
-# swmm_onboarding self-registers via tool_specs() since issue #358 C2.
-
-
