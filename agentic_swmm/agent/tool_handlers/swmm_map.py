@@ -22,8 +22,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _run_cli_tool
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object, _run_cli_tool
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _map_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -68,4 +68,16 @@ def _map_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, cli_args)
 
 
-__all__ = ["_map_run_tool"]
+__all__ = ["_map_run_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        ToolSpec(
+            "map_run",
+            "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.",
+            _object({"run_dir": {"type": "string"}, "inp": {"type": "string"}, "out_png": {"type": "string"}, "dpi": {"type": "integer"}, "no_subcatchments": {"type": "boolean"}, "no_vertices": {"type": "boolean"}}, ["run_dir"]),
+            _map_run_tool,
+        ),
+    ]
