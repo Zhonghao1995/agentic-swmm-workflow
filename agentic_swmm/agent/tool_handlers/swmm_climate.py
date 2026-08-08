@@ -25,8 +25,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _format_rainfall_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -294,4 +294,53 @@ __all__ = [
     "_generate_design_storm_args",
     "_generate_design_storm_tool",
     "run_climate_scenarios_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's self-registered planner tools (issue #358 PR B).
+
+    Only the in-process climate-batch tool lives here for now; the
+    MCP-routed rainfall/raingage/design-storm specs still sit in the
+    registry's grouped builders and migrate in a later batch.
+    """
+    return [
+        ToolSpec(
+            "run_climate_scenarios",
+            (
+                "Batch-run precipitation-scaled climate scenarios of a SWMM model "
+                "and write a comparison summary into the canonical 03_climate stage.\n"
+                "USE WHEN: the user wants climate-change forcing, rainfall uplift "
+                "scenarios, or a what-if comparison over an existing model. "
+                "Calibrate first (aiswmm calibrate) so the deltas mean something, "
+                "then force the calibrated INP.\n"
+                "factors like \"1.0,1.1,1.2,1.35\" scale every rainfall input "
+                "(inline TIMESERIES and FILE-referenced .dat); each scenario runs "
+                "through the audited SWMM runner; the summary compares precip, "
+                "runoff, flooding, outflow, and peak per scenario."
+            ),
+            _object(
+                {
+                    "inp_path": {
+                        "type": "string",
+                        "description": "Base model INP (typically the calibrated model).",
+                    },
+                    "run_dir": {"type": "string"},
+                    "factors": {
+                        "type": "string",
+                        "description": (
+                            "Comma-separated precipitation multipliers; default "
+                            "1.0,1.10,1.20,1.35."
+                        ),
+                    },
+                    "node": {
+                        "type": "string",
+                        "description": "Report node (default: the INP's first outfall).",
+                    },
+                },
+                ["inp_path"],
+            ),
+            run_climate_scenarios_tool,
+        ),
+    ]

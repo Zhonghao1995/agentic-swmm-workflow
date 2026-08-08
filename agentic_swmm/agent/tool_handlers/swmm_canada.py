@@ -28,9 +28,10 @@ from typing import Any
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _inp_source_tool,
+    _object,
     _timestamped_run_dir,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.agent.ui import update_tool_status
 
 
@@ -238,4 +239,68 @@ __all__ = [
     "_bbox_to_polygon",
     "_stage_hint",
     "fetch_swmm_from_canada_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 PR B self-registration).
+
+    The registry's ``_FAMILY_SPEC_MODULES`` seam collects this next to
+    the handler it names, so adding or changing a canada tool touches
+    only this module.
+    """
+    return [
+        ToolSpec(
+            "fetch_swmm_from_canada",
+            (
+                "Fetch a SWMM .inp for a Canadian area via the SWMMCanada upstream "
+                "HTTP service (ADR-0001). The service auto-selects REAL published "
+                "municipal storm pipes where a supported city covers the AOI "
+                "(35 cities at last sync, e.g. Victoria, Ottawa, Toronto, Calgary, "
+                "Vancouver, Regina) and synthesizes elsewhere in Canada; the result "
+                "reports which mode ran.\n"
+                "USE WHEN: the user wants a model for a Canadian location. Chain it: "
+                "pass the returned run_dir and inp_path straight into run_swmm_inp, "
+                "then audit_run, so the whole flow lands in one run folder.\n"
+                "DO NOT USE WHEN: the AOI is outside Canada — use "
+                "synth_swmm_from_bbox (global, synthesized) instead.\n"
+                "Models are uncalibrated first-pass estimates — treat like the synth "
+                "path (reference-free QA only). Requires the SWMMCanada service URL "
+                "(AISWMM_SWMMCANADA_URL); returns a stage-tagged hint if unset."
+            ),
+            _object(
+                {
+                    "aoi_geojson": {
+                        "type": "string",
+                        "description": "GeoJSON Polygon string for the area of interest. Provide this or bbox.",
+                    },
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat]; converted to a polygon. Provide this or aoi_geojson.",
+                    },
+                    "start_date": {"type": "string", "description": "Rainfall window start, ISO YYYY-MM-DD."},
+                    "end_date": {"type": "string", "description": "Rainfall window end, ISO YYYY-MM-DD."},
+                    "run_dir": {"type": "string"},
+                    "base_url": {
+                        "type": "string",
+                        "description": "Override the SWMMCanada service base URL (else $AISWMM_SWMMCANADA_URL).",
+                    },
+                    "infiltration": {
+                        "type": "string",
+                        "enum": ["CURVE_NUMBER", "HORTON", "GREEN_AMPT"],
+                        "description": (
+                            "Infiltration method for the upstream build (omit for the "
+                            "service default, CURVE_NUMBER). Passed through verbatim; "
+                            "the SWMMCanada service validates it."
+                        ),
+                    },
+                },
+                ["start_date", "end_date"],
+            ),
+            fetch_swmm_from_canada_tool,
+        ),
+    ]

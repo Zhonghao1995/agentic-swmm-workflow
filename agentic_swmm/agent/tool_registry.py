@@ -71,50 +71,17 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _resolve_existing_inp,
     _resolve_inp_for_run,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.providers.base import ProviderToolCall
 from agentic_swmm.runtime.registry import load_mcp_registry
 from agentic_swmm.utils.paths import repo_root
 
 
-# CONCURRENCY-OWNER: PRD-GF-CORE
-#
-# ``supports_gap_fill`` and ``required_file_args`` are the two gap-fill
-# (PRD-GF-CORE) hooks on every ToolSpec. Both default to fail-safe
-# values so existing tools without explicit opt-in keep their pre-PRD
-# behaviour. The handler-wrapping logic that actually intercepts
-# ``gap_signal`` lives in ``agentic_swmm.agent.runtime_loop.invoke_tool_with_gap_fill``;
-# this file only declares the dataclass fields and routes ``execute``
-# through the wrapper.
-@dataclass(frozen=True)
-class ToolSpec:
-    name: str
-    description: str
-    parameters: dict[str, Any]
-    handler: Callable[[ToolCall, Path], dict[str, Any]]
-    # PRD_runtime: ``is_read_only=True`` lets ``Profile.QUICK`` auto-approve
-    # the tool without prompting. Default ``False`` is fail-safe — a new
-    # tool only joins the auto-approve set when its author explicitly
-    # marks it read-only.
-    is_read_only: bool = False
-    # CONCURRENCY-OWNER: PRD-GF-CORE
-    # ``supports_gap_fill=True`` opts the tool into the gap-fill state
-    # machine. The runtime then:
-    #   * runs the pre-flight L1 scanner over ``required_file_args``
-    #     before each invocation,
-    #   * intercepts ``{"ok": false, "gap_signal": {...}}`` results
-    #     and routes them through the proposer/UI/recorder.
-    # Default ``False`` is fail-safe: legacy tools without the flag
-    # raise on missing inputs exactly as they did pre-PRD.
-    supports_gap_fill: bool = False
-    # The tuple of argument names that point at files which must
-    # exist before the tool runs. Used by the L1 pre-flight scanner.
-    # Empty tuple disables pre-flight scanning (the tool then only
-    # surfaces L3 gaps via in-band ``gap_signal``).
-    required_file_args: tuple[str, ...] = ()
-
-    def schema(self) -> dict[str, Any]:
-        return {"type": "function", "name": self.name, "description": self.description, "parameters": self.parameters}
+# ``ToolSpec`` moved to ``agentic_swmm.agent.types`` (issue #358 PR B) so
+# family modules declare their own specs without importing this registry;
+# re-imported above so every historical
+# ``from agentic_swmm.agent.tool_registry import ToolSpec`` site keeps
+# working. ``execute`` still routes through the gap-fill wrapper here.
 
 
 def _control_flow_exception_types() -> tuple[type[BaseException], ...]:
@@ -729,95 +696,9 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
             ),
             _synth_swmm_from_bbox_tool,
         ),
-        ToolSpec(
-            "fetch_swmm_from_canada",
-            (
-                "Fetch a SWMM .inp for a Canadian area via the SWMMCanada upstream "
-                "HTTP service (ADR-0001). The service auto-selects REAL published "
-                "municipal storm pipes where a supported city covers the AOI "
-                "(35 cities at last sync, e.g. Victoria, Ottawa, Toronto, Calgary, "
-                "Vancouver, Regina) and synthesizes elsewhere in Canada; the result "
-                "reports which mode ran.\n"
-                "USE WHEN: the user wants a model for a Canadian location. Chain it: "
-                "pass the returned run_dir and inp_path straight into run_swmm_inp, "
-                "then audit_run, so the whole flow lands in one run folder.\n"
-                "DO NOT USE WHEN: the AOI is outside Canada — use "
-                "synth_swmm_from_bbox (global, synthesized) instead.\n"
-                "Models are uncalibrated first-pass estimates — treat like the synth "
-                "path (reference-free QA only). Requires the SWMMCanada service URL "
-                "(AISWMM_SWMMCANADA_URL); returns a stage-tagged hint if unset."
-            ),
-            _object(
-                {
-                    "aoi_geojson": {
-                        "type": "string",
-                        "description": "GeoJSON Polygon string for the area of interest. Provide this or bbox.",
-                    },
-                    "bbox": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 4,
-                        "maxItems": 4,
-                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat]; converted to a polygon. Provide this or aoi_geojson.",
-                    },
-                    "start_date": {"type": "string", "description": "Rainfall window start, ISO YYYY-MM-DD."},
-                    "end_date": {"type": "string", "description": "Rainfall window end, ISO YYYY-MM-DD."},
-                    "run_dir": {"type": "string"},
-                    "base_url": {
-                        "type": "string",
-                        "description": "Override the SWMMCanada service base URL (else $AISWMM_SWMMCANADA_URL).",
-                    },
-                    "infiltration": {
-                        "type": "string",
-                        "enum": ["CURVE_NUMBER", "HORTON", "GREEN_AMPT"],
-                        "description": (
-                            "Infiltration method for the upstream build (omit for the "
-                            "service default, CURVE_NUMBER). Passed through verbatim; "
-                            "the SWMMCanada service validates it."
-                        ),
-                    },
-                },
-                ["start_date", "end_date"],
-            ),
-            fetch_swmm_from_canada_tool,
-        ),
-        ToolSpec(
-            "run_climate_scenarios",
-            (
-                "Batch-run precipitation-scaled climate scenarios of a SWMM model "
-                "and write a comparison summary into the canonical 03_climate stage.\n"
-                "USE WHEN: the user wants climate-change forcing, rainfall uplift "
-                "scenarios, or a what-if comparison over an existing model. "
-                "Calibrate first (aiswmm calibrate) so the deltas mean something, "
-                "then force the calibrated INP.\n"
-                "factors like \"1.0,1.1,1.2,1.35\" scale every rainfall input "
-                "(inline TIMESERIES and FILE-referenced .dat); each scenario runs "
-                "through the audited SWMM runner; the summary compares precip, "
-                "runoff, flooding, outflow, and peak per scenario."
-            ),
-            _object(
-                {
-                    "inp_path": {
-                        "type": "string",
-                        "description": "Base model INP (typically the calibrated model).",
-                    },
-                    "run_dir": {"type": "string"},
-                    "factors": {
-                        "type": "string",
-                        "description": (
-                            "Comma-separated precipitation multipliers; default "
-                            "1.0,1.10,1.20,1.35."
-                        ),
-                    },
-                    "node": {
-                        "type": "string",
-                        "description": "Report node (default: the INP's first outfall).",
-                    },
-                },
-                ["inp_path"],
-            ),
-            run_climate_scenarios_tool,
-        ),
+        # ``fetch_swmm_from_canada`` and ``run_climate_scenarios`` moved to
+        # their family modules' ``tool_specs()`` (issue #358 PR B pilots);
+        # the family seam in ``_build_tools`` registers them.
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
@@ -1183,6 +1064,29 @@ def _web_uncertainty_tools() -> list[ToolSpec]:
     ]
 
 
+# Family self-registration seam (issue #358 PR B). A tool_handlers
+# family module listed here defines ``tool_specs() -> list[ToolSpec]``
+# next to its handlers, importing ToolSpec from ``agent.types`` and the
+# schema/path helpers from ``tool_handlers/_shared`` — never from this
+# registry. Adding a family's tools = write ``tool_specs()`` there and
+# add the module path here; the grouped builder functions above dissolve
+# into this list family by family in the follow-up PRs.
+_FAMILY_SPEC_MODULES: tuple[str, ...] = (
+    "agentic_swmm.agent.tool_handlers.swmm_canada",
+    "agentic_swmm.agent.tool_handlers.swmm_climate",
+)
+
+
+def _family_specs() -> list[ToolSpec]:
+    import importlib
+
+    specs: list[ToolSpec] = []
+    for module_name in _FAMILY_SPEC_MODULES:
+        module = importlib.import_module(module_name)
+        specs.extend(module.tool_specs())
+    return specs
+
+
 def _build_tools() -> dict[str, ToolSpec]:
     specs = (
         _audit_patch_onboarding_tools()
@@ -1193,7 +1097,15 @@ def _build_tools() -> dict[str, ToolSpec]:
         + _calibration_tools()
         + _web_uncertainty_tools()
     )
-    return {spec.name: spec for spec in specs}
+    tools = {spec.name: spec for spec in specs}
+    for spec in _family_specs():
+        if spec.name in tools:
+            raise ValueError(
+                f"family seam duplicate: tool {spec.name!r} is already "
+                "registered by a grouped builder"
+            )
+        tools[spec.name] = spec
+    return tools
 
 
 # PRD #128 Phase 2 Group C: ``_doctor_tool`` and ``_retrieve_memory_tool``
@@ -1601,17 +1513,9 @@ from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
 from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
     _synth_swmm_from_bbox_tool,
 )
-# ADR-0001: ``swmm-canada`` handler drives the SWMMCanada HTTP service
-# (real municipal-pipe INP source). Pure-stdlib client, in-process — same
-# clean re-export shape as swmm-anywhere, no MCP routing.
-from agentic_swmm.agent.tool_handlers.swmm_canada import (  # noqa: E402,F401
-    fetch_swmm_from_canada_tool,
-)
-# ADR-0010: climate scenario batches are in-process orchestration over
-# the audited runner script (no MCP routing, no new binding).
-from agentic_swmm.agent.tool_handlers.swmm_climate import (  # noqa: E402,F401
-    run_climate_scenarios_tool,
-)
+# ``swmm_canada`` / ``swmm_climate`` no longer appear in this block:
+# they are the issue #358 PR B pilot families and self-register through
+# ``_FAMILY_SPEC_MODULES`` / ``tool_specs()`` instead.
 # ``map_run`` is a thin CLI wrapper (``aiswmm map``) — no MCP routing,
 # no late-import dance. Sibling of ``aiswmm plot`` at the CLI level;
 # sibling of ``plot_run`` at the LLM-facing-tool level.
