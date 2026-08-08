@@ -128,16 +128,22 @@ def main(args: argparse.Namespace) -> int:
         str(args.pad_hours),
     )
     # ``--node`` and ``--link`` are mutually exclusive at parse time
-    # (see ``register``). Forward whichever the user picked. If neither
-    # is set we fall back to the historical default node ``O1`` so the
-    # pre-existing agent-driven flow (which always passes --node) is
-    # not regressed.
+    # (see ``register``). Forward whichever the user picked. When
+    # neither is set, resolve the INP's first outfall (else first
+    # junction) instead of the historical literal ``O1``, which silently
+    # exploded inside swmmtoolbox on every model that names its outfalls
+    # differently (found live 2026-08-08; same defect class as the
+    # ``aiswmm run`` default fixed in #361).
     link_id = getattr(args, "link", None)
     node_id = getattr(args, "node", None)
     if link_id:
         command.extend(["--link", link_id])
     else:
-        command.extend(["--node", node_id or "O1"])
+        if not node_id:
+            from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
+
+            node_id = default_report_node(inp) or "O1"
+        command.extend(["--node", node_id])
     if args.focus_day:
         command.extend(["--focus-day", args.focus_day])
     if args.window_start:
