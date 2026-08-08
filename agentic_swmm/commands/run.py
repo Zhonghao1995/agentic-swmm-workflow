@@ -181,5 +181,30 @@ def main(args: argparse.Namespace) -> int:
                 f"see {rpt_path}",
                 file=sys.stderr,
             )
+            # Operational observability: land this failure in
+            # run_failures.jsonl like the planner path does, so the
+            # ledger's failure distribution covers CLI runs too
+            # (2026-08-08 mining: the store only saw planner sessions).
+            # Best-effort — recording can never change the exit code.
+            try:
+                from agentic_swmm.memory.run_failures import (
+                    record_run_failures,
+                    resolve_store,
+                )
+
+                record_run_failures(
+                    resolve_store(),
+                    run_id=run_dir.name,
+                    results=[
+                        {
+                            "tool": "aiswmm_run_cli",
+                            "ok": False,
+                            "summary": "; ".join(exc.error_lines)
+                            or f"SWMM reported errors; see {rpt_path}",
+                        }
+                    ],
+                )
+            except Exception:
+                pass
             return 1
     return result.return_code

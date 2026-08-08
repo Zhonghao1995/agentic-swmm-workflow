@@ -335,6 +335,15 @@ def derive_status(qa: dict[str, Any], runner_manifest: dict[str, Any], files_exi
         if isinstance(fail_count, int) and fail_count > 0:
             return "fail"
     if runner_manifest:
+        # ``run_ok`` is the solver truth (rc==0 AND no "ERROR n:" lines
+        # in the rpt). swmm5 exits 0 while writing solver errors, so
+        # trusting return_code alone called solver-errored runs "pass"
+        # whenever qa was absent (same honesty class as the benchmark
+        # harness fix, 2026-08-08). return_code stays as the fallback
+        # for legacy manifests written before run_ok existed.
+        run_ok = runner_manifest.get("run_ok")
+        if isinstance(run_ok, bool):
+            return "pass" if run_ok else "fail"
         return "pass" if runner_manifest.get("return_code") == 0 else "fail"
     if files_exist:
         return "pass"
