@@ -193,6 +193,7 @@ More details: [Codex runtime path](docs/codex-runtime.md) · [OpenClaw execution
 
 - [Validation evidence](docs/validation-evidence.md) - benchmark scope, commands, audit example, and evidence boundaries
 - [Installation and CLI guide](docs/installation.md) - Docker, local install, Windows options, and CLI examples
+- [Two interfaces, one engine](docs/interfaces.md) - how natural-language goals and CLI verbs map onto the same deterministic tools and artifacts, and when to use which
 - [LLM provider routes](docs/llm_providers.md) - ten routes out of the box (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini, local Ollama/LM Studio, gateways, custom endpoints), the `aiswmm setup` wizard, per-route auth, and the local fallback chain
 - [Climate scenario batches](docs/climate-scenarios.md) - `aiswmm climate`: calibrate first, then compare the model's response under precipitation-scaled climate scenarios, one canonical `03_climate/` summary per run
 - [Experiment audit framework](docs/experiment-audit-framework.md) - provenance, comparison, and Obsidian note contracts
