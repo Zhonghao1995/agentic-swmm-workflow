@@ -71,7 +71,7 @@ import os
 import urllib.request
 from typing import Any
 
-from agentic_swmm.providers._http import post_json_with_retry
+from agentic_swmm.providers._http import MissingCredentialsError, post_json_with_retry
 from agentic_swmm.providers.base import ProviderResult, ProviderToolCall, ProviderToolResponse
 
 
@@ -86,9 +86,20 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 
 class AnthropicProvider:
-    def __init__(self, *, model: str, api_key: str | None = None, timeout: int = 120) -> None:
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        timeout: int = 120,
+    ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        # API root (".../v1"); the Messages endpoint derives from it so the
+        # route can target an Anthropic-compatible gateway (ADR-0008).
+        self.base_url = (base_url or "https://api.anthropic.com/v1").rstrip("/")
+        self._endpoint = f"{self.base_url}/messages"
         self.timeout = timeout
         self._mock_tool_calls_consumed = False
         # The Messages API is stateless, so this provider accumulates the full
@@ -101,7 +112,7 @@ class AnthropicProvider:
         if mock_response is not None:
             return ProviderResult(text=mock_response, model=self.model, raw={"mock": True})
         if not self.api_key:
-            raise RuntimeError(
+            raise MissingCredentialsError(
                 "ANTHROPIC_API_KEY is not set. Run `aiswmm login --anthropic` to store a key."
             )
 
@@ -138,7 +149,7 @@ class AnthropicProvider:
                 raw={"mock": True, "output_text": mock_response},
             )
         if not self.api_key:
-            raise RuntimeError(
+            raise MissingCredentialsError(
                 "ANTHROPIC_API_KEY is not set. "
                 "Run `aiswmm login --anthropic` to store a key."
             )
@@ -186,7 +197,7 @@ class AnthropicProvider:
         """
         data = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
-            ANTHROPIC_MESSAGES_URL,
+            self._endpoint,
             data=data,
             method="POST",
             headers={

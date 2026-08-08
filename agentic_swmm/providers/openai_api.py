@@ -5,7 +5,7 @@ import os
 import urllib.request
 from typing import Any
 
-from agentic_swmm.providers._http import post_json_with_retry
+from agentic_swmm.providers._http import MissingCredentialsError, post_json_with_retry
 from agentic_swmm.providers.base import ProviderResult, ProviderToolCall, ProviderToolResponse
 
 
@@ -13,9 +13,21 @@ OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 
 
 class OpenAIProvider:
-    def __init__(self, *, model: str, api_key: str | None = None, timeout: int = 120) -> None:
+    def __init__(
+        self,
+        *,
+        model: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        timeout: int = 120,
+    ) -> None:
         self.model = model
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        # API root (".../v1"); the Responses endpoint is derived from it so a
+        # route can point this wire at any OpenAI-compatible gateway
+        # (ADR-0008). Default preserves the canonical OpenAI URL.
+        self.base_url = (base_url or "https://api.openai.com/v1").rstrip("/")
+        self._endpoint = f"{self.base_url}/responses"
         self.timeout = timeout
         self._mock_tool_calls_consumed = False
 
@@ -24,7 +36,9 @@ class OpenAIProvider:
         if mock_response is not None:
             return ProviderResult(text=mock_response, model=self.model, raw={"mock": True})
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set. Run `aiswmm login` to store a key.")
+            raise MissingCredentialsError(
+                "OPENAI_API_KEY is not set. Run `aiswmm login` to store a key."
+            )
 
         payload = {
             "model": self.model,
@@ -33,7 +47,7 @@ class OpenAIProvider:
         }
         data = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
-            OPENAI_RESPONSES_URL,
+            self._endpoint,
             data=data,
             method="POST",
             headers={
@@ -71,7 +85,9 @@ class OpenAIProvider:
                 raw={"mock": True, "output_text": mock_response},
             )
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY is not set. Run `aiswmm login` to store a key.")
+            raise MissingCredentialsError(
+                "OPENAI_API_KEY is not set. Run `aiswmm login` to store a key."
+            )
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -83,7 +99,7 @@ class OpenAIProvider:
             payload["previous_response_id"] = previous_response_id
         data = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
-            OPENAI_RESPONSES_URL,
+            self._endpoint,
             data=data,
             method="POST",
             headers={

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,10 +29,26 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--provider",
         choices=available_provider_choices(),
-        default=DEFAULT_PROVIDER,
-        help=provider_help_text("Default provider."),
+        default=None,
+        help=provider_help_text(
+            "Default provider route (skips the interactive wizard)."
+        ),
     )
     parser.add_argument("--model", default=None, help="Default model for the provider.")
+    parser.add_argument(
+        "--fallback",
+        choices=available_provider_choices(),
+        default=None,
+        help=(
+            "Optional fallback route engaged when the primary fails "
+            "(auth/quota/connection), e.g. a local ollama."
+        ),
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Accept defaults non-interactively (never start the wizard).",
+    )
     parser.add_argument("--obsidian-dir", type=Path, help="Optional Obsidian vault or folder for audit and memory exports.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable setup state.")
     # Issue #114: no-prompt path that only regenerates mcp.json against
@@ -53,11 +70,41 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def main(args: argparse.Namespace) -> int:
     if getattr(args, "refresh_mcp", False):
         return _refresh_mcp_only()
+
+    provider = args.provider
+    model = args.model
+    fallback = getattr(args, "fallback", None)
+    wizard_base_url = ""
+    if _should_run_wizard(args):
+        import getpass as _getpass
+
+        from agentic_swmm.commands.setup_wizard import run_wizard
+
+        result = run_wizard(ask=input, ask_secret=_getpass.getpass)
+        if result is None:
+            return 1
+        provider = result.route
+        model = result.model
+        fallback = result.fallback or None
+        wizard_base_url = result.base_url
+        if result.api_key:
+            from agentic_swmm.commands.login import _write_key_to_env
+            from agentic_swmm.providers.routes import ROUTES
+
+            env_path = _write_key_to_env(ROUTES[provider].key_env, result.api_key)
+            print(f"Stored the {provider} API key in {env_path} (mode 0600).")
+        print()
+    provider = provider or DEFAULT_PROVIDER
+
     config = load_config()
     values = config.values
-    values.setdefault("provider", {})["default"] = args.provider
-    if args.model:
-        values.setdefault(args.provider, {})["model"] = args.model
+    values.setdefault("provider", {})["default"] = provider
+    if fallback:
+        values.setdefault("provider", {})["fallback"] = fallback
+    if model:
+        values.setdefault(provider, {})["model"] = model
+    if wizard_base_url:
+        values.setdefault(provider, {})["base_url"] = wizard_base_url
     if args.obsidian_dir:
         values.setdefault("obsidian", {})["dir"] = str(args.obsidian_dir.expanduser().resolve())
     config_file = write_config(values, config.path)
@@ -68,8 +115,8 @@ def main(args: argparse.Namespace) -> int:
         skills_file=skills_file,
         mcp_file=mcp_file,
         memory_file=memory_file,
-        provider=args.provider,
-        model=args.model or values.get(args.provider, {}).get("model"),
+        provider=provider,
+        model=model or values.get(provider, {}).get("model"),
     )
     state_file = setup_state_path()
     state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -91,22 +138,30 @@ def _build_setup_state(*, config_file: Path, skills_file: Path, mcp_file: Path, 
 
     openai_key = provider_key_present("openai")
     anthropic_key = provider_key_present("anthropic")
+    route_ready = provider_key_present(provider)
     checks = [
         _check("repo resources", resource_root().exists(), str(resource_root()), required=True),
         _check("python package", True, "agentic_swmm importable", required=True),
         _check("node executable", shutil.which("node") is not None, shutil.which("node") or "missing; needed for MCP launchers", required=False),
         _check("swmm5 executable", _which_swmm5() is not None, _which_swmm5() or "missing; needed for SWMM execution", required=False),
-        # Two API-key providers: OpenAI is the default, Anthropic is opt-in.
+        # The two original API-key providers stay visible; the selected
+        # route (which may be any of the ADR-0008 routes) gets its own row.
         _check(
             "OPENAI_API_KEY",
             openai_key,
-            "set" if openai_key else "not set; default provider — set via `aiswmm login --openai`",
+            "set" if openai_key else "not set; set via `aiswmm login --openai`",
             required=False,
         ),
         _check(
             "ANTHROPIC_API_KEY",
             anthropic_key,
             "set" if anthropic_key else "not set; opt-in via `aiswmm login --anthropic`",
+            required=False,
+        ),
+        _check(
+            "provider route",
+            route_ready,
+            f"{provider}: " + ("ready" if route_ready else f"needs `aiswmm login {provider}`"),
             required=False,
         ),
         _check("skills", all(Path(record["path"]).exists() for record in skills), f"registered {len(skills)} skill(s)", required=True),
@@ -145,6 +200,24 @@ def _build_setup_state(*, config_file: Path, skills_file: Path, mcp_file: Path, 
             "aiswmm memory --runs-dir runs --out-dir memory/modeling-memory",
         ],
     }
+
+
+def _should_run_wizard(args: argparse.Namespace) -> bool:
+    """Interactive wizard iff bare `aiswmm setup` on a real terminal.
+
+    Any explicit selection flag (``--provider`` / ``--model`` /
+    ``--fallback``), automation flag (``--yes`` / ``--json``), or a
+    non-TTY stdin/stdout keeps the historical non-interactive behavior
+    byte-for-byte (CI and scripts never see prompts).
+    """
+    if args.provider is not None or args.model or getattr(args, "fallback", None):
+        return False
+    if getattr(args, "yes", False) or getattr(args, "json", False):
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
 
 
 def _refresh_mcp_only() -> int:

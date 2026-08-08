@@ -1,23 +1,28 @@
-"""``aiswmm login`` — manage the two providers' API keys.
+"""``aiswmm login`` — store credentials/settings for any provider route.
 
-Login is a thin dispatcher over a ``provider -> handler`` registry
-(:data:`_LOGIN_HANDLERS`), so adding a future provider's key is a
-single new handler plus one registry entry — the same factory-only
-spirit as :mod:`agentic_swmm.providers.factory`.
+Login is a thin dispatcher over a ``route -> handler`` registry
+(:data:`_LOGIN_HANDLERS`) derived from the route table
+(:mod:`agentic_swmm.providers.routes`, ADR-0008). Adding a route there
+adds its login surface here automatically.
 
 Surfaces:
 
-* ``aiswmm login`` (default) — store the key for the *current default*
-  provider (``provider.default``, normally ``openai``).
-* ``aiswmm login --openai`` — store ``OPENAI_API_KEY`` and set
-  ``provider.default = openai`` (+ ``openai.model`` default).
-* ``aiswmm login --anthropic`` — store ``ANTHROPIC_API_KEY`` and set
-  ``provider.default = anthropic`` (+ ``anthropic.model`` default).
-* ``aiswmm login --status`` — print the default provider and which
-  keys are present. No secrets.
+* ``aiswmm login`` (default) — configure the *current default* route
+  (``provider.default``, normally ``openai``).
+* ``aiswmm login <route>`` — configure that route and make it the
+  default. Keyed routes prompt for their API key; keyless local routes
+  (ollama, lmstudio) just select themselves; gateway/custom routes
+  treat the key as optional and ``custom`` also asks for its base URL
+  and model.
+* ``aiswmm login --openai`` / ``--anthropic`` — legacy aliases for the
+  two original routes (kept working forever).
+* ``aiswmm login --status`` — print the default/fallback routes and
+  per-route credential state. No secrets.
 
 Keys are written to ``~/.aiswmm/env`` (file mode 0600) and never
-echoed. The handlers never print or log credential material.
+echoed. The handlers never print or log credential material. Every
+interactive prompt has a non-interactive escape hatch for automation:
+``AISWMM_LOGIN_<ROUTE>_KEY`` / ``_BASE_URL`` / ``_MODEL``.
 """
 from __future__ import annotations
 
@@ -29,55 +34,46 @@ from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.config import (
-    DEFAULT_ANTHROPIC_MODEL,
-    DEFAULT_OPENAI_MODEL,
     DEFAULT_PROVIDER,
     config_dir,
     load_config,
     set_config_value,
 )
+from agentic_swmm.providers.routes import ROUTES, RouteSpec, resolved_model, route_names
 
 
-# Per-provider key/model/login-env facts. Single source of truth so the
-# handlers, the status surface, and the bare-login prompt all agree.
-_PROVIDER_SPECS = {
-    "openai": {
-        "env_var": "OPENAI_API_KEY",
-        "model_key": "openai.model",
-        "model_default": DEFAULT_OPENAI_MODEL,
-        "login_env": "AISWMM_LOGIN_OPENAI_KEY",
-        "label": "OpenAI",
-    },
-    "anthropic": {
-        "env_var": "ANTHROPIC_API_KEY",
-        "model_key": "anthropic.model",
-        "model_default": DEFAULT_ANTHROPIC_MODEL,
-        "login_env": "AISWMM_LOGIN_ANTHROPIC_KEY",
-        "label": "Anthropic",
-    },
-}
+def _login_env(route: str, suffix: str = "KEY") -> str:
+    """Automation env var for a prompt: ``AISWMM_LOGIN_<ROUTE>_<SUFFIX>``."""
+    return f"AISWMM_LOGIN_{route.upper().replace('-', '_')}_{suffix}"
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "login",
-        help="Store an LLM provider API key (OpenAI by default).",
+        help="Store credentials for a provider route (OpenAI by default).",
+    )
+    parser.add_argument(
+        "route",
+        nargs="?",
+        choices=route_names(),
+        default=None,
+        help="Provider route to configure (default: the current default route).",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--openai",
         action="store_true",
-        help="Store an OpenAI API key and set OpenAI as the default provider.",
+        help="Store an OpenAI API key and set OpenAI as the default route.",
     )
     group.add_argument(
         "--anthropic",
         action="store_true",
-        help="Store an Anthropic API key and set Anthropic as the default provider.",
+        help="Store an Anthropic API key and set Anthropic as the default route.",
     )
     group.add_argument(
         "--status",
         action="store_true",
-        help="Print the current auth state (no secrets) and exit.",
+        help="Print the current auth state for every route (no secrets) and exit.",
     )
     register_example_flag(parser, example_text="aiswmm login")
     parser.set_defaults(func=main)
@@ -86,19 +82,19 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def main(args: argparse.Namespace) -> int:
     if getattr(args, "status", False):
         return _login_status(args)
-    # Resolve which provider's key to store. ``--openai`` / ``--anthropic``
-    # are explicit; a bare ``aiswmm login`` targets the current default
-    # provider. Future flags add entries to ``_LOGIN_HANDLERS``.
+    # Resolve which route to configure. Legacy flags are explicit; then
+    # the positional route; a bare ``aiswmm login`` targets the current
+    # default route.
     if getattr(args, "openai", False):
-        provider = "openai"
+        route = "openai"
     elif getattr(args, "anthropic", False):
-        provider = "anthropic"
+        route = "anthropic"
     else:
-        provider = _current_default_provider()
-    handler = _LOGIN_HANDLERS.get(provider)
+        route = getattr(args, "route", None) or _current_default_provider()
+    handler = _LOGIN_HANDLERS.get(route)
     if handler is None:
         print(
-            f"error: no login handler for provider {provider!r}. "
+            f"error: no login handler for provider route {route!r}. "
             f"Supported: {', '.join(sorted(_LOGIN_HANDLERS))}.",
             file=sys.stderr,
         )
@@ -114,50 +110,102 @@ def _current_default_provider() -> str:
     handler we can run.
     """
     default = str(load_config().get("provider.default", DEFAULT_PROVIDER))
-    return default if default in _PROVIDER_SPECS else DEFAULT_PROVIDER
+    return default if default in ROUTES else DEFAULT_PROVIDER
 
 
 # ---------------------------------------------------------------------------
-# Key-store handlers
+# Prompt helpers (each with an env escape hatch for automation/tests)
 # ---------------------------------------------------------------------------
 
 
-def _make_key_handler(provider: str):
-    """Build the login handler that stores ``provider``'s API key.
+def _prompt_secret(route: str, label: str, *, optional: bool) -> str | None:
+    """Read a key without echo; ``None`` means aborted (keyed routes only)."""
+    key = os.environ.get(_login_env(route))
+    if key is None:
+        suffix = " (optional, Enter to skip)" if optional else ""
+        try:
+            key = getpass.getpass(f"{label} API key{suffix} (input hidden): ")
+        except (EOFError, KeyboardInterrupt):
+            if optional:
+                return ""
+            print("\nAborted; no key stored.", file=sys.stderr)
+            return None
+    return (key or "").strip()
 
-    The handler reads the key without echo (``getpass``) unless supplied
-    via the provider's ``AISWMM_LOGIN_*_KEY`` env var (used by tests /
-    non-interactive automation), writes it to ``~/.aiswmm/env`` at mode
-    0600, sets ``provider.default`` + the provider's model default, and
-    never prints the key back.
+
+def _prompt_value(route: str, suffix: str, question: str) -> str:
+    """Read a non-secret value (base URL, model id) with env escape hatch."""
+    value = os.environ.get(_login_env(route, suffix))
+    if value is None:
+        try:
+            value = input(question)
+        except (EOFError, KeyboardInterrupt):
+            value = ""
+    return (value or "").strip()
+
+
+# ---------------------------------------------------------------------------
+# Route handler
+# ---------------------------------------------------------------------------
+
+
+def _make_route_handler(route: str):
+    """Build the login handler for ``route`` from its RouteSpec.
+
+    Keyed routes require a key; keyless routes with a ``key_env``
+    (codex, custom) treat it as optional; fully keyless routes (ollama,
+    lmstudio) skip the key step. ``custom`` additionally requires a
+    base URL and a model id since the table ships neither.
     """
-    spec = _PROVIDER_SPECS[provider]
+    spec: RouteSpec = ROUTES[route]
 
     def _handler(args: argparse.Namespace) -> int:
-        key = os.environ.get(spec["login_env"])
-        if not key:
-            try:
-                key = getpass.getpass(f"{spec['label']} API key (input hidden): ")
-            except (EOFError, KeyboardInterrupt):
-                print("\nAborted; no key stored.", file=sys.stderr)
+        key = ""
+        if spec.key_env:
+            optional = spec.keyless
+            got = _prompt_secret(route, spec.label, optional=optional)
+            if got is None:
                 return 1
-        key = (key or "").strip()
-        if not key:
-            print("error: empty API key; nothing stored.", file=sys.stderr)
-            return 1
+            key = got
+            if not key and not optional:
+                print("error: empty API key; nothing stored.", file=sys.stderr)
+                return 1
 
-        env_path = _write_key_to_env(spec["env_var"], key)
-        set_config_value("provider.default", provider)
-        set_config_value(spec["model_key"], spec["model_default"])
-        print(f"Stored {spec['label']} API key in {env_path} (mode 0600).")
-        print(
-            f"Default provider set to {provider}; "
-            f"{spec['model_key']} set to {spec['model_default']}."
-        )
-        print(
-            f"Note: source the env file (or restart your shell) so "
-            f"{spec['env_var']} is exported."
-        )
+        base_url = ""
+        if not spec.base_url:
+            base_url = _prompt_value(
+                route, "BASE_URL", f"{spec.label} base URL (e.g. http://host:port/v1): "
+            )
+            if not base_url:
+                print("error: this route needs a base URL; nothing stored.", file=sys.stderr)
+                return 1
+
+        model = spec.default_model
+        if not model:
+            model = _prompt_value(route, "MODEL", f"{spec.label} model id: ")
+            if not model:
+                print("error: this route needs a model id; nothing stored.", file=sys.stderr)
+                return 1
+
+        if key:
+            env_path = _write_key_to_env(spec.key_env, key)
+            print(f"Stored {spec.label} API key in {env_path} (mode 0600).")
+        elif spec.key_env and spec.keyless:
+            print(f"No key stored for {route} (optional for this route).")
+
+        if base_url:
+            set_config_value(f"{route}.base_url", base_url)
+            print(f"{route}.base_url set to {base_url}.")
+        set_config_value("provider.default", route)
+        set_config_value(f"{route}.model", model)
+        print(f"Default provider route set to {route}; {route}.model set to {model}.")
+        if spec.hint:
+            print(f"Note: {spec.hint}")
+        if key:
+            print(
+                f"Note: source the env file (or restart your shell) so "
+                f"{spec.key_env} is exported."
+            )
         return 0
 
     return _handler
@@ -202,15 +250,38 @@ def _write_key_to_env(var_name: str, key: str) -> Path:
 
 
 def _login_status(args: argparse.Namespace) -> int:
-    """Print the current auth state — default provider + key presence."""
-    default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
+    """Print the current auth state — default/fallback + per-route lines."""
+    config = load_config()
+    default_provider = str(config.get("provider.default", DEFAULT_PROVIDER))
+    fallback = str(config.get("provider.fallback", "") or "")
     openai_key = _provider_key_present("openai")
     anthropic_key = _provider_key_present("anthropic")
 
     print(f"default provider:           {default_provider}")
+    if fallback:
+        print(f"fallback provider:          {fallback}")
     print(f"OpenAI API key present:     {'yes' if openai_key else 'no'}")
     print(f"Anthropic API key present:  {'yes' if anthropic_key else 'no'}")
+    print()
+    print("routes:")
+    for name, spec in ROUTES.items():
+        marker = "*" if name == default_provider else ("f" if name == fallback else " ")
+        cred = _credential_state(name, spec)
+        model = resolved_model(name, config.get) or "(unset)"
+        print(f"  {marker} {name:<11} {cred:<18} model: {model}")
+    print()
+    print("  * = default, f = fallback. `aiswmm login <route>` configures one;")
+    print("  `aiswmm setup` runs the interactive picker.")
     return 0
+
+
+def _credential_state(name: str, spec: RouteSpec) -> str:
+    if not spec.key_env:
+        return "keyless"
+    present = _provider_key_present_keyed(name)
+    if spec.keyless:
+        return "key: optional/set" if present else "key: optional"
+    return "key: present" if present else "key: MISSING"
 
 
 # ---------------------------------------------------------------------------
@@ -225,12 +296,16 @@ def _provider_key_present(provider: str) -> bool:
     return provider_key_present(provider)
 
 
-# Registry: provider name -> login handler. Adding a backend's login
-# method is a one-line entry here plus a ``_PROVIDER_SPECS`` entry.
-_LOGIN_HANDLERS = {
-    "openai": _make_key_handler("openai"),
-    "anthropic": _make_key_handler("anthropic"),
-}
+def _provider_key_present_keyed(provider: str) -> bool:
+    """Key presence ignoring the keyless shortcut (status display only)."""
+    from agentic_swmm.agent.provider_preflight import provider_key_value
+
+    return provider_key_value(provider) is not None
+
+
+# Registry: route name -> login handler, derived from the route table.
+# Adding a route in routes.py adds its login surface automatically.
+_LOGIN_HANDLERS = {name: _make_route_handler(name) for name in ROUTES}
 
 
 __all__ = ["register", "main"]

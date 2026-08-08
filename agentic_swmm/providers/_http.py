@@ -29,6 +29,32 @@ AUTH_STATUSES = frozenset({401, 403})
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_BASE_S = 0.5
 
+
+class ProviderHTTPError(RuntimeError):
+    """Provider API returned an HTTP error (after retries, when transient).
+
+    Subclasses ``RuntimeError`` so every existing handler keeps working;
+    carries ``status`` so structural consumers (the fallback chain) can
+    key off the class of failure instead of parsing message text.
+    """
+
+    def __init__(self, message: str, *, status: int) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+class ProviderConnectionError(RuntimeError):
+    """Connection-level failure (DNS, refused, timeout) after retries."""
+
+
+class MissingCredentialsError(RuntimeError):
+    """No API key resolvable for a route that requires one.
+
+    Raised by providers at call time (not construction) so a user who
+    exports a key mid-session is never locked out. Housed here so all
+    wire clients and the fallback chain share one type.
+    """
+
 # provider_label (lower-cased) -> (env var name, the command that stores a key).
 _AUTH_REMEDIATION = {
     "openai": ("OPENAI_API_KEY", "aiswmm login --openai"),
@@ -67,6 +93,7 @@ def post_json_with_retry(
     *,
     timeout: float,
     provider_label: str,
+    auth_hint: str | None = None,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     backoff_base: float = DEFAULT_BACKOFF_BASE_S,
     sleep: Callable[[float], None] = time.sleep,
@@ -78,6 +105,8 @@ def post_json_with_retry(
         request: a prepared ``urllib.request.Request`` (POST).
         timeout: per-attempt socket timeout, in seconds.
         provider_label: human label for error messages, e.g. ``"OpenAI"``.
+        auth_hint: optional route-specific remediation suffix appended on
+            401/403; when ``None`` the legacy provider-label table is used.
         max_attempts: total attempts including the first (>= 1).
         backoff_base: base seconds for exponential backoff fallback.
         sleep / opener: injection seams for tests.
@@ -101,15 +130,15 @@ def post_json_with_retry(
                 f"{provider_label} API request failed with HTTP {exc.code}: {detail}"
             )
             if exc.code in AUTH_STATUSES:
-                message += _auth_hint(provider_label)
-            raise RuntimeError(message) from exc
+                message += auth_hint if auth_hint is not None else _auth_hint(provider_label)
+            raise ProviderHTTPError(message, status=exc.code) from exc
         except urllib.error.URLError as exc:
             # Connection-level blip (DNS, refused, socket timeout) — transient.
             if attempt < max_attempts:
                 sleep(backoff_base * (2 ** (attempt - 1)))
                 last_exc = exc
                 continue
-            raise RuntimeError(
+            raise ProviderConnectionError(
                 f"{provider_label} API request failed: {exc.reason}"
             ) from exc
     # Defensive: the loop always returns or raises, but keep mypy/readers happy.
