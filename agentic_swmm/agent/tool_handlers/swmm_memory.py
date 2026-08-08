@@ -244,4 +244,81 @@ __all__ = [
     "_recall_memory_search_tool",
     "_recall_session_history_tool",
     "_record_fact_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs():
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+    from agentic_swmm.agent.types import ToolSpec
+
+    return [
+        ToolSpec(
+            "recall_memory",
+            (
+                "Look up the lesson section for an exact failure_pattern name "
+                "from memory/modeling-memory/lessons_learned.md.\n"
+                "USE WHEN: you know the exact failure_pattern name (e.g. "
+                "'peak_flow_parse_missing') and want a precise lookup.\n"
+                "DO NOT USE WHEN: user is chatting, or the question is general "
+                "(prefer recall_memory_search)."
+            ),
+            _object({"pattern": {"type": "string"}}, ["pattern"]),
+            _recall_memory_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "recall_memory_search",
+            (
+                "Retrieve the top-k most similar historical entries from the "
+                "RAG corpus (memory/rag-memory/) for a natural-language query.\n"
+                "USE WHEN: you have a natural-language question or do not know "
+                "the failure_pattern name. Returns up to top-k entries with "
+                "run_id, source_path, case_name, score, and matched_terms.\n"
+                "DO NOT USE WHEN: you have an exact pattern name (prefer "
+                "recall_memory) or the question is unrelated to past runs."
+            ),
+            _object(
+                {"query": {"type": "string"}, "top_k": {"type": "integer"}},
+                ["query"],
+            ),
+            _recall_memory_search_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "recall_session_history",
+            (
+                "Search prior chat sessions in the SQLite session store for relevant past work.\n"
+                "USE WHEN: user mentions '上次/昨天/上周/before/previously/continue', or you need "
+                "to check whether a similar question / failure pattern has been encountered before.\n"
+                "DO NOT USE WHEN: question has no temporal cue and current-session context is sufficient."
+            ),
+            _object(
+                {
+                    "query": {"type": "string"},
+                    "case_name": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                ["query"],
+            ),
+            _recall_session_history_tool,
+            is_read_only=True,
+        ),
+        ToolSpec(
+            "record_fact",
+            (
+                "Append a candidate project fact to the staging file for later user review.\n"
+                "USE WHEN: user just expressed a durable preference, project convention, or "
+                "confirmed fix recipe that future sessions should remember.\n"
+                "DO NOT USE WHEN: ephemeral state, file path, secret, or anything you are not "
+                "certain the user wants persisted."
+            ),
+            _object(
+                {"text": {"type": "string"}, "source_session_id": {"type": "string"}},
+                ["text"],
+            ),
+            _record_fact_tool,
+            is_read_only=False,
+        ),
+    ]

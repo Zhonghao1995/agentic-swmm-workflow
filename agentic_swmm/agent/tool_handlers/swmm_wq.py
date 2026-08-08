@@ -20,7 +20,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _run_script_tool,
 )
 from agentic_swmm.agent.error_remediation import file_resolution_error
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.utils.paths import repo_root, resource_path
 
 _WQ_EXTRACT_SCRIPT = ("skills", "swmm-water-quality", "scripts", "extract_wq_loads.py")
@@ -59,4 +59,24 @@ def _read_wq_loads_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_script_tool(call, session_dir, cli_args)
 
 
-__all__ = ["_read_wq_loads_tool"]
+__all__ = ["_read_wq_loads_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "read_wq_loads",
+            "Read pollutant load summaries from a completed run's .rpt file; returns wq_present=false for non-WQ runs.",
+            _object(
+                {
+                    "rpt_path": {"type": "string", "description": "Path to the SWMM .rpt file from a completed run."},
+                },
+                ["rpt_path"],
+            ),
+            _read_wq_loads_tool,
+            is_read_only=True,
+        ),
+    ]

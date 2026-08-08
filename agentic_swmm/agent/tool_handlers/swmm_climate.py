@@ -299,13 +299,94 @@ __all__ = [
 
 
 def tool_specs() -> list[ToolSpec]:
-    """This family's self-registered planner tools (issue #358 PR B).
+    """This family's self-registered planner tools (issue #358).
 
-    Only the in-process climate-batch tool lives here for now; the
-    MCP-routed rainfall/raingage/design-storm specs still sit in the
-    registry's grouped builders and migrate in a later batch.
+    The in-process climate-batch tool plus the three MCP-routed
+    rainfall/raingage/design-storm tools (moved here in C5).
     """
     return [
+        ToolSpec(
+            "format_rainfall",
+            "Format rainfall CSV or SWMM .dat files into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill. "
+            "Supply exactly one input mode: a single CSV (input_csv), a glob pattern for multiple CSVs (input_glob_patterns), or .dat files (input_dat_paths). "
+            "Use input_glob_patterns to batch-convert a directory of per-station CSVs; use station_column/series_name_template for multi-station inputs.",
+            _object(
+                {
+                    "input_csv": {"type": "string", "description": "Path to a single rainfall CSV (mutually exclusive with input_glob_patterns and input_dat_paths)."},
+                    "input_glob_patterns": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns matching multiple rainfall CSVs (e.g. ['data/rain_*.csv']). Use to batch-convert a directory."},
+                    "input_dat_paths": {"type": "array", "items": {"type": "string"}, "description": "Paths to SWMM .dat timeseries files. Cannot be combined with CSV inputs."},
+                    "additional_input_csv_paths": {"type": "array", "items": {"type": "string"}, "description": "Additional CSV paths to merge alongside input_csv."},
+                    "dat_value_units": {"type": "string", "description": "Units for .dat file values (required when using input_dat_paths)."},
+                    "out_json": {"type": "string"},
+                    "out_timeseries": {"type": "string"},
+                    "series_name": {"type": "string", "description": "Override series name for single-station outputs."},
+                    "series_name_template": {"type": "string", "description": "Template for multi-station series names, e.g. '{station_id}_rainfall'."},
+                    "timestamp_column": {"type": "string"},
+                    "value_column": {"type": "string"},
+                    "station_column": {"type": "string", "description": "Column name identifying per-station rows in a wide-format CSV."},
+                    "default_station_id": {"type": "string", "description": "Station ID to use when station_column is absent."},
+                    "timestamp_format": {"type": "string", "description": "strptime-compatible timestamp format string."},
+                    "window_start": {"type": "string", "description": "ISO datetime string; crop input timeseries to start at this time."},
+                    "window_end": {"type": "string", "description": "ISO datetime string; crop input timeseries to end at this time."},
+                    "value_units": {"type": "string"},
+                    "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]},
+                    "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]},
+                },
+                ["out_json", "out_timeseries"],
+            ),
+            _format_rainfall_tool,
+        ),
+        ToolSpec(
+            "build_raingage_section",
+            "Build the SWMM [RAINGAGES] section snippet that pairs with a formatted timeseries produced by format_rainfall. "
+            "Writes a text fragment (.txt) and a metadata JSON (.json) consumed by build_inp's raingage_json / timeseries_text inputs.",
+            _object(
+                {
+                    "out_text_path": {"type": "string", "description": "Repository-relative path for the output [RAINGAGES] text snippet."},
+                    "out_json_path": {"type": "string", "description": "Repository-relative path for the output raingage metadata JSON."},
+                    "gage_id": {"type": "string", "description": "SWMM gage ID (default: derived from series_name or station_id)."},
+                    "series_name": {"type": "string", "description": "Name of the SWMM TIMESERIES to reference (from format_rainfall output)."},
+                    "station_id": {"type": "string", "description": "Station ID; used to resolve the series name from a multi-station JSON."},
+                    "rainfall_json_path": {"type": "string", "description": "Path to the rainfall metadata JSON produced by format_rainfall; used to auto-detect series_name and interval."},
+                    "rain_format": {"type": "string", "enum": ["INTENSITY", "VOLUME", "CUMULATIVE"], "description": "SWMM rainfall format type."},
+                    "interval_min": {"type": "integer", "description": "Rainfall recording interval in minutes."},
+                    "scf": {"type": "number", "description": "Snow catch factor (default 1.0)."},
+                },
+                ["out_text_path", "out_json_path"],
+            ),
+            _build_raingage_section_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "generate_design_storm",
+            "Synthesise a design-storm hyetograph from return period and IDF coefficients when no measured rainfall exists. "
+            "Writes SWMM [TIMESERIES] text and metadata JSON that build_inp / build_raingage_section consume unchanged. "
+            "Use format_rainfall instead when you have measured rainfall data.",
+            _object(
+                {
+                    "method": {"type": "string", "enum": ["chicago", "alternating_block"], "description": "chicago = Keifer-Chu hyetograph from IDF formula; alternating_block = from explicit IDF table."},
+                    "duration_min": {"type": "number", "description": "Total storm duration in minutes."},
+                    "out_json": {"type": "string", "description": "Repository-relative path for output metadata JSON."},
+                    "out_timeseries": {"type": "string", "description": "Repository-relative path for output SWMM [TIMESERIES] text (.txt or .dat)."},
+                    "form": {"type": "string", "enum": ["CN", "generic"], "description": "IDF formula form (chicago only). CN: q=167·A1·(1+C·lgP)/(t+b)^n; generic: i=a/(t+b)^c."},
+                    "return_period": {"type": "number", "description": "Return period in years (default 2)."},
+                    "dt": {"type": "number", "description": "Timestep in minutes (default 5)."},
+                    "r": {"type": "number", "description": "Peak-position ratio for chicago method, 0<r<1 (default 0.4)."},
+                    "a1": {"type": "number", "description": "CN form coefficient A1."},
+                    "c_coeff": {"type": "number", "description": "CN form coefficient C."},
+                    "b": {"type": "number", "description": "Both forms: time-offset coefficient b (min)."},
+                    "n": {"type": "number", "description": "CN form exponent n."},
+                    "a_coeff": {"type": "number", "description": "Generic form coefficient a."},
+                    "c_exp": {"type": "number", "description": "Generic form exponent c."},
+                    "idf_csv": {"type": "string", "description": "CSV path with columns duration_min,intensity_mm_per_hr for alternating_block method."},
+                    "idf_json": {"type": "string", "description": "Inline JSON list of {duration_min, intensity_mm_per_hr} objects for alternating_block method."},
+                    "series_name": {"type": "string", "description": "Override series name token (default TS_DESIGN_P<P>Y_<duration>MIN)."},
+                },
+                ["method", "duration_min", "out_json", "out_timeseries"],
+            ),
+            _generate_design_storm_tool,
+            is_read_only=False,
+        ),
         ToolSpec(
             "run_climate_scenarios",
             (

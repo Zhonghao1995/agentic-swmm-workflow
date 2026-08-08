@@ -82,4 +82,30 @@ def _retrieve_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 __all__ = [
     "_doctor_tool",
     "_retrieve_memory_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs():
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+    from agentic_swmm.agent.types import ToolSpec
+
+    return [
+        ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
+        ToolSpec(
+            "retrieve_memory",
+            "Retrieve relevant audited-run memory cards for a query using the swmm-rag-memory skill's hybrid keyword/embedding retriever. Returns source-cited matches that the planner can synthesize into a grounded answer.",
+            _object(
+                {
+                    "query": {"type": "string"},
+                    "top_k": {"type": "integer"},
+                    "retriever": {"type": "string", "enum": ["keyword", "hybrid"]},
+                    "project": {"type": "string"},
+                },
+                ["query"],
+            ),
+            _retrieve_memory_tool,
+            is_read_only=True,
+        ),
+    ]
