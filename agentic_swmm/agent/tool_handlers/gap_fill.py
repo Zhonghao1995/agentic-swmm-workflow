@@ -63,13 +63,11 @@ def _build_default_llm_provider() -> Any:
     from the matching ``<provider>.model`` config key; ``load_config``
     supplies the canonical per-provider defaults.
     """
-    from agentic_swmm.config import DEFAULT_PROVIDER, load_config
     from agentic_swmm.providers.factory import make_provider
+    from agentic_swmm.providers.selection import resolve_selection
 
-    config = load_config()
-    provider_name = config.get("provider.default", DEFAULT_PROVIDER)
-    model = config.get(f"{provider_name}.model")
-    return make_provider(provider_name, model=model)
+    selection = resolve_selection()
+    return make_provider(selection.route, model=selection.model)
 
 
 def _is_tty_for_l5() -> bool:

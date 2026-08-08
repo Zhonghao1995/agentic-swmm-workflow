@@ -18,6 +18,7 @@ def write_session_state(
     model: str | None,
     allowed_tools: list[str],
     outcome: Any,
+    provider_route: str | None = None,
 ) -> tuple[Path, Path]:
     summary = _summarize_context(outcome.results)
     failures = [result for result in outcome.results if not result.get("ok")]
@@ -26,7 +27,11 @@ def write_session_state(
     payload = {
         "created_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "goal": goal,
+        # "llm" | "rule" — which planner ran. Legacy sessions carry the
+        # historical literal "openai" here with the same "llm" meaning.
         "planner": planner,
+        # Which ADR-0008 route actually served the LLM turns (None for rule).
+        "provider_route": provider_route,
         "model": model,
         "ok": bool(outcome.ok),
         "allowed_tools": allowed_tools,

@@ -128,14 +128,13 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     profile_name = resolve_profile_string(args)
 
     # ADR-0003 leftover: interactive turns get the same session header the
-    # single-shot path writes. Provider/model resolved once per shell with
-    # the exact expressions run_openai_planner applies per turn.
-    try:
-        _header_config = load_config()
-        header_provider = args.provider or _header_config.get("provider.default", DEFAULT_PROVIDER)
-        header_model = args.model or _header_config.get(f"{header_provider}.model")
-    except Exception:
-        header_provider, header_model = args.provider, args.model
+    # single-shot path writes. Provider/model resolved once per shell via
+    # the shared selection seam run_openai_planner also applies per turn.
+    from agentic_swmm.providers.selection import resolve_selection
+
+    _header_selection = resolve_selection(args.provider, args.model)
+    header_provider = _header_selection.route
+    header_model = _header_selection.model
 
     # Issue #57 (UX-2): the welcome module owns the entire first screen.
     # It used to be followed by a second one-line banner from this
@@ -298,9 +297,10 @@ def run_openai_planner(
     chat_session: bool = False,
     prior_session_state: dict[str, Any] | None = None,
 ) -> int:
-    config = load_config()
-    provider_name = args.provider or config.get("provider.default", DEFAULT_PROVIDER)
-    model = args.model or config.get(f"{provider_name}.model")
+    from agentic_swmm.providers.selection import resolve_selection
+
+    selection = resolve_selection(args.provider, args.model)
+    provider_name, model = selection.route, selection.model
     if provider_name not in SUPPORTED_PROVIDERS:
         raise ValueError(f"unsupported planner provider: {provider_name}")
     # Both API-key providers require an explicit model; config supplies
@@ -378,6 +378,7 @@ def run_openai_planner(
         emit=_agent_say,
         prior_session_state=prior_session_state,
         system_prompt_extras=extras,
+        provider_route=provider_name,
     )
 
     if chat_session:
@@ -422,7 +423,7 @@ def run_openai_planner(
         outcome.results,
         dry_run=args.dry_run,
         allowed_tools=registry.names,
-        planner="openai",
+        planner="llm",
         final_text=outcome.final_text,
     )
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})

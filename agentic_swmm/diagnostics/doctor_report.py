@@ -690,18 +690,16 @@ def collect_llm_provider_status() -> LLMProviderStatus:
     """
     from agentic_swmm.agent.provider_preflight import provider_key_present
     from agentic_swmm.providers.routes import ROUTES
+    from agentic_swmm.providers.selection import resolve_selection
 
+    default_provider = resolve_selection().route
     fallback_provider = ""
     try:
-        from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+        from agentic_swmm.config import load_config
 
-        config = load_config()
-        default_provider = str(config.get("provider.default", DEFAULT_PROVIDER))
-        fallback_provider = str(config.get("provider.fallback", "") or "")
+        fallback_provider = str(load_config().get("provider.fallback", "") or "")
     except Exception:  # pragma: no cover - defensive; config is shallow
-        from agentic_swmm.config import DEFAULT_PROVIDER
-
-        default_provider = DEFAULT_PROVIDER
+        pass
     spec = ROUTES.get(default_provider)
     return LLMProviderStatus(
         default_provider=default_provider,

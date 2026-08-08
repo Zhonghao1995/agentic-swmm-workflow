@@ -98,14 +98,11 @@ def run_single_shot(args: argparse.Namespace) -> int:
     # a header failure must never break the session.
     header_provider = header_model = None
     if args.planner in ("llm", "openai"):
-        try:
-            from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+        from agentic_swmm.providers.selection import resolve_selection
 
-            _config = load_config()
-            header_provider = args.provider or _config.get("provider.default", DEFAULT_PROVIDER)
-            header_model = args.model or _config.get(f"{header_provider}.model")
-        except Exception:
-            header_provider, header_model = args.provider, args.model
+        _selection = resolve_selection(args.provider, args.model)
+        header_provider = _selection.route
+        header_model = _selection.model
     try_write_session_header(
         session_dir,
         goal=goal,

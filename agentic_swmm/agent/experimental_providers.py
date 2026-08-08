@@ -1,11 +1,11 @@
 """Provider choice + help-text helpers for the ``--provider`` argparse flag.
 
-This module is the single seam the four ``--provider`` argparse sites
-(``setup`` / ``chat`` / ``model`` / ``agent``) consult so the choice
-list and help text stay derived from one source of truth
-(:data:`agentic_swmm.providers.factory.SUPPORTED_PROVIDERS`). Adding a
-third provider lands in that tuple only; every argparse site updates
-automatically.
+This module is the single seam the three ``--provider`` argparse sites
+(``setup`` / ``agent`` / ``model``; the ``chat`` alias reuses ``agent``'s)
+consult so the choice list and help text stay derived from one source of
+truth (:data:`agentic_swmm.providers.factory.SUPPORTED_PROVIDERS`, itself
+derived from the ADR-0008 route table). Adding a route lands in that
+table only; every argparse site updates automatically.
 """
 from __future__ import annotations
 

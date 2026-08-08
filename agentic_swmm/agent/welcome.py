@@ -253,12 +253,9 @@ def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
     # Late import keeps welcome's import graph free of the preflight /
     # config at module load; the probe is cheap (env + file scan).
     from agentic_swmm.agent.provider_preflight import provider_key_present
-    from agentic_swmm.config import DEFAULT_PROVIDER, load_config
+    from agentic_swmm.providers.selection import resolve_selection
 
-    try:
-        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
-    except Exception:  # pragma: no cover - defensive; config is shallow
-        default_provider = DEFAULT_PROVIDER
+    default_provider = resolve_selection().route
     if provider_key_present(default_provider):
         return None
     target = memory_dir or (Path.cwd() / "memory" / "modeling-memory")

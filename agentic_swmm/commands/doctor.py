@@ -269,15 +269,9 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     # install-check row reflects the *default* provider's key so a fresh
     # install sees an accurate hint instead of a hard-coded OpenAI line.
     from agentic_swmm.agent.provider_preflight import provider_key_present
+    from agentic_swmm.providers.selection import resolve_selection
 
-    try:
-        from agentic_swmm.config import DEFAULT_PROVIDER, load_config
-
-        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
-    except Exception:  # pragma: no cover - defensive; config is shallow
-        from agentic_swmm.config import DEFAULT_PROVIDER
-
-        default_provider = DEFAULT_PROVIDER
+    default_provider = resolve_selection().route
     from agentic_swmm.providers.routes import ROUTES
 
     spec = ROUTES.get(default_provider)
