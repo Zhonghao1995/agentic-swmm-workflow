@@ -1057,7 +1057,30 @@ def _render_markdown(doc: dict[str, Any]) -> str:
 # CLI
 # ---------------------------------------------------------------------------
 
-def _find_file(run_dir: Path, names: list[str]) -> Path | None:
+# Canonical run layout parks runner artifacts under numbered stage dirs
+# (06_runner/model.rpt, 05_builder/model.inp) while legacy runs keep
+# them flat at the run-dir root. Stage-name variants mirror the audit
+# script's lists so both standalone scripts resolve runs identically.
+_RUNNER_STAGE_NAMES = ["06_runner", "05_runner", "runner", "01_runner"]
+_BUILDER_STAGE_NAMES = ["05_builder", "04_builder", "builder"]
+
+
+def _find_file(
+    run_dir: Path, names: list[str], stage_names: list[str] | None = None
+) -> Path | None:
+    """Return the first existing candidate, stage dirs before the root.
+
+    Stage dirs are searched FIRST: a canonical run holds both a top
+    ``manifest.json`` (CLI summary schema) and the runner stage's
+    ``manifest.json`` (metrics.peak/continuity schema the reviewer
+    reads), so root-first order silently picked the wrong document.
+    Legacy flat runs have no stage dirs and fall through to the root.
+    """
+    for stage in stage_names or []:
+        for name in names:
+            p = run_dir / stage / name
+            if p.exists():
+                return p
     for name in names:
         p = run_dir / name
         if p.exists():
@@ -1088,11 +1111,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: run-dir does not exist or is not a directory: {run_dir}", file=sys.stderr)
         return 2
 
-    # Resolve artifact paths
-    rpt_path = (args.rpt or _find_file(run_dir, ["model.rpt"])) or run_dir / "model.rpt"
-    inp_path = (args.inp or _find_file(run_dir, ["model.inp"])) if not args.no_inp else None
+    # Resolve artifact paths: canonical stage dirs first, legacy root
+    # as fallback (2026-08-08: root-only lookup made ``aiswmm review``
+    # fail on every canonical-layout run with "model.rpt not found").
+    rpt_path = (
+        args.rpt or _find_file(run_dir, ["model.rpt"], _RUNNER_STAGE_NAMES)
+    ) or run_dir / "model.rpt"
+    inp_path = (
+        (args.inp or _find_file(run_dir, ["model.inp"], _BUILDER_STAGE_NAMES))
+        if not args.no_inp
+        else None
+    )
     manifest_path = (
-        args.manifest or _find_file(run_dir, ["manifest.json", "runner_manifest.json"])
+        args.manifest
+        or _find_file(
+            run_dir, ["manifest.json", "runner_manifest.json"], _RUNNER_STAGE_NAMES
+        )
     ) or run_dir / "manifest.json"
 
     if not manifest_path.exists():
