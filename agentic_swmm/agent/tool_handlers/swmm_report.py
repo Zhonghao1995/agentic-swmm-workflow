@@ -23,7 +23,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _resolve_run_dir,
     _run_script_tool,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.utils.paths import repo_root, resource_path
 
 _REPORT_SCRIPT = ("skills", "swmm-report", "scripts", "generate_report.py")
@@ -78,4 +78,29 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return result
 
 
-__all__ = ["_generate_report_tool"]
+__all__ = ["_generate_report_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "generate_report",
+            "Assemble a client-deliverable Word report (.docx) from an audited run directory. "
+            "Reads manifest.json, experiment_provenance.json, model_diagnostics.json, comparison.json, "
+            "and any PNG figures — never re-runs SWMM. Output path defaults to <run_dir>/report.docx.",
+            _object(
+                {
+                    "run_dir": {"type": "string", "description": "Absolute path to the audited run directory."},
+                    "out": {"type": "string", "description": "Output .docx path (default: <run_dir>/report.docx)."},
+                    "template": {"type": "string", "description": "Path to a template YAML; omit to use the default template."},
+                    "title": {"type": "string", "description": "Override the cover title text."},
+                },
+                ["run_dir"],
+            ),
+            _generate_report_tool,
+            is_read_only=False,
+        ),
+    ]

@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _run_cli_tool
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _object, _run_cli_tool
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _demo_acceptance_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -21,4 +21,16 @@ def _demo_acceptance_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_cli_tool(call, session_dir, command)
 
 
-__all__ = ["_demo_acceptance_tool"]
+__all__ = ["_demo_acceptance_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        ToolSpec(
+            "demo_acceptance",
+            "Run the prepared acceptance demo through the Agentic SWMM CLI.",
+            _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}),
+            _demo_acceptance_tool,
+        ),
+    ]

@@ -24,8 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _run_cli_tool
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object, _run_cli_tool
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _generate_design_storm_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -78,4 +78,28 @@ def _generate_design_storm_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     return _run_cli_tool(call, session_dir, cli_args)
 
 
-__all__ = ["_generate_design_storm_tool"]
+__all__ = ["_generate_design_storm_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration).
+
+    Naming wart, preserved: this module's handler is locally named
+    ``_generate_design_storm_tool`` but serves the ``generate_storm_shape``
+    tool (the shape-library generator); the ``generate_design_storm``
+    tool (IDF-driven) lives in swmm_climate. The registry historically
+    disambiguated with an import alias.
+    """
+    return [
+        # Legacy shape-library generator (PRD-06 B.4) — kept alongside the
+        # IDF-driven generate_design_storm because it covers shapes the IDF
+        # path does not (uniform/triangular/front/back/huff/scs) from an
+        # EXPLICIT depth.
+        ToolSpec(
+            "generate_storm_shape",
+            "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) scaled to an EXPLICIT total depth you already know. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4). Use generate_design_storm instead when you only have a return period + IDF coefficients and need the depth derived for you.",
+            _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]),
+            _generate_design_storm_tool,
+            is_read_only=False,
+        ),
+    ]

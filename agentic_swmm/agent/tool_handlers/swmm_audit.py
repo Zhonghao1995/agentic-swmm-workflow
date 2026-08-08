@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure, _resolve_run_dir
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -71,4 +71,19 @@ _audit_run_tool = _build_handler()
 __all__ = [
     "_audit_run_args",
     "_audit_run_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "audit_run",
+            "Audit a run directory and write deterministic provenance/comparison/note artifacts. Writes stay inside the run directory unless obsidian=true.",
+            _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}, "obsidian": {"type": "boolean", "description": "Also mirror the modelling note into the user's local Obsidian vault (~/Documents/Agentic-SWMM-Obsidian-Vault). Default false: agent-path audits have no side effects outside the run directory, matching the CLI's --no-obsidian default (issue #328)."}}, ["run_dir"]),
+            _audit_run_tool,
+        ),
+    ]

@@ -350,4 +350,82 @@ __all__ = [
     "_build_default_llm_provider",
     "_is_tty_for_l5",
     "_restitch_l5_fields_in_ledger",
+    "tool_specs",
 ]
+
+
+def tool_specs():
+    """This family's planner tools (issue #358 self-registration):
+    the two human-in-the-loop governance pauses."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+    from agentic_swmm.agent.types import ToolSpec
+
+    return [
+        ToolSpec(
+            "request_expert_review",
+            (
+                "Pause the agent and request expert review.\n"
+                "USE WHEN: a QA threshold has been crossed and a "
+                "hydrologically consequential decision must be human-approved "
+                "before continuing. Pattern must match one of the documented "
+                "HITL thresholds (see docs/hitl-thresholds.md).\n"
+                "DO NOT USE WHEN: low-stakes confirmation or routine reasoning."
+            ),
+            _object(
+                {
+                    "run_dir": {"type": "string"},
+                    "pattern": {"type": "string"},
+                    "evidence_ref": {"type": "string"},
+                    "message": {"type": "string"},
+                },
+                ["run_dir", "pattern", "evidence_ref", "message"],
+            ),
+            _request_expert_review_tool,
+            # is_read_only=False — QUICK profile must NEVER auto-approve
+            # the HITL pause (PRD-Z hard requirement).
+            is_read_only=False,
+        ),
+        # CONCURRENCY-OWNER: PRD-GF-L5
+        # L5 subjective judgement entry point (see the handler above for
+        # the enumerate -> pause -> record flow). supports_gap_fill=False
+        # because L5 does not travel the L1/L3 gap_signal interception
+        # path; is_read_only=False because judgement must never be
+        # auto-approved by the QUICK profile.
+        ToolSpec(
+            "request_gap_judgement",
+            (
+                "Request a subjective hydrological judgement from the human "
+                "expert with enumerated candidates.\n"
+                "USE WHEN: a hydrological choice has no single right answer "
+                "(pour point ambiguity, storm event selection from a "
+                "calibration window, metric weighting, continuity tolerance "
+                "deviation). The LLM enumerator will list candidates with "
+                "each one's tradeoff cited; the modeller picks one with an "
+                "optional free-form note; the planner re-plans on the next "
+                "turn with the decision as a user_clarification message.\n"
+                "DO NOT USE WHEN: a missing path or parameter value can be "
+                "proposed deterministically (those flow through the L1/L3 "
+                "gap-fill path automatically). For free-form pauses without "
+                "structured candidates, use request_expert_review."
+            ),
+            _object(
+                {
+                    "gap_kind": {
+                        "type": "string",
+                        "enum": [
+                            "pour_point",
+                            "storm_event_selection",
+                            "metric_weighting",
+                            "continuity_tolerance",
+                        ],
+                    },
+                    "context": {"type": "object"},
+                    "evidence_ref": {"type": "string"},
+                },
+                ["gap_kind", "context", "evidence_ref"],
+            ),
+            _request_gap_judgement_tool,
+            is_read_only=False,
+            supports_gap_fill=False,
+        ),
+    ]

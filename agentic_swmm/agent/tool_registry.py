@@ -257,306 +257,24 @@ class AgentToolRegistry:
 # (issue #358 C3).
 
 
-def _audit_patch_onboarding_tools() -> list[ToolSpec]:
-    """Run-audit surface (audit_run, apply_patch) and new-case onboarding acceptance."""
-    return [
-        ToolSpec("audit_run", "Audit a run directory and write deterministic provenance/comparison/note artifacts. Writes stay inside the run directory unless obsidian=true.", _object({"run_dir": {"type": "string"}, "workflow_mode": {"type": "string"}, "objective": {"type": "string"}, "compare_to": {"type": "string", "description": "Optional path to a second run directory; when present, writes comparison.json comparing the two runs."}, "obsidian": {"type": "boolean", "description": "Also mirror the modelling note into the user's local Obsidian vault (~/Documents/Agentic-SWMM-Obsidian-Vault). Default false: agent-path audits have no side effects outside the run directory, matching the CLI's --no-obsidian default (issue #328)."}}, ["run_dir"]), _audit_run_tool),
-        ToolSpec("apply_patch", "Apply a unified diff patch to repository files. Writes are repo-only and blocked for .git/.venv/secret paths.", _object({"patch": {"type": "string"}, "allow_evidence_edits": {"type": "boolean"}}, ["patch"]), _apply_patch_tool),
-        # New-case onboarding (#246 follow-up rewire): typed tool that applies the
-        # user's reply to the onboarding offer the planner hook surfaced.
-        # is_read_only=False — acceptance writes transferred parameters to the
-        # session context (explicit-flow action per CONTEXT.md invariant 4).
-        # ``apply_onboarding`` moved to swmm_onboarding.tool_specs()
-        # (issue #358 C2).
-    ]
+def _registry_native_tools() -> list[ToolSpec]:
+    """The tools that genuinely belong to the registry itself.
 
-
-def _builder_climate_tools() -> list[ToolSpec]:
-    """INP assembly (swmm-builder) and rainfall/design-storm synthesis (swmm-climate), plus capabilities/demo/doctor."""
+    Everything else self-registers through the family seam
+    (``_FAMILY_SPEC_MODULES``). These eight stay because their handlers
+    reference registry/runtime state by design: ``capabilities`` and
+    ``select_skill`` introspect the registry, the MCP bridge trio proxies
+    the local MCP registry, ``run_tests`` / ``run_allowed_command`` wrap
+    the shared allowlist, and ``summarize_memory``'s args mapper is a
+    registry-resident seam with external importers (issue #358 C5).
+    """
     return [
-        # ``build_inp`` moved to swmm_builder.tool_specs() (issue #358 C2).
-        # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
-        # snippet that pairs with a formatted timeseries.
-        ToolSpec(
-            "build_raingage_section",
-            "Build the SWMM [RAINGAGES] section snippet that pairs with a formatted timeseries produced by format_rainfall. "
-            "Writes a text fragment (.txt) and a metadata JSON (.json) consumed by build_inp's raingage_json / timeseries_text inputs.",
-            _object(
-                {
-                    "out_text_path": {"type": "string", "description": "Repository-relative path for the output [RAINGAGES] text snippet."},
-                    "out_json_path": {"type": "string", "description": "Repository-relative path for the output raingage metadata JSON."},
-                    "gage_id": {"type": "string", "description": "SWMM gage ID (default: derived from series_name or station_id)."},
-                    "series_name": {"type": "string", "description": "Name of the SWMM TIMESERIES to reference (from format_rainfall output)."},
-                    "station_id": {"type": "string", "description": "Station ID; used to resolve the series name from a multi-station JSON."},
-                    "rainfall_json_path": {"type": "string", "description": "Path to the rainfall metadata JSON produced by format_rainfall; used to auto-detect series_name and interval."},
-                    "rain_format": {"type": "string", "enum": ["INTENSITY", "VOLUME", "CUMULATIVE"], "description": "SWMM rainfall format type."},
-                    "interval_min": {"type": "integer", "description": "Rainfall recording interval in minutes."},
-                    "scf": {"type": "number", "description": "Snow catch factor (default 1.0)."},
-                },
-                ["out_text_path", "out_json_path"],
-            ),
-            _build_raingage_section_tool,
-            is_read_only=False,
-        ),
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
-        ToolSpec("demo_acceptance", "Run the prepared acceptance demo through the Agentic SWMM CLI.", _object({"run_id": {"type": "string"}, "keep_existing": {"type": "boolean"}}), _demo_acceptance_tool),
-        ToolSpec("doctor", "Run the built-in Agentic SWMM runtime doctor.", _object({}), _doctor_tool),
-        ToolSpec(
-            "format_rainfall",
-            "Format rainfall CSV or SWMM .dat files into SWMM TIMESERIES text and metadata JSON using the swmm-climate skill. "
-            "Supply exactly one input mode: a single CSV (input_csv), a glob pattern for multiple CSVs (input_glob_patterns), or .dat files (input_dat_paths). "
-            "Use input_glob_patterns to batch-convert a directory of per-station CSVs; use station_column/series_name_template for multi-station inputs.",
-            _object(
-                {
-                    "input_csv": {"type": "string", "description": "Path to a single rainfall CSV (mutually exclusive with input_glob_patterns and input_dat_paths)."},
-                    "input_glob_patterns": {"type": "array", "items": {"type": "string"}, "description": "Glob patterns matching multiple rainfall CSVs (e.g. ['data/rain_*.csv']). Use to batch-convert a directory."},
-                    "input_dat_paths": {"type": "array", "items": {"type": "string"}, "description": "Paths to SWMM .dat timeseries files. Cannot be combined with CSV inputs."},
-                    "additional_input_csv_paths": {"type": "array", "items": {"type": "string"}, "description": "Additional CSV paths to merge alongside input_csv."},
-                    "dat_value_units": {"type": "string", "description": "Units for .dat file values (required when using input_dat_paths)."},
-                    "out_json": {"type": "string"},
-                    "out_timeseries": {"type": "string"},
-                    "series_name": {"type": "string", "description": "Override series name for single-station outputs."},
-                    "series_name_template": {"type": "string", "description": "Template for multi-station series names, e.g. '{station_id}_rainfall'."},
-                    "timestamp_column": {"type": "string"},
-                    "value_column": {"type": "string"},
-                    "station_column": {"type": "string", "description": "Column name identifying per-station rows in a wide-format CSV."},
-                    "default_station_id": {"type": "string", "description": "Station ID to use when station_column is absent."},
-                    "timestamp_format": {"type": "string", "description": "strptime-compatible timestamp format string."},
-                    "window_start": {"type": "string", "description": "ISO datetime string; crop input timeseries to start at this time."},
-                    "window_end": {"type": "string", "description": "ISO datetime string; crop input timeseries to end at this time."},
-                    "value_units": {"type": "string"},
-                    "unit_policy": {"type": "string", "enum": ["strict", "convert_to_mm_per_hr"]},
-                    "timestamp_policy": {"type": "string", "enum": ["strict", "sort"]},
-                },
-                ["out_json", "out_timeseries"],
-            ),
-            _format_rainfall_tool,
-        ),
-        # PR #256 follow-up: generate_design_storm — MCP-routed via swmm-climate.
-        # Use when no measured rainfall exists and you need to synthesise a
-        # hyetograph from a return period + IDF coefficients.
-        # Contrast with format_rainfall (use when you HAVE measured rainfall data).
-        ToolSpec(
-            "generate_design_storm",
-            "Synthesise a design-storm hyetograph from return period and IDF coefficients when no measured rainfall exists. "
-            "Writes SWMM [TIMESERIES] text and metadata JSON that build_inp / build_raingage_section consume unchanged. "
-            "Use format_rainfall instead when you have measured rainfall data.",
-            _object(
-                {
-                    "method": {"type": "string", "enum": ["chicago", "alternating_block"], "description": "chicago = Keifer-Chu hyetograph from IDF formula; alternating_block = from explicit IDF table."},
-                    "duration_min": {"type": "number", "description": "Total storm duration in minutes."},
-                    "out_json": {"type": "string", "description": "Repository-relative path for output metadata JSON."},
-                    "out_timeseries": {"type": "string", "description": "Repository-relative path for output SWMM [TIMESERIES] text (.txt or .dat)."},
-                    "form": {"type": "string", "enum": ["CN", "generic"], "description": "IDF formula form (chicago only). CN: q=167·A1·(1+C·lgP)/(t+b)^n; generic: i=a/(t+b)^c."},
-                    "return_period": {"type": "number", "description": "Return period in years (default 2)."},
-                    "dt": {"type": "number", "description": "Timestep in minutes (default 5)."},
-                    "r": {"type": "number", "description": "Peak-position ratio for chicago method, 0<r<1 (default 0.4)."},
-                    "a1": {"type": "number", "description": "CN form coefficient A1."},
-                    "c_coeff": {"type": "number", "description": "CN form coefficient C."},
-                    "b": {"type": "number", "description": "Both forms: time-offset coefficient b (min)."},
-                    "n": {"type": "number", "description": "CN form exponent n."},
-                    "a_coeff": {"type": "number", "description": "Generic form coefficient a."},
-                    "c_exp": {"type": "number", "description": "Generic form exponent c."},
-                    "idf_csv": {"type": "string", "description": "CSV path with columns duration_min,intensity_mm_per_hr for alternating_block method."},
-                    "idf_json": {"type": "string", "description": "Inline JSON list of {duration_min, intensity_mm_per_hr} objects for alternating_block method."},
-                    "series_name": {"type": "string", "description": "Override series name token (default TS_DESIGN_P<P>Y_<duration>MIN)."},
-                },
-                ["method", "duration_min", "out_json", "out_timeseries"],
-            ),
-            _generate_design_storm_tool,
-            is_read_only=False,
-        ),
-        # Legacy shape-library generator (PRD-06 B.4) — kept alongside the
-        # IDF-driven tool above because it covers shapes the IDF path does
-        # not (uniform/triangular/front/back/huff/scs) from an EXPLICIT depth.
-        ToolSpec("generate_storm_shape", "Generate a SWMM design-storm .dat timeseries from a named hyetograph shape (uniform/triangular/front_loaded/back_loaded/chicago/huff/scs) scaled to an EXPLICIT total depth you already know. Pass shape + out; chicago/triangular take depth_mm + duration_min + peak_position, huff takes quartile (1-4). Use generate_design_storm instead when you only have a return period + IDF coefficients and need the depth derived for you.", _object({"shape": {"type": "string", "enum": ["uniform", "triangular", "front_loaded", "back_loaded", "chicago", "huff", "scs"]}, "out": {"type": "string"}, "depth_mm": {"type": "number"}, "duration_min": {"type": "integer"}, "peak_position": {"type": "number"}, "quartile": {"type": "integer", "enum": [1, 2, 3, 4]}, "idf": {"type": "string"}}, ["shape", "out"]), _generate_storm_shape_tool, is_read_only=False),
-    ]
-
-
-def _introspection_mcp_network_plot_tools() -> list[ToolSpec]:
-    """Repo/diff introspection, the MCP bridge, network QA/export, and the plot/map renderers."""
-    return [
-        ToolSpec("git_diff", "Read the current repository diff or diff stat.", _object({"stat_only": {"type": "boolean"}, "path": {"type": "string"}}), _git_diff_tool, is_read_only=True),
-        # ``inspect_plot_options`` / ``plot_run`` moved to
-        # swmm_plot.tool_specs(); ``map_run`` to swmm_map.tool_specs()
-        # (issue #358 C1).
-        ToolSpec("list_dir", "List a repository directory.", _object({"path": {"type": "string"}}), _list_dir_tool, is_read_only=True),
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool, is_read_only=True),
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
-        ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool, is_read_only=True),
-        # ``network_qa`` / ``network_to_inp`` moved to
-        # swmm_network.tool_specs() (issue #358 C2).
-    ]
-
-
-def _read_memory_hitl_tools() -> list[ToolSpec]:
-    """File/rpt/skill reading, memory recall, and human-in-the-loop expert-review and gap-judgement pauses."""
-    return [
-        ToolSpec("read_file", "Read a repository file and return a bounded excerpt (capped at 4000 chars). NOTE: for SWMM .rpt summary sections (Link Flow / Outfall Loading / Node Inflow / water-quality sections), use read_rpt_summary instead — read_file's 4000-char cap cannot reach summary sections, which sit past the rpt header in 300+ KB files.", _object({"path": {"type": "string"}}, ["path"]), _read_file_tool, is_read_only=True),
-        # ``read_rpt_summary`` moved to swmm_rpt.tool_specs() (issue #358 C1).
-        ToolSpec("read_skill", "Read a skill contract from skills/<skill_name>/SKILL.md.", _object({"skill_name": {"type": "string"}}, ["skill_name"]), _read_skill_tool, is_read_only=True),
-        ToolSpec(
-            "recall_memory",
-            (
-                "Look up the lesson section for an exact failure_pattern name "
-                "from memory/modeling-memory/lessons_learned.md.\n"
-                "USE WHEN: you know the exact failure_pattern name (e.g. "
-                "'peak_flow_parse_missing') and want a precise lookup.\n"
-                "DO NOT USE WHEN: user is chatting, or the question is general "
-                "(prefer recall_memory_search)."
-            ),
-            _object({"pattern": {"type": "string"}}, ["pattern"]),
-            _recall_memory_tool,
-            is_read_only=True,
-        ),
-        ToolSpec(
-            "recall_memory_search",
-            (
-                "Retrieve the top-k most similar historical entries from the "
-                "RAG corpus (memory/rag-memory/) for a natural-language query.\n"
-                "USE WHEN: you have a natural-language question or do not know "
-                "the failure_pattern name. Returns up to top-k entries with "
-                "run_id, source_path, case_name, score, and matched_terms.\n"
-                "DO NOT USE WHEN: you have an exact pattern name (prefer "
-                "recall_memory) or the question is unrelated to past runs."
-            ),
-            _object(
-                {"query": {"type": "string"}, "top_k": {"type": "integer"}},
-                ["query"],
-            ),
-            _recall_memory_search_tool,
-            is_read_only=True,
-        ),
-        ToolSpec(
-            "recall_session_history",
-            (
-                "Search prior chat sessions in the SQLite session store for relevant past work.\n"
-                "USE WHEN: user mentions '上次/昨天/上周/before/previously/continue', or you need "
-                "to check whether a similar question / failure pattern has been encountered before.\n"
-                "DO NOT USE WHEN: question has no temporal cue and current-session context is sufficient."
-            ),
-            _object(
-                {
-                    "query": {"type": "string"},
-                    "case_name": {"type": "string"},
-                    "limit": {"type": "integer"},
-                },
-                ["query"],
-            ),
-            _recall_session_history_tool,
-            is_read_only=True,
-        ),
-        ToolSpec(
-            "record_fact",
-            (
-                "Append a candidate project fact to the staging file for later user review.\n"
-                "USE WHEN: user just expressed a durable preference, project convention, or "
-                "confirmed fix recipe that future sessions should remember.\n"
-                "DO NOT USE WHEN: ephemeral state, file path, secret, or anything you are not "
-                "certain the user wants persisted."
-            ),
-            _object(
-                {"text": {"type": "string"}, "source_session_id": {"type": "string"}},
-                ["text"],
-            ),
-            _record_fact_tool,
-            is_read_only=False,
-        ),
-        ToolSpec(
-            "request_expert_review",
-            (
-                "Pause the agent and request expert review.\n"
-                "USE WHEN: a QA threshold has been crossed and a "
-                "hydrologically consequential decision must be human-approved "
-                "before continuing. Pattern must match one of the documented "
-                "HITL thresholds (see docs/hitl-thresholds.md).\n"
-                "DO NOT USE WHEN: low-stakes confirmation or routine reasoning."
-            ),
-            _object(
-                {
-                    "run_dir": {"type": "string"},
-                    "pattern": {"type": "string"},
-                    "evidence_ref": {"type": "string"},
-                    "message": {"type": "string"},
-                },
-                ["run_dir", "pattern", "evidence_ref", "message"],
-            ),
-            _request_expert_review_tool,
-            # is_read_only=False — QUICK profile must NEVER auto-approve
-            # the HITL pause (PRD-Z hard requirement).
-            is_read_only=False,
-        ),
-        # CONCURRENCY-OWNER: PRD-GF-L5
-        # L5 subjective judgement entry point. The LLM invokes this
-        # tool explicitly when it identifies a hydrological choice that
-        # has no single right answer (pour point, storm event, metric
-        # weighting, …). The handler:
-        #   1. asks the LLM to enumerate N candidates with each one's
-        #      tradeoff cited (``llm_enumerator``),
-        #   2. shows the per-gap pause UI (``ui_per_gap``),
-        #   3. records an L5 ``GapDecision`` via the gap-fill recorder.
-        # ``supports_gap_fill=False`` because L5 does *not* travel the
-        # L1/L3 ``gap_signal`` interception path — the agent calls the
-        # tool directly. ``is_read_only=False`` because judgement must
-        # never be auto-approved by the QUICK profile.
-        ToolSpec(
-            "request_gap_judgement",
-            (
-                "Request a subjective hydrological judgement from the human "
-                "expert with enumerated candidates.\n"
-                "USE WHEN: a hydrological choice has no single right answer "
-                "(pour point ambiguity, storm event selection from a "
-                "calibration window, metric weighting, continuity tolerance "
-                "deviation). The LLM enumerator will list candidates with "
-                "each one's tradeoff cited; the modeller picks one with an "
-                "optional free-form note; the planner re-plans on the next "
-                "turn with the decision as a user_clarification message.\n"
-                "DO NOT USE WHEN: a missing path or parameter value can be "
-                "proposed deterministically (those flow through the L1/L3 "
-                "gap-fill path automatically). For free-form pauses without "
-                "structured candidates, use request_expert_review."
-            ),
-            _object(
-                {
-                    "gap_kind": {
-                        "type": "string",
-                        "enum": [
-                            "pour_point",
-                            "storm_event_selection",
-                            "metric_weighting",
-                            "continuity_tolerance",
-                        ],
-                    },
-                    "context": {"type": "object"},
-                    "evidence_ref": {"type": "string"},
-                },
-                ["gap_kind", "context", "evidence_ref"],
-            ),
-            _request_gap_judgement_tool,
-            # is_read_only=False — judgement must never be auto-approved.
-            is_read_only=False,
-            # supports_gap_fill=False — L5 is a separate mechanism from
-            # the L1/L3 ``gap_signal`` interception path. The agent
-            # invokes this tool explicitly; the runtime does not wrap
-            # it with the GF-CORE state machine.
-            supports_gap_fill=False,
-        ),
-    ]
-
-
-def _run_ops_memory_report_tools() -> list[ToolSpec]:
-    """SWMM run execution (local, bbox-synthesized, SWMMCanada), allowlisted command/test running, skill selection, memory summarize/retrieve, and the water-quality/design-review/report-export handoffs."""
-    return [
-        # ``run_swmm_inp`` moved to swmm_runner.tool_specs() (issue #358 C1).
-        # ``synth_swmm_from_bbox`` moved to swmm_anywhere.tool_specs()
-        # (issue #358 C2).
-        # ``fetch_swmm_from_canada`` and ``run_climate_scenarios`` moved to
-        # their family modules' ``tool_specs()`` (issue #358 PR B pilots);
-        # the family seam in ``_build_tools`` registers them.
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
-        ToolSpec("search_files", "Search text files in the repository.", _object({"query": {"type": "string"}, "glob": {"type": "string"}, "max_results": {"type": "integer"}}), _search_files_tool, is_read_only=True),
         ToolSpec(
             "select_skill",
             (
@@ -573,81 +291,7 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        # LLM-driven dispatch refactor: ``select_workflow_mode`` removed.
-        # Frontier LLMs read each tool's description / SKILL.md and
-        # pick the right tool directly; the hardcoded mode enum was a
-        # GPT-4-era guardrail that re-introduced keyword-matching
-        # brittleness on top of the LLM's own classifier.
         ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}, "obsidian_dir": {"type": "string", "description": "Optional path to an Obsidian vault directory; when present, the skill writes a Markdown summary there in addition to the standard output."}}, ["runs_dir"]), _summarize_memory_tool),
-        ToolSpec(
-            "retrieve_memory",
-            "Retrieve relevant audited-run memory cards for a query using the swmm-rag-memory skill's hybrid keyword/embedding retriever. Returns source-cited matches that the planner can synthesize into a grounded answer.",
-            _object(
-                {
-                    "query": {"type": "string"},
-                    "top_k": {"type": "integer"},
-                    "retriever": {"type": "string", "enum": ["keyword", "hybrid"]},
-                    "project": {"type": "string"},
-                },
-                ["query"],
-            ),
-            _retrieve_memory_tool,
-            is_read_only=True,
-        ),
-        # --- Water quality -----------------------------------------------
-        # PRD_water_quality.md PR3: read_wq_loads ToolSpec.
-        # Direct-subprocess handler (no MCP); mirrors retrieve_memory pattern.
-        # is_read_only=True: extract_wq_loads.py only reads the rpt and prints
-        # JSON to stdout — it never writes files in its default (no --out-json) mode.
-        ToolSpec(
-            "read_wq_loads",
-            "Read pollutant load summaries from a completed run's .rpt file; returns wq_present=false for non-WQ runs.",
-            _object(
-                {
-                    "rpt_path": {"type": "string", "description": "Path to the SWMM .rpt file from a completed run."},
-                },
-                ["rpt_path"],
-            ),
-            _read_wq_loads_tool,
-            is_read_only=True,
-        ),
-        # --- Design review -----------------------------------------------
-        # PRD_design_review.md PR2: review_run ToolSpec.
-        # Direct handler; writes 11_review/ artifacts → is_read_only=False.
-        ToolSpec(
-            "review_run",
-            "Run the deterministic design-review rule checklist against a completed SWMM run; reports findings, never certifies compliance.",
-            _object(
-                {
-                    "run_dir": {"type": "string", "description": "Absolute path to the run directory."},
-                    "rules": {"type": "string", "description": "Path to a custom YAML rulebook. Omit to use the bundled GB 50014 template."},
-                    "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/11_review/)."},
-                },
-                ["run_dir"],
-            ),
-            _review_run_tool,
-            is_read_only=False,
-        ),
-        # --- Report export -----------------------------------------------
-        # PRD_report_export.md PR2: generate_report ToolSpec.
-        # Direct handler; writes .docx deliverable → is_read_only=False.
-        ToolSpec(
-            "generate_report",
-            "Assemble a client-deliverable Word report (.docx) from an audited run directory. "
-            "Reads manifest.json, experiment_provenance.json, model_diagnostics.json, comparison.json, "
-            "and any PNG figures — never re-runs SWMM. Output path defaults to <run_dir>/report.docx.",
-            _object(
-                {
-                    "run_dir": {"type": "string", "description": "Absolute path to the audited run directory."},
-                    "out": {"type": "string", "description": "Output .docx path (default: <run_dir>/report.docx)."},
-                    "template": {"type": "string", "description": "Path to a template YAML; omit to use the default template."},
-                    "title": {"type": "string", "description": "Override the cover title text."},
-                },
-                ["run_dir"],
-            ),
-            _generate_report_tool,
-            is_read_only=False,
-        ),
     ]
 
 
@@ -668,18 +312,28 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
 # add the module path here; the grouped builder functions above dissolve
 # into this list family by family in the follow-up PRs.
 _FAMILY_SPEC_MODULES: tuple[str, ...] = (
+    "agentic_swmm.agent.tool_handlers.demo",
+    "agentic_swmm.agent.tool_handlers.gap_fill",
+    "agentic_swmm.agent.tool_handlers.introspection",
+    "agentic_swmm.agent.tool_handlers.runtime_ops",
     "agentic_swmm.agent.tool_handlers.swmm_anywhere",
+    "agentic_swmm.agent.tool_handlers.swmm_audit",
     "agentic_swmm.agent.tool_handlers.swmm_builder",
     "agentic_swmm.agent.tool_handlers.swmm_calibration",
     "agentic_swmm.agent.tool_handlers.swmm_canada",
     "agentic_swmm.agent.tool_handlers.swmm_climate",
     "agentic_swmm.agent.tool_handlers.swmm_map",
+    "agentic_swmm.agent.tool_handlers.swmm_memory",
     "agentic_swmm.agent.tool_handlers.swmm_network",
     "agentic_swmm.agent.tool_handlers.swmm_onboarding",
     "agentic_swmm.agent.tool_handlers.swmm_plot",
+    "agentic_swmm.agent.tool_handlers.swmm_report",
+    "agentic_swmm.agent.tool_handlers.swmm_review",
     "agentic_swmm.agent.tool_handlers.swmm_rpt",
     "agentic_swmm.agent.tool_handlers.swmm_runner",
+    "agentic_swmm.agent.tool_handlers.swmm_storm",
     "agentic_swmm.agent.tool_handlers.swmm_uncertainty",
+    "agentic_swmm.agent.tool_handlers.swmm_wq",
     "agentic_swmm.agent.tool_handlers.web",
 )
 
@@ -695,13 +349,7 @@ def _family_specs() -> list[ToolSpec]:
 
 
 def _build_tools() -> dict[str, ToolSpec]:
-    specs = (
-        _audit_patch_onboarding_tools()
-        + _builder_climate_tools()
-        + _introspection_mcp_network_plot_tools()
-        + _read_memory_hitl_tools()
-        + _run_ops_memory_report_tools()
-    )
+    specs = _registry_native_tools()
     tools = {spec.name: spec for spec in specs}
     for spec in _family_specs():
         if spec.name in tools:

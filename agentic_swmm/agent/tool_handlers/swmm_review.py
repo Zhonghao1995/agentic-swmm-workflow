@@ -20,7 +20,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
     _resolve_run_dir,
     _run_script_tool,
 )
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.utils.paths import repo_root, resource_path
 
 _REVIEW_SCRIPT = ("skills", "swmm-design-review", "scripts", "design_review.py")
@@ -68,4 +68,26 @@ def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_script_tool(call, session_dir, cli_args)
 
 
-__all__ = ["_review_run_tool"]
+__all__ = ["_review_run_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    from agentic_swmm.agent.tool_handlers._shared import _object
+
+    return [
+        ToolSpec(
+            "review_run",
+            "Run the deterministic design-review rule checklist against a completed SWMM run; reports findings, never certifies compliance.",
+            _object(
+                {
+                    "run_dir": {"type": "string", "description": "Absolute path to the run directory."},
+                    "rules": {"type": "string", "description": "Path to a custom YAML rulebook. Omit to use the bundled GB 50014 template."},
+                    "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/11_review/)."},
+                },
+                ["run_dir"],
+            ),
+            _review_run_tool,
+            is_read_only=False,
+        ),
+    ]
