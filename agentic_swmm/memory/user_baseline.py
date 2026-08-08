@@ -103,12 +103,18 @@ def _within_lookback(
         return True
     try:
         # Some writers may have used "+00:00" instead of "Z".
-        normalised = ts.replace("Z", "+00:00")
-        cutoff_normalised = cutoff_iso.replace("Z", "+00:00")
-        return datetime.fromisoformat(normalised) >= datetime.fromisoformat(
-            cutoff_normalised
-        )
-    except ValueError:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        cutoff = datetime.fromisoformat(cutoff_iso.replace("Z", "+00:00"))
+        # A writer that stamped a naive ISO string meant UTC (every
+        # sibling store writes UTC); without this default the aware
+        # vs naive comparison raises TypeError, which the old
+        # ValueError-only except let escape out of the filter.
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        if cutoff.tzinfo is None:
+            cutoff = cutoff.replace(tzinfo=timezone.utc)
+        return parsed >= cutoff
+    except (ValueError, TypeError):
         return True
 
 

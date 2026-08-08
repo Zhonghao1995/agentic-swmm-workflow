@@ -22,7 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -327,7 +327,7 @@ def cmd_run(args):
 
     manifest = {
         "manifest_version": "1.0",
-        "created_at": datetime.now().isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
         "swmm5": {
             "cmd": "swmm5",
             "version": detected_version,
