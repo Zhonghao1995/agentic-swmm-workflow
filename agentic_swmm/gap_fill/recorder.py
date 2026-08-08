@@ -38,10 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.gap_fill.protocol import GapDecision
-from agentic_swmm.hitl.decision_recorder import (
-    append_decision,
-    make_decision,
-)
+from agentic_swmm.hitl import append_decision, make_decision
 
 
 SCHEMA_VERSION = "1"

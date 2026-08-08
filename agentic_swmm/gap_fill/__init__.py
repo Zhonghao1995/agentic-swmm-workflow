@@ -16,11 +16,16 @@ PRD-GF-CORE. Submodules:
   ``experiment_provenance.json``.
 - :mod:`agentic_swmm.gap_fill.ui` — batched TTY prompt for the
   combined L1+L3 form.
+- :mod:`agentic_swmm.gap_fill.ui_per_gap` — per-gap prompt variant the
+  gap-fill tool handler drives.
+- :mod:`agentic_swmm.gap_fill.llm_enumerator` — GF-L5's LLM-grounded
+  gap enumerator.
 
-The package boundary is intentionally narrow: only ``protocol``,
-``recorder``, ``preflight``, ``proposer``, and ``ui`` are exposed.
-Higher-level downstream PRDs (GF-L5, GF-PROMOTE) extend this package
-with their own modules.
+The package boundary is intentionally narrow: only the submodules
+listed above are exposed (issue #359 grew the list to match the two
+GF-L5 modules the tool handler already consumed). The allowed external
+import surface is pinned by ``tests/test_package_import_surfaces.py``;
+growing it is a conscious edit to that pin in the same PR.
 """
 
 from agentic_swmm.gap_fill.protocol import (

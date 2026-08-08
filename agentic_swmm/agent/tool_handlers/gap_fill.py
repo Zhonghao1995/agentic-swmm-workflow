@@ -44,6 +44,10 @@ def _request_expert_review_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     and the pause/prompt/record logic can evolve independently. The
     shim is the integration seam the registry calls through.
     """
+    # Submodule import on purpose: the function shares its name with its
+    # module, so a package-level re-export would be shadowed by the
+    # submodule binding (see hitl/__init__.py). Sanctioned in the
+    # import-surface guard.
     from agentic_swmm.hitl.request_expert_review import request_expert_review
 
     return request_expert_review(call, session_dir)

@@ -111,10 +111,7 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
     missing thresholds doc all short-circuit to ``None`` — the audit
     pipeline must never crash because the HITL data was incomplete.
     """
-    from agentic_swmm.hitl.threshold_evaluator import (
-        evaluate,
-        load_thresholds_from_md,
-    )
+    from agentic_swmm.hitl import evaluate, load_thresholds_from_md
     from agentic_swmm.utils.paths import repo_root
 
     qa_path = _resolve_qa_summary_path(run_dir)
