@@ -192,8 +192,42 @@ def copy_inp_sidecar_files(inp: Path, inputs_dir: Path) -> list[Path]:
     return copied
 
 
+def default_report_node(inp_path: Path) -> str | None:
+    """Return the INP's first outfall (else first junction), or ``None``.
+
+    The peak-flow report needs a node id; the historical CLI default was
+    the literal ``"O1"``, which silently parses to a null peak on any
+    model that does not name its outfall ``O1`` (every SWMMCanada and
+    swmmanywhere upstream model, for instance). This helper picks a node
+    that actually exists so an un-flagged ``aiswmm run`` reports a real
+    peak. Outfalls win over junctions because the report's question is
+    "what left the system".
+    """
+    try:
+        text = inp_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    sections: dict[str, list[str]] = {"[OUTFALLS]": [], "[JUNCTIONS]": []}
+    section: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith(";"):
+            continue
+        if stripped.startswith("[") and stripped.endswith("]"):
+            upper = stripped.upper()
+            section = upper if upper in sections else None
+            continue
+        if section is not None:
+            sections[section].append(stripped.split()[0])
+    for key in ("[OUTFALLS]", "[JUNCTIONS]"):
+        if sections[key]:
+            return sections[key][0]
+    return None
+
+
 __all__ = [
     "copy_inp_sidecar_files",
+    "default_report_node",
     "infer_rain_timeseries",
     "rainfall_timeseries_options",
 ]

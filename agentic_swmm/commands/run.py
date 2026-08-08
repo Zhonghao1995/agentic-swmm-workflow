@@ -39,7 +39,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser = subparsers.add_parser("run", help="Run a SWMM INP file and write runner artifacts.")
     parser.add_argument("--inp", required=True, type=Path, help="Input SWMM .inp file.")
     parser.add_argument("--run-dir", "--out", dest="run_dir", required=True, type=Path, help="Run output directory.")
-    parser.add_argument("--node", default="O1", help="Node/outfall used for peak-flow parsing.")
+    parser.add_argument(
+        "--node",
+        default=None,
+        help=(
+            "Node/outfall used for peak-flow parsing. Default: the INP's "
+            "first outfall (else first junction), falling back to O1."
+        ),
+    )
     parser.add_argument("--rpt-name", help="Report file name. Defaults to model.rpt.")
     parser.add_argument("--out-name", help="Binary output file name. Defaults to model.out.")
     register_quiet_flag(parser)
@@ -72,6 +79,12 @@ def main(args: argparse.Namespace) -> int:
         if sidecar.resolve() != target.resolve():
             shutil.copy2(sidecar, target)
 
+    node = args.node
+    if not node:
+        from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
+
+        node = default_report_node(builder_inp) or "O1"
+
     script = script_path("skills", "swmm-runner", "scripts", "swmm_runner.py")
     command = python_command(
         script,
@@ -81,7 +94,7 @@ def main(args: argparse.Namespace) -> int:
         "--run-dir",
         str(runner_dir),
         "--node",
-        args.node,
+        node,
     )
     if args.rpt_name:
         command.extend(["--rpt-name", args.rpt_name])

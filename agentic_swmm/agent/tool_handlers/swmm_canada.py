@@ -44,10 +44,10 @@ def _stage_hint(stage: str) -> str:
         )
     if stage == "task_failed":
         return (
-            "the service rejected this AOI — SWMMCanada produces real municipal "
-            "pipe networks only for supported Canadian cities (Victoria, Ottawa, "
-            "Calgary, Surrey, London, Kitchener-Waterloo, Kelowna, Regina). For "
-            "other regions use synth_swmm_from_bbox instead."
+            "the service rejected this AOI — SWMMCanada covers Canadian areas "
+            "(real published storm networks for its supported cities, 35 at last "
+            "sync, and synthesized models elsewhere in Canada). For regions "
+            "outside Canada use synth_swmm_from_bbox instead."
         )
     if stage == "timeout":
         return (
