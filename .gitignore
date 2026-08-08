@@ -23,6 +23,12 @@ Validation-Snapshot.docx
 # Design-thinking doc — kept local going forward (already-pushed history left as-is).
 CONTEXT.md
 
+# Code-review archive — local-only. These reports pin exact file:line evidence and
+# working reproductions for security findings (SSRF, allowlist bypass) against
+# released versions; publishing them would hand users of older wheels an exploit
+# writeup. The fixes ship in the code; the review record stays here.
+docs/code-reviews/
+
 # Outputs
 *.out
 *.rpt
