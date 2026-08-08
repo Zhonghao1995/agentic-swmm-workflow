@@ -9,10 +9,13 @@ Portability rule: this script imports ONLY stdlib + python-docx + PyYAML.
 It must NEVER import agentic_swmm (skill-script portability requirement).
 """
 
+from __future__ import annotations
+
 import argparse
 import glob
 import json
 import os
+import re
 import sys
 
 # ---------------------------------------------------------------------------
@@ -280,34 +283,46 @@ def _render_run_summary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
 
 def _render_model_description(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> None:
     manifest = artifacts.get("manifest", {})
+    inp_facts = artifacts.get("inp_facts", {}) or {}
 
     ctx["section_number"] += 1
     raw_title = cfg.get("title", "Model Description")
     doc.add_heading(_numbered_heading(ctx["section_number"], raw_title), level=2)
 
-    basin_area = manifest.get("basin_area_ha")
-    sim_start = manifest.get("sim_start")
-    sim_end = manifest.get("sim_end")
+    # Source priority: facts parsed from the run's own INP (present for
+    # every run), then legacy manifest keys (one-off benchmark runs
+    # that hand-wrote them keep rendering), then n/a. The historical
+    # manifest-only read rendered n/a for every production run because
+    # no production writer emits these keys.
     landuse_params = manifest.get("landuse_params", {}) or {}
     green_ampt = manifest.get("green_ampt_params", {}) or {}
 
+    def _fact(key: str, legacy_value: object) -> str:
+        value = inp_facts.get(key)
+        if value is None:
+            value = legacy_value
+        return _na(value)
+
     value_map = {
-        "basin_area_ha": _na(basin_area),
-        "sim_start": _na(sim_start),
-        "sim_end": _na(sim_end),
-        "imperv_pct": _na(landuse_params.get("imperv_pct")),
-        "ksat_mm_per_hr": _na(green_ampt.get("ksat_mm_per_hr")),
-        "suction_mm": _na(green_ampt.get("suction_mm")),
+        "basin_area_ha": _fact("basin_area_ha", manifest.get("basin_area_ha")),
+        "sim_start": _fact("sim_start", manifest.get("sim_start")),
+        "sim_end": _fact("sim_end", manifest.get("sim_end")),
+        "imperv_pct": _fact("imperv_pct", landuse_params.get("imperv_pct")),
+        "ksat_mm_per_hr": _fact("ksat_mm_per_hr", green_ampt.get("ksat_mm_per_hr")),
+        "suction_mm": _fact("suction_mm", green_ampt.get("suction_mm")),
     }
 
     columns = cfg.get("columns", ["Parameter", "Value"])
     rows_cfg = cfg.get("rows", [])
 
-    caption = cfg.get("caption", "Catchment geometry and infiltration parameters from the model manifest.")
+    caption = cfg.get("caption", "Catchment geometry, simulation window, and infiltration parameters.")
     narrative = cfg.get(
         "narrative",
-        "All parameter values are sourced from manifest.json written by swmm-builder at "
-        "model-construction time; they reflect the exact inputs used for this simulation.",
+        "Geometry and simulation-window values are parsed from the run's own SWMM INP "
+        "(total subcatchment area, area-weighted imperviousness, [OPTIONS] dates); "
+        "infiltration values are subcatchment averages and are reported only when the "
+        "model uses Green-Ampt. Values shown as n/a could not be derived from the run "
+        "directory.",
     )
 
     _add_table_caption(doc, caption, ctx["table_counter"])
@@ -630,6 +645,127 @@ SECTION_RENDERERS = {
 # Artifact loader
 # ---------------------------------------------------------------------------
 
+def _find_run_inp(run_dir: str) -> str | None:
+    """Locate the run's INP: builder stage first, then inputs, then flat."""
+    candidates = []
+    for sub in ("05_builder", "04_builder", "00_inputs"):
+        d = os.path.join(run_dir, sub)
+        if os.path.isdir(d):
+            candidates.extend(
+                sorted(
+                    os.path.join(d, name)
+                    for name in os.listdir(d)
+                    if name.lower().endswith(".inp")
+                )
+            )
+    candidates.extend(
+        sorted(
+            os.path.join(run_dir, name)
+            for name in os.listdir(run_dir)
+            if name.lower().endswith(".inp")
+        )
+    )
+    return candidates[0] if candidates else None
+
+
+def _split_inp_sections(text: str) -> dict[str, list[str]]:
+    """Return ``{SECTION_NAME: data_lines}`` (comments/blank stripped)."""
+    sections: dict[str, list[str]] = {}
+    current: list[str] | None = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith(";"):
+            continue
+        m = re.match(r"^\[([A-Za-z_ ]+)\]$", line)
+        if m:
+            current = sections.setdefault(m.group(1).strip().upper(), [])
+            continue
+        if current is not None:
+            current.append(line)
+    return sections
+
+
+def _inp_model_facts(run_dir: str) -> dict:
+    """Derive model-description facts from the run's own INP.
+
+    Every run carries its INP; the historical code instead read
+    ``basin_area_ha`` / ``sim_start`` / ``landuse_params`` /
+    ``green_ampt_params`` from the top manifest, a schema no production
+    writer emits (only a one-off benchmark script did), so the default
+    report's Model Description table rendered ``n/a`` throughout while
+    its narrative claimed exact inputs (found 2026-08-08 drift sweep).
+
+    Returned keys mirror the template's row keys. Values that cannot
+    be derived (e.g. Green-Ampt columns under a Horton model) are
+    simply absent — callers fall back to legacy manifest keys, then
+    ``n/a``.
+    """
+    inp_path = _find_run_inp(run_dir)
+    if inp_path is None:
+        return {}
+    try:
+        text = open(inp_path, "r", encoding="utf-8", errors="replace").read()
+    except OSError:
+        return {}
+    sections = _split_inp_sections(text)
+    facts: dict[str, object] = {}
+
+    options: dict[str, str] = {}
+    for line in sections.get("OPTIONS", []):
+        parts = line.split()
+        if len(parts) >= 2:
+            options[parts[0].upper()] = " ".join(parts[1:])
+    start_date = options.get("START_DATE")
+    start_time = options.get("START_TIME")
+    end_date = options.get("END_DATE")
+    end_time = options.get("END_TIME")
+    if start_date:
+        facts["sim_start"] = f"{start_date} {start_time}".strip() if start_time else start_date
+    if end_date:
+        facts["sim_end"] = f"{end_date} {end_time}".strip() if end_time else end_date
+
+    # [SUBCATCHMENTS]: Name RainGage Outlet Area %Imperv Width Slope ...
+    total_area = 0.0
+    imperv_weighted = 0.0
+    for line in sections.get("SUBCATCHMENTS", []):
+        parts = line.split()
+        if len(parts) < 5:
+            continue
+        try:
+            area = float(parts[3])
+            imperv = float(parts[4])
+        except ValueError:
+            continue
+        total_area += area
+        imperv_weighted += area * imperv
+    if total_area > 0:
+        facts["basin_area_ha"] = round(total_area, 2)
+        facts["imperv_pct"] = round(imperv_weighted / total_area, 2)
+
+    # [INFILTRATION] under Green-Ampt: Subcatch Suction Ksat IMD.
+    # Only report these when the model actually uses Green-Ampt —
+    # under Horton the same columns mean MaxRate/MinRate/Decay.
+    infil_method = options.get("INFILTRATION", "").upper()
+    if "GREEN" in infil_method:
+        suctions: list[float] = []
+        ksats: list[float] = []
+        for line in sections.get("INFILTRATION", []):
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            try:
+                suctions.append(float(parts[1]))
+                ksats.append(float(parts[2]))
+            except ValueError:
+                continue
+        if suctions:
+            facts["suction_mm"] = round(sum(suctions) / len(suctions), 2)
+        if ksats:
+            facts["ksat_mm_per_hr"] = round(sum(ksats) / len(ksats), 2)
+
+    return facts
+
+
 def _load_artifacts(run_dir: str) -> dict:
     """Load all JSON artifacts from a run dir. Raises SystemExit on missing audit."""
     audit_dir = os.path.join(run_dir, "09_audit")
@@ -653,6 +789,7 @@ def _load_artifacts(run_dir: str) -> dict:
     return {
         "run_dir": run_dir,
         "manifest": _load_json(os.path.join(run_dir, "manifest.json")),
+        "inp_facts": _inp_model_facts(run_dir),
         "provenance": _load_json(provenance_path),
         "diagnostics": _load_json(os.path.join(run_dir, "model_diagnostics.json")),
         "comparison": _load_json(os.path.join(audit_dir, "comparison.json")),
