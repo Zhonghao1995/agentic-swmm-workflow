@@ -47,6 +47,13 @@ def test_family_specs_come_from_the_family_modules():
         "swmm_calibrate_sceua",
         "swmm_calibrate_dream_zs",
         "swmm_validate",
+        "swmm_sensitivity_oat",
+        "swmm_sensitivity_morris",
+        "swmm_sensitivity_sobol",
+        "swmm_rainfall_ensemble",
+        "swmm_uncertainty_source_decomposition",
+        "web_fetch_url",
+        "web_search",
     }
 
 

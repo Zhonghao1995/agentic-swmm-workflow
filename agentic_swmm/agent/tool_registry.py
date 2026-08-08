@@ -656,91 +656,8 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
 # _CALIBRATION_COMMON_REQUIRED (issue #358 C3).
 
 
-def _web_uncertainty_tools() -> list[ToolSpec]:
-    """Web fetch/search plus the five swmm-uncertainty ToolSpecs (OAT/Morris/Sobol sensitivity, rainfall ensemble, source decomposition)."""
-    return [
-        # Not is_read_only: fetching a model-chosen URL is network egress (a
-        # sensitive effect and an exfiltration channel), so it goes through the
-        # approval gate rather than auto-approving (review P1-3).
-        ToolSpec("web_fetch_url", "Fetch and summarize a web page. Web evidence is not SWMM run evidence.", _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}), _web_fetch_url_tool),
-        ToolSpec("web_search", "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.", _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}), _web_search_tool, is_read_only=True),
-        # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
-        # All is_read_only=False — each writes artefacts.
-        ToolSpec(
-            "swmm_sensitivity_oat",
-            "OAT sensitivity: perturb each parameter around a baseline and rank by RMSE+peak-error spread.",
-            _object(
-                {
-                    **_swmm_uncertainty_common_schema(),
-                    "base_params": {"type": "string", "description": "JSON object of baseline parameter values."},
-                    "scan_spec": {"type": "string", "description": "JSON object: parameter -> list of trial values."},
-                },
-                _SENSITIVITY_COMMON_REQUIRED + ["base_params", "scan_spec"],
-            ),
-            _swmm_sensitivity_oat_tool,
-            is_read_only=False,
-        ),
-        ToolSpec(
-            "swmm_sensitivity_morris",
-            "Morris elementary-effects screening via SALib; budget = r*(k+1) SWMM runs.",
-            _object(
-                {
-                    **_swmm_uncertainty_common_schema(),
-                    "parameter_space": {"type": "string", "description": "JSON: parameter -> {min, max} bounds."},
-                    "morris_r": {"type": "integer", "description": "Trajectory count; budget = r*(k+1)."},
-                    "morris_levels": {"type": "integer"},
-                },
-                _SENSITIVITY_COMMON_REQUIRED + ["parameter_space"],
-            ),
-            _swmm_sensitivity_morris_tool,
-            is_read_only=False,
-        ),
-        ToolSpec(
-            "swmm_sensitivity_sobol",
-            "Sobol' variance-decomposition (S_i + S_T_i) via SALib Saltelli sampling; budget = N*(2k+2) runs.",
-            _object(
-                {
-                    **_swmm_uncertainty_common_schema(),
-                    "parameter_space": {"type": "string", "description": "JSON: parameter -> {min, max} bounds."},
-                    "sobol_n": {"type": "integer", "description": "Saltelli base sample size; budget = N*(2k+2)."},
-                },
-                _SENSITIVITY_COMMON_REQUIRED + ["parameter_space"],
-            ),
-            _swmm_sensitivity_sobol_tool,
-            is_read_only=False,
-        ),
-        ToolSpec(
-            "swmm_rainfall_ensemble",
-            "Generate a rainfall ensemble (perturbation of observed series or IDF design storms); optionally run swmm5 per realisation.",
-            _object(
-                {
-                    "method": {"type": "string", "enum": ["perturbation", "idf"], "description": "Ensemble generation method."},
-                    "config": {"type": "string", "description": "Path to JSON config (see skills/swmm-uncertainty/examples/)."},
-                    "run_root": {"type": "string", "description": "Output root; summary at <run_root>/09_audit/rainfall_ensemble_summary.json."},
-                    "base_inp": {"type": "string", "description": "If provided, each realisation is patched into this INP and run through swmm5."},
-                    "series_name": {"type": "string"},
-                    "swmm_node": {"type": "string"},
-                    "seed": {"type": "integer"},
-                    "dry_run": {"type": "boolean", "description": "Generate realisations but skip swmm5."},
-                },
-                ["method", "config", "run_root"],
-            ),
-            _swmm_rainfall_ensemble_tool,
-            is_read_only=False,
-        ),
-        ToolSpec(
-            "swmm_uncertainty_source_decomposition",
-            "Integrate existing 09_audit/ artefacts (Sobol'/Morris/DREAM-ZS/SCE-UA/ensemble) into uncertainty_source_summary.md.",
-            _object(
-                {
-                    "run_dir": {"type": "string", "description": "Run directory containing 09_audit/."},
-                },
-                ["run_dir"],
-            ),
-            _swmm_uncertainty_source_decomposition_tool,
-            is_read_only=False,
-        ),
-    ]
+# Web and swmm-uncertainty specs moved to web.tool_specs() and
+# swmm_uncertainty.tool_specs() (issue #358 C4).
 
 
 # Family self-registration seam (issue #358 PR B). A tool_handlers
@@ -762,6 +679,8 @@ _FAMILY_SPEC_MODULES: tuple[str, ...] = (
     "agentic_swmm.agent.tool_handlers.swmm_plot",
     "agentic_swmm.agent.tool_handlers.swmm_rpt",
     "agentic_swmm.agent.tool_handlers.swmm_runner",
+    "agentic_swmm.agent.tool_handlers.swmm_uncertainty",
+    "agentic_swmm.agent.tool_handlers.web",
 )
 
 
@@ -782,7 +701,6 @@ def _build_tools() -> dict[str, ToolSpec]:
         + _introspection_mcp_network_plot_tools()
         + _read_memory_hitl_tools()
         + _run_ops_memory_report_tools()
-        + _web_uncertainty_tools()
     )
     tools = {spec.name: spec for spec in specs}
     for spec in _family_specs():
@@ -1044,12 +962,7 @@ from agentic_swmm.agent.tool_handlers.swmm_storm import (  # noqa: E402,F401
 # ``tool_handlers/runtime_ops.py``. Re-exported above via runtime_ops.
 
 
-# PRD #128: ``_web_fetch_url_tool`` and ``_web_search_tool`` moved to
-# ``tool_handlers/web.py``. Re-exported here so import paths stay stable.
-from agentic_swmm.agent.tool_handlers.web import (  # noqa: E402,F401
-    _web_fetch_url_tool,
-    _web_search_tool,
-)
+# The web family self-registers via tool_specs() since issue #358 C4.
 
 
 def _list_mcp_servers_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -1221,21 +1134,15 @@ from agentic_swmm.agent.tool_handlers.swmm_calibration import (  # noqa: E402,F4
     _validate_args,
 )
 # dark-MCP registration (PR 2, issue #246): 5 uncertainty tools.
+# Handlers, schema fn, and the required-args alias self-register with
+# the family via tool_specs() since issue #358 C4; the *_args mappers
+# stay re-exported for historical import sites (tests).
 from agentic_swmm.agent.tool_handlers.swmm_uncertainty import (  # noqa: E402,F401
-    _swmm_uncertainty_common_schema,
-    _SENSITIVITY_REQUIRED as _SENSITIVITY_COMMON_REQUIRED,
-    # args mappers
     _sensitivity_oat_args,
     _sensitivity_morris_args,
     _sensitivity_sobol_args,
     _rainfall_ensemble_args,
     _source_decomposition_args,
-    # handler objects
-    _swmm_sensitivity_oat_tool,
-    _swmm_sensitivity_morris_tool,
-    _swmm_sensitivity_sobol_tool,
-    _swmm_rainfall_ensemble_tool,
-    _swmm_uncertainty_source_decomposition_tool,
 )
 
 

@@ -17,8 +17,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure, _strip_html
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object, _strip_html
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 def _assert_public_host(url: str) -> None:
@@ -127,4 +127,26 @@ def _web_search_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     }
 
 
-__all__ = ["_web_fetch_url_tool", "_web_search_tool"]
+__all__ = ["_web_fetch_url_tool", "_web_search_tool", "tool_specs"]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        # Not is_read_only: fetching a model-chosen URL is network egress (a
+        # sensitive effect and an exfiltration channel), so it goes through
+        # the approval gate rather than auto-approving (review P1-3).
+        ToolSpec(
+            "web_fetch_url",
+            "Fetch and summarize a web page. Web evidence is not SWMM run evidence.",
+            _object({"url": {"type": "string"}, "max_chars": {"type": "integer"}}),
+            _web_fetch_url_tool,
+        ),
+        ToolSpec(
+            "web_search",
+            "Run a lightweight web search and return cited result URLs. Web evidence is not SWMM run evidence.",
+            _object({"query": {"type": "string"}, "allowed_domains": {"type": "array", "items": {"type": "string"}}, "max_results": {"type": "integer"}}),
+            _web_search_tool,
+            is_read_only=True,
+        ),
+    ]

@@ -200,6 +200,15 @@ class ToolHandlersSkillFamilyTests(unittest.TestCase):
             "_swmm_calibrate_tool",
             "_swmm_sensitivity_scan_tool",
             "_swmm_validate_tool",
+            # issue #358 C4
+            "_web_fetch_url_tool",
+            "_web_search_tool",
+            "_swmm_uncertainty_common_schema",
+            "_swmm_sensitivity_oat_tool",
+            "_swmm_sensitivity_morris_tool",
+            "_swmm_sensitivity_sobol_tool",
+            "_swmm_rainfall_ensemble_tool",
+            "_swmm_uncertainty_source_decomposition_tool",
         }
         for _, symbols, _ in _MIGRATED_FAMILIES:
             for symbol in symbols:
