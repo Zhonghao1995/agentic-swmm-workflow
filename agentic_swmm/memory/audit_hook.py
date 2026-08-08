@@ -64,10 +64,17 @@ def is_skip_memory_run(run_dir: Path) -> tuple[bool, str]:
 
     resolved = run_dir.resolve()
     parts = resolved.parts
-    if "acceptance" in parts and "runs" in parts:
-        runs_idx = parts.index("runs")
-        if runs_idx + 1 < len(parts) and parts[runs_idx + 1] == "acceptance":
-            return True, "run path under runs/acceptance/"
+    # Check EVERY runs/ component for an adjacent acceptance/, not just
+    # the first: ``parts.index("runs")`` anchored the first occurrence,
+    # so a path with an unrelated ancestor named "runs" (e.g.
+    # .../runs/archive/.../runs/acceptance/<case>) tested the wrong
+    # pair and let acceptance-run data leak into long-term memory
+    # (found 2026-08-08, reproduced).
+    if any(
+        part == "runs" and idx + 1 < len(parts) and parts[idx + 1] == "acceptance"
+        for idx, part in enumerate(parts)
+    ):
+        return True, "run path under runs/acceptance/"
     if ".archive" in parts:
         return True, "run path under runs/.archive/"
 
