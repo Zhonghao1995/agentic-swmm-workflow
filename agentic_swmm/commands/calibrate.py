@@ -166,9 +166,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     parser.add_argument(
         "--objective",
-        default="nse",
+        default=None,
         choices=("nse", "kge", "rmse"),
-        help="Objective name (default nse). RMSE is min; others are max.",
+        help=(
+            "Objective name. The real engine (default) always optimizes "
+            "KGE; NSE and RMSE are reported as secondary metrics in "
+            "calibration_summary.json, and passing --objective nse|rmse "
+            "with --engine real is an error rather than a silent "
+            "substitution. The synthetic walker honors all three "
+            "(default nse there; RMSE is min, others are max)."
+        ),
     )
     parser.add_argument(
         "--run-dir",
@@ -308,6 +315,9 @@ def _run_real(args: argparse.Namespace, parameters: list[tuple[str, float, float
         "ok": not result.errors,
         "is_stub": False,
         "engine": "sceua-spotpy",
+        # The real engine's objective is fixed; stating it here makes
+        # the optimized quantity discoverable after the fact.
+        "objective": "kge",
         "run_id": result.run_id,
         "algorithm": result.algorithm,
         "iterations_completed": result.iterations_completed,
@@ -350,6 +360,22 @@ def main(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
+        # The real SCE-UA engine optimizes KGE, full stop (the skill
+        # script hardcodes PRIMARY_OBJECTIVE_NAME = "kge"; NSE/RMSE
+        # ride along as secondary metrics in the summary). Before this
+        # guard, --objective nse|rmse was accepted and silently
+        # discarded: the user got a KGE-optimized calibration labeled
+        # however they asked (found 2026-08-08 CLI sweep).
+        if args.objective not in (None, "kge"):
+            print(
+                f"error: --objective {args.objective} is not supported by "
+                "the real SCE-UA engine, which always optimizes KGE "
+                "(NSE and RMSE are reported as secondary metrics in "
+                "calibration_summary.json). Drop --objective, pass "
+                "--objective kge, or use --engine synthetic.",
+                file=sys.stderr,
+            )
+            return 1
         if args.observed_csv is None or args.patch_map is None:
             print(
                 "error: the real engine requires --observed-csv and --patch-map "
@@ -361,6 +387,35 @@ def main(args: argparse.Namespace) -> int:
         fail_fast_if_path_missing(args.patch_map, "--patch-map")
         return _run_real(args, parameters)
 
+    # Synthetic walker: warn (once, one line) about real-engine-only
+    # flags that were set to non-default values — the walker never runs
+    # SWMM, so node/attr/windowing/SCE-UA tuning flags cannot take
+    # effect. Comparing to the argparse default cannot detect an
+    # explicitly-passed default value; that false negative only costs
+    # the warning, never correctness.
+    _REAL_ONLY_DEFAULTS = {
+        "node": "O1",
+        "attr": "Total_inflow",
+        "aggregate": "none",
+        "obs_start": None,
+        "obs_end": None,
+        "timestamp_col": None,
+        "flow_col": None,
+        "seed": 42,
+        "ngs": 5,
+    }
+    ignored = [
+        f"--{name.replace('_', '-')}"
+        for name, default in _REAL_ONLY_DEFAULTS.items()
+        if getattr(args, name, default) != default
+    ]
+    if ignored:
+        print(
+            f"warning: {', '.join(ignored)} ignored because --engine "
+            "synthetic runs the checkpoint-contract walker without SWMM",
+            file=sys.stderr,
+        )
+
     cfg = CalibrationRunConfig(
         run_id=args.run_id,
         algorithm=args.algorithm,
@@ -368,7 +423,7 @@ def main(args: argparse.Namespace) -> int:
         base_inp=args.inp,
         observed_csv=args.observed_csv,
         parameters=parameters,
-        objective=args.objective,
+        objective=args.objective or "nse",
         checkpoint_every=args.checkpoint_every,
     )
 
@@ -414,6 +469,7 @@ def main(args: argparse.Namespace) -> int:
         # skills/swmm-calibration/scripts/swmm_calibrate.py.
         "is_stub": True,
         "engine": "synthetic_walker",
+        "objective": cfg.objective,
         "run_id": result.run_id,
         "algorithm": result.algorithm,
         "iterations_completed": result.iterations_completed,
