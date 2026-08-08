@@ -39,11 +39,15 @@ Parser shape
 Section detection: locate the section title line (case-sensitive, the
 SWMM writer always writes the exact title). Skip past the column
 header block (between rows of dashes). Each subsequent line is split
-on whitespace; rows whose token count does not match the expected row
-width terminate the section (catches blank lines, ``System`` totals
-rows, and the next section's asterisk banner). On a per-row parse
-error (e.g. non-numeric token where a float is expected), the row is
-skipped — a single malformed line does not fail the whole call.
+on whitespace; the section ends at a blank line, a dashes row, or the
+next section's asterisk banner (which also fences off ``System``
+totals rows behind their dashes separator). A row whose token count
+does not match the schema, or that fails per-row parsing (e.g. a
+non-numeric token where a float is expected), is skipped and counted
+— it no longer terminates the section, so one odd row (such as a
+zero-volume row SWMM writes with a unit suffix) cannot silently drop
+every row after it. The skip count is surfaced to the planner as
+``skipped_malformed_rows``.
 
 Validation is fail-soft via :func:`_failure` from ``_shared`` so the
 planner sees the same shape as every other handler.
@@ -58,6 +62,7 @@ from agentic_swmm.agent.swmm_runtime.rpt_summary import (
     SECTIONS as _CANONICAL_SECTIONS,
     SectionSchema as _SectionSchema,
     parse_section as _parse_section,
+    parse_section_with_stats as _parse_section_with_stats,
     parse_variable_section as _parse_variable_section,
 )
 from agentic_swmm.agent.tool_handlers._shared import _failure, _object
@@ -165,7 +170,7 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             "summary": summary,
         }
 
-    rows = _parse_section(rpt_text, schema)
+    rows, skipped_rows = _parse_section_with_stats(rpt_text, schema)
 
     # Resolve sort column. Unknown ``sort_by`` falls back silently.
     sort_by_raw = call.args.get("sort_by")
@@ -183,7 +188,9 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         f"section={section_key} total={total_rows} "
         f"shown={len(shown_rows)} sort={sort_by} desc"
     )
-    return {
+    if skipped_rows:
+        summary += f" (skipped {skipped_rows} unparseable row(s))"
+    result = {
         "tool": call.name,
         "args": call.args,
         "ok": True,
@@ -194,6 +201,12 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         "rows": shown_rows,
         "summary": summary,
     }
+    if skipped_rows:
+        # Completeness signal: rows SWMM printed in a shape the schema
+        # could not parse (e.g. zero-volume "0.000 ltr" unit-suffix
+        # rows). total_rows counts parsed rows only.
+        result["skipped_malformed_rows"] = skipped_rows
+    return result
 
 
 __all__ = ["_read_rpt_summary_tool", "_parse_variable_section", "tool_specs"]
