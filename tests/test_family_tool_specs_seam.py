@@ -41,6 +41,12 @@ def test_family_specs_come_from_the_family_modules():
         "network_qa",
         "network_to_inp",
         "synth_swmm_from_bbox",
+        "swmm_sensitivity_scan",
+        "swmm_calibrate",
+        "swmm_calibrate_search",
+        "swmm_calibrate_sceua",
+        "swmm_calibrate_dream_zs",
+        "swmm_validate",
     }
 
 
