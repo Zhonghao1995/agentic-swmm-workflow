@@ -141,9 +141,11 @@ class TestUnknownDefaultSafetyNet:
 
 
 class TestGuidanceBanner:
-    def test_no_credentials_banner_names_both_providers(self, isolated_home):
+    def test_no_credentials_banner_names_selected_route(self, isolated_home):
+        # Route-aware since ADR-0008: the banner names the selected
+        # route's key env and login command, plus the wizard entry point.
         msg = provider_preflight.check_interactive_provider().guidance_message
         assert msg
         assert "OPENAI_API_KEY" in msg
-        assert "ANTHROPIC_API_KEY" in msg
-        assert "aiswmm login" in msg
+        assert "aiswmm login openai" in msg
+        assert "aiswmm setup" in msg

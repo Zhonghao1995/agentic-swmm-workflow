@@ -661,17 +661,23 @@ def render_sessions_sqlite_row(status: MemoryStoreStatus) -> str:
 
 @dataclass(frozen=True)
 class LLMProviderStatus:
-    """Snapshot of the two API-key LLM backends for the doctor report.
+    """Snapshot of the LLM provider routes for the doctor report.
 
     ``openai_key_present`` / ``anthropic_key_present`` reflect whether
-    each provider's API key is reachable (env var, ``~/.aiswmm/env``, or
-    the ``[<provider>]`` config section — the same tiers the preflight
-    uses). ``default_provider`` is the configured ``provider.default``.
+    each original provider's API key is reachable (env var,
+    ``~/.aiswmm/env``, or the ``[<provider>]`` config section — the same
+    tiers the preflight uses). ``default_provider`` is the configured
+    ``provider.default``, which since ADR-0008 may name any route;
+    ``default_route_ready`` / ``default_key_env`` describe that route,
+    and ``fallback_provider`` is ``provider.fallback`` when set.
     """
 
     default_provider: str
     openai_key_present: bool
     anthropic_key_present: bool
+    default_route_ready: bool = True
+    default_key_env: str = ""
+    fallback_provider: str = ""
 
 
 def collect_llm_provider_status() -> LLMProviderStatus:
@@ -683,19 +689,27 @@ def collect_llm_provider_status() -> LLMProviderStatus:
     renders.
     """
     from agentic_swmm.agent.provider_preflight import provider_key_present
+    from agentic_swmm.providers.routes import ROUTES
 
+    fallback_provider = ""
     try:
         from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 
-        default_provider = str(load_config().get("provider.default", DEFAULT_PROVIDER))
+        config = load_config()
+        default_provider = str(config.get("provider.default", DEFAULT_PROVIDER))
+        fallback_provider = str(config.get("provider.fallback", "") or "")
     except Exception:  # pragma: no cover - defensive; config is shallow
         from agentic_swmm.config import DEFAULT_PROVIDER
 
         default_provider = DEFAULT_PROVIDER
+    spec = ROUTES.get(default_provider)
     return LLMProviderStatus(
         default_provider=default_provider,
         openai_key_present=provider_key_present("openai"),
         anthropic_key_present=provider_key_present("anthropic"),
+        default_route_ready=provider_key_present(default_provider),
+        default_key_env=spec.key_env if spec is not None else "",
+        fallback_provider=fallback_provider,
     )
 
 
@@ -722,6 +736,16 @@ def render_llm_provider_section(status: LLMProviderStatus) -> str:
         f"  {'OpenAI API key':21} {'OPENAI_API_KEY':19} - {openai_state}",
         f"  {'Anthropic API key':21} {'ANTHROPIC_API_KEY':19} - {anthropic_state}",
     ]
+    if status.default_provider not in ("openai", "anthropic"):
+        key_label = status.default_key_env or "(keyless)"
+        route_state = (
+            "ready"
+            if status.default_route_ready
+            else f"not ready (set it: aiswmm login {status.default_provider})"
+        )
+        lines.append(f"  {'Default route':21} {key_label:19} - {route_state}")
+    if status.fallback_provider:
+        lines.append(f"  {'Fallback route':21} {status.fallback_provider:19} - configured")
     return "\n".join(lines)
 
 
@@ -1121,6 +1145,9 @@ def llm_provider_status_to_dict(s: LLMProviderStatus) -> dict:
         "default_provider": s.default_provider,
         "openai_key_present": s.openai_key_present,
         "anthropic_key_present": s.anthropic_key_present,
+        "default_route_ready": s.default_route_ready,
+        "default_key_env": s.default_key_env,
+        "fallback_provider": s.fallback_provider,
     }
 
 

@@ -163,7 +163,66 @@ class TestBareLoginTargetsDefault:
 
 
 class TestRegistryExtensibility:
-    def test_login_handlers_registry_maps_known_providers(self):
-        assert set(login._LOGIN_HANDLERS) == {"openai", "anthropic"}
+    def test_login_handlers_registry_covers_every_route(self):
+        from agentic_swmm.providers.routes import route_names
+
+        assert set(login._LOGIN_HANDLERS) == set(route_names())
         for handler in login._LOGIN_HANDLERS.values():
             assert callable(handler)
+
+
+class TestRouteLogins:
+    def test_keyed_route_login_stores_key_and_selects_route(self, isolated_cfg, monkeypatch):
+        monkeypatch.setenv("AISWMM_LOGIN_DEEPSEEK_KEY", "sk-ds-secret")
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = login.main(_args(route="deepseek"))
+        out = buf.getvalue()
+        assert rc == 0
+        body = (isolated_cfg / "env").read_text(encoding="utf-8")
+        assert 'DEEPSEEK_API_KEY="sk-ds-secret"' in body
+        cfg = load_config()
+        assert cfg.get("provider.default") == "deepseek"
+        assert cfg.get("deepseek.model") == "deepseek-chat"
+        assert "sk-ds-secret" not in out
+
+    def test_keyless_route_login_selects_without_key(self, isolated_cfg):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = login.main(_args(route="ollama"))
+        assert rc == 0
+        assert not (isolated_cfg / "env").exists()
+        cfg = load_config()
+        assert cfg.get("provider.default") == "ollama"
+        assert cfg.get("ollama.model") == "llama3.1:8b"
+
+    def test_custom_route_requires_base_url_and_model(self, isolated_cfg, monkeypatch):
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_KEY", "")
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_BASE_URL", "http://vllm.local:8000/v1")
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_MODEL", "qwen3-32b")
+        with redirect_stdout(io.StringIO()):
+            rc = login.main(_args(route="custom"))
+        assert rc == 0
+        cfg = load_config()
+        assert cfg.get("provider.default") == "custom"
+        assert cfg.get("custom.base_url") == "http://vllm.local:8000/v1"
+        assert cfg.get("custom.model") == "qwen3-32b"
+
+    def test_custom_route_rejects_missing_base_url(self, isolated_cfg, monkeypatch):
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_KEY", "")
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_BASE_URL", "   ")
+        monkeypatch.setenv("AISWMM_LOGIN_CUSTOM_MODEL", "m")
+        with redirect_stdout(io.StringIO()):
+            rc = login.main(_args(route="custom"))
+        assert rc == 1
+
+    def test_status_lists_every_route(self, isolated_cfg):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = login.main(_args(status=True))
+        out = buf.getvalue()
+        assert rc == 0
+        from agentic_swmm.providers.routes import route_names
+
+        for name in route_names():
+            assert name in out

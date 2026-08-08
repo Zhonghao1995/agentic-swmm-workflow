@@ -55,10 +55,18 @@ class LLMProvidersDocTests(unittest.TestCase):
         self.assertIn("openai", body)
         self.assertIn("anthropic", body)
 
-    def test_doc_has_no_subscription_narrative(self) -> None:
+    def test_doc_keeps_subscription_auth_out_of_core(self) -> None:
+        """ADR-0008: subscription access is gateway-external.
+
+        The doc may describe local gateways that front a subscription,
+        but it must never claim aiswmm itself performs a vendor login
+        (no in-core OAuth story, no retired SDK), and it must state
+        plainly that the gateway owns that login.
+        """
         body = self._doc().lower()
-        self.assertNotIn("subscription", body)
         self.assertNotIn("claude_sdk", body)
+        self.assertNotIn("oauth", body)
+        self.assertIn("owns the vendor login", body)
 
     def test_readme_links_llm_providers_doc(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")

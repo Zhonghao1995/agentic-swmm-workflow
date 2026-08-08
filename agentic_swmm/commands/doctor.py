@@ -278,21 +278,21 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
         from agentic_swmm.config import DEFAULT_PROVIDER
 
         default_provider = DEFAULT_PROVIDER
-    default_key_env = {
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-    }.get(default_provider, "OPENAI_API_KEY")
+    from agentic_swmm.providers.routes import ROUTES
+
+    spec = ROUTES.get(default_provider)
+    default_key_env = (spec.key_env if spec is not None else "") or f"{default_provider} route"
     default_key_present = provider_key_present(default_provider)
-    checks.append(
-        (
-            default_key_env,
-            default_key_present,
-            "set"
-            if default_key_present
-            else f"not set; needed for the default '{default_provider}' planner provider",
-            False,
+    if spec is not None and not spec.key_env:
+        detail = "keyless local route"
+    elif default_key_present:
+        detail = "set"
+    else:
+        detail = (
+            f"not set; needed for the default '{default_provider}' planner provider "
+            f"(aiswmm login {default_provider})"
         )
-    )
+    checks.append((default_key_env, default_key_present, detail, False))
     node = shutil.which("node")
     checks.append(
         (

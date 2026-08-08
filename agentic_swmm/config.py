@@ -5,16 +5,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agentic_swmm.providers.routes import ROUTES
+
 
 CONFIG_DIR_ENV = "AISWMM_CONFIG_DIR"
-# Two API-key providers, both standard function-calling. ``openai`` is
-# the shipped default (OpenAI Responses API); ``anthropic`` is opt-in
-# (native Anthropic Messages API) via ``--provider anthropic`` / config.
+# Provider routes are defined in ``agentic_swmm.providers.routes``
+# (ADR-0008); ``openai`` stays the shipped default. The two model
+# constants below are retained names (login/back-compat importers) but
+# derive from the route table so there is exactly one source of truth.
 DEFAULT_PROVIDER = "openai"
-# Canonical OpenAI model id for the default backend.
-DEFAULT_OPENAI_MODEL = "gpt-5.5"
-# Canonical Anthropic model id for the opt-in backend.
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
+DEFAULT_OPENAI_MODEL = ROUTES["openai"].default_model
+DEFAULT_ANTHROPIC_MODEL = ROUTES["anthropic"].default_model
 
 
 @dataclass(frozen=True)

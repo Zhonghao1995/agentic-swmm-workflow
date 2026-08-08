@@ -34,8 +34,12 @@ def provider_help_text(base: str) -> str:
     """
     return (
         f"{base} 'openai' (default) uses the OpenAI Responses API; "
-        "'anthropic' is opt-in and uses the Anthropic Messages API. "
-        "Both read an API key from the environment."
+        "'anthropic' uses the Anthropic Messages API; the other routes "
+        "(codex, openrouter, deepseek, groq, gemini, ollama, lmstudio, "
+        "custom) use OpenAI-compatible chat/completions endpoints. "
+        "Keyed routes read their API key from the environment; ollama "
+        "and lmstudio are local and keyless. Run `aiswmm setup` for the "
+        "interactive picker."
     )
 
 
