@@ -186,6 +186,12 @@ class ToolHandlersSkillFamilyTests(unittest.TestCase):
             "_plot_run_tool",
             "_map_run_tool",
             "_read_rpt_summary_tool",
+            # issue #358 C2
+            "_apply_onboarding_tool",
+            "_build_inp_tool",
+            "_network_qa_tool",
+            "_network_to_inp_tool",
+            "_synth_swmm_from_bbox_tool",
         }
         for _, symbols, _ in _MIGRATED_FAMILIES:
             for symbol in symbols:

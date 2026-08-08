@@ -268,48 +268,15 @@ def _audit_patch_onboarding_tools() -> list[ToolSpec]:
         # user's reply to the onboarding offer the planner hook surfaced.
         # is_read_only=False — acceptance writes transferred parameters to the
         # session context (explicit-flow action per CONTEXT.md invariant 4).
-        ToolSpec(
-            "apply_onboarding",
-            (
-                "Apply a user's reply to the new-case onboarding offer. "
-                "CALL WHEN: the planner has surfaced an onboarding offer (via the "
-                "<onboarding_offer> system-prompt block) and the user has replied. "
-                "Pass the user's exact reply as 'response'; the tool classifies it "
-                "as accept / decline / customize and returns the applied parameters "
-                "and source memory ids. "
-                "On accept, transferred parameters from a similar watershed are "
-                "applied to the session and reported so you can stamp "
-                "memories_applied on the run."
-            ),
-            _object(
-                {
-                    "case_name": {
-                        "type": "string",
-                        "description": "The case name the onboarding offer was made for.",
-                    },
-                    "response": {
-                        "type": "string",
-                        "description": (
-                            "The user's natural-language reply: "
-                            "Y / yes / empty to accept, "
-                            "n / no to decline, "
-                            "'customize' or 'c' to enter custom mode, "
-                            "or any free-form text."
-                        ),
-                    },
-                },
-                ["case_name", "response"],
-            ),
-            _apply_onboarding_tool,
-            is_read_only=False,
-        ),
+        # ``apply_onboarding`` moved to swmm_onboarding.tool_specs()
+        # (issue #358 C2).
     ]
 
 
 def _builder_climate_tools() -> list[ToolSpec]:
     """INP assembly (swmm-builder) and rainfall/design-storm synthesis (swmm-climate), plus capabilities/demo/doctor."""
     return [
-        ToolSpec("build_inp", "Assemble a SWMM INP from explicit CSV/JSON/text inputs using the swmm-builder skill.", _object({"subcatchments_csv": {"type": "string"}, "params_json": {"type": "string"}, "network_json": {"type": "string"}, "rainfall_json": {"type": "string"}, "raingage_json": {"type": "string"}, "timeseries_text": {"type": "string"}, "config_json": {"type": "string"}, "default_gage_id": {"type": "string"}, "water_quality_json": {"type": "string", "description": "Optional path to a WQ config JSON enabling pollutant buildup/washoff simulation ([POLLUTANTS]/[LANDUSES]/[BUILDUP]/[WASHOFF]/[COVERAGES]/[LOADINGS] sections)."}, "out_inp": {"type": "string"}, "out_manifest": {"type": "string"}}, ["subcatchments_csv", "params_json", "network_json", "out_inp", "out_manifest"]), _build_inp_tool),
+        # ``build_inp`` moved to swmm_builder.tool_specs() (issue #358 C2).
         # C1 (issue #246): build_raingage_section — builds the SWMM [RAINGAGES] section
         # snippet that pairs with a formatted timeseries.
         ToolSpec(
@@ -420,8 +387,8 @@ def _introspection_mcp_network_plot_tools() -> list[ToolSpec]:
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("list_skills", "List available repository skills.", _object({}), _list_skills_tool, is_read_only=True),
-        ToolSpec("network_qa", "Validate a SWMM network JSON using the swmm-network QA script.", _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]), _network_qa_tool),
-        ToolSpec("network_to_inp", "Export a SWMM network JSON to INP section text using the swmm-network script.", _object({"network_json": {"type": "string"}, "out_path": {"type": "string"}}, ["network_json", "out_path"]), _network_to_inp_tool),
+        # ``network_qa`` / ``network_to_inp`` moved to
+        # swmm_network.tool_specs() (issue #358 C2).
     ]
 
 
@@ -584,60 +551,8 @@ def _run_ops_memory_report_tools() -> list[ToolSpec]:
     """SWMM run execution (local, bbox-synthesized, SWMMCanada), allowlisted command/test running, skill selection, memory summarize/retrieve, and the water-quality/design-review/report-export handoffs."""
     return [
         # ``run_swmm_inp`` moved to swmm_runner.tool_specs() (issue #358 C1).
-        ToolSpec(
-            "synth_swmm_from_bbox",
-            (
-                "Synthesise a SWMM .inp file from a WGS84 bounding box using the "
-                "swmm-anywhere skill, which wraps ImperialCollegeLondon/SWMManywhere "
-                "(BSD-3-Clause).\n"
-                "USE WHEN: the user wants to build a SWMM model from a geographic "
-                "region and has not supplied a shapefile or pre-built network — "
-                "i.e. there is no SHP / GeoJSON / network_json input, just a bbox "
-                "or a place name with coordinates.\n"
-                "DO NOT USE WHEN: the user supplied a SHP / network_json / "
-                "existing .inp (those flow through build_inp, network_to_inp, "
-                "run_swmm_inp instead).\n"
-                "Requires the optional [anywhere] extra; the tool returns a "
-                "stage-tagged hint if the extra is missing."
-            ),
-            _object(
-                {
-                    "bbox": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 4,
-                        "maxItems": 4,
-                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat].",
-                    },
-                    "run_dir": {"type": "string"},
-                    "project_name": {"type": "string"},
-                    "refresh_raw": {"type": "boolean"},
-                    "upstream_defaults": {
-                        "type": "boolean",
-                        "description": "When true, skip aiswmm's tuned outfall_derivation overrides and use SWMManywhere's upstream defaults.",
-                    },
-                    "rain_file": {
-                        "type": "string",
-                        "description": "Optional absolute path to a SWMM-format DAT rainfall file to replace the bundled storm.dat.",
-                    },
-                    "config_overrides": {
-                        "type": "object",
-                        "description": (
-                            "Per-call SWMManywhere parameter overrides, shape {group: {param: value}}, "
-                            "merged onto the resolved config. Use to fix structural complaints from "
-                            "network_qa, then re-synthesise: LOWER outfall_derivation.outfall_length "
-                            "(default 200) for more outfalls / fewer orphan / no-outfall-path nodes; "
-                            "RAISE subcatchment_derivation.node_merge_distance (default 10, keep < "
-                            "max_street_length) or max_street_length (default 60) for fewer pipes. "
-                            "Shortcut: pass upstream_defaults=true to drop aiswmm's tuned outfall "
-                            "overrides entirely. Full symptom->knob table in swmm-anywhere SKILL.md."
-                        ),
-                    },
-                },
-                ["bbox"],
-            ),
-            _synth_swmm_from_bbox_tool,
-        ),
+        # ``synth_swmm_from_bbox`` moved to swmm_anywhere.tool_specs()
+        # (issue #358 C2).
         # ``fetch_swmm_from_canada`` and ``run_climate_scenarios`` moved to
         # their family modules' ``tool_specs()`` (issue #358 PR B pilots);
         # the family seam in ``_build_tools`` registers them.
@@ -1014,9 +929,13 @@ def _web_uncertainty_tools() -> list[ToolSpec]:
 # add the module path here; the grouped builder functions above dissolve
 # into this list family by family in the follow-up PRs.
 _FAMILY_SPEC_MODULES: tuple[str, ...] = (
+    "agentic_swmm.agent.tool_handlers.swmm_anywhere",
+    "agentic_swmm.agent.tool_handlers.swmm_builder",
     "agentic_swmm.agent.tool_handlers.swmm_canada",
     "agentic_swmm.agent.tool_handlers.swmm_climate",
     "agentic_swmm.agent.tool_handlers.swmm_map",
+    "agentic_swmm.agent.tool_handlers.swmm_network",
+    "agentic_swmm.agent.tool_handlers.swmm_onboarding",
     "agentic_swmm.agent.tool_handlers.swmm_plot",
     "agentic_swmm.agent.tool_handlers.swmm_rpt",
     "agentic_swmm.agent.tool_handlers.swmm_runner",
@@ -1264,11 +1183,11 @@ def _select_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 # and ``_network_to_inp_args`` / ``_network_to_inp_tool`` moved to
 # ``tool_handlers/swmm_network.py``. Re-exported here so import paths
 # stay stable for ``_build_tools`` and downstream code.
+# Handlers self-register via tool_specs() since issue #358 C2; the
+# *_args mappers stay re-exported for historical import sites.
 from agentic_swmm.agent.tool_handlers.swmm_network import (  # noqa: E402,F401
     _network_qa_args,
-    _network_qa_tool,
     _network_to_inp_args,
-    _network_to_inp_tool,
 )
 
 
@@ -1449,15 +1368,11 @@ from agentic_swmm.agent.tool_handlers.swmm_runner import (  # noqa: E402,F401
 from agentic_swmm.agent.tool_handlers.swmm_plot import (  # noqa: E402,F401
     _plot_run_args,
 )
+# swmm_builder's handler and swmm_anywhere's handler self-register via
+# tool_specs() since issue #358 C2; only the args mapper keeps its
+# re-export.
 from agentic_swmm.agent.tool_handlers.swmm_builder import (  # noqa: E402,F401
     _build_inp_args,
-    _build_inp_tool,
-)
-# LLM-driven dispatch refactor: ``swmm-anywhere`` handler is in-process
-# (not MCP-routed), so it re-exports cleanly here without needing the
-# late-import dance the MCP-routed families use.
-from agentic_swmm.agent.tool_handlers.swmm_anywhere import (  # noqa: E402,F401
-    _synth_swmm_from_bbox_tool,
 )
 # ``swmm_canada`` / ``swmm_climate`` no longer appear in this block:
 # they are the issue #358 PR B pilot families and self-register through
@@ -1508,11 +1423,6 @@ from agentic_swmm.agent.tool_handlers.swmm_uncertainty import (  # noqa: E402,F4
 )
 
 
-# New-case onboarding rewire (#246 follow-up).
-# apply_onboarding is an in-process handler (not MCP-routed) — it
-# calls onboarding.py internals directly.
-from agentic_swmm.agent.tool_handlers.swmm_onboarding import (  # noqa: E402,F401
-    _apply_onboarding_tool,
-)
+# swmm_onboarding self-registers via tool_specs() since issue #358 C2.
 
 

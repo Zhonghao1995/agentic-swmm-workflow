@@ -36,6 +36,11 @@ def test_family_specs_come_from_the_family_modules():
         "plot_run",
         "read_rpt_summary",
         "run_swmm_inp",
+        "apply_onboarding",
+        "build_inp",
+        "network_qa",
+        "network_to_inp",
+        "synth_swmm_from_bbox",
     }
 
 

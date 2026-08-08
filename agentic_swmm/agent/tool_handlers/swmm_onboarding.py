@@ -50,8 +50,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.agent.tool_handlers._shared import _failure
-from agentic_swmm.agent.types import ToolCall
+from agentic_swmm.agent.tool_handlers._shared import _failure, _object
+from agentic_swmm.agent.types import ToolCall, ToolSpec
 
 
 # ---------------------------------------------------------------------------
@@ -280,4 +280,46 @@ def _fmt_params(params: dict[str, float], *, max_items: int = 3) -> str:
 
 __all__ = [
     "_apply_onboarding_tool",
+    "tool_specs",
 ]
+
+
+def tool_specs() -> list[ToolSpec]:
+    """This family's planner tools (issue #358 self-registration)."""
+    return [
+        ToolSpec(
+            "apply_onboarding",
+            (
+                "Apply a user's reply to the new-case onboarding offer. "
+                "CALL WHEN: the planner has surfaced an onboarding offer (via the "
+                "<onboarding_offer> system-prompt block) and the user has replied. "
+                "Pass the user's exact reply as 'response'; the tool classifies it "
+                "as accept / decline / customize and returns the applied parameters "
+                "and source memory ids. "
+                "On accept, transferred parameters from a similar watershed are "
+                "applied to the session and reported so you can stamp "
+                "memories_applied on the run."
+            ),
+            _object(
+                {
+                    "case_name": {
+                        "type": "string",
+                        "description": "The case name the onboarding offer was made for.",
+                    },
+                    "response": {
+                        "type": "string",
+                        "description": (
+                            "The user's natural-language reply: "
+                            "Y / yes / empty to accept, "
+                            "n / no to decline, "
+                            "'customize' or 'c' to enter custom mode, "
+                            "or any free-form text."
+                        ),
+                    },
+                },
+                ["case_name", "response"],
+            ),
+            _apply_onboarding_tool,
+            is_read_only=False,
+        ),
+    ]
