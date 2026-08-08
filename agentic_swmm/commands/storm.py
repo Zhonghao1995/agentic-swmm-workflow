@@ -164,8 +164,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
             "Storm library entry key, e.g. "
             "'example_region_100yr_3hr_5min'. Looks up the entry "
             "under chicago_hyetographs and uses its idf_params / "
-            "peak_position / duration_min. ``--depth-mm`` is still "
-            "required when the library entry is depth-driven."
+            "peak_position / duration_min / interval_min; a library "
+            "value replacing a default-looking --interval-min or "
+            "--peak-position is announced with a warning line. "
+            "``--depth-mm`` is still required when the library entry "
+            "is depth-driven."
         ),
         legacy_aliases=("--from-library",),
         dest="from_library",
@@ -313,6 +316,15 @@ def _build_chicago(
         and peak_position == 0.5
     ):
         peak_position = float(library_overrides["peak_position"])
+        if peak_position != 0.5:
+            emit_silent_override_warning(
+                flag_user_set="--peak-position",
+                flag_user_value=0.5,
+                reason=(
+                    "--from-library entry supplies peak_position="
+                    f"{peak_position}"
+                ),
+            )
 
     if duration_min is None:
         raise ValueError("--duration-min is required for --shape chicago")
@@ -388,10 +400,11 @@ def _emit_output(storm, args: argparse.Namespace) -> int:
     else:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="utf-8")
-        print(
-            f"wrote {len(storm.intensities_mm_per_hr)}-step design storm "
-            f"to {args.out}"
-        )
+        if not getattr(args, "quiet", False):
+            print(
+                f"wrote {len(storm.intensities_mm_per_hr)}-step design storm "
+                f"to {args.out}"
+            )
     return 0
 
 def main(args: argparse.Namespace) -> int:
@@ -446,6 +459,17 @@ def main(args: argparse.Namespace) -> int:
         # to the default; agreed to be best-effort.
         if interval_min == 5 and library_overrides["interval_min"] != 5:
             interval_min = int(library_overrides["interval_min"])
+            # Same disclosure convention as the depth/idf pair above:
+            # the library entry is substituting a value the user may
+            # believe is the default 5 (2026-08-08 CLI sweep).
+            emit_silent_override_warning(
+                flag_user_set="--interval-min",
+                flag_user_value=5,
+                reason=(
+                    "--from-library entry supplies interval_min="
+                    f"{interval_min}"
+                ),
+            )
 
     try:
         if args.shape == "chicago":
