@@ -143,6 +143,24 @@ def read_crs_hint(path: Path) -> dict[str, Any]:
     return {"source": str(path), "kind": "not_inspected", "text": ""}
 
 
+def _epsg_from_wkt(wkt: str) -> str | None:
+    """Return 'EPSG:NNNNN' for the OUTER CRS of a WKT string, or None.
+
+    WKT nests authority nodes: the spheroid/datum/unit each carry their
+    own ``AUTHORITY["EPSG",...]`` (WKT1) or ``ID["EPSG",...]`` (WKT2)
+    and the outer CRS's node is written LAST. Taking the FIRST match
+    returned the spheroid's code (e.g. 7019/7030) instead of the CRS,
+    so a WGS84/UTM layer read as "EPSG:7019" (found 2026-08-08). The
+    last match is the outer CRS in both WKT1 and WKT2.
+    """
+    matches = re.findall(r'AUTHORITY\["EPSG",\s*"(\d+)"\]', wkt)
+    if not matches:
+        matches = re.findall(r'ID\["EPSG",\s*(\d+)\]', wkt)
+    if matches:
+        return f"EPSG:{matches[-1]}"
+    return None
+
+
 def get_layer_epsg(path: Path) -> str | None:
     """Return 'EPSG:NNNNN' for a layer file, or None if undetermined."""
     suffix = path.suffix.lower()
@@ -155,9 +173,7 @@ def get_layer_epsg(path: Path) -> str | None:
             if result.returncode == 0:
                 info = json.loads(result.stdout)
                 wkt = info.get("coordinateSystem", {}).get("wkt", "")
-                m = re.search(r'ID\["EPSG",(\d+)\]', wkt)
-                if m:
-                    return f"EPSG:{m.group(1)}"
+                return _epsg_from_wkt(wkt)
         except Exception:
             pass
         return None
@@ -165,9 +181,7 @@ def get_layer_epsg(path: Path) -> str | None:
         prj = path.with_suffix(".prj")
         if prj.exists():
             wkt = prj.read_text(encoding="utf-8", errors="ignore")
-            m = re.search(r'AUTHORITY\["EPSG","(\d+)"\]', wkt)
-            if m:
-                return f"EPSG:{m.group(1)}"
+            return _epsg_from_wkt(wkt)
         return None
     if suffix in {".geojson", ".json"}:
         try:
@@ -228,24 +242,49 @@ def build_layers_manifest(layers: dict[str, str | None], out_path: Path) -> dict
     return manifest
 
 
+def _canonical_crs_key(text: str) -> str:
+    """Reduce a CRS description to a comparable identity.
+
+    Two exports of the SAME CRS routinely differ as raw text: ESRI vs
+    OGC WKT1 spelling ("WGS_1984_UTM_Zone_10N" vs "WGS 84 / UTM zone
+    10N"), WKT1 vs WKT2, parameter formatting. Comparing raw strings
+    flagged such pairs as "different CRS" and demanded a reprojection
+    that was not needed (found 2026-08-08). Canonicalize to the EPSG
+    code whenever one is present (WKT authority nodes, GeoJSON
+    ``urn:ogc:def:crs:EPSG::N`` / ``EPSG:N`` names); layers whose text
+    carries no EPSG identity fall back to whitespace-normalized text,
+    where a mismatch stays a report-worthy difference.
+    """
+    epsg = _epsg_from_wkt(text)
+    if epsg:
+        return epsg
+    m = re.search(r'EPSG[:]{1,2}(\d+)', text)
+    if m:
+        return f"EPSG:{m.group(1)}"
+    return f"wkt:{text}"
+
+
 def validate_crs(layers_manifest: dict[str, Any], out_path: Path) -> dict[str, Any]:
     comparable = []
     issues = []
     for layer in layers_manifest["layers"]:
         crs = layer.get("crs") or {}
         text = " ".join(str(crs.get("text") or "").split())
-        comparable.append({"role": layer["role"], "path": layer["path"], "kind": crs.get("kind"), "text": text})
+        record = {"role": layer["role"], "path": layer["path"], "kind": crs.get("kind"), "text": text}
+        record["canonical"] = _canonical_crs_key(text) if text else None
+        comparable.append(record)
         if not text and crs.get("kind") not in {"geojson_default_or_unspecified", "not_inspected"}:
             issues.append({"severity": "warning", "role": layer["role"], "message": "CRS could not be confirmed from the source layer."})
 
     explicit = [item for item in comparable if item["text"]]
-    unique = sorted({item["text"] for item in explicit})
+    unique = sorted({item["canonical"] for item in explicit})
     if len(unique) > 1:
         issues.append(
             {
                 "severity": "error",
                 "message": "Input layers expose different CRS definitions. Reproject in QGIS before export.",
                 "explicit_crs_count": len(unique),
+                "distinct_crs": unique,
             }
         )
 
