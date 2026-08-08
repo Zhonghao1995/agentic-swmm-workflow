@@ -73,10 +73,13 @@ sections:
       - key: suction_mm
         label: "Green-Ampt suction head"
         unit: "mm"
-    caption: "Catchment geometry and infiltration parameters from the model manifest."
+    caption: "Catchment geometry, simulation window, and infiltration parameters."
     narrative: >
-      All parameter values are sourced from manifest.json written by swmm-builder at
-      model-construction time; they reflect the exact inputs used for this simulation.
+      Geometry and simulation-window values are parsed from the run's own SWMM INP
+      (total subcatchment area, area-weighted imperviousness, [OPTIONS] dates);
+      infiltration values are subcatchment averages and are reported only when the
+      model uses Green-Ampt. Values shown as n/a could not be derived from the run
+      directory.
 
   - id: qa_gates
     title: "QA Gates"
