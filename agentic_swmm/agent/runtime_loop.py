@@ -159,6 +159,11 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     # The closure captures ``date_dir`` (and the mutable ``active_run_dir``
     # box) so the REPL stays agnostic of these concerns.
     active_run_dir: list[Path | None] = [None]
+    # Pending-turn state (BUG-1): after every successful turn we record
+    # which session dir it used and how its final message ended, so the
+    # NEXT input can be routed as the answer to that message instead of
+    # being re-classified from vocabulary alone.
+    pending_box: list[dict[str, Any] | None] = [None]
     # ``date_dir`` is a list-of-one so the ``/new-session`` callback can
     # rebind it without losing closure scope. ``session_label`` lives
     # in the same shape for the user-visible banner string.
@@ -170,6 +175,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         date_dir_box[0] = new_date_dir
         session_label_box[0] = new_label
         active_run_dir[0] = None
+        pending_box[0] = None
         _agent_say(f"New session: {new_label}")
         _agent_say(f"Date folder: {_display_path(new_date_dir)}\n")
 
@@ -183,16 +189,40 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         chat_session: bool = False,
         prior_session_state: dict[str, Any] | None = None,
     ) -> int:
-        use_active_run = (
-            active_run_dir[0] is not None and _looks_like_run_continuation(prompt)
-        )
+        # Turn dispatch (rewritten 2026-08-09 after the user's live
+        # interactive test, BUG-1/BUG-2 in the bug record): the natural
+        # reply to an assistant question carries no task verbs, so the
+        # old vocab-first dispatch classified every short confirmation
+        # ("use the recommended defaults", a bare bbox) as smalltalk
+        # and orphaned the conversation into a fresh chat dir. Order
+        # now:
+        #   1. A pending previous turn exists and the input is not a
+        #      clearly NEW modeling request -> continue THAT turn in
+        #      THE SAME session dir, goal composed from the previous
+        #      message tail + the reply.
+        #   2. An active run exists and the input is not a new request
+        #      -> continue the active run (inverted default: continue
+        #      unless clearly new, instead of new unless vocab match).
+        #   3. New modeling request -> fresh run dir.
+        #   4. Fallback -> chat dir.
         goal = prompt
         is_chat_turn = False
-        if use_active_run:
+        new_request = _looks_like_swmm_request(prompt)
+        pending = pending_box[0]
+        if pending is not None and not new_request:
+            session_dir = pending["session_dir"]
+            is_chat_turn = bool(pending.get("is_chat", False))
+            goal = (
+                f"{prompt}\n\n[Continuation of the previous turn in this "
+                f"session. Your previous message ended with:]\n"
+                f"{pending['tail']}"
+            )
+            if pending.get("run_dir"):
+                goal += f"\nPrevious run directory: {pending['run_dir']}"
+        elif active_run_dir[0] is not None and not new_request:
             session_dir = active_run_dir[0]
-            assert session_dir is not None  # mypy
             goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
-        elif _looks_like_swmm_request(prompt):
+        elif new_request:
             session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="run")
         else:
             session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="chat")
@@ -214,6 +244,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             registry=registry,
         )
         prior_state = _bootstrap_prior_state(active_run_dir[0])
+        outcome_box: list[Any] = []
         print()
         try:
             rc = run_openai_planner(
@@ -224,6 +255,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
                 registry,
                 chat_session=is_chat_turn,
                 prior_session_state=prior_state,
+                outcome_box=outcome_box,
             )
         except BaseException:
             finalize_session_header(session_dir, "interrupted")
@@ -231,6 +263,16 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         finalize_session_header(session_dir, "completed" if rc == 0 else "failed")
         if rc == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
+        if rc == 0:
+            final_text = outcome_box[0] if outcome_box else ""
+            pending_box[0] = {
+                "session_dir": session_dir,
+                "is_chat": is_chat_turn,
+                "tail": (final_text or "")[-400:],
+                "run_dir": str(active_run_dir[0]) if active_run_dir[0] else None,
+            }
+        # On failure the previous pending state stays: the user can
+        # still answer the last question after a crashed turn.
         print()
         return rc
 
@@ -296,6 +338,7 @@ def run_openai_planner(
     *,
     chat_session: bool = False,
     prior_session_state: dict[str, Any] | None = None,
+    outcome_box: list[Any] | None = None,
 ) -> int:
     from agentic_swmm.providers.selection import resolve_selection
 
@@ -403,6 +446,10 @@ def run_openai_planner(
         system_prompt_extras=extras,
         provider_route=provider_name,
     )
+    if outcome_box is not None:
+        # Carry the final text back to the REPL so it can record the
+        # pending-question state for the next turn (BUG-1 fix).
+        outcome_box.append(outcome.final_text or "")
 
     if chat_session:
         # Persist a minimal session_state.json so the chat-note generator

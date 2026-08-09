@@ -289,8 +289,20 @@ def _is_open_shaped(text: str, lowered: str) -> bool:
         return True
     if _contains_task_verb(lowered, text):
         return False
+    # Data-shaped inputs are answers, never smalltalk: coordinates,
+    # numbers, paths, bracketed lists. A bare bbox pasted in reply to
+    # a question used to be classified as a greeting because it splits
+    # into "one word" (BUG-2, user live test 2026-08-09).
+    if any(ch.isdigit() for ch in text) or any(
+        marker in text for marker in ("[", "]", "/", "\\", ".inp", ".csv")
+    ):
+        return False
     if _contains_any(lowered, _OPEN_GREETING_TOKENS):
         return True
+    # CJK text has no spaces, so the word-count fallback called every
+    # short Chinese sentence a greeting. Count characters for CJK.
+    if any("一" <= ch <= "鿿" for ch in text):
+        return len(text) < 6
     # Fallback: very short prompts without task verbs.
     if len(lowered.split()) < 5:
         return True

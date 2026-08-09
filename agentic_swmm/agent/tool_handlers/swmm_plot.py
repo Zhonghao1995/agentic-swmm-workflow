@@ -82,13 +82,28 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
     if call.args.get("out_file"):
         out_file = _repo_path(str(call.args["out_file"]))
         if out_file is None or not out_file.exists() or not out_file.is_file():
-            err = file_resolution_error(
-                f"out_file must be an existing repository file: {call.args['out_file']}",
-                requested=call.args["out_file"],
-                search_dir=out_file.parent if out_file is not None else None,
-                suffixes=(".out",),
-            )
-            return _failure(call, err.summary, hint=err.hint, cause=err.cause)
+            # Self-resolve before failing (BUG-6, user live test
+            # 2026-08-09): planners hand-build wrong stage paths here
+            # (07_plot/, 09_audit/), and each blind retry costs a full
+            # LLM round trip. When a run_dir is available, fall back to
+            # the run's own conventional .out resolution; only fail
+            # when even that finds nothing, and then say where the
+            # binary output actually lives.
+            resolved = None
+            if run_dir is not None:
+                resolved = _find_out(run_dir, _read_manifest(run_dir))
+            if resolved is not None:
+                out_file = resolved
+            else:
+                err = file_resolution_error(
+                    f"out_file must be an existing repository file: {call.args['out_file']}. "
+                    "The binary output conventionally lives at <run_dir>/06_runner/model.out; "
+                    "omit out_file to let the tool resolve it from run_dir.",
+                    requested=call.args["out_file"],
+                    search_dir=out_file.parent if out_file is not None else None,
+                    suffixes=(".out",),
+                )
+                return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     elif run_dir is not None:
         manifest = _read_manifest(run_dir)
         out_file = _find_out(run_dir, manifest)

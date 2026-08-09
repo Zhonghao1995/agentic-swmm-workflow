@@ -121,9 +121,69 @@ def infer_case_slug(prompt: str) -> str:
     registry_hit = _match_registered_case(lowered)
     if registry_hit is not None:
         return registry_hit
+    place = _extract_place_slug(prompt)
+    if place:
+        return place
     if any(word in lowered for word in ("plot", "作图", "画图", "图")):
         return "plot-selection"
     return safe_name(prompt)[:32]
+
+
+#: Lowercase district qualifiers that may precede a proper place name.
+_PLACE_PREFIXES = (
+    "downtown", "greater", "north", "south", "east", "west", "central",
+    "old", "inner", "outer",
+)
+
+
+def _extract_place_slug(prompt: str) -> str | None:
+    """Slug from a place name mentioned in the goal, if one is visible.
+
+    User request 2026-08-09: session dirs should read as WHERE the run
+    happened ("downtown-victoria"), not as a vocabulary guess. A
+    multi-step goal mentioning plotting used to name the whole run
+    "plot-selection". Two conservative patterns:
+
+    1. A parenthetical location: "(downtown Victoria, BC)".
+    2. An inline "<qualifier?> <Proper Name...> <,? PROVINCE?>" phrase
+       such as "James Bay area of Victoria BC".
+
+    Returns None rather than guessing when neither matches.
+    """
+    paren = re.search(r"\(([^()]{3,48})\)", prompt)
+    if paren:
+        inner = paren.group(1).strip()
+        if re.search(r"[A-Za-z]", inner) and not inner.lower().endswith((".inp", ".csv")):
+            slug = safe_name(inner)[:32].strip("-").lower()
+            if slug:
+                return slug
+    # The inline form must carry an ANCHOR (district qualifier, place
+    # suffix, or province code): a bare capitalized word is usually a
+    # sentence-initial verb ("Fetch a SWMM model...").
+    prefix_pattern = "|".join(_PLACE_PREFIXES)
+    suffix_pattern = (
+        "Bay|Beach|Creek|Park|Harbour|Harbor|Heights|Hills|Island|Lake|"
+        "Point|Ridge|Valley|Village"
+    )
+    province_pattern = "BC|AB|SK|MB|ON|QC|NB|NS|PE|NL|YT|NT|NU"
+    inline = re.search(
+        rf"\b((?:(?:{prefix_pattern})\s+[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+)?)"
+        rf"|(?:[A-Z][A-Za-z'-]+\s+(?:{suffix_pattern})\b(?:\s+area)?"
+        rf"(?:\s+of\s+[A-Z][A-Za-z'-]+)?)"
+        rf"|(?:[A-Z][A-Za-z'-]+(?:\s+[A-Z][A-Za-z'-]+){{0,2}}\s*,?\s+"
+        rf"(?:{province_pattern})\b))",
+        prompt,
+    )
+    if inline:
+        candidate = inline.group(1).strip()
+        generic = {"swmm", "word", "run", "model", "canada", "report", "the"}
+        words = [w for w in re.split(r"[\s,]+", candidate) if w]
+        if words and not all(w.lower() in generic for w in words):
+            if any(w[0].isupper() and w.lower() not in generic for w in words):
+                slug = safe_name(candidate)[:32].strip("-").lower()
+                if slug and slug not in generic:
+                    return slug
+    return None
 
 
 def _match_registered_case(lowered_prompt: str) -> str | None:
