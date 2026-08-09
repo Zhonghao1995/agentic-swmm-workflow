@@ -59,3 +59,30 @@ class PromptIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class OversizeDegradeTests(unittest.TestCase):
+    def test_oversized_index_degrades_to_names_only(self) -> None:
+        """The fail-soft path: an index over budget drops descriptions
+        instead of blowing the prompt. Exercised by shrinking the
+        budget below the real block's size."""
+        from unittest import mock
+
+        from agentic_swmm.agent import prompts as prompts_mod
+
+        prompts_mod.skill_index_block.cache_clear()
+        try:
+            with mock.patch.object(prompts_mod, "_SKILL_INDEX_BUDGET", 200):
+                block = prompts_mod.skill_index_block()
+        finally:
+            prompts_mod.skill_index_block.cache_clear()
+        self.assertTrue(block.startswith("<skill-index>"))
+        self.assertTrue(block.endswith("</skill-index>"))
+        # Names-only: no description separator remains on skill lines.
+        body_lines = [
+            line for line in block.splitlines()
+            if line.startswith("- ")
+        ]
+        self.assertTrue(body_lines)
+        for line in body_lines:
+            self.assertNotIn(": ", line)
