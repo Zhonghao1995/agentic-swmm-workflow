@@ -141,11 +141,26 @@ def main(args: argparse.Namespace) -> int:
             "Pass --inp explicitly or run aiswmm against a directory containing one."
         )
 
-    out_png = (
-        args.out_png.expanduser().resolve()
-        if args.out_png
-        else run_layout.stage_dir(run_dir, run_layout.PLOT, create=True) / "network_map.png"
-    )
+    # A RELATIVE --out-png anchors to the run's plot stage, not the
+    # process CWD: "the run dir is the record", so an artifact about
+    # run X must land in run X. Resolving bare filenames against the
+    # CWD scattered maps into whatever directory the caller happened
+    # to run from (found 2026-08-09: a planner-passed bare
+    # "network_map.png" landed in the session dir instead of the
+    # target run's 08_plot). Absolute paths remain verbatim.
+    if args.out_png:
+        out_png = args.out_png.expanduser()
+        if not out_png.is_absolute():
+            out_png = (
+                run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
+                / out_png
+            )
+        out_png = out_png.resolve()
+    else:
+        out_png = (
+            run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
+            / "network_map.png"
+        )
 
     script = script_path("skills", "swmm-plot", "scripts", "plot_network_layout.py")
     command = python_command(
