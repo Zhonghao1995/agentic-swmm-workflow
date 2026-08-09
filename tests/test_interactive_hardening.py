@@ -175,3 +175,99 @@ class PlaceSlugTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class PendingContinuationDispatchTests(unittest.TestCase):
+    """BUG-1 end to end at the shell level: the reply after a turn that
+    ended with a question continues THE SAME session dir with the
+    question tail composed into the goal."""
+
+    def test_reply_continues_same_session_dir(self) -> None:
+        import os
+        from argparse import Namespace
+
+        from agentic_swmm.agent import runtime_loop
+
+        calls: list[dict] = []
+
+        def fake_planner(args, goal, session_dir, trace_path, registry,
+                         *, chat_session=False, prior_session_state=None,
+                         outcome_box=None):
+            calls.append({
+                "goal": goal,
+                "session_dir": session_dir,
+                "chat": chat_session,
+            })
+            if outcome_box is not None:
+                outcome_box.append(
+                    "Confirm the node and attribute. Reply 'use the "
+                    "recommended defaults' to continue."
+                )
+            return 0
+
+        feed = iter([
+            "Run the model at examples/tecnopolo/tecnopolo_r1_199401.inp and plot it",
+            "use the recommended defaults",
+            "/exit",
+        ])
+
+        with TemporaryDirectory() as tmp:
+            args = Namespace(
+                planner="llm", provider=None, model=None,
+                session_dir=Path(tmp), max_steps=4, verbose=False,
+                dry_run=False, safe=False, interactive=True,
+            )
+            with mock.patch.dict(os.environ, {"AISWMM_DISABLE_WELCOME": "1"}):
+                with mock.patch.object(
+                    runtime_loop, "run_openai_planner", fake_planner
+                ), mock.patch(
+                    "builtins.input", lambda _p="": next(feed)
+                ):
+                    runtime_loop.run_interactive_shell(args)
+
+        self.assertEqual(len(calls), 2)
+        first, second = calls
+        # The reply reuses the SAME session dir (no fresh chat dir) and
+        # carries the previous message tail plus the user's answer.
+        self.assertEqual(second["session_dir"], first["session_dir"])
+        self.assertIn("use the recommended defaults", second["goal"])
+        self.assertIn("Reply 'use the", second["goal"])
+
+    def test_new_modeling_request_still_opens_a_fresh_run_dir(self) -> None:
+        import os
+        from argparse import Namespace
+
+        from agentic_swmm.agent import runtime_loop
+
+        calls: list[dict] = []
+
+        def fake_planner(args, goal, session_dir, trace_path, registry,
+                         *, chat_session=False, prior_session_state=None,
+                         outcome_box=None):
+            calls.append({"session_dir": session_dir})
+            if outcome_box is not None:
+                outcome_box.append("Done. Peak 1.0 CMS.")
+            return 0
+
+        feed = iter([
+            "Run the model at examples/tecnopolo/tecnopolo_r1_199401.inp",
+            "Run the model at examples/todcreek/model_chicago5min.inp",
+            "/exit",
+        ])
+
+        with TemporaryDirectory() as tmp:
+            args = Namespace(
+                planner="llm", provider=None, model=None,
+                session_dir=Path(tmp), max_steps=4, verbose=False,
+                dry_run=False, safe=False, interactive=True,
+            )
+            with mock.patch.dict(os.environ, {"AISWMM_DISABLE_WELCOME": "1"}):
+                with mock.patch.object(
+                    runtime_loop, "run_openai_planner", fake_planner
+                ), mock.patch(
+                    "builtins.input", lambda _p="": next(feed)
+                ):
+                    runtime_loop.run_interactive_shell(args)
+
+        self.assertEqual(len(calls), 2)
+        self.assertNotEqual(calls[0]["session_dir"], calls[1]["session_dir"])
