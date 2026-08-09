@@ -366,6 +366,29 @@ def run_openai_planner(
         session_dir=session_dir,
         prior_session_state=prior_session_state,
     )
+    # Single-shot sessions end when the model's final text is printed:
+    # the user CANNOT reply. Without this block the planner obeyed the
+    # base prompt's "ask the user to choose" directives and ended
+    # sessions with unanswerable questions (found 2026-08-09 NL sweep:
+    # plot flow asked node/attr, canada flow asked for a bbox, both
+    # after the session was already over). Interactive turns keep the
+    # ask-first behavior — there a question is answerable.
+    if not bool(getattr(args, "interactive", False)):
+        extras = [
+            (
+                "<session-mode>single-shot: the user cannot reply to your "
+                "final message, so never end with a question. When a choice "
+                "has a clear recommended default (e.g. the recommended plot "
+                "node, Total_inflow, the full simulation window), take the "
+                "default and state in the result card which default you "
+                "chose and why. Only stop without acting when a REQUIRED "
+                "input is genuinely missing and has no safe default (e.g. "
+                "no AOI and no documented demo AOI); then say exactly what "
+                "to rerun with, phrased as an instruction, not a "
+                "question.</session-mode>"
+            ),
+            *extras,
+        ]
     outcome = run_openai_plan(
         goal=goal,
         model=model,

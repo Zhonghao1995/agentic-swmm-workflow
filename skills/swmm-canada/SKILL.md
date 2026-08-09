@@ -27,6 +27,20 @@ Validated live end to end: a downtown Victoria AOI produced a real 423-subcatchm
 - `aoi_geojson` (GeoJSON Polygon string) **or** `bbox` (four WGS84 floats).
 - `start_date`, `end_date`: the rainfall window (`YYYY-MM-DD`). This decides which observed rainfall the service attaches, so changing the window changes the storm.
 
+### Demo AOI (verified live)
+
+When the user names a place without coordinates and accepts a demo-scale
+area, use the verified demo AOI instead of stopping to ask:
+
+| Place phrase | bbox `[min_lon, min_lat, max_lon, max_lat]` | Verified |
+| --- | --- | --- |
+| downtown Victoria, BC | `[-123.370, 48.425, -123.360, 48.432]` | 2026-08-08, 423-subcatchment real-pipe network, fetch-run-audit in 178 s |
+
+State in the result card that the demo AOI was used and that a
+project-specific study boundary should replace it for real work. For any
+other place name, ask for the bbox (interactive) or say exactly what to
+rerun with (single-shot); never guess a study boundary.
+
 ## Optional inputs
 
 - `run_dir`: reuse an existing run directory (otherwise a timestamped `runs/agent/swmm-canada-*` is created).
