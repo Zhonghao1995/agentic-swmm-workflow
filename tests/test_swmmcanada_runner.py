@@ -136,6 +136,13 @@ class HappyPathTests(unittest.TestCase):
             self.assertTrue(landed.startswith("[TITLE]\nVictoria real network\n"))
             self.assertIn("[REPORT]", landed)
             self.assertIn("NODES ALL", landed)
+            # The service's returned DATA is unpacked into
+            # 00_raw/swmmcanada/ (user decision 2026-08-09) so the raw
+            # material is browsable; the runnable inp is NOT duplicated
+            # there and the 10_upstream zip stays the authority.
+            raw_root = run_dir / "00_raw" / "swmmcanada"
+            self.assertTrue((raw_root / "datastore" / "network.gpkg").is_file())
+            self.assertFalse((raw_root / "model.inp").exists())
             # Foreign keys back to the upstream provenance.
             self.assertEqual(result.task_id, "t1")
             self.assertEqual(result.service_url, "http://svc.example")
@@ -451,10 +458,15 @@ class ProgressCallbackTests(unittest.TestCase):
                 sleep=lambda *_: None,
                 progress=lambda stage, pct: seen.append((stage, pct)),
             )
+        # The tail carries the best-effort study-area map event: SKIPPED
+        # here because the fixture zip has no preview layers (real
+        # bundles report STUDY_AREA_MAP with the png path instead).
         self.assertEqual(
-            seen,
+            seen[:4],
             [("QUEUED", 0), ("BUILDING", 40), ("DONE", 100), ("DOWNLOADING", None)],
         )
+        self.assertEqual(len(seen), 5)
+        self.assertIn(seen[4][0], ("STUDY_AREA_MAP", "STUDY_AREA_MAP_SKIPPED"))
 
     def test_broken_progress_callback_never_breaks_the_fetch(self) -> None:
         from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi

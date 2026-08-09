@@ -17,7 +17,7 @@ Given an AOI (bbox `[min_lon, min_lat, max_lon, max_lat]` or a GeoJSON Polygon s
 
 1. **Announces a preview** (best effort): which mode and city the service will use.
 2. **Submits the build** to the SWMMCanada tasks API and polls with live progress (network fetch, subcatchments, DEM, landcover/soil, climate, build).
-3. **Downloads the model bundle** and lands it in the canonical layout (ADR-0004): `model.inp` in `05_builder/`, the full `swmm_model.zip` (including the service's own `validation.json`) in the opaque `10_upstream/swmmcanada/` box.
+3. **Downloads the model bundle** and lands it in the canonical layout (ADR-0004): `model.inp` in `05_builder/` (with a `[REPORT]` section injected when the upstream INP omits one, so the binary output carries per-element series), the full `swmm_model.zip` in `10_upstream/swmmcanada/` as the pristine provenance artifact, and the bundle's returned DATA unpacked into `00_raw/swmmcanada/` (datastore, DEM, land cover, soil rasters, exports) so the run's raw material is browsable beside the other inputs. A study-area map is rendered best-effort to `00_raw/study_area.png` (needs the `gis` extra; the fetch never fails over the map) and is picked up by `swmm-report`'s figures section.
 4. **Returns** the INP path, run directory, service URL, task id, build mode, and the upstream validation record.
 
 Validated live end to end: a downtown Victoria AOI produced a real 423-subcatchment network in 173 s, ran under the local `swmm5` unmodified, and audited cleanly; the whole fetch-run-audit chain took 178 s.
