@@ -21,6 +21,12 @@ def agent_say(text: str) -> None:
     ``aiswmm>`` prefix; subsequent lines are indented to align with it
     (PRD_runtime user story 7).
     """
+    # The executor's tool spinner lives on the current terminal line
+    # WITHOUT a newline (it repaints in place across the whole turn).
+    # Printing over it glued the frame to the output ("[/]
+    # list_skillsaiswmm> [1] ..."; user live test 2026-08-09). Erase
+    # the live frame first so every agent line starts at column 0.
+    _clear_active_spinner_line()
     if not text:
         print(_styled_prompt())
         return
@@ -286,6 +292,19 @@ def set_active_tool_spinner(spinner: Spinner | None) -> None:
     global _active_tool_spinner, _last_tool_status
     _active_tool_spinner = spinner
     _last_tool_status = None
+
+
+def _clear_active_spinner_line() -> None:
+    """Erase the live spinner frame so a fresh print starts clean."""
+    spinner = _active_tool_spinner
+    if spinner is None:
+        return
+    try:
+        if spinner._is_tty and not spinner._closed:
+            spinner.stream.write(ui_colors.CLEAR_LINE)
+            spinner.stream.flush()
+    except Exception:  # pragma: no cover - decoration must never break output
+        pass
 
 
 def update_tool_status(text: str) -> None:

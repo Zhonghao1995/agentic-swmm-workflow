@@ -45,6 +45,13 @@ class AgentExecutor:
         # planner does not have to keep printing ``[i/N] toolname``.
         self._progress_stream: IO[str] = progress_stream if progress_stream is not None else sys.stdout
         self._spinner: Spinner | None = None
+        # One confirmation per turn (user decision 2026-08-09, "a chain
+        # of four Y/n prompts is too heavy"): under the QUICK profile,
+        # the first approved prompt of this executor's lifetime (one
+        # turn) also approves the rest of the turn's prompted tools.
+        # A denial does not arm it, and the SAFE profile keeps per-tool
+        # prompts unconditionally.
+        self._turn_chain_approved = False
 
     def execute(self, call: ToolCall, *, index: int | None = None) -> dict[str, Any]:
         event_index = index if index is not None else len(self.results) + 1
@@ -60,9 +67,22 @@ class AgentExecutor:
         # QUICK auto-approves read-only tools; SAFE always defers to
         # ``permissions.request_approval`` (which fails closed in non-TTY
         # contexts rather than running unattended).
-        if not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
+        chain_eligible = getattr(self.profile, "name", "") == "QUICK"
+        if (
+            not self.dry_run
+            and not self.profile.auto_approve(call.name, self.registry)
+            and chain_eligible
+            and self._turn_chain_approved
+        ):
+            # Approved with the turn's first confirmation; record it as
+            # an unprompted approval so the digest shows the tool ran
+            # under the chain grant rather than a fresh question.
+            prompted = False
+        elif not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
             prompted = True
             decision = permissions.request_approval(call.name)
+            if decision.approved and chain_eligible:
+                self._turn_chain_approved = True
             if not decision.approved:
                 approved = False
                 result = {

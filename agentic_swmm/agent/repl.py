@@ -89,6 +89,7 @@ def run_repl(
     fatal-error paths in the future).
     """
     state = WarmIntroState()
+    first_prompt_pending = True
     while True:
         try:
             prompt = input_source("you> ").strip()
@@ -98,6 +99,7 @@ def run_repl(
             return 0
         if prompt in _NEW_SESSION_COMMANDS:
             state = WarmIntroState()
+            first_prompt_pending = True
             if on_new_session is not None:
                 on_new_session()
             else:
@@ -109,10 +111,18 @@ def run_repl(
         if not prompt:
             continue
 
-        intro_text = maybe_emit_warm_intro(state, prompt)
-        if intro_text is not None:
-            output(intro_text)
-            continue
+        # Warm intro is eligible ONLY for the very first prompt of a
+        # session. It used to stay armed until an open-shaped prompt
+        # came along, so a mid-conversation short reply (a bare bbox
+        # answering the assistant's own question) was greeted with
+        # "Hi! I'm Agentic SWMM..." and the answer was lost (BUG-2,
+        # user live test 2026-08-09).
+        if first_prompt_pending:
+            first_prompt_pending = False
+            intro_text = maybe_emit_warm_intro(state, prompt)
+            if intro_text is not None:
+                output(intro_text)
+                continue
 
         # Per-turn dispatch — keep the loop testable by delegating all
         # of the per-turn filesystem layout + planner choice to the

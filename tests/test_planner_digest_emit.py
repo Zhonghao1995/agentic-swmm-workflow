@@ -89,16 +89,17 @@ class DigestEmitsOneLinePerStepTests(unittest.TestCase):
                 trace_path=trace_path,
                 executor=executor,
             )
-        # Filter out any non-step lines (warm-up / summary text).
+        # Contract updated 2026-08-09 (user live test, BUG-5 display
+        # layer): a SUCCESSFUL read-only auto-approved step is framework
+        # reconnaissance and emits ZERO digest lines. It remains in the
+        # trace and in --verbose. The original issue #193 concern
+        # (never TWO lines per step) is subsumed: zero is not two.
         step_lines = [line for line in emitted if line.startswith("[1]")]
         self.assertEqual(
             len(step_lines),
-            1,
-            f"digest mode must emit exactly ONE line for step 1, got: {step_lines!r}",
+            0,
+            f"digest mode must suppress successful read-only auto steps, got: {step_lines!r}",
         )
-        # The single line carries the (read-only, auto) tag and the ✓ marker.
-        self.assertIn("(read-only, auto)", step_lines[0])
-        self.assertIn("✓", step_lines[0])
         # And the standalone "OK: ..." legacy line must NOT appear.
         self.assertFalse(
             any(line.startswith("OK:") for line in emitted),

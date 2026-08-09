@@ -29,8 +29,9 @@ Validated live end to end: a downtown Victoria AOI produced a real 423-subcatchm
 
 ### Demo AOI (verified live)
 
-When the user names a place without coordinates and accepts a demo-scale
-area, use the verified demo AOI instead of stopping to ask:
+When the user names a listed place without coordinates, use the verified
+demo AOI DIRECTLY (do not stop to ask first; asking is reserved for the
+safe profile):
 
 | Place phrase | bbox `[min_lon, min_lat, max_lon, max_lat]` | Verified |
 | --- | --- | --- |

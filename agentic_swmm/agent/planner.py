@@ -328,6 +328,15 @@ class Planner:
             approved = not denied
         ok = bool(result.get("ok"))
         brief = brief_result(call.name, result)
+        # Digest cleanliness (user live test 2026-08-09, BUG-5 display
+        # layer): successful read-only auto-approved steps are the
+        # framework's own reconnaissance, not the user's workflow.
+        # Printing 13 of them before the first real action buried the
+        # process the user actually cares about. They stay in the trace
+        # and in --verbose; the digest shows consequential steps and
+        # every failure.
+        if ok and is_read_only and not prompted:
+            return
         error_detail: str | None = None
         if not ok:
             # PRD-185 / issue #193 item 1: try each known failure-detail
