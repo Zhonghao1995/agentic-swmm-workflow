@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import time
 from pathlib import Path
 
 from agentic_swmm.agent.executor import AgentExecutor
@@ -84,12 +83,24 @@ def _render_tool_outcome(*, index: int, total: int, name: str, result: dict) -> 
 def run_single_shot(args: argparse.Namespace) -> int:
     """Execute the non-interactive rule-planner flow."""
     goal = " ".join(args.goal).strip() or "run doctor"
-    session_id = args.session_id or f"agent-{int(time.time())}"
-    session_dir = (
-        args.session_dir.expanduser().resolve()
-        if args.session_dir
-        else repo_root() / "runs" / "agent" / _safe_name(session_id)
-    )
+    # Session-dir taxonomy (2026-08-08, user-requested runs/ root tidy):
+    # one-shot sessions land in the SAME date-first scheme the
+    # interactive shell uses (runs/<YYYY-MM-DD>/<HHMMSS>_<case>_run),
+    # so chats and runs stop living in two parallel hierarchies.
+    # Explicit --session-id or --session-dir preserves the historic
+    # runs/agent/<id> placement byte-for-byte: scripts and tests that
+    # pin paths keep working, and legacy runs/agent/* stays read-only.
+    if args.session_dir:
+        session_dir = args.session_dir.expanduser().resolve()
+    elif args.session_id:
+        session_dir = repo_root() / "runs" / "agent" / _safe_name(args.session_id)
+    else:
+        from datetime import datetime
+
+        from agentic_swmm.agent.session_bootstrap import bootstrap_session_dir
+
+        date_dir = repo_root() / "runs" / datetime.now().strftime("%Y-%m-%d")
+        session_dir = bootstrap_session_dir(date_dir, goal, kind="run")
     session_dir.mkdir(parents=True, exist_ok=True)
     trace_path = session_dir / "agent_trace.jsonl"
     # ADR-0003: make the session dir self-describing before anything runs.
