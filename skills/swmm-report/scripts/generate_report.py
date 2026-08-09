@@ -403,7 +403,7 @@ def _render_figures(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> Non
     # a planner freehand-writes most often) and 07_plot (the original
     # template default). Scanning one name while figures land in
     # another silently produced figureless reports (found 2026-08-09).
-    plot_dirs = cfg.get("plot_dirs", ["08_plot", "07_plots", "07_plot"])
+    plot_dirs = cfg.get("plot_dirs", ["00_raw", "08_plot", "07_plots", "07_plot"])
     include_root_png = cfg.get("include_root_png", "network_layout.png")
     no_figures_note = cfg.get("no_figures_note", "No figures available for this run.")
 

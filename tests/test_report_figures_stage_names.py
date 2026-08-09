@@ -109,6 +109,16 @@ class ReportFiguresStageNameTests(unittest.TestCase):
             self._generate(run_dir, out)
             self.assertGreaterEqual(_image_count(out), 1)
 
+    def test_raw_stage_study_area_map_embeds(self) -> None:
+        """The study-area map lands in 00_raw beside the unpacked
+        SWMMCanada bundle (user decision 2026-08-09) and must flow
+        into the Word deliverable's figures section."""
+        with TemporaryDirectory() as tmp:
+            run_dir = _make_audited_run(Path(tmp), "00_raw")
+            out = str(Path(tmp) / "r.docx")
+            self._generate(run_dir, out)
+            self.assertGreaterEqual(_image_count(out), 1)
+
     def test_original_07_plot_still_embeds(self) -> None:
         with TemporaryDirectory() as tmp:
             run_dir = _make_audited_run(Path(tmp), "07_plot")

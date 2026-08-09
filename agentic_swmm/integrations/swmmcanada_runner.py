@@ -185,6 +185,7 @@ def fetch_from_aoi(
     run_dir.mkdir(parents=True, exist_ok=True)
     zip_path = _download_zip(service_url, task_id, run_dir, opener=opener, sleep=sleep)
     inp_path, validation = _extract(zip_path, run_dir)
+    _render_study_area_best_effort(zip_path, run_dir, progress=progress)
 
     return CanadaFetchResult(
         inp_path=inp_path,
@@ -328,6 +329,43 @@ def _download_zip(
     return zip_path
 
 
+def _render_study_area_best_effort(
+    zip_path: Path,
+    run_dir: Path,
+    *,
+    progress: Callable[[str, Any], None] | None = None,
+) -> None:
+    """Render 00_raw/study_area.png from the bundle, if the gis stack allows.
+
+    The study-area map documents the fetched inputs, so it lands in the
+    raw stage beside the unpacked bundle (user decision 2026-08-09).
+    Strictly decorative from the fetch's point of view: any failure
+    (gis extra absent, bundle without preview layers, render error) is
+    reported as a progress note and swallowed — a fetch must never fail
+    because a map could not be drawn.
+    """
+    import subprocess
+    import sys as _sys
+
+    try:
+        from agentic_swmm.utils.paths import resource_path
+
+        script = resource_path("skills", "swmm-plot", "scripts", "plot_study_area.py")
+        out_png = run_layout.stage_dir(run_dir, run_layout.RAW, create=True) / "study_area.png"
+        proc = subprocess.run(
+            [_sys.executable, str(script), "--bundle", str(zip_path), "--out-png", str(out_png)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if proc.returncode == 0:
+            _report(progress, "STUDY_AREA_MAP", str(out_png))
+        else:
+            _report(progress, "STUDY_AREA_MAP_SKIPPED", (proc.stderr or "").strip()[:200])
+    except Exception as exc:
+        _report(progress, "STUDY_AREA_MAP_SKIPPED", repr(exc)[:200])
+
+
 _REPORT_SECTION = (
     "\n[REPORT]\n"
     ";; Added by aiswmm when landing the SWMMCanada bundle: the upstream\n"
@@ -374,6 +412,21 @@ def _extract(zip_path: Path, run_dir: Path) -> tuple[Path, dict | None]:
             with zf.open(inp_name) as src, inp_path.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
             _ensure_report_section(inp_path)
+            # Unpack the service's OUTPUT bundle into 00_raw/swmmcanada/
+            # (user decision 2026-08-09): what SWMMCanada returns is this
+            # run's raw material, and it should be browsable next to the
+            # other inputs rather than locked inside the zip. The zip in
+            # 10_upstream/ remains the pristine provenance artifact; the
+            # runnable model.inp is NOT duplicated here (it is the
+            # 05_builder artifact).
+            raw_dir = run_layout.stage_dir(run_dir, run_layout.RAW, create=True) / "swmmcanada"
+            for member in names:
+                if member == inp_name or member.endswith("/"):
+                    continue
+                target = raw_dir / member
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, target.open("wb") as dst:
+                    shutil.copyfileobj(src, dst)
             validation: dict | None = None
             val_name = next((n for n in names if n.lower().endswith("validation.json")), None)
             if val_name is not None:

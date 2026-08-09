@@ -98,6 +98,7 @@ sections:
   - id: figures
     title: "Figures"
     plot_dirs:
+      - "00_raw"
       - "08_plot"
       - "07_plots"
       - "07_plot"
