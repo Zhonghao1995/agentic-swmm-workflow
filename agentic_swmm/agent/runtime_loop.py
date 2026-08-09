@@ -499,7 +499,17 @@ def run_openai_planner(
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})
     _sync_session_end(session_dir)
     _refresh_moc_after_session(session_dir)
-    _agent_say(f"Final report: {_display_path(report)}")
+    # Honesty in the announcement (BUG-7, user live test 2026-08-09):
+    # a turn that only ASKED something executed no consequential tool,
+    # and calling its artifact a "Final report" implied a completed
+    # run. The file is the same turn record either way; the label now
+    # matches what actually happened.
+    consequential = any(
+        not registry.is_read_only(getattr(call, "name", ""))
+        for call in outcome.plan
+    )
+    label = "Final report" if consequential else "Clarification note"
+    _agent_say(f"{label}: {_display_path(report)}")
     if outcome.final_text:
         _agent_say(outcome.final_text)
     if args.verbose:
