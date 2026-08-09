@@ -159,6 +159,23 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     patch_path = session_dir / "tool_results" / "apply_patch.diff"
     patch_path.parent.mkdir(parents=True, exist_ok=True)
     patch_path.write_text(patch, encoding="utf-8")
+    if _is_envelope_patch(patch):
+        # OpenAI patch-envelope format (Add/Update/Delete File
+        # sections) — what GPT-family planners emit natively. Applied
+        # by the in-process envelope engine; ``git apply`` only
+        # understands unified diffs.
+        try:
+            op_count, summary = _apply_envelope(patch)
+        except ValueError as exc:
+            return _failure(call, f"envelope patch failed: {exc}")
+        return {
+            "tool": call.name,
+            "args": {"path_count": len(touched), "allow_evidence_edits": allow_evidence},
+            "ok": True,
+            "return_code": 0,
+            "path": str(patch_path),
+            "summary": summary,
+        }
     proc = subprocess.run(["git", "apply", str(patch_path)], cwd=repo_root(), capture_output=True, text=True)
     return {
         "tool": call.name,
@@ -186,7 +203,141 @@ def _patch_paths(patch: str) -> list[str]:
                     path = part[2:]
                     if path not in paths:
                         paths.append(path)
+        elif line.startswith(("*** Add File: ", "*** Update File: ", "*** Delete File: ")):
+            # OpenAI patch-envelope headers — the format GPT-family
+            # planners emit natively (found 2026-08-09: every
+            # apply_patch attempt from the codex route failed with
+            # "no recognizable file paths" because only unified-diff
+            # headers were parsed).
+            path = line.split(":", 1)[1].strip()
+            if path and path not in paths:
+                paths.append(path)
     return paths
+
+
+_ENVELOPE_BEGIN = "*** Begin Patch"
+
+
+def _is_envelope_patch(patch: str) -> bool:
+    return patch.lstrip().startswith(_ENVELOPE_BEGIN)
+
+
+def _parse_envelope(patch: str) -> list[dict[str, Any]]:
+    """Parse the OpenAI patch-envelope format into file operations.
+
+    Supported sections: ``*** Add File: <path>`` (body: ``+`` lines),
+    ``*** Delete File: <path>``, ``*** Update File: <path>`` (body:
+    context/``-``/``+`` hunks, optionally separated by ``@@`` markers).
+    Raises ``ValueError`` on malformed input so the caller can fail
+    with an honest message instead of guessing.
+    """
+    ops: list[dict[str, Any]] = []
+    current: dict[str, Any] | None = None
+    for raw in patch.splitlines():
+        if raw.strip() in (_ENVELOPE_BEGIN, "*** End Patch", "*** End of File"):
+            continue
+        if raw.startswith("*** Add File: "):
+            current = {"action": "add", "path": raw.split(":", 1)[1].strip(), "content": []}
+            ops.append(current)
+            continue
+        if raw.startswith("*** Delete File: "):
+            ops.append({"action": "delete", "path": raw.split(":", 1)[1].strip()})
+            current = None
+            continue
+        if raw.startswith("*** Update File: "):
+            current = {"action": "update", "path": raw.split(":", 1)[1].strip(), "hunks": [[]]}
+            ops.append(current)
+            continue
+        if raw.startswith("*** Move to: ") and current is not None and current["action"] == "update":
+            current["move_to"] = raw.split(":", 1)[1].strip()
+            continue
+        if current is None:
+            if raw.strip():
+                raise ValueError(f"unexpected line outside a file section: {raw[:80]!r}")
+            continue
+        if current["action"] == "add":
+            if raw.startswith("+"):
+                current["content"].append(raw[1:])
+            elif not raw.strip():
+                current["content"].append("")
+            else:
+                raise ValueError(f"Add File body lines must start with '+': {raw[:80]!r}")
+        elif current["action"] == "update":
+            if raw.startswith("@@"):
+                if current["hunks"][-1]:
+                    current["hunks"].append([])
+            else:
+                current["hunks"][-1].append(raw)
+    return ops
+
+
+def _apply_update_hunk(lines: list[str], hunk: list[str], path: str) -> list[str]:
+    """Splice one context hunk into ``lines`` by exact context match.
+
+    The hunk's old text (context + removed lines) must occur EXACTLY
+    once in the file; zero matches or more than one raise ``ValueError``
+    so ambiguity fails loudly instead of patching the wrong spot.
+    """
+    old = [l[1:] if l[:1] in (" ", "-") else l for l in hunk if l[:1] in (" ", "-") or not l.strip()]
+    new = [l[1:] if l[:1] in (" ", "+") else l for l in hunk if l[:1] in (" ", "+") or not l.strip()]
+    if not old:
+        raise ValueError(f"update hunk for {path} has no context or removed lines")
+    matches = [
+        i
+        for i in range(len(lines) - len(old) + 1)
+        if lines[i : i + len(old)] == old
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"update hunk context matched {len(matches)} location(s) in {path}; "
+            "need exactly 1 (add more surrounding context lines)"
+        )
+    i = matches[0]
+    return lines[:i] + new + lines[i + len(old) :]
+
+
+def _apply_envelope(patch: str) -> tuple[int, str]:
+    """Apply a parsed envelope. Returns ``(op_count, summary)``.
+
+    Raises ``ValueError`` with an actionable message on any failure;
+    the caller converts that into the standard fail-soft result. Ops
+    are validated fully before any write so a failed patch leaves the
+    tree untouched.
+    """
+    ops = _parse_envelope(patch)
+    if not ops:
+        raise ValueError("envelope patch contained no file sections")
+    staged: list[tuple[Path, str | None]] = []  # (target, new_text|None=delete)
+    for op in ops:
+        full = _repo_path(op["path"])
+        if full is None:
+            raise ValueError(f"patch path must be inside repository: {op['path']}")
+        if op["action"] == "add":
+            staged.append((full, "\n".join(op["content"]) + "\n"))
+        elif op["action"] == "delete":
+            if not full.exists():
+                raise ValueError(f"cannot delete missing file: {op['path']}")
+            staged.append((full, None))
+        else:
+            if not full.exists():
+                raise ValueError(f"cannot update missing file: {op['path']}")
+            lines = full.read_text(encoding="utf-8").splitlines()
+            for hunk in op["hunks"]:
+                if hunk:
+                    lines = _apply_update_hunk(lines, hunk, op["path"])
+            target = _repo_path(op.get("move_to") or op["path"])
+            if target is None:
+                raise ValueError(f"move target must be inside repository: {op.get('move_to')}")
+            if target != full:
+                staged.append((full, None))
+            staged.append((target, "\n".join(lines) + "\n"))
+    for target, text in staged:
+        if text is None:
+            target.unlink()
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+    return len(ops), f"applied envelope patch: {len(ops)} file op(s)"
 
 
 __all__ = [

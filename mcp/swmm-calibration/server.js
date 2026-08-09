@@ -43,6 +43,17 @@ function runPy(scriptPath, args) {
   });
 }
 
+function materializeSearchSpace(a) {
+  // Inline search-space objects are written INTO the run root so the
+  // exact space used is preserved as run evidence ("the run dir is
+  // the record"). String inputs pass through as file paths.
+  if (typeof a.searchSpace === "string") return a.searchSpace;
+  fs.mkdirSync(a.runRoot, { recursive: true });
+  const dest = path.join(a.runRoot, "search_space.json");
+  fs.writeFileSync(dest, JSON.stringify(a.searchSpace, null, 2) + "\n", "utf-8");
+  return dest;
+}
+
 const Common = z.object({
   baseInp: z.string(),
   patchMap: z.string(),
@@ -66,8 +77,10 @@ const Common = z.object({
 
 const SensitivityArgs = Common.extend({ parameterSets: z.string() });
 const CalibrateArgs = Common.extend({ parameterSets: z.string(), bestParamsOut: z.string().optional(), candidateRunDir: z.string().optional() });
+const SearchSpaceInput = z.union([z.string(), z.record(z.any())]);
+
 const SearchArgs = Common.extend({
-  searchSpace: z.string(),
+  searchSpace: SearchSpaceInput,
   strategy: z.enum(["random", "lhs", "adaptive"]).default("lhs"),
   iterations: z.number().int().positive().default(12),
   rounds: z.number().int().positive().default(1),
@@ -79,7 +92,7 @@ const SearchArgs = Common.extend({
   candidateRunDir: z.string().optional(),
 });
 const SceuaArgs = Common.extend({
-  searchSpace: z.string(),
+  searchSpace: SearchSpaceInput,
   iterations: z.number().int().positive().default(200),
   seed: z.number().int().default(42),
   sceuaNgs: z.number().int().positive().default(4),
@@ -88,7 +101,7 @@ const SceuaArgs = Common.extend({
   candidateRunDir: z.string().optional(),
 });
 const DreamZsArgs = Common.extend({
-  searchSpace: z.string(),
+  searchSpace: SearchSpaceInput,
   iterations: z.number().int().positive().default(1000),
   seed: z.number().int().default(42),
   dreamChains: z.number().int().min(2).default(4),
@@ -174,7 +187,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { description: "Search-space file path, OR an inline object {param: {min, max, type?, precision?}} which is written to <runRoot>/search_space.json so the space used is preserved as run evidence.", oneOf: [ { type: "string" }, { type: "object" } ] },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "nse" },
           aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
@@ -201,7 +214,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { description: "Search-space file path, OR an inline object {param: {min, max, type?, precision?}} which is written to <runRoot>/search_space.json so the space used is preserved as run evidence.", oneOf: [ { type: "string" }, { type: "object" } ] },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "kge", enum: ["kge"] },
           aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
@@ -225,7 +238,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       inputSchema: {
         type: "object",
         properties: {
-          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { type: "string" },
+          baseInp: { type: "string" }, patchMap: { type: "string" }, searchSpace: { description: "Search-space file path, OR an inline object {param: {min, max, type?, precision?}} which is written to <runRoot>/search_space.json so the space used is preserved as run evidence.", oneOf: [ { type: "string" }, { type: "object" } ] },
           observed: { type: "string" }, runRoot: { type: "string" }, swmmNode: { type: "string", default: "O1" },
           swmmAttr: { type: "string", default: "Total_inflow" }, objective: { type: "string", default: "kge", enum: ["kge"] },
           aggregate: { type: "string", enum: ["none", "daily_mean"], default: "none" },
@@ -293,7 +306,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const pyArgs = [
       "search",
       ...commonArgs(a),
-      "--search-space", a.searchSpace,
+      "--search-space", materializeSearchSpace(a),
       "--strategy", a.strategy,
       "--iterations", String(a.iterations),
       "--rounds", String(a.rounds),
@@ -313,7 +326,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const pyArgs = [
       "search",
       ...commonArgs(a),
-      "--search-space", a.searchSpace,
+      "--search-space", materializeSearchSpace(a),
       "--strategy", "sceua",
       "--iterations", String(a.iterations),
       "--seed", String(a.seed),
@@ -331,7 +344,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const pyArgs = [
       "search",
       ...commonArgs(a),
-      "--search-space", a.searchSpace,
+      "--search-space", materializeSearchSpace(a),
       "--strategy", "dream-zs",
       "--iterations", String(a.iterations),
       "--seed", String(a.seed),
