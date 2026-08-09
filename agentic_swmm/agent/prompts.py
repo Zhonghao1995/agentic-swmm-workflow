@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
@@ -24,6 +26,61 @@ WARM_INTRO_TEMPLATE = (
     '"show me what skills you have", '
     '"help me build a model for my project".'
 )
+
+
+_SKILL_INDEX_LINE_CAP = 160
+_SKILL_INDEX_BUDGET = 4000
+
+
+def _skill_description(skill_path: Path) -> str:
+    """First-line description from a SKILL.md front matter (capped)."""
+    try:
+        text = skill_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    match = re.search(r"^description:\s*(.+)$", text, flags=re.MULTILINE)
+    if not match:
+        return ""
+    desc = match.group(1).strip().strip('"')
+    if len(desc) > _SKILL_INDEX_LINE_CAP:
+        desc = desc[: _SKILL_INDEX_LINE_CAP - 1].rstrip() + "…"
+    return desc
+
+
+@lru_cache(maxsize=1)
+def skill_index_block() -> str:
+    """Inline one-line-per-skill index for the system prompt.
+
+    ADR-0013 decision 1: every session used to open with a catalog
+    prologue (list_skills -> read_skill x5-7 -> list_mcp_tools x4)
+    whose payloads then compounded through full-history replay
+    (measured 2026-08-09: 12 of 26 calls in a map session). Embedding
+    the index once makes that reconnaissance unnecessary; the planner
+    picks from the index and commits via select_skill directly.
+
+    Cached per process: the skills tree does not change mid-session.
+    A guard test pins the block under ``_SKILL_INDEX_BUDGET`` chars so
+    skill descriptions cannot silently bloat the prompt.
+    """
+    from agentic_swmm.runtime.registry import discover_skills
+
+    lines = ["<skill-index>"]
+    for record in discover_skills():
+        if not record.get("enabled", True):
+            continue
+        name = str(record.get("name"))
+        desc = _skill_description(Path(str(record.get("path"))))
+        lines.append(f"- {name}: {desc}" if desc else f"- {name}")
+    lines.append("</skill-index>")
+    block = "\n".join(lines)
+    if len(block) > _SKILL_INDEX_BUDGET:
+        # Fail soft: an oversized index degrades to names only rather
+        # than blowing the prompt budget.
+        names = [
+            f"- {r.get('name')}" for r in discover_skills() if r.get("enabled", True)
+        ]
+        block = "\n".join(["<skill-index>", *names, "</skill-index>"])
+    return block
 
 
 def openai_planner_prompt(
@@ -51,15 +108,17 @@ def openai_planner_prompt(
         "Never request shell commands, package installation, network access, file writes outside tool side effects, or tools not in the schema. "
         # PRD-Y: two-level tool surface.
         "The tool surface is two-level: first commit to a workflow skill via select_skill(skill_name), "
-        "then invoke one of that skill's tools. Start by listing skills with list_skills, then call "
-        "select_skill once for the skill that matches the next workflow stage (e.g. swmm-builder for "
-        "building an INP, swmm-runner for running SWMM, swmm-plot for plotting). The response from "
-        "select_skill gives you the skill's concrete tools (name + description + parameters); pick one and "
-        "call it next. Switch skills mid-session by calling select_skill again. Agent-internal tools "
+        "then invoke one of that skill's tools. The <skill-index> block below lists every available "
+        "skill with its purpose: pick the skill matching the next workflow stage from that index and "
+        "call select_skill DIRECTLY. Do not open sessions with catalog reconnaissance (list_skills, "
+        "reading multiple skills' documentation, or enumerating MCP servers/tools): the index already "
+        "covers discovery, and select_skill's response gives you the chosen skill's concrete tools "
+        "(name + description + parameters); pick one and call it next. read_skill remains the right "
+        "move for the CHOSEN skill when its documentation contract matters to the task. Switch skills "
+        "mid-session by calling select_skill again. Agent-internal tools "
         "(memory recall, plot option inspection, file / dir / git inspection, "
         "skill / mcp meta-tools) belong to the always-available 'agent-internal' virtual skill and "
         "can be invoked without a select_skill hop. "
-        "Use list_skills and read_skill to inspect available Agentic SWMM skills. "
         "Treat skills/swmm-end-to-end/SKILL.md as the top-level SWMM workflow contract. "
         "Read the SKILL.md (or the tool description) for each candidate before invoking a SWMM tool — the description plus the typed schema is the contract you commit to. "
         "If the user's request is missing a required input for the tool you want to call (e.g. an INP path, a bbox, a run directory), stop and ask for that concrete input instead of guessing or running a different tool. "
@@ -84,7 +143,7 @@ def openai_planner_prompt(
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context(trace_path=trace_path)
-    sections = [base]
+    sections = [base, skill_index_block()]
     if memory:
         sections.append(memory)
     if extras:
