@@ -203,6 +203,18 @@ class Spinner:
             self._frame = (self._frame + 1) % len(self._FRAMES)
             self._render()
 
+    def pause(self) -> None:
+        """Stop the ticker without closing: the tool finished and the
+        planner's THINKING spinner takes over the line. Without this,
+        both tickers repaint the same line in a flicker fight (seen
+        live after the RUNNING ticker landed, 2026-08-09)."""
+        self._stop_ticker()
+
+    def resume(self) -> None:
+        """Restart the ticker for the next tool (no-op off-TTY/closed)."""
+        if self._is_tty and not self._closed and self._ticker is None:
+            self._start_ticker()
+
     def finish(self) -> None:
         if self._closed:
             return
