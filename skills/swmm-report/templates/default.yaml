@@ -98,8 +98,9 @@ sections:
   - id: figures
     title: "Figures"
     plot_dirs:
-      - "07_plot"
       - "08_plot"
+      - "07_plots"
+      - "07_plot"
     include_root_png: "network_layout.png"
     no_figures_note: "No figures available for this run."
     # Figure captions are placed BELOW each figure (engineering convention) as "Figure N — <stem>".

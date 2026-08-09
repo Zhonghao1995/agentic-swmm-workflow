@@ -69,6 +69,7 @@ def openai_planner_prompt(
         "For climate-change what-ifs, run_climate_scenarios batches precipitation-scaled variants of a model and writes a per-scenario comparison; calibrate first (aiswmm calibrate) so the deltas are meaningful. "
         "run_swmm_inp may accept a user-provided absolute .inp path; it must import that file into the run directory and run only the run-local copy. "
         "Before plotting, use inspect_plot_options when rainfall series, node, or node_attr is not explicit. If there are multiple selectable rainfall series, nodes, or node attributes, ask the user to choose instead of silently defaulting. "
+        "Always plot through plot_run (never a raw MCP plot call with a hand-built output path): plot_run lands figures in the canonical plot stage of the run directory, which is where report generation looks for them. "
         "Use list_dir, search_files, read_file, and git_diff for repository workspace inspection. "
         "Use apply_patch for controlled repository edits and run_tests or run_allowed_command for allowlisted verification; never request arbitrary shell. "
         "Use web_search and web_fetch_url for source-backed web research, but keep web evidence separate from local run evidence. "

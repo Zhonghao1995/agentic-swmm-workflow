@@ -398,7 +398,12 @@ def _render_figures(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> Non
     raw_title = cfg.get("title", "Figures")
     doc.add_heading(_numbered_heading(ctx["section_number"], raw_title), level=2)
 
-    plot_dirs = cfg.get("plot_dirs", ["07_plot", "08_plot"])
+    # Canonical stage first (08_plot per the run layout), then both
+    # legacy generations: 07_plots (generation-B CLI runs, and the name
+    # a planner freehand-writes most often) and 07_plot (the original
+    # template default). Scanning one name while figures land in
+    # another silently produced figureless reports (found 2026-08-09).
+    plot_dirs = cfg.get("plot_dirs", ["08_plot", "07_plots", "07_plot"])
     include_root_png = cfg.get("include_root_png", "network_layout.png")
     no_figures_note = cfg.get("no_figures_note", "No figures available for this run.")
 
