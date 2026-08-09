@@ -98,11 +98,22 @@ def main(args: argparse.Namespace) -> int:
     if out_file is None:
         raise FileNotFoundError(f"Unable to find a SWMM OUT file in run directory: {run_dir}")
 
-    out_png = (
-        args.out_png.expanduser().resolve()
-        if args.out_png
-        else run_layout.stage_dir(run_dir, run_layout.PLOT, create=True) / "fig_rain_runoff.png"
-    )
+    # Same anchoring rule as `aiswmm map`: a RELATIVE --out-png lands
+    # in the run's plot stage, never the process CWD, so figures about
+    # a run always live inside that run (2026-08-09).
+    if args.out_png:
+        out_png = args.out_png.expanduser()
+        if not out_png.is_absolute():
+            out_png = (
+                run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
+                / out_png
+            )
+        out_png = out_png.resolve()
+    else:
+        out_png = (
+            run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
+            / "fig_rain_runoff.png"
+        )
     rain_ts = args.rain_ts
     inferred_rain_kind = None
     if not rain_ts:
