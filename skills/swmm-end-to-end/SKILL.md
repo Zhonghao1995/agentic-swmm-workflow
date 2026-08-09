@@ -11,7 +11,8 @@ Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) �
 - A top-level orchestration contract for the agent runtime.
 - A stable handoff point for Agentic AI project memory in `agent/memory/`.
 - A deterministic execution order across the existing module skills:
-  - `swmm-anywhere` (entry skill for data-scarce regions — no real pipe data)
+  - `swmm-canada` (entry skill for Canadian AOIs — real municipal pipes where covered, synthesized elsewhere in Canada)
+  - `swmm-anywhere` (entry skill for data-scarce regions outside Canada — no real pipe data)
   - `swmm-gis`
   - `swmm-climate`
   - `swmm-params`
@@ -30,7 +31,7 @@ Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) �
 The orchestrator MUST inspect the user's inputs before choosing the entry skill:
 
 - If the request includes any of `.shp`, `.csv`, `network.json`, a CAD file, or an existing `.inp` path → the user has real data; route to `swmm-network` (or `swmm-builder` if the INP is already prepared).
-- If the request includes only a **bbox** or a **location name** with no pipe-network file attached → the user is in data-scarce mode; route to `swmm-anywhere`, which produces a synth `.inp` that downstream skills (`swmm-runner`, `swmm-experiment-audit`, `swmm-plot`) then consume identically to a real-data INP.
+- If the request includes only a **bbox** or a **location name** with no pipe-network file attached → check the country first. For a **Canadian** AOI route to `swmm-canada` (the SWMMCanada upstream returns real published municipal storm pipes where a supported city covers the AOI, synthesized elsewhere in Canada). Outside Canada route to `swmm-anywhere`, which produces a synth `.inp`. Either way, downstream skills (`swmm-runner`, `swmm-experiment-audit`, `swmm-plot`) consume the result identically to a real-data INP.
 - If both signals appear (bbox **and** a SHP) → prefer the real-data path (`swmm-network`); only fall back to `swmm-anywhere` if the user explicitly asks for a synth baseline for comparison.
 - Clear stop conditions so the agent does not pretend a full model was built when critical inputs are still missing.
 - A minimal real-data fallback path for Tod Creek via `scripts/real_cases/run_todcreek_minimal.py`.
@@ -117,6 +118,7 @@ Execution order:
 11. optional `swmm-uncertainty`
 12. optional `swmm-lid-optimization`
 13. `swmm-experiment-audit`
+14. optional `swmm-report` (client Word deliverable; embeds any figures the run's plot stage holds, so plot before reporting when figures are wanted)
 
 Exact MCP call chain for the full modular path. Two parallel branches
 (GIS / hydrology vs network) merge at `build_inp`. Region-agnostic:

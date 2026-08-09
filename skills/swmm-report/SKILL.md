@@ -121,7 +121,7 @@ and in what order.  The built-in template at
 | `run_summary` | Peak flow, time of peak, continuity error, return code |
 | `model_description` | Basin area, simulation window, impervious %, Green-Ampt params |
 | `qa_gates` | QA check table from `experiment_provenance.json` |
-| `figures` | Embedded PNG figures from `07_plot/`, `08_plot/`, `network_layout.png` |
+| `figures` | Embedded PNG figures from `08_plot/` (canonical), `07_plots/` and `07_plot/` (legacy), plus root `network_layout.png` |
 | `diagnostics` | Model diagnostics from `model_diagnostics.json` |
 | `comparison` | Baseline comparison (skipped silently when unavailable) |
 | `provenance` | Artifact SHA-256 hashes from `experiment_provenance.json` |
