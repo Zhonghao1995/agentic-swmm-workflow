@@ -126,6 +126,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "openai",
                     "--model",
                     "gpt-test",
+                    "--session-dir",
+                    tmp,
                     "summarize",
                     "this",
                     "run",
@@ -150,7 +152,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             proc = subprocess.run(
                 # ``--provider openai`` (the shipped default) makes the
                 # OpenAI mock-response env var drive the turn deterministically.
-                [sys.executable, "-m", "agentic_swmm.cli", "--provider", "openai", "--model", "gpt-test"],
+                [sys.executable, "-m", "agentic_swmm.cli", "--provider", "openai", "--model", "gpt-test", "--session-dir", tmp],
                 cwd=REPO_ROOT,
                 env=env,
                 input="inspect project\n/exit\n",
@@ -230,6 +232,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                     "openai",
                     "--model",
                     "gpt-test",
+                    "--session-dir",
+                    tmp,
                     "inspect",
                     "the",
                     "project",
@@ -360,6 +364,8 @@ class AgenticSwmmCliTests(unittest.TestCase):
                         "openai",
                         "--model",
                         "gpt-test",
+                        "--session-dir",
+                        tmp,
                         "inspect",
                         "the",
                         "project",
