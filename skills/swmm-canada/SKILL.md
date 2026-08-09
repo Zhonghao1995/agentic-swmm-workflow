@@ -58,7 +58,10 @@ Pass the returned `run_dir` and `inp_path` forward so every stage lands in the s
 1. `run_swmm_inp` (agent) or `aiswmm run --inp <inp> --run-dir <run_dir>` (CLI) — simulate.
 2. `audit_run` / `aiswmm audit --run-dir <run_dir>` — provenance, QA verdict, diagnostics.
 3. `aiswmm calibrate` with observed flow data — the fetched model is an **uncalibrated first-pass estimate**; expect the audit gate to flag routing continuity on raw builds, which is the gate doing its job.
-4. `run_climate_scenarios` / `aiswmm climate --params-json best_params.json --patch-map <map>` — precipitation-scaled what-ifs on the calibrated model.
+4. `review_run` / `aiswmm review --run-dir <run_dir>` — reference-free design-review of the fetched network (soft rulebook verdicts).
+5. `plot_run` — hydrograph figures into the run's canonical plot stage (`08_plot/`), which is where report generation looks.
+6. `generate_report` / `aiswmm report --run-dir <run_dir>` — client Word deliverable; embeds the figures plotted in step 5.
+7. `run_climate_scenarios` / `aiswmm climate --params-json best_params.json --patch-map <map>` — precipitation-scaled what-ifs on the calibrated model.
 
 ## Boundaries
 

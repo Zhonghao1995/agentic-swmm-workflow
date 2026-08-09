@@ -126,7 +126,16 @@ class HappyPathTests(unittest.TestCase):
             # and runnable by the normal run path.
             self.assertEqual(result.inp_path, run_dir / "05_builder" / "model.inp")
             self.assertTrue(result.inp_path.is_file())
-            self.assertEqual(result.inp_path.read_bytes(), b"[TITLE]\nVictoria real network\n")
+            landed = result.inp_path.read_text(encoding="utf-8")
+            # The upstream INP content is preserved verbatim as the
+            # prefix; the landing step appends [REPORT] (NODES/LINKS/
+            # SUBCATCHMENTS ALL) because upstream omits it and without
+            # it the binary .out carries no per-element series
+            # (2026-08-09). The pristine upstream INP stays inside the
+            # zip in 10_upstream/.
+            self.assertTrue(landed.startswith("[TITLE]\nVictoria real network\n"))
+            self.assertIn("[REPORT]", landed)
+            self.assertIn("NODES ALL", landed)
             # Foreign keys back to the upstream provenance.
             self.assertEqual(result.task_id, "t1")
             self.assertEqual(result.service_url, "http://svc.example")

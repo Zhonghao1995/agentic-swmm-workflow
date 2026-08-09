@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 import urllib.error
@@ -327,6 +328,35 @@ def _download_zip(
     return zip_path
 
 
+_REPORT_SECTION = (
+    "\n[REPORT]\n"
+    ";; Added by aiswmm when landing the SWMMCanada bundle: the upstream\n"
+    ";; INP omits [REPORT], and without NODES/LINKS lines swmm5 stores NO\n"
+    ";; per-element time series in the binary .out, which makes hydrograph\n"
+    ";; plotting impossible downstream (found live 2026-08-09). The\n"
+    ";; pristine upstream INP remains inside 10_upstream/swmmcanada/.\n"
+    "SUBCATCHMENTS ALL\n"
+    "NODES ALL\n"
+    "LINKS ALL\n"
+)
+
+
+def _ensure_report_section(inp_path: Path) -> bool:
+    """Append a full [REPORT] section when the INP has none.
+
+    Returns True when the section was injected. Models that already
+    carry a [REPORT] section are left byte-for-byte untouched, whatever
+    its contents: an explicit upstream choice is not second-guessed.
+    """
+    text = inp_path.read_text(encoding="utf-8", errors="replace")
+    if re.search(r"^\s*\[REPORT\]\s*$", text, flags=re.MULTILINE):
+        return False
+    if not text.endswith("\n"):
+        text += "\n"
+    inp_path.write_text(text + _REPORT_SECTION, encoding="utf-8")
+    return True
+
+
 def _extract(zip_path: Path, run_dir: Path) -> tuple[Path, dict | None]:
     try:
         with zipfile.ZipFile(zip_path) as zf:
@@ -343,6 +373,7 @@ def _extract(zip_path: Path, run_dir: Path) -> tuple[Path, dict | None]:
             # second full copy of a large model in memory (issue #295, LOW).
             with zf.open(inp_name) as src, inp_path.open("wb") as dst:
                 shutil.copyfileobj(src, dst)
+            _ensure_report_section(inp_path)
             validation: dict | None = None
             val_name = next((n for n in names if n.lower().endswith("validation.json")), None)
             if val_name is not None:

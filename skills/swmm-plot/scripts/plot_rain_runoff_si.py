@@ -94,7 +94,7 @@ def parse_timeseries_file(path: Path) -> tuple[list[datetime], list[float]]:
         parts = s.split()
         if len(parts) < 3:
             continue
-        dt = datetime.strptime(parts[0] + ' ' + parts[1], '%m/%d/%Y %H:%M')
+        dt = _parse_inline_ts_datetime(parts[0], parts[1])
         times.append(dt)
         vals.append(float(parts[2]))
     if not times:
@@ -174,6 +174,29 @@ def parse_raingages_file(path: Path, gage_id: str | None = None) -> tuple[list[d
     return times, vals
 
 
+_INLINE_TS_DATETIME_FORMATS = ('%m/%d/%Y %H:%M', '%m/%d/%Y %H:%M:%S')
+
+
+def _parse_inline_ts_datetime(date_str: str, time_str: str) -> datetime:
+    """Parse a [TIMESERIES] date+time pair, tolerating seconds.
+
+    SWMM writes both HH:MM and HH:MM:SS in inline timeseries rows; the
+    SWMMCanada upstream emits second-precision stamps, and the previous
+    single hardcoded format crashed on every fetched Canadian model
+    (found live 2026-08-09: "unconverted data remains: :00").
+    """
+    raw = f"{date_str} {time_str}"
+    for fmt in _INLINE_TS_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    raise SystemExit(
+        f"unsupported [TIMESERIES] datetime {raw!r}; expected one of "
+        f"{', '.join(_INLINE_TS_DATETIME_FORMATS)}"
+    )
+
+
 def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[datetime], list[float]]:
     """Return (times, values) from [TIMESERIES]. Values are whatever units the INP encodes.
 
@@ -200,7 +223,7 @@ def parse_timeseries_from_inp(inp_path: Path, ts_name: str) -> tuple[list[dateti
                 continue
             if len(parts) >= 3 and parts[1].upper() == 'FILE':
                 return parse_timeseries_file(inp_path.parent / parts[2].strip('"'))
-            dt = datetime.strptime(parts[1] + ' ' + parts[2], '%m/%d/%Y %H:%M')
+            dt = _parse_inline_ts_datetime(parts[1], parts[2])
             times.append(dt)
             vals.append(float(parts[3]))
     if not times:
@@ -360,7 +383,22 @@ def main():
             available = sorted({str(row[1]) for row in catalog(str(args.out_file), kind) if len(row) > 1})
         except Exception:
             available = []
-        listing = ', '.join(available[:20]) if available else '(could not list ids)'
+        if not available:
+            # Not a wrong id: the .out carries NO per-element series at
+            # all. SWMM only stores node/link time series for elements
+            # named in the INP's [REPORT] section; a model without one
+            # (e.g. some upstream-generated INPs) yields a system-only
+            # .out no id can ever be found in (found live 2026-08-09).
+            print(
+                f"error: {args.out_file} contains no per-{kind} time series "
+                "at all, so no id can be plotted from it. The model's "
+                "[REPORT] section likely omits NODES/LINKS lines. Add "
+                "'[REPORT]' with 'NODES ALL' and 'LINKS ALL' to the INP, "
+                "re-run the simulation, then plot again.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        listing = ', '.join(available[:20])
         print(
             f"error: {kind} '{ident}' not found in {args.out_file}. "
             f"Available {kind} ids: {listing}. "

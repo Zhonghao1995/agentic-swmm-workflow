@@ -65,7 +65,31 @@ def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         out_dir_path = run_layout.stage_dir(run_dir, run_layout.REVIEW)
     cli_args.extend(["--out-dir", str(out_dir_path)])
 
-    return _run_script_tool(call, session_dir, cli_args)
+    result = _run_script_tool(call, session_dir, cli_args)
+    # Verdict is DATA, not an execution failure. design_review.py exits
+    # 1 when the rulebook verdict is FAIL (correct for `aiswmm review`
+    # shell chaining), but for the planner an executed review with a
+    # failing verdict is a successful tool call carrying bad news.
+    # Before this, every honest FAIL verdict burned one of the failure
+    # checkpoint's strikes and pushed sessions toward early stop (found
+    # live 2026-08-09 on a wet-window Canada run). Exit codes >= 2
+    # remain genuine execution failures.
+    if result.get("return_code") == 1:
+        stdout_tail = str(result.get("stdout_tail") or "")
+        if "Design review:" in stdout_tail:
+            verdict_line = next(
+                (
+                    line.strip()
+                    for line in stdout_tail.splitlines()
+                    if line.strip().startswith("Design review:")
+                ),
+                "Design review: FAIL",
+            )
+            result = dict(result)
+            result["ok"] = True
+            result["verdict"] = "fail"
+            result["summary"] = verdict_line
+    return result
 
 
 __all__ = ["_review_run_tool", "tool_specs"]
