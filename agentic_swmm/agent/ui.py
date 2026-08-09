@@ -176,6 +176,7 @@ class Spinner:
         self._verb_index = 0
         self._is_tty = self._stream_is_tty(self.stream)
         self._closed = False
+        self._started_at = time.monotonic()
         # Background ticker — only used for THINKING on a TTY.
         self._stop_event: threading.Event | None = None
         self._ticker: threading.Thread | None = None
@@ -183,7 +184,11 @@ class Spinner:
 
     def __enter__(self) -> "Spinner":
         self._render()
-        if self.state is SpinnerState.THINKING and self._is_tty:
+        if self._is_tty:
+            # Both states animate now: THINKING cycles verbs, RUNNING
+            # keeps the glyph moving and shows elapsed time so a silent
+            # multi-minute tool (swmm run, audit, report) reads as
+            # alive instead of hung (BUG-4, user live test 2026-08-09).
             self._start_ticker()
         return self
 
@@ -192,6 +197,8 @@ class Spinner:
 
     def update(self, label: str) -> None:
         with self._lock:
+            if label != self.label:
+                self._started_at = time.monotonic()
             self.label = label
             self._frame = (self._frame + 1) % len(self._FRAMES)
             self._render()
@@ -215,10 +222,15 @@ class Spinner:
         if self._closed:
             return
         frame = self._FRAMES[self._frame]
+        elapsed = time.monotonic() - self._started_at
+        suffix = ""
+        if elapsed >= 5:
+            minutes, seconds = divmod(int(elapsed), 60)
+            suffix = f" — {minutes}m{seconds:02d}s" if minutes else f" — {seconds}s"
         if self._is_tty:
-            line = f"\r{frame} {self.label}"
+            line = f"\r{frame} {self.label}{suffix}"
         else:
-            line = f"{frame} {self.label}\n"
+            line = f"{frame} {self.label}{suffix}\n"
         try:
             self.stream.write(line)
             self.stream.flush()

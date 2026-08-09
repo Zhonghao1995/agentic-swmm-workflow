@@ -840,12 +840,21 @@ class AgenticSwmmCliTests(unittest.TestCase):
                 "inputSchema": {"type": "object", "properties": {"network_json": {"type": "string"}}, "required": ["network_json"]},
             }
         ]
+        # full=true is the schema path since the token-economy slimming
+        # (2026-08-09): the default listing is names-only because
+        # select_skill already returns the chosen skill's contracts.
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"AISWMM_CONFIG_DIR": tmp}), patch("agentic_swmm.agent.mcp_client.list_tools", return_value=fake_tools) as mocked:
-            result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
+            result = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network", "full": True}), Path(tmp))
+            slim = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
 
         self.assertTrue(result["ok"])
         self.assertEqual(mocked.call_args.kwargs["timeout"], 5)
         self.assertEqual(result["mapped_tools"][0]["planner_tool"], "call_mcp_tool")
+        # Default listing: names + short description, no schemas.
+        self.assertTrue(slim["ok"])
+        self.assertEqual(slim["mapped_tools"], [])
+        self.assertEqual(slim["tools"][0]["name"], "validate_network")
+        self.assertNotIn("inputSchema", slim["tools"][0])
         self.assertEqual(result["mapped_tools"][0]["arguments"]["server"], "swmm-network")
         self.assertIn("network_json", result["mapped_tools"][0]["arguments"]["arguments_schema"]["properties"])
 

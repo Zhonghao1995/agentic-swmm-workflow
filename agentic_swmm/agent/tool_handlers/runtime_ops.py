@@ -61,8 +61,21 @@ def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 
 
 def _list_skills_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    skills = [{"name": str(r.get("name")), "enabled": bool(r.get("enabled", True)), "path": str(r.get("path"))} for r in discover_skills()]
-    return {"tool": call.name, "args": call.args, "ok": True, "skills": skills, "summary": f"{len(skills)} skills available", "excerpt": json.dumps(skills, indent=2)[:4000]}
+    # Names only (ADR token economy): the one-line-per-skill index with
+    # descriptions already sits in the system prompt, and select_skill
+    # returns the chosen skill's full tool contracts. The old full-path
+    # JSON excerpt re-paid ~4k chars through replay on every later call.
+    names = [str(r.get("name")) for r in discover_skills() if r.get("enabled", True)]
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "skills": names,
+        "summary": (
+            f"{len(names)} skills available (descriptions are in your "
+            "system prompt's <skill-index>; select_skill returns full contracts)"
+        ),
+    }
 
 
 def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

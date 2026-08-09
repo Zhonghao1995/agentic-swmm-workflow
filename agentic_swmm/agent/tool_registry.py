@@ -271,7 +271,7 @@ def _registry_native_tools() -> list[ToolSpec]:
     return [
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool, is_read_only=True),
-        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
+        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server (names + one-line descriptions by default; pass full=true for complete schemas; select_skill already returns the chosen skill's full contracts).", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}, "full": {"type": "boolean"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
@@ -536,6 +536,28 @@ def _list_mcp_servers_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return {"tool": call.name, "args": call.args, "ok": True, "servers": servers, "summary": f"{len(servers)} configured MCP server(s)"}
 
 
+def _slim_mcp_tool_listing(tools: list, mapped: list, full: bool) -> tuple[list, list]:
+    """Default to a names+description listing (ADR token economy).
+
+    Full schemas replayed on every later LLM call were the single
+    largest recon payload (~19k/call average measured 2026-08-09);
+    select_skill already returns the chosen skill's full contracts, so
+    the exploration listing needs only enough to pick a server. Pass
+    ``full: true`` to get complete schemas.
+    """
+    if full:
+        return tools, mapped
+    slim_tools = [
+        {
+            "name": t.get("name"),
+            "description": str(t.get("description") or "").split(". ")[0][:160],
+        }
+        for t in tools
+        if isinstance(t, dict)
+    ]
+    return slim_tools, []
+
+
 def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
@@ -547,14 +569,15 @@ def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         cached = mcp_cache.read_cached_tools(server, ttl_seconds=ttl)
         if cached is not None:
             mapped = [_map_mcp_tool_schema(str(server["name"]), tool) for tool in cached if isinstance(tool, dict)]
+            slim_tools, slim_mapped = _slim_mcp_tool_listing(cached, mapped, bool(call.args.get("full")))
             return {
                 "tool": call.name,
                 "args": call.args,
                 "ok": True,
-                "tools": cached,
-                "mapped_tools": mapped,
+                "tools": slim_tools,
+                "mapped_tools": slim_mapped,
                 "cache": "hit",
-                "summary": f"{len(cached)} cached MCP tool(s) on {server['name']}; {len(mapped)} schema(s) mapped for planner inspection",
+                "summary": f"{len(cached)} cached MCP tool(s) on {server['name']} (names only; select_skill or full:true for schemas)",
             }
     try:
         tools = mcp_client.list_tools(str(server["command"]), [str(arg) for arg in server.get("args", [])], timeout=timeout)
@@ -562,15 +585,16 @@ def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _mcp_failure(call, f"MCP tools/list failed: {exc}")
     cache_path = mcp_cache.write_cached_tools(server, tools)
     mapped = [_map_mcp_tool_schema(str(server["name"]), tool) for tool in tools if isinstance(tool, dict)]
+    slim_tools, slim_mapped = _slim_mcp_tool_listing(tools, mapped, bool(call.args.get("full")))
     return {
         "tool": call.name,
         "args": call.args,
         "ok": True,
-        "tools": tools,
-        "mapped_tools": mapped,
+        "tools": slim_tools,
+        "mapped_tools": slim_mapped,
         "cache": "refresh" if refresh else "miss",
         "cache_path": str(cache_path),
-        "summary": f"{len(tools)} MCP tool(s) on {server['name']}; {len(mapped)} schema(s) mapped for planner inspection; cached schema",
+        "summary": f"{len(tools)} MCP tool(s) on {server['name']} (names only; select_skill or full:true for schemas)",
     }
 
 
