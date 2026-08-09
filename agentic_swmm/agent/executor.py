@@ -114,6 +114,10 @@ class AgentExecutor:
         result["permission"] = {"prompted": prompted, "approved": approved}
         self.results.append(result)
         write_event(self.trace_path, {"event": "tool_result", "index": event_index, **result})
+        if self._spinner is not None:
+            # Hand the line back to the planner's THINKING spinner
+            # until the next tool starts (ticker fight fix).
+            self._spinner.pause()
         return result
 
     def _announce(self, label: str) -> None:
@@ -130,6 +134,7 @@ class AgentExecutor:
             )
             self._spinner.__enter__()
         else:
+            self._spinner.resume()
             self._spinner.update(rendered)
         # Register the live spinner so a blocking handler can repaint the
         # status line mid-call (ui.update_tool_status). Re-registering per
