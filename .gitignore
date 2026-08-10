@@ -72,6 +72,10 @@ data/Todcreek/**/*.png
 !docs/figs/*.png
 !docs/figs/*.pdf
 
+# Public case studies ship their figures
+!cases/
+!cases/**/*.png
+
 # Framework validation evidence (committed lock-ins under docs/)
 !docs/framework-validation/
 !docs/framework-validation/**/*.png
