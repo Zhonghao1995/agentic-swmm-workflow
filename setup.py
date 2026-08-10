@@ -27,11 +27,19 @@ PRIVATE_RESOURCE_DIRS = PUBLIC_RESOURCE_DIRS + (
     "data",
 )
 
+# Every skill family the runtime resolves via resource_path("skills", ...)
+# must be listed here or a pip-installed wheel breaks that verb while the
+# git-clone install keeps working (swmm-report was missing for two
+# releases: generate_report failed on wheels while the one-liner path hid
+# it; caught by the v0.9.0 wheel smoke).
+# test_wheel_ships_referenced_skills pins runtime references ⊆ this set.
 PUBLIC_SKILLS = {
+    "swmm-anywhere",
     "swmm-builder",
     "swmm-calibration",
     "swmm-canada",
     "swmm-climate",
+    "swmm-design-review",
     "swmm-end-to-end",
     "swmm-experiment-audit",
     "swmm-gis",
@@ -40,8 +48,10 @@ PUBLIC_SKILLS = {
     "swmm-params",
     "swmm-plot",
     "swmm-rag-memory",
+    "swmm-report",
     "swmm-runner",
     "swmm-uncertainty",
+    "swmm-water-quality",
 }
 
 PUBLIC_AGENT_FILES = {

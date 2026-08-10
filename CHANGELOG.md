@@ -2,6 +2,82 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.9.0 - The interactive product release (2026-08-09)
+
+41 PRs since v0.8.0 (#363 to #403), driven by live natural-language sessions
+on the real Victoria, BC municipal network rather than by reading code. A
+public case study of one such session ships in `cases/downtown-victoria/`.
+Full suite grows from 3,289 to 3,454 passed.
+
+### Added
+
+- **Study area on arrival** (#398). `fetch_swmm_from_canada` unpacks the
+  upstream bundle into the run's `00_raw/` stage and renders a study-area
+  map (DEM hillshade, subcatchments, conduits, outfalls) before the first
+  simulation, so every Canada run starts with its inputs and its geography
+  on the record.
+- **Product-grade interactive sessions** (#399, #400, #401, #403). Answer a
+  clarifying question and the same session continues instead of restarting;
+  one Y approves the rest of the turn's chain in the quick profile
+  (`--safe` keeps per-tool prompts); successful read-only reconnaissance
+  stays out of the transcript by default; run directories are named after
+  the place in your goal (`191335_downtown-victoria-bc_run`); long tools
+  show a live spinner with elapsed time; and the approval prompt owns its
+  line and its input (a keypress buffered before the question was visible
+  can no longer answer it).
+- **GPT patch envelope and inline calibration search spaces** (#393).
+  `apply_patch` understands the OpenAI patch envelope alongside unified
+  diffs, and `calibrate` accepts an inline search-space object with no file
+  on disk required.
+- **Inline skill index** (#395, #396). The planner's system prompt carries a
+  compact index of every skill, removing the per-session catalog
+  reconnaissance prologue (about a quarter fewer tokens on a typical
+  chain).
+- **Date-first one-shot runs** (#389). Single-shot sessions join the
+  `runs/YYYY-MM-DD/` scheme and the run-root layout is documented.
+- **Report title override** (#403). `generate_report` accepts the `--title`
+  the agent handler had been forwarding all along.
+
+### Fixed
+
+- **The pip wheel ships every skill the runtime references.** The wheel's
+  skill allowlist had drifted: `swmm-report`, `swmm-design-review`,
+  `swmm-anywhere`, and `swmm-water-quality` were missing, so a
+  pip-installed aiswmm could not generate the Word deliverable or run the
+  design review while the git-based one-liner install hid the gap. Caught
+  by this release's wheel smoke; a test now pins runtime skill references
+  against the allowlist so the drift class is closed.
+- **Report figures always embed** (#391, #402). The report's figure scan
+  covers every real plot-directory variant, and plot outputs from both the
+  CLI and the agent path are anchored into the run's canonical `08_plot`
+  stage, so a deliverable can no longer silently miss a figure.
+- **Model Description reads the INP** (#387), not a phantom schema.
+- **Fourteen silent-failure classes closed in one maintenance sweep**
+  (#375 to #388): malformed `.rpt` rows skip instead of truncating the
+  section; healthy runs are no longer classified as failures in memory;
+  manifest readers resolve the runner manifest instead of a root decoy;
+  CSV time-column inference combines Date+Time columns; `calibrate` no
+  longer silently discards `--objective`; runner manifests stamp UTC; CRS
+  identity is canonical EPSG; review resolves canonical run layouts; and
+  more.
+- **Wet-window Canada chain findings** (#397). Fetched models are always
+  plottable (a `[REPORT]` section is injected when the upstream INP lacks
+  one), review verdicts flow as data, and the skill contract matches the
+  behavior.
+- **Network QA truthfulness** (#374). A fatal network can no longer report
+  success through three cooperating layers.
+- **Single-shot honesty** (#390). One-shot sessions stop ending with
+  questions nobody can answer.
+
+### Changed
+
+- **Import surfaces pinned and the registry on a self-registration seam**
+  (#363 to #371). Every tool family now registers itself; the central
+  registry shed its 1,900-line catalog and the import dance is gone, with
+  binding and read-only ratchets green at every step.
+- **Docs** (#372). The swmm-canada skill contract and the two-interfaces
+  guide.
+
 ## v0.8.0 - Provider routes, the SWMMCanada chain, climate scenarios (2026-08-08)
 
 Four feature PRs in one day (#357, #360, #361, #362): connect any LLM the way
