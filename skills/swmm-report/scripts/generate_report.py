@@ -805,12 +805,20 @@ def _load_artifacts(run_dir: str) -> dict:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-def generate(run_dir: str, out_path: str, template_path: str) -> None:
+def generate(
+    run_dir: str, out_path: str, template_path: str, title: str | None = None
+) -> None:
     """Generate the Word deliverable. Pure function — no side-effects beyond writing out_path."""
     artifacts = _load_artifacts(run_dir)
 
     template = _load_template(template_path)
     sections = template.get("sections", [])
+    if title:
+        # CLI override beats the template's cover title so callers can
+        # brand the deliverable per project without a custom template.
+        for section_cfg in sections:
+            if section_cfg.get("id") == "cover":
+                section_cfg["title"] = title
 
     doc = Document()
 
@@ -860,6 +868,11 @@ def main() -> None:
         default=None,
         help="Path to a YAML (or JSON) template file. Defaults to the built-in default template.",
     )
+    parser.add_argument(
+        "--title",
+        default=None,
+        help="Override the cover title (default comes from the template).",
+    )
     args = parser.parse_args()
 
     run_dir = os.path.abspath(args.run_dir)
@@ -870,7 +883,7 @@ def main() -> None:
     out_path = args.out if args.out else os.path.join(run_dir, "report.docx")
     template_path = args.template if args.template else _default_template_path()
 
-    generate(run_dir, out_path, template_path)
+    generate(run_dir, out_path, template_path, title=args.title)
     print(f"Report written to: {out_path}")
 
 

@@ -99,13 +99,59 @@ def request_approval(tool_name: str) -> ApprovalDecision:
         return ApprovalDecision(approved=True, reason="auto")
     if not sys.stdin.isatty():
         return ApprovalDecision(approved=False, reason="headless")
+    _prepare_prompt_line()
     try:
         answer = input(f"Run {tool_name}? [Y/n] ").strip().lower()
     except EOFError:
         return ApprovalDecision(approved=False, reason="headless")
+    finally:
+        _restore_after_prompt()
     if answer in {"", "y", "yes"}:
         return ApprovalDecision(approved=True, reason="granted")
     return ApprovalDecision(approved=False, reason="declined")
+
+
+def _prepare_prompt_line() -> None:
+    """Give the approval prompt a clean line and a clean input buffer.
+
+    Two live failures from the same user session (2026-08-09):
+
+    * The executor's RUNNING spinner repaints its line every ~120 ms
+      with no trailing newline. ``input()`` printed the question at the
+      current cursor, the next tick overwrote the line head, and the
+      cursor ended up in the middle of the visible text. Pausing and
+      wiping the spinner first gives the prompt column 0 of a blank
+      line.
+    * A control character the user pressed during the planner's
+      Thinking wait (``^R``) sat in the tty line buffer and was
+      consumed as the answer, silently recording "N (skipped)" against
+      an explicit Y. An approval must reflect a keypress made AFTER the
+      question was visible, so pending input is discarded first.
+    """
+    try:
+        from agentic_swmm.agent import ui
+
+        ui.pause_active_spinner_for_prompt()
+    except Exception:  # pragma: no cover - chrome must never block approval
+        pass
+    try:
+        import termios
+
+        termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    except Exception:
+        # No termios (non-POSIX) or stdin not flushable: type-ahead
+        # keeps its historical behaviour rather than failing the prompt.
+        pass
+
+
+def _restore_after_prompt() -> None:
+    """Restart the paused spinner so the approved tool animates again."""
+    try:
+        from agentic_swmm.agent import ui
+
+        ui.resume_active_spinner_after_prompt()
+    except Exception:  # pragma: no cover - chrome must never block approval
+        pass
 
 
 def prompt_user(tool_name: str) -> bool:

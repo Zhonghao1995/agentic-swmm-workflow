@@ -757,3 +757,32 @@ class TestNumberedSections:
         headings = _heading_texts(doc)
         assert "1 Summary" in headings
         assert "2 Env" in headings
+
+
+class TestTitleOverride:
+    """--title overrides the cover title.
+
+    The agent handler has forwarded ``title`` as ``--title`` since its
+    introduction, but the script never grew the flag; live on 2026-08-09
+    the planner's first generate_report call died on ``unrecognized
+    arguments: --title`` and only the retry (without a title) produced
+    the deliverable.
+    """
+
+    def test_title_flag_overrides_cover_title(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        out = str(tmp_path / "report.docx")
+        result = _run_script(
+            run_dir, out, extra_args=["--title", "Downtown Victoria SWMM Report"]
+        )
+        assert result.returncode == 0, result.stderr
+        headings = _heading_texts(Document(out))
+        assert "Downtown Victoria SWMM Report" in headings
+        assert "Run Audit Deliverable" not in headings
+
+    def test_without_title_flag_template_title_stands(self, tmp_path):
+        run_dir = _make_run_dir(tmp_path)
+        out = str(tmp_path / "report.docx")
+        result = _run_script(run_dir, out)
+        assert result.returncode == 0, result.stderr
+        assert "Run Audit Deliverable" in _heading_texts(Document(out))
