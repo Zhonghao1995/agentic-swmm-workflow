@@ -181,6 +181,16 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         out_png = _repo_output_path(str(call.args["out_png"]))
         if out_png is None or out_png.suffix.lower() != ".png":
             return _failure(call, "out_png must be a repository-relative .png path")
+        # Anchor the FILENAME into the run's canonical plot stage
+        # regardless of whichever directory the planner invented
+        # ("08_plots" observed live 2026-08-09, "07_plots" before
+        # that): figures about a run live inside that run's 08_plot,
+        # which is where report generation looks. Same rule the CLI
+        # verbs enforce for relative --out-png. Paths already inside
+        # the run's canonical plot stage pass through unchanged.
+        canonical = run_layout.stage_dir(run_dir, run_layout.PLOT, create=True)
+        if out_png.parent.resolve() != canonical.resolve():
+            out_png = canonical / out_png.name
     else:
         # The MCP server requires outPng. Match the CLI default (ADR-0004:
         # ``run_layout.PLOT`` = ``08_plot/fig_<node>_<attr>.png`` under the
