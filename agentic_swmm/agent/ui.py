@@ -331,6 +331,39 @@ def _clear_active_spinner_line() -> None:
         pass
 
 
+def pause_active_spinner_for_prompt() -> None:
+    """Stop the live spinner's ticker AND wipe its frame so an input()
+    prompt owns a clean line at column 0.
+
+    Without this, ``permissions.request_approval`` printed its
+    ``Run tool? [Y/n]`` right after the live spinner frame (no newline)
+    and the RUNNING ticker kept repainting the line head with the
+    growing elapsed suffix, leaving the cursor stranded mid-text
+    ("…— 10stch_swmm_from_canada? [Y/n]"; user live test 2026-08-09).
+    """
+    spinner = _active_tool_spinner
+    if spinner is None:
+        return
+    try:
+        spinner.pause()
+        if spinner._is_tty and not spinner._closed:
+            spinner.stream.write(ui_colors.CLEAR_LINE)
+            spinner.stream.flush()
+    except Exception:  # pragma: no cover - prompt must never break on chrome
+        pass
+
+
+def resume_active_spinner_after_prompt() -> None:
+    """Restart the spinner ticker once the prompt has been answered."""
+    spinner = _active_tool_spinner
+    if spinner is None:
+        return
+    try:
+        spinner.resume()
+    except Exception:  # pragma: no cover - prompt must never break on chrome
+        pass
+
+
 def update_tool_status(text: str) -> None:
     """Best-effort live status update from inside a blocking tool handler."""
     global _last_tool_status
