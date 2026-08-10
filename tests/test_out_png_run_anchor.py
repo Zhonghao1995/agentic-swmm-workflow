@@ -83,3 +83,47 @@ class MapOutPngAnchorTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class PlotMapperAnchorTests(unittest.TestCase):
+    """The agent-path plot mapper anchors planner-invented directories
+    into the run's canonical plot stage (live 2026-08-09: a freehand
+    '08_plots' dir hid the hydrograph from the report scan)."""
+
+    def test_freehand_directory_is_rewritten_to_canonical(self) -> None:
+        from unittest import mock
+
+        from agentic_swmm.agent.tool_handlers import swmm_plot
+        from agentic_swmm.agent.types import ToolCall
+        from agentic_swmm.utils.paths import repo_root
+
+        run_dir = repo_root() / "runs" / "_test_plot_anchor"
+        try:
+            (run_dir / "06_runner").mkdir(parents=True, exist_ok=True)
+            call = ToolCall(
+                name="plot_run",
+                args={
+                    "run_dir": str(run_dir),
+                    "node": "N1",
+                    "out_png": str(run_dir / "08_plots" / "fig.png"),
+                },
+            )
+            with mock.patch.object(
+                swmm_plot, "_resolve_run_dir", return_value=run_dir
+            ), mock.patch.object(
+                swmm_plot, "_find_inp", return_value=run_dir / "m.inp"
+            ), mock.patch.object(
+                swmm_plot, "_find_out", return_value=run_dir / "06_runner" / "m.out"
+            ):
+                (run_dir / "m.inp").write_text("[TITLE]\n", encoding="utf-8")
+                (run_dir / "06_runner" / "m.out").write_bytes(b"")
+                mapped = swmm_plot._plot_run_args(call, run_dir)
+            self.assertIsInstance(mapped, dict)
+            self.assertIn("outPng", mapped)
+            out = Path(mapped["outPng"])
+            self.assertEqual(out.parent.name, "08_plot")
+            self.assertEqual(out.name, "fig.png")
+        finally:
+            import shutil
+
+            shutil.rmtree(run_dir, ignore_errors=True)
