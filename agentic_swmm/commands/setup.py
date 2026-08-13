@@ -96,6 +96,14 @@ def main(args: argparse.Namespace) -> int:
         )
         if result is None:
             return 1
+
+        # One question, once. The Canadian upstream is advertised on the README
+        # front page and unreachable on every fresh install, because nothing
+        # ever set its URL and nothing ever offered to.
+        from agentic_swmm.commands import upstream_optin
+
+        upstream_optin.offer(ask=input)
+
         provider = result.route
         model = result.model
         fallback = result.fallback or None

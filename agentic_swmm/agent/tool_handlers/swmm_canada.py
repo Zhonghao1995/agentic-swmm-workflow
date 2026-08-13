@@ -35,13 +35,22 @@ from agentic_swmm.agent.types import ToolCall, ToolSpec
 from agentic_swmm.agent.ui import update_tool_status
 
 
+#: The public SWMMCanada deployment. Named here because it was named nowhere:
+#: the old hint offered "a local container at http://localhost:8000", so a
+#: planner asked how to configure the route repeated that address to the user
+#: as if it were real. It was not reading a service; it was reading this file.
+HOSTED_SERVICE_URL = "https://swmm.h2ox.me"
+
+
 def _stage_hint(stage: str) -> str:
     """Return an actionable hint for a ``CanadaFetchError`` stage tag."""
     if stage == "config_missing":
         return (
-            "set the SWMMCanada service URL via the AISWMM_SWMMCANADA_URL "
-            "environment variable (a local container at http://localhost:8000 "
-            "or a hosted backend), or pass base_url."
+            "SWMMCanada is optional and off until its URL is set. The public "
+            f"deployment is {HOSTED_SERVICE_URL}; enable it with "
+            f"AISWMM_SWMMCANADA_URL={HOSTED_SERVICE_URL} (this sends the area "
+            "you request to that service), or point the variable at your own "
+            "deployment, or pass base_url. `aiswmm setup` offers the same choice."
         )
     if stage == "task_failed":
         return (

@@ -273,6 +273,10 @@ def _runs_dir(root: Path) -> Path:
     return root / "runs"
 
 
+#: Kept in one place; the tool handler owns the canonical value.
+_SWMMCANADA_PUBLIC_URL = "https://swmm.h2ox.me"
+
+
 def _swmmcanada_upstream_check() -> tuple[str, bool, str, bool]:
     """One install-check row for the SWMMCanada upstream service.
 
@@ -286,7 +290,12 @@ def _swmmcanada_upstream_check() -> tuple[str, bool, str, bool]:
         return (
             "SWMMCanada upstream",
             True,
-            "not configured (optional; set AISWMM_SWMMCANADA_URL to enable fetch_swmm_from_canada)",
+            # Name the endpoint. A row that says only "set AISWMM_SWMMCANADA_URL"
+            # leaves the reader, human or planner, to guess what to set it to,
+            # and the guess that came back was a localhost address copied from
+            # a stale hint.
+            "not configured (optional). Enable with "
+            f"AISWMM_SWMMCANADA_URL={_SWMMCANADA_PUBLIC_URL}, or run `aiswmm setup`",
             False,
         )
     import urllib.error
