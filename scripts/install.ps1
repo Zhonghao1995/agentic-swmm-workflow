@@ -129,12 +129,55 @@ function Test-RealPython {
     }
 }
 
+function Get-HostArchitecture {
+    # The machine's architecture, not the shell's. An x64 PowerShell on an
+    # ARM64 machine reports AMD64 through PROCESSOR_ARCHITECTURE; Windows puts
+    # the truth in PROCESSOR_ARCHITEW6432 in exactly that emulated case.
+    if ($env:PROCESSOR_ARCHITEW6432) { return $env:PROCESSOR_ARCHITEW6432.ToUpper() }
+    if ($env:PROCESSOR_ARCHITECTURE) { return $env:PROCESSOR_ARCHITECTURE.ToUpper() }
+    return ''
+}
+
+function Get-PythonArchitecture {
+    param([string]$Exe)
+    try {
+        $value = (& $Exe -c "import platform; print(platform.machine())" 2>$null | Select-Object -First 1)
+        if ($LASTEXITCODE -eq 0 -and $value) { return $value.Trim().ToUpper() }
+    } catch { }
+    return ''
+}
+
+# Windows on ARM needs an x64 Python, and this is not a preference.
+# shapely and pyogrio have never published a win_arm64 wheel: 130 and 21
+# releases respectively, zero between them, for every Python from cp310 to
+# cp314. On an ARM64 interpreter pip falls back to a source build and dies on
+# "GDAL_VERSION must be provided as an environment variable", because building
+# pyogrio needs a GDAL nobody has installed. The x64 wheels run fine under the
+# emulation Windows 11 provides, which is what every working install on these
+# machines has actually been doing.
 function Resolve-Python {
-    foreach ($candidate in @('python3.12', 'python3.11', 'python3.10', 'python3', 'python', 'py')) {
-        if (Test-RealPython $candidate) {
+    $candidates = @('python3.12', 'python3.11', 'python3.10', 'python3', 'python', 'py')
+    $onArm = (Get-HostArchitecture) -eq 'ARM64'
+    $fallback = ''
+    foreach ($candidate in $candidates) {
+        if (-not (Test-RealPython $candidate)) { continue }
+        if (-not $onArm) {
             $script:ResolvedPython = $candidate
             return $true
         }
+        if ((Get-PythonArchitecture $candidate) -eq 'AMD64') {
+            $script:ResolvedPython = $candidate
+            return $true
+        }
+        if (-not $fallback) { $fallback = $candidate }
+    }
+    if ($onArm -and $fallback) {
+        # An ARM64-only Python is worse than none: the install appears to work
+        # and then fails on the geospatial dependencies. Report it so the
+        # caller can install the x64 build first.
+        $script:ResolvedPython = $fallback
+        $script:ResolvedPythonIsArm = $true
+        return $true
     }
     return $false
 }
@@ -150,13 +193,22 @@ function Test-NodeOk {
 
 function Install-PythonViaWinget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
-    Write-Host "Python 3.10+ not found; installing Python 3.12 via winget (user scope, no admin)..."
+    $onArm = (Get-HostArchitecture) -eq 'ARM64'
+    $archArgs = @()
+    if ($onArm) {
+        Write-Host "Windows on ARM detected: installing the x64 Python build."
+        Write-Host "  shapely and pyogrio publish no ARM64 wheels, so an ARM64 interpreter"
+        Write-Host "  cannot install the geospatial dependencies at all. The x64 build runs"
+        Write-Host "  under Windows' emulation and installs everything."
+        $archArgs = @('--architecture', 'x64')
+    }
+    Write-Host "Installing Python 3.12 via winget (user scope, no admin)..."
     try {
         # Out-Host, not the output stream: `& winget` output otherwise lands in
         # this function's return value, making it a truthy array whatever the
         # install did, so the caller's `-not (Install-...)` never fired.
         & winget install -e --id Python.Python.3.12 --scope user --silent `
-            --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
+            @archArgs --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
     } catch {
         Write-Host "winget Python install raised: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -462,6 +514,23 @@ function Do-SwmmEngine {
 # Prereq gate
 # ---------------------------------------------------------------------------
 
+$script:ResolvedPythonIsArm = $false
+if ((Resolve-Python) -and $script:ResolvedPythonIsArm) {
+    # Found a Python, but the wrong architecture for this machine's wheels.
+    Write-Host "The Python on PATH is an ARM64 build; the geospatial dependencies have no" -ForegroundColor Yellow
+    Write-Host "ARM64 wheels. Installing the x64 build alongside it." -ForegroundColor Yellow
+    $script:ResolvedPythonIsArm = $false
+    if (-not (Install-PythonViaWinget) -or $script:ResolvedPythonIsArm) {
+        Print-Failure "An x64 Python is required on Windows on ARM." @(
+            "shapely and pyogrio publish no win_arm64 wheels, so an ARM64 interpreter",
+            "  cannot install them and pip falls back to a source build that needs GDAL.",
+            "Install the x64 build and re-run:",
+            "  winget install -e --id Python.Python.3.12 --architecture x64",
+            "Or download the 'Windows installer (64-bit)' from https://www.python.org/downloads/"
+        )
+        exit 2
+    }
+}
 if (-not (Resolve-Python)) {
     if (-not (Install-PythonViaWinget)) {
         Print-Failure "Python 3.10+ is required and could not be installed automatically." @(
