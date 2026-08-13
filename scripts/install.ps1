@@ -160,13 +160,28 @@ function Get-HostArchitecture {
 }
 
 function Get-PythonArchitecture {
+    # sysconfig.get_platform(), not platform.machine().
+    #
+    # On Windows platform.machine() reads PROCESSOR_ARCHITECTURE, which a child
+    # process inherits from its parent: an ARM64 PowerShell launching an x64
+    # Python gets ARM64 back, describing who started it rather than what it is.
+    # A freshly installed python-3.12.10-amd64.exe reported ARM64 that way and
+    # was rejected as unusable.
+    #
+    # get_platform() is the value pip itself uses to choose wheels, which is
+    # exactly the question being asked: win-amd64 means the win_amd64 wheels
+    # for shapely and pyogrio will install.
+    #
     # Same rule as Get-PythonExecutable: trust the output, not $LASTEXITCODE.
     param([string]$Exe, [string[]]$LauncherArgs = @())
     try {
-        $lines = @(& $Exe @LauncherArgs -c "import platform; print(platform.machine())" 2>$null)
+        $lines = @(& $Exe @LauncherArgs -c "import sysconfig; print(sysconfig.get_platform())" 2>$null)
         foreach ($line in $lines) {
-            $value = "$line".Trim().ToUpper()
-            if ($value -match '^(AMD64|ARM64|X86|I386)$') { return $value }
+            switch -Regex ("$line".Trim().ToLower()) {
+                '^win-amd64$' { return 'AMD64' }
+                '^win-arm64$' { return 'ARM64' }
+                '^win32$'     { return 'X86' }
+            }
         }
     } catch { }
     return ''

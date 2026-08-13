@@ -38,8 +38,20 @@ grep -q 'PROCESSOR_ARCHITEW6432' <<<"$body" \
   || fail "install.ps1 reads only PROCESSOR_ARCHITECTURE; an emulated shell misreports the machine"
 
 # --- 2. an interpreter's own architecture is checked -----------------------
-grep -q 'platform.machine()' <<<"$body" \
-  || fail "install.ps1 never asks a candidate Python what architecture it is"
+# It must ask sysconfig, not platform.machine(). On Windows the latter reads
+# PROCESSOR_ARCHITECTURE, which a child inherits from its parent: an ARM64
+# PowerShell launching an x64 Python gets ARM64 back. A freshly installed
+# python-3.12.10-amd64.exe reported ARM64 that way and was rejected as
+# unusable. get_platform() is the value pip uses to choose wheels, which is
+# the question actually being asked.
+grep -q 'sysconfig.get_platform()' <<<"$body" \
+  || fail "install.ps1 must ask sysconfig.get_platform(); platform.machine() describes the parent process on Windows"
+arch_fn="$(awk '/^function Get-PythonArchitecture/,/^}/' "$PS1" | strip_comments)"
+if grep -q 'platform.machine()' <<<"$arch_fn"; then
+  fail "Get-PythonArchitecture still uses platform.machine(); it reports the launching shell, not the interpreter"
+fi
+grep -q 'win-amd64' <<<"$body" \
+  || fail "the architecture mapping must recognise win-amd64, the tag pip matches wheels against"
 
 # --- 3. winget is told to fetch the x64 build on ARM -----------------------
 grep -qE "'--architecture', 'x64'" <<<"$body" \
