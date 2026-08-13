@@ -2,6 +2,85 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.9.2 - The install actually works on Windows (2026-08-12)
+
+A day of testing v0.9.1 on a Windows 11 ARM machine, in the product rather
+than in the source. Every fix below has a transcript behind it.
+
+### Fixed
+
+- **The Windows installer no longer walks past a failed step.** `Run-Step`
+  printed its captured log with `Get-Content`, which writes to the PowerShell
+  *output* stream and is therefore appended to the function's return value.
+  The caller's `-not (Run-Step ...)` then evaluated a multi-element array,
+  always truthy, and skipped the failure branch: a failed step neither showed
+  its output nor stopped the install, and the run ended on "Install complete."
+  with "MCP servers: installed". Five more defects travelled with it, all in
+  the same transcript: a sticky `$LASTEXITCODE` that re-failed the next step
+  (a bare `New-Item` "failed" in 0s), an MCP enumeration that recursed into
+  `node_modules` and ran npm in every nested dependency, winget helpers that
+  leaked output into their return values so the "skip MCP" fallback was
+  unreachable, and labels rendering as "... failed failed."
+- **Upgrading from any pre-#381 install was impossible.** `git checkout`
+  aborted on an untracked `mcp/swmm-uncertainty/package-lock.json`, and
+  Windows PowerShell does not raise on a native non-zero exit, so bootstrap
+  reinstalled the *old* tree while the banner printed the new tag.
+- **A reused virtualenv kept the previous interpreter's binaries.**
+  `python -m venv <existing dir>` repoints the interpreter and leaves
+  site-packages alone, so a venv built by 3.11 and later reused by 3.12 ended
+  up cpython-312 with cp311 wheels inside it. pip reported nothing wrong (the
+  metadata says installed; that step passed in 7 seconds having done nothing)
+  and the failure surfaced hours later as a plot that would not draw. Both
+  installers now rebuild on an interpreter change and prove the wheels import
+  before the step passes.
+- **Doctor stopped covering for it.** `_module_available` used
+  `importlib.util.find_spec`, which answers "is this package on disk", not
+  "does it work", so doctor printed `python module: numpy - importable OK`
+  while every import in the product raised.
+- **`search_files` read the whole install to find one line.** 78,626 entries
+  walked, 63,579 surviving the old skip list, against 11,472 worth searching:
+  the gap is `node_modules` from the 11 MCP servers, each file read into
+  memory in full. One search took 2m25s and read like a hang. Now 0.7s, and a
+  capped scan says its results are incomplete rather than implying "not found".
+
+### Added
+
+- **`aiswmm gateway`: the keyless ChatGPT-plan route is reachable.** The
+  `codex` route has been in the table since ADR-0008 and needed a local
+  gateway the product never helped anyone install. `aiswmm gateway login`
+  now installs a pinned CLIProxyAPI build for the running OS and
+  architecture, runs the browser OAuth, and leaves it serving. `aiswmm setup`
+  offers the whole thing inline when you pick `codex`.
+  Architecture is detected, never asked: on Windows, `PROCESSOR_ARCHITEW6432`
+  wins when set, because an x64 Python on an ARM64 machine reports AMD64 and
+  would otherwise be handed the emulated build. Downloads are verified
+  against the release's own checksums and a mismatch writes nothing.
+- **The install surface points at the whole route table.** Every message the
+  installer printed named OpenAI and Claude, so a user who did not want to
+  pay per token was told an API key was the only way in. Next steps is now
+  two commands, and the installer hands over to `aiswmm setup` directly.
+- **Word reports carry the hydraulics they already computed.** Node inflows
+  with time of peak, outfall loadings, conduit peaks and max/full ratios, in
+  the model's own flow units, read from the run's `model.rpt`. They were
+  always there; nothing downstream looked.
+- **SWMM's external-file error names the file.** `ERROR 361 ... Time Series
+  TEMP_ROME` names a series, never the filename, which is two sections away
+  in the INP. The error now resolves it and says which file to copy where.
+
+### Changed
+
+- **A run folder is organised for whoever opens it.** The six agent sidecars
+  move under `_agent/`, SWMM's console progress bars move to
+  `06_runner/_engine/`, and every run gets a `README.md` saying what it was,
+  which file is the deliverable, and what each stage holds. Legacy runs stay
+  readable: the resolver prefers the new location and falls back to the root
+  forever.
+- **Run folders are named after the work.** A pasted path used to name the
+  folder after the user's home directory
+  (`193233_C-Users-Hoz-AppData-Local-agenti_run`) and every non-Latin prompt
+  collapsed to `agent`, so five different questions produced five folders
+  called `agent_chat`.
+
 ## v0.9.1 - Install-path honesty (2026-08-11)
 
 A clean-venv audit of what a brand-new user actually receives. Two gaps
