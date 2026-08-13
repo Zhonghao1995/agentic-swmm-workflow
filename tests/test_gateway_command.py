@@ -542,3 +542,54 @@ class CommandSurfaceTests(unittest.TestCase):
     def test_a_gateway_error_becomes_an_exit_code_not_a_traceback(self) -> None:
         with mock.patch.object(gateway, "install_gateway", side_effect=gateway.GatewayError("nope")):
             self.assertEqual(gateway.main(mock.Mock(gateway_action="install", force=False)), 1)
+
+
+class CodexLoginRoutingTests(unittest.TestCase):
+    """`aiswmm login codex` must not ask for a key that does not exist.
+
+    The generic route handler prompts every route with a key_env for a key.
+    For codex that key is optional and almost always empty: the credential the
+    route needs is a ChatGPT sign-in held by the gateway. A user hit that
+    prompt twice in one session, looking for a token nobody has, while the
+    browser flow that works sat behind a different verb.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.dict(os.environ, {"AISWMM_CONFIG_DIR": self._tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_it_runs_the_gateway_sign_in_and_never_prompts(self) -> None:
+        from agentic_swmm.commands import login as login_cmd
+
+        calls = []
+        with mock.patch.object(login_cmd, "set_config_value", lambda k, v: calls.append((k, v))), \
+             mock.patch.object(gateway, "main", return_value=0) as gateway_main, \
+             mock.patch("builtins.print"), \
+             mock.patch.object(login_cmd, "_prompt_secret", side_effect=AssertionError("prompted for a key")):
+            rc = login_cmd._LOGIN_HANDLERS["codex"](mock.Mock())
+        self.assertEqual(rc, 0)
+        gateway_main.assert_called_once()
+        self.assertEqual(gateway_main.call_args.args[0].gateway_action, "login")
+
+    def test_it_selects_the_route_and_its_default_model(self) -> None:
+        from agentic_swmm.commands import login as login_cmd
+        from agentic_swmm.providers.routes import ROUTES
+
+        calls = []
+        with mock.patch.object(login_cmd, "set_config_value", lambda k, v: calls.append((k, v))), \
+             mock.patch.object(gateway, "main", return_value=0), \
+             mock.patch("builtins.print"):
+            login_cmd._LOGIN_HANDLERS["codex"](mock.Mock())
+        self.assertIn(("provider.default", "codex"), calls)
+        self.assertIn(("codex.model", ROUTES["codex"].default_model), calls)
+
+    def test_a_failed_sign_in_propagates_its_exit_code(self) -> None:
+        from agentic_swmm.commands import login as login_cmd
+
+        with mock.patch.object(login_cmd, "set_config_value", lambda k, v: None), \
+             mock.patch.object(gateway, "main", return_value=1), \
+             mock.patch("builtins.print"):
+            self.assertEqual(login_cmd._LOGIN_HANDLERS["codex"](mock.Mock()), 1)
