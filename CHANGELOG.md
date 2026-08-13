@@ -2,6 +2,73 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.9.3 - Installs where it said it did (2026-08-13)
+
+v0.9.2 fixed the Windows installer for x64 machines and shipped two platforms
+that could not install at all. Both are fixed here, each verified by a CI job
+that runs the real one-liner on the real machine, which is what was missing.
+
+### Fixed
+
+- **Windows on ARM could not install, and the error named nothing.** `shapely`
+  and `pyogrio` have never published a `win_arm64` wheel: 130 and 21 releases
+  respectively, zero between them, for every Python from cp310 to cp314. On an
+  ARM64 interpreter pip falls back to a source build and dies on
+  `GDAL_VERSION must be provided as an environment variable`, which says
+  nothing about architecture. The answer is an x64 interpreter under the
+  emulation Windows 11 provides, and getting one took five separate fixes:
+  winget ignores `--architecture` for a package id it already has installed
+  (needs `--force`); winget is absent entirely on some machines (now falls
+  back to a pinned python.org download); `py -3.12` keeps pointing at an
+  already-registered ARM64 build, so a freshly installed x64 one is invisible
+  through the launcher (interpreters are now found on disk); and
+  `platform.machine()` on Windows reports the *parent process* architecture,
+  so every x64 interpreter the installer obtained was then discarded as ARM64
+  (now asks `sysconfig.get_platform()`, the value pip matches wheels against).
+- **The Linux one-liner assumed sudo.** Containers and many server images run
+  as root and ship no sudo, where the hardcoded call died as
+  `sudo: command not found`. The engine build hit the same call and, being
+  non-fatal, left the installer reporting a complete install with no SWMM
+  solver on a machine that could not run a single model. Both scripts now run
+  privileged commands directly when already root, and `apk` and `pacman` join
+  the package-manager list.
+- **A reused virtualenv kept the previous interpreter's binaries.**
+  `python -m venv` over an existing directory repoints the interpreter and
+  leaves site-packages alone, so a venv built by 3.11 and reused by 3.12 ends
+  up cpython-312 with cp311 wheels inside it. pip reports nothing wrong,
+  because the metadata says installed. The installer now rebuilds when the
+  interpreter changes, rebuilds again if the packages still fail to import,
+  and proves the wheels load before the step passes.
+- **A truncated failure told you nothing.** With
+  `$ErrorActionPreference = 'Stop'`, PowerShell 5.1 turns the first stderr
+  line of a native command into a terminating error, so a Python traceback
+  arrived as `Traceback (most recent call last):` and nothing else.
+- **The agent recited its own context at you.** Every continued turn echoed
+  the planner's continuation block, ten lines of internal plumbing under the
+  one line saying what the turn was, into the terminal, the run README, and
+  the report header.
+
+### Added
+
+- **SWMMCanada is reachable.** `fetch_swmm_from_canada` was off for every
+  install, because nothing set its URL and nothing offered to, while the
+  upstream sat on the README front page. Worse, the error text named a
+  `localhost:8000` container that does not exist, so a planner asked how to
+  configure it repeated that address to the user. `aiswmm setup` now offers
+  the real deployment once, defaults to off, and says in words that enabling
+  it sends the requested area to that service.
+- **CI installs on the machines that were breaking.** A `windows-11-arm`
+  runner and a root Linux container, both running the documented one-liner and
+  then asserting that the geospatial stack imports and the solver binary
+  exists. Every defect above was invisible to a matrix whose only Windows
+  runner was x64 and which never ran the bash installer at all.
+- **An install troubleshooting page**, with the reason behind each failure
+  rather than a ritual, linked from one clause in the README.
+- **A second Victoria case study**, run on Windows ARM against the real
+  municipal network, published for what the agent refused to claim: a 6.111%
+  routing continuity error and a flooding volume against zero rainfall, named
+  as disqualifying rather than reported as results.
+
 ## v0.9.2 - The install actually works on Windows (2026-08-12)
 
 A day of testing v0.9.1 on a Windows 11 ARM machine, in the product rather
