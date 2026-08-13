@@ -327,6 +327,15 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     note_text = build_chat_note(state, trace_events)
     note_path = session_dir / "chat_note.md"
     note_path.write_text(note_text, encoding="utf-8")
+    # A chat turn produces a folder too, and its reader deserves the same one
+    # page as a run's. Best-effort: an index is not worth failing a finished
+    # turn.
+    try:
+        from agentic_swmm.reporting.run_readme import write_run_readme
+
+        write_run_readme(session_dir, goal=str(getattr(state, "goal", "") or ""))
+    except Exception:
+        pass
     return note_path
 
 

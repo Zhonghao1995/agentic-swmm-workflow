@@ -84,3 +84,45 @@ class RootContractTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class RunReadmeTests(unittest.TestCase):
+    """A run folder should explain itself to whoever opens it next."""
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.run_dir = Path(self._tmp.name) / "194142_tecnopolo_run"
+        self.run_dir.mkdir()
+
+    def _render(self, **kwargs) -> str:
+        from agentic_swmm.reporting.run_readme import render_run_readme
+
+        return render_run_readme(self.run_dir, **kwargs)
+
+    def test_it_lists_only_what_exists(self) -> None:
+        # Never advertise a report or a figure that was not produced.
+        body = self._render()
+        self.assertNotIn("report.docx", body)
+        (self.run_dir / "report.docx").write_text("x", encoding="utf-8")
+        self.assertIn("report.docx", self._render())
+
+    def test_stages_are_explained_in_words(self) -> None:
+        (self.run_dir / "06_runner").mkdir()
+        body = self._render()
+        self.assertIn("06_runner", body)
+        self.assertIn("model.rpt", body)
+
+    def test_the_agent_dir_is_labelled_as_not_a_result(self) -> None:
+        (self.run_dir / AGENT_DIR).mkdir()
+        body = self._render()
+        self.assertIn("nothing here is a result", body)
+
+    def test_the_evidence_boundary_is_always_stated(self) -> None:
+        # A run folder is where someone decides whether to trust a number.
+        self.assertIn("not a calibrated or validated one", self._render())
+
+    def test_writing_is_best_effort(self) -> None:
+        from agentic_swmm.reporting.run_readme import write_run_readme
+
+        self.assertIsNone(write_run_readme(self.run_dir / "does-not-exist"))

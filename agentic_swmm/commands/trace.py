@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from agentic_swmm.agent import tui_chrome
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 from agentic_swmm.agent.flag_naming import (
     register_example_flag,
     register_json_flag,
@@ -138,9 +139,9 @@ def _trace_files_for(run_dir: Path, source: str) -> list[Path]:
     """
     candidates: list[Path] = []
     if source in ("agent", "both"):
-        candidates.append(run_dir / _AGENT_TRACE_NAME)
+        candidates.append(agent_file(run_dir, _AGENT_TRACE_NAME))
     if source in ("memory", "both"):
-        candidates.append(run_dir / _MEMORY_TRACE_NAME)
+        candidates.append(agent_file(run_dir, _MEMORY_TRACE_NAME))
     return [p for p in candidates if p.is_file()]
 
 

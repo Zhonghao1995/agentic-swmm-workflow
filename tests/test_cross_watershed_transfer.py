@@ -31,6 +31,7 @@ from agentic_swmm.memory.cross_watershed_transfer import (
     recommend_parameters_for_new_case,
 )
 from agentic_swmm.memory.watershed_similarity import WatershedAttributes
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 # Tiny INP that the production extractor still gives a real
@@ -395,7 +396,7 @@ class TraceLoggingTests(unittest.TestCase):
                 top_k=1,
                 run_dir=run_dir,
             )
-            lines = self._read_jsonl(run_dir / "memory_trace.jsonl")
+            lines = self._read_jsonl(agent_file(run_dir, "memory_trace.jsonl"))
 
         self.assertEqual(len(recs), 1)
         self.assertEqual(len(lines), 1, lines)
@@ -437,7 +438,7 @@ class TraceLoggingTests(unittest.TestCase):
                 top_k=3,
                 run_dir=run_dir,
             )
-            lines = self._read_jsonl(run_dir / "memory_trace.jsonl")
+            lines = self._read_jsonl(agent_file(run_dir, "memory_trace.jsonl"))
 
         self.assertEqual(len(lines), 1, lines)
         self.assertEqual(lines[0]["confidence"], "llm")

@@ -17,6 +17,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from agentic_swmm.cli import main as cli_main
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file_for_write
 
 
 def _capture(argv: list[str]) -> tuple[str, str, int]:
@@ -38,7 +39,7 @@ def _write_agent_trace(run_dir: Path, events: list[dict]) -> Path:
 
 
 def _write_memory_trace(run_dir: Path, events: list[dict]) -> Path:
-    path = run_dir / "memory_trace.jsonl"
+    path = agent_file_for_write(run_dir, "memory_trace.jsonl")
     text = "\n".join(json.dumps(ev, sort_keys=True) for ev in events) + "\n"
     path.write_text(text, encoding="utf-8")
     return path
