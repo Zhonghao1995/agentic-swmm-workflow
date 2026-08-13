@@ -68,13 +68,30 @@ $repoUrl = 'https://github.com/Zhonghao1995/agentic-swmm-workflow.git'
 $installBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $HOME }
 $fullTarget = Join-Path $installBase $TargetDir
 
+# Windows PowerShell does not turn a native non-zero exit into a terminating
+# error, so every git call here needs its own check. Without them a failed
+# update was invisible: the installer went on to reinstall the OLD checkout
+# while the banner still printed the new tag.
+function Invoke-Git {
+    param([string[]]$GitArgs, [string]$What)
+    & git @GitArgs
+    if ($LASTEXITCODE -ne 0) { throw "$What failed (git exit $LASTEXITCODE)." }
+}
+
 if (Test-Path (Join-Path $fullTarget '.git')) {
     Write-Step "Updating existing checkout in $fullTarget ($Ref)"
-    git -C $fullTarget fetch --depth 1 origin $Ref
-    git -C $fullTarget checkout --detach FETCH_HEAD
+    Invoke-Git @('-C', $fullTarget, 'fetch', '--depth', '1', 'origin', $Ref) 'git fetch'
+    # --force is required, not cosmetic. `npm install` writes package-lock.json
+    # into mcp/<server>/, and those lockfiles were untracked in older releases
+    # before being committed upstream. A plain checkout then aborts with
+    # "untracked working tree files would be overwritten", which blocked every
+    # upgrade from a pre-lockfile install. This directory is a managed install
+    # under LOCALAPPDATA, so the release tree wins; untracked files outside the
+    # target tree (runs/, .venv/, node_modules/) are left alone by --force.
+    Invoke-Git @('-C', $fullTarget, 'checkout', '--detach', '--force', 'FETCH_HEAD') 'git checkout'
 } else {
     Write-Step "Cloning $repoUrl ($Ref) into $fullTarget"
-    git clone --depth 1 --branch $Ref $repoUrl $fullTarget
+    Invoke-Git @('clone', '--depth', '1', '--branch', $Ref, $repoUrl, $fullTarget) 'git clone'
 }
 
 & (Join-Path $fullTarget 'scripts\install.ps1') -Yes -Provider $Provider -Model $Model

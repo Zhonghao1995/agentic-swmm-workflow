@@ -152,8 +152,11 @@ function Install-PythonViaWinget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
     Write-Host "Python 3.10+ not found; installing Python 3.12 via winget (user scope, no admin)..."
     try {
+        # Out-Host, not the output stream: `& winget` output otherwise lands in
+        # this function's return value, making it a truthy array whatever the
+        # install did, so the caller's `-not (Install-...)` never fired.
         & winget install -e --id Python.Python.3.12 --scope user --silent `
-            --accept-package-agreements --accept-source-agreements
+            --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
     } catch {
         Write-Host "winget Python install raised: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -165,8 +168,11 @@ function Install-NodeViaWinget {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
     Write-Host "Node 18+ not found; installing Node.js LTS via winget..."
     try {
+        # Out-Host, not the output stream: `& winget` output otherwise lands in
+        # this function's return value, making it a truthy array whatever the
+        # install did, so the caller's `-not (Install-...)` never fired.
         & winget install -e --id OpenJS.NodeJS.LTS --silent `
-            --accept-package-agreements --accept-source-agreements
+            --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
     } catch {
         Write-Host "winget Node install raised: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -184,13 +190,21 @@ function Run-Step {
     )
     Write-Host ("Step {0}/{1}: {2} (~{3})" -f $StepNum, $Total, $Label, $Estimate)
     $start = Get-Date
-    $tempLog = [System.IO.Path]::GetTempFileName()
+    # Clear the exit code left behind by an earlier native command. $LASTEXITCODE
+    # is sticky: a step body that runs no native command (Do-SkillCopy is a bare
+    # New-Item) inherits the previous step's npm/pip failure and reports a false
+    # [FAIL] in 0s with an empty output block.
+    $global:LASTEXITCODE = 0
     $status = 0
+    $captured = @()
     try {
-        & $Action *>&1 | Tee-Object -FilePath $tempLog | Out-Null
+        # Capture into a variable, not Tee-Object -> temp file: a terminating
+        # error inside $Action tore the pipeline down before Tee flushed, so the
+        # failure output was lost exactly when it was needed.
+        $captured = @(& $Action *>&1)
         if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { $status = $LASTEXITCODE }
     } catch {
-        Add-Content -Path $tempLog -Value $_.Exception.Message
+        $captured += $_.Exception.Message
         $status = 1
     }
     $elapsed = [int]((Get-Date) - $start).TotalSeconds
@@ -199,10 +213,19 @@ function Run-Step {
     } else {
         Write-Host ("  [FAIL] {0} ({1}s)" -f $Label, $elapsed) -ForegroundColor Red
         Write-Host "----- command output -----"
-        Get-Content -Path $tempLog
+        # Write-Host, never Get-Content or a bare expression: anything this
+        # function writes to the OUTPUT stream is appended to its return value,
+        # so the caller's `-not (Run-Step ...)` saw a multi-element array (always
+        # truthy) and skipped the failure branch. That silently walked past a
+        # failed step AND swallowed the diagnostics the user needed.
+        $lines = @($captured | ForEach-Object { ($_ | Out-String).TrimEnd() })
+        if ($lines.Count -gt 60) {
+            Write-Host ("... {0} earlier line(s) omitted ..." -f ($lines.Count - 60))
+            $lines = $lines[-60..-1]
+        }
+        foreach ($line in $lines) { Write-Host $line }
         Write-Host "--------------------------"
     }
-    Remove-Item -Path $tempLog -ErrorAction SilentlyContinue
     return ($status -eq 0)
 }
 
@@ -240,10 +263,16 @@ function Do-PythonDeps {
 
 function Do-McpInstall {
     $count = 0
-    Get-ChildItem -Path (Join-Path $RepoRoot 'mcp') -Filter package.json -Recurse |
-        Sort-Object FullName |
+    # mcp/<server>/package.json only. -Recurse descended into node_modules left by
+    # a previous install and ran npm in every nested dependency directory (minutes
+    # of work, then a failure). Mirror of the bash installer's
+    # `find "$REPO_ROOT/mcp" -mindepth 2 -maxdepth 2 -name package.json`.
+    Get-ChildItem -Path (Join-Path $RepoRoot 'mcp') -Directory |
+        ForEach-Object { Join-Path $_.FullName 'package.json' } |
+        Where-Object { Test-Path $_ } |
+        Sort-Object |
         ForEach-Object {
-            $dir = Split-Path -Parent $_.FullName
+            $dir = Split-Path -Parent $_
             Push-Location $dir
             try {
                 if (Test-Path (Join-Path $dir 'package-lock.json')) {
@@ -439,7 +468,7 @@ if ($SkipMcp -or $script:SkipMcpAuto) {
         exit 0
     }
     if (-not (Run-Step 3 $total "MCP servers npm install" "2 min" { Do-McpInstall })) {
-        Fail-Step "MCP server install failed" @(
+        Fail-Step "MCP server install" @(
             "Verify 'npm --version' works and you have network access to the npm registry.",
             "Retry with: powershell -File scripts\install.ps1 -SkipPython"
         )
@@ -452,7 +481,7 @@ if (-not (Prompt-YN "Run Step 4/${total} (Initialize ~/.aiswmm/ ~5s)?" 'Y')) {
     exit 0
 }
 if (-not (Run-Step 4 $total "Initialize ~/.aiswmm/ directory" "5s" { Do-SkillCopy })) {
-    Fail-Step "Skill files copy failed" @(
+    Fail-Step "~/.aiswmm/ initialization" @(
         "Verify $HOME is writable and $AiswmmConfigDir can be created."
     )
 }
@@ -463,7 +492,7 @@ if (-not (Prompt-YN "Run Step 5/${total} (API key config; skippable)?" 'Y')) {
     exit 0
 }
 if (-not (Run-Step 5 $total "OpenAI API key configuration" "10s" { Do-ApiKey })) {
-    Fail-Step "API key configuration failed" @(
+    Fail-Step "API key configuration" @(
         "You can add the key later by editing $AiswmmEnvFile."
     )
 }
