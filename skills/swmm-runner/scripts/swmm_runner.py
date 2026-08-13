@@ -299,8 +299,17 @@ def cmd_run(args):
 
     rpt = run_dir / _safe_output_name(args.rpt_name, "model.rpt")
     out = run_dir / _safe_output_name(args.out_name, "model.out")
-    stdout_path = run_dir / "stdout.txt"
-    stderr_path = run_dir / "stderr.txt"
+    # The engine's console output is provenance, not a result. It used to sit
+    # beside model.rpt, so a reader opening the runner stage met a wall of
+    # "hour: 1 [][][][]" progress bars next to the report they wanted. The code
+    # already classified these as CLI-wrapper noise (see reporting.py); this
+    # puts them where that classification says they belong. Their paths travel
+    # in the manifest, so readers follow the manifest rather than a hardcoded
+    # location.
+    engine_dir = run_dir / "_engine"
+    engine_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = engine_dir / "stdout.txt"
+    stderr_path = engine_dir / "stderr.txt"
 
     timeout = getattr(args, "timeout", DEFAULT_SWMM_TIMEOUT_S)
     rc = run_swmm(inp, rpt, out, stdout_path, stderr_path, timeout=timeout)

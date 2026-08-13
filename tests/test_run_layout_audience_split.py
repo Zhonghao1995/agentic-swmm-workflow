@@ -126,3 +126,26 @@ class RunReadmeTests(unittest.TestCase):
         from agentic_swmm.reporting.run_readme import write_run_readme
 
         self.assertIsNone(write_run_readme(self.run_dir / "does-not-exist"))
+
+
+class EngineOutputTests(unittest.TestCase):
+    """SWMM's console output is provenance, not a result.
+
+    It used to sit beside model.rpt, so opening the runner stage met a wall
+    of "hour: 1 [][][][]" progress bars next to the report the reader wanted.
+    reporting.py already classified these as CLI-wrapper noise; the layout
+    now agrees with that classification.
+    """
+
+    def test_the_runner_writes_console_output_into_a_sub_box(self) -> None:
+        source = Path("skills/swmm-runner/scripts/swmm_runner.py").read_text(encoding="utf-8")
+        self.assertIn('engine_dir = run_dir / "_engine"', source)
+        self.assertNotIn('stdout_path = run_dir / "stdout.txt"', source)
+
+    def test_the_report_still_treats_them_as_internal(self) -> None:
+        from agentic_swmm.agent.reporting import _PLANNER_INTERNAL_FRAGMENTS
+
+        # Matching is by suffix, so the move does not smuggle them into a
+        # user-facing artifact list.
+        self.assertIn("/stdout.txt", _PLANNER_INTERNAL_FRAGMENTS)
+        self.assertIn("/stderr.txt", _PLANNER_INTERNAL_FRAGMENTS)
