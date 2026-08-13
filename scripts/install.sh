@@ -152,13 +152,38 @@ do_python_deps() {
     return 0
   fi
   local venv_python="$VENV_DIR/bin/python"
+  _pip_install_all "$venv_python"
+
+  # Prove the binary wheels actually load in THIS interpreter. pip reports
+  # success from metadata alone, so an ABI mismatch stays silent until the
+  # first plot fails hours later.
+  local failure
+  if ! failure="$("$venv_python" -c "import numpy, matplotlib, pandas" 2>&1)"; then
+    # An already-corrupted venv reaches here: pyvenv.cfg agrees with the
+    # interpreter (it was repointed, not rebuilt) so the version check in
+    # do_python_venv sees nothing wrong, while site-packages still holds
+    # wheels built for the previous Python. pip then "succeeds" in seconds
+    # because the metadata says installed. Rebuilding is the only thing that
+    # clears it, and doing it here means one re-run repairs the install.
+    echo "Installed packages do not import; rebuilding the virtualenv from scratch."
+    echo "$failure"
+    rm -rf "$VENV_DIR"
+    "$RESOLVED_PYTHON" -m venv "$VENV_DIR"
+    _pip_install_all "$venv_python"
+    if ! failure="$("$venv_python" -c "import numpy, matplotlib, pandas" 2>&1)"; then
+      echo "installed packages still do not import after a clean rebuild:" >&2
+      echo "$failure" >&2
+      return 1
+    fi
+    echo "Rebuild succeeded; the installed packages import cleanly."
+  fi
+}
+
+_pip_install_all() {
+  local venv_python="$1"
   "$venv_python" -m pip install --upgrade pip
   "$venv_python" -m pip install -r "$REQ_FILE"
   "$venv_python" -m pip install -e "$REPO_ROOT"
-  # Prove the binary wheels actually load in THIS interpreter. pip reports
-  # success from metadata alone, so an ABI mismatch stays silent until the
-  # first plot fails hours later. A failed import is a failed step.
-  "$venv_python" -c "import numpy, matplotlib, pandas"
 }
 
 do_mcp_install() {

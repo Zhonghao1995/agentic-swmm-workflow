@@ -55,6 +55,29 @@ strip_comments <"$SH" | grep -q 'import numpy, matplotlib, pandas' \
 strip_comments <"$PS1" | grep -q 'import numpy, matplotlib, pandas' \
   || fail "install.ps1 never proves the installed wheels import"
 
+# --- 3b. an already-corrupted venv must repair itself ----------------------
+# The version check above only catches the venv BECOMING wrong. A venv that is
+# already 3.12-with-cp311-wheels records 3.12 in pyvenv.cfg, matches the
+# resolved interpreter, and sails through it, while pip "succeeds" in seconds
+# on metadata alone. The import probe is what catches that, and a failed probe
+# has to rebuild rather than just report: otherwise the user is told their
+# dependencies are broken with no way to act on it.
+strip_comments <"$SH" | grep -q 'rm -rf "$VENV_DIR"' \
+  || fail "install.sh never rebuilds after a failed import probe"
+strip_comments <"$PS1" | grep -q 'Remove-Item -Recurse -Force \$VenvDir' \
+  || fail "install.ps1 never rebuilds after a failed import probe"
+for f in "$SH" "$PS1"; do
+  grep -qi 'still do not import after a clean rebuild' "$f" \
+    || fail "$(basename "$f") must distinguish a stale venv from a genuinely broken one"
+done
+
+# --- 3c. the failure text must survive PowerShell 5.1 ----------------------
+# With $ErrorActionPreference = 'Stop', PS 5.1 turns the FIRST stderr line of a
+# native command into a terminating error, so a traceback printed straight
+# through arrives as one useless line: "Traceback (most recent call last):".
+grep -q "ErrorActionPreference = 'Continue'" "$PS1" \
+  || fail "install.ps1 must relax ErrorActionPreference around the import probe, or the reason is truncated to one line"
+
 # --- 4. doctor must import, not just locate --------------------------------
 # find_spec() answers "is this package on disk", not "does it work", so doctor
 # printed "numpy - importable OK" while every import in the product failed.

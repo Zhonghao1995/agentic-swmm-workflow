@@ -113,7 +113,7 @@ function Update-SessionPath {
 }
 
 function Test-RealPython {
-    param([string]$Exe)
+    param([string]$Exe, [string[]]$LauncherArgs = @())
     # Windows ships python.exe/python3.exe "App execution alias" stubs under
     # WindowsApps that sit on PATH even with no Python installed; running one
     # prints "Python was not found" and opens the Store. Reject those by their
@@ -122,19 +122,146 @@ function Test-RealPython {
     if (-not $cmd) { return $false }
     if ($cmd.Source -and $cmd.Source -like '*\WindowsApps\*') { return $false }
     try {
-        & $Exe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
+        & $Exe @LauncherArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
 }
 
+function Get-PythonExecutable {
+    # Absolute path of the interpreter a candidate actually starts. Resolving
+    # `py -3.11` down to its own sys.executable keeps every downstream call a
+    # single string, so nothing else has to know the launcher was involved.
+    #
+    # Validate the OUTPUT, never $LASTEXITCODE. `... | Select-Object -First 1`
+    # tears the pipeline down early (StopUpstreamCommandsException) and leaves
+    # $LASTEXITCODE unreliable, so an exit-code check here rejected every
+    # candidate and Resolve-Python found nothing at all, including a Python
+    # winget had just installed successfully.
+    param([string]$Exe, [string[]]$LauncherArgs = @())
+    try {
+        $lines = @(& $Exe @LauncherArgs -c "import sys; print(sys.executable)" 2>$null)
+        foreach ($line in $lines) {
+            $candidate = "$line".Trim()
+            if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+        }
+    } catch { }
+    return ''
+}
+
+function Get-HostArchitecture {
+    # The machine's architecture, not the shell's. An x64 PowerShell on an
+    # ARM64 machine reports AMD64 through PROCESSOR_ARCHITECTURE; Windows puts
+    # the truth in PROCESSOR_ARCHITEW6432 in exactly that emulated case.
+    if ($env:PROCESSOR_ARCHITEW6432) { return "$env:PROCESSOR_ARCHITEW6432".ToUpper() }
+    if ($env:PROCESSOR_ARCHITECTURE) { return "$env:PROCESSOR_ARCHITECTURE".ToUpper() }
+    return ''
+}
+
+function Get-PythonArchitecture {
+    # sysconfig.get_platform(), not platform.machine().
+    #
+    # On Windows platform.machine() reads PROCESSOR_ARCHITECTURE, which a child
+    # process inherits from its parent: an ARM64 PowerShell launching an x64
+    # Python gets ARM64 back, describing who started it rather than what it is.
+    # A freshly installed python-3.12.10-amd64.exe reported ARM64 that way and
+    # was rejected as unusable.
+    #
+    # get_platform() is the value pip itself uses to choose wheels, which is
+    # exactly the question being asked: win-amd64 means the win_amd64 wheels
+    # for shapely and pyogrio will install.
+    #
+    # Same rule as Get-PythonExecutable: trust the output, not $LASTEXITCODE.
+    param([string]$Exe, [string[]]$LauncherArgs = @())
+    try {
+        $lines = @(& $Exe @LauncherArgs -c "import sysconfig; print(sysconfig.get_platform())" 2>$null)
+        foreach ($line in $lines) {
+            switch -Regex ("$line".Trim().ToLower()) {
+                '^win-amd64$' { return 'AMD64' }
+                '^win-arm64$' { return 'ARM64' }
+                '^win32$'     { return 'X86' }
+            }
+        }
+    } catch { }
+    return ''
+}
+
+# Windows on ARM needs an x64 Python, and this is not a preference.
+# shapely and pyogrio have never published a win_arm64 wheel: 130 and 21
+# releases respectively, zero between them, for every Python from cp310 to
+# cp314. On an ARM64 interpreter pip falls back to a source build and dies on
+# "GDAL_VERSION must be provided as an environment variable", because building
+# pyogrio needs a GDAL nobody has installed. The x64 wheels run fine under the
+# emulation Windows 11 provides, which is what every working install on these
+# machines has actually been doing.
 function Resolve-Python {
-    foreach ($candidate in @('python3.12', 'python3.11', 'python3.10', 'python3', 'python', 'py')) {
-        if (Test-RealPython $candidate) {
-            $script:ResolvedPython = $candidate
+    # `python3.11` and friends are a Unix convention and do not exist on
+    # Windows: a specific version is reachable only through the py launcher,
+    # as `py -3.11`. Without those entries an x64 Python installed alongside
+    # an ARM64 one is invisible, because bare `python` and bare `py` both
+    # resolve to the newest interpreter, which is the ARM64 one. That is
+    # exactly how a machine with a perfectly good x64 3.11 still failed.
+    # Newest first, because the geospatial wheels bound the useful range from
+    # both ends: rasterio's win_amd64 wheels start at cp312, pyogrio ships a
+    # cp311-abi3 wheel that covers everything above it, and shapely covers
+    # cp310 up. An x64 3.12 or 3.13 gets all three; an x64 3.11 works only
+    # because pip falls back to an older rasterio.
+    $candidates = @(
+        @{ Exe = 'py';         Args = @('-3.13') },
+        @{ Exe = 'py';         Args = @('-3.12') },
+        @{ Exe = 'py';         Args = @('-3.11') },
+        @{ Exe = 'py';         Args = @('-3.10') },
+        @{ Exe = 'python3.13'; Args = @() },
+        @{ Exe = 'python3.12'; Args = @() },
+        @{ Exe = 'python3.11'; Args = @() },
+        @{ Exe = 'python3.10'; Args = @() },
+        @{ Exe = 'python3';    Args = @() },
+        @{ Exe = 'python';     Args = @() },
+        @{ Exe = 'py';         Args = @() }
+    )
+    # Interpreters found on disk, appended after the launcher entries. The
+    # launcher is not enough on its own: with an ARM64 3.12 already registered,
+    # installing an x64 3.12 leaves `py -3.12` pointing at whichever was
+    # registered first, so a freshly installed x64 build is invisible through
+    # it. These are the standard per-user and machine-wide install roots.
+    foreach ($root in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python'),
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)}
+    )) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $exe = Join-Path $_.FullName 'python.exe'
+                if (Test-Path $exe) { $candidates += @{ Exe = $exe; Args = @() } }
+            }
+    }
+
+    $onArm = (Get-HostArchitecture) -eq 'ARM64'
+    $fallback = ''
+    foreach ($candidate in $candidates) {
+        if (-not (Test-RealPython $candidate.Exe $candidate.Args)) { continue }
+        # Resolve to the interpreter's own path so no caller needs the args.
+        $exe = Get-PythonExecutable $candidate.Exe $candidate.Args
+        if (-not $exe) { continue }
+        if (-not $onArm) {
+            $script:ResolvedPython = $exe
             return $true
         }
+        if ((Get-PythonArchitecture $exe) -eq 'AMD64') {
+            $script:ResolvedPython = $exe
+            return $true
+        }
+        if (-not $fallback) { $fallback = $exe }
+    }
+    if ($onArm -and $fallback) {
+        # An ARM64-only Python is worse than none: the install appears to work
+        # and then fails on the geospatial dependencies. Report it so the
+        # caller can install the x64 build first.
+        $script:ResolvedPython = $fallback
+        $script:ResolvedPythonIsArm = $true
+        return $true
     }
     return $false
 }
@@ -148,15 +275,107 @@ function Test-NodeOk {
     return (($major -as [int]) -and [int]$major -ge 18)
 }
 
+# Pinned like the SWMM solver: a reproducible install beats "whatever winget
+# has today", and this path exists precisely because winget cannot be assumed.
+$PythonFallbackVersion = '3.12.10'
+
+function Install-PythonFromPythonOrg {
+    # Direct download from python.org, for machines with no winget at all.
+    # GitHub's windows-11-arm runner is one, and so is any Windows Server
+    # image: without this the ARM path could only ever fail there, having
+    # never printed a word about what it wanted to do.
+    param([switch]$X64)
+    $url = "https://www.python.org/ftp/python/$PythonFallbackVersion/python-$PythonFallbackVersion-amd64.exe"
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('aiswmm-python-' + [System.IO.Path]::GetRandomFileName())
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $exe = Join-Path $work 'python-installer.exe'
+    try {
+        Write-Host "Downloading Python $PythonFallbackVersion (x64) from python.org..."
+        Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+        # Per-user, no admin. Include_launcher registers it with the py
+        # launcher, which is the only way a specific version is addressable
+        # on Windows; PrependPath puts it on PATH for later shells.
+        $proc = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList @(
+            '/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_launcher=1', 'Include_test=0'
+        )
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "python.org installer exited with $($proc.ExitCode)." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "python.org download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        return $false
+    } finally {
+        Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Update-SessionPath
+    $script:ResolvedPythonIsArm = $false
+    if ((Resolve-Python) -and -not $script:ResolvedPythonIsArm) { return $true }
+    Write-Host "python.org install finished but no x64 interpreter resolved." -ForegroundColor Yellow
+    Write-Host "Interpreters found on disk:"
+    foreach ($root in @((Join-Path $env:LOCALAPPDATA 'Programs\Python'), $env:ProgramFiles)) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $exe = Join-Path $_.FullName 'python.exe'
+                if (Test-Path $exe) { Write-Host "  $exe -> $(Get-PythonArchitecture $exe)" }
+            }
+    }
+    return $false
+}
+
 function Install-PythonViaWinget {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
-    Write-Host "Python 3.10+ not found; installing Python 3.12 via winget (user scope, no admin)..."
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        # No winget at all: CI images and Windows Server routinely lack it.
+        # Returning false here used to end the ARM path in 0.16 seconds
+        # without printing a single line about what was needed.
+        Write-Host "winget is not available on this machine; using python.org directly."
+        return (Install-PythonFromPythonOrg -X64:((Get-HostArchitecture) -eq 'ARM64'))
+    }
+    $onArm = (Get-HostArchitecture) -eq 'ARM64'
+    $archArgs = @()
+    if ($onArm) {
+        Write-Host "Windows on ARM detected: installing the x64 Python build."
+        Write-Host "  shapely and pyogrio publish no ARM64 wheels, so an ARM64 interpreter"
+        Write-Host "  cannot install the geospatial dependencies at all. The x64 build runs"
+        Write-Host "  under Windows' emulation and installs everything."
+        # --force is what makes this work at all. winget keys on the package
+        # id, not the architecture: with an ARM64 Python.Python.3.12 already
+        # present it turns an x64 request into an upgrade check and reports
+        # "No available upgrade found" having installed nothing.
+        $archArgs = @('--architecture', 'x64', '--force')
+    }
+    # winget keys on the package id, not the architecture. When an ARM64
+    # Python.Python.3.12 is already installed, `winget install --architecture
+    # x64` for that same id turns into an upgrade check and reports "No
+    # available upgrade found" while installing nothing. Asking for a
+    # different minor version is what actually lands an x64 interpreter next
+    # to the ARM64 one.
+    $ids = @('Python.Python.3.12')
+    if ($onArm) { $ids = @('Python.Python.3.12', 'Python.Python.3.13') }
+    Write-Host "Installing Python via winget (user scope, no admin)..."
     try {
         # Out-Host, not the output stream: `& winget` output otherwise lands in
         # this function's return value, making it a truthy array whatever the
         # install did, so the caller's `-not (Install-...)` never fired.
-        & winget install -e --id Python.Python.3.12 --scope user --silent `
-            --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
+        foreach ($id in $ids) {
+            & winget install -e --id $id --scope user --silent `
+                @archArgs --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
+            Update-SessionPath
+            $script:ResolvedPythonIsArm = $false
+            if ((Resolve-Python) -and -not $script:ResolvedPythonIsArm) { break }
+            if ($onArm) {
+                Write-Host "$id did not yield an x64 interpreter; trying the next version." -ForegroundColor Yellow
+            } else {
+                break
+            }
+        }
+        if ($onArm) {
+            $script:ResolvedPythonIsArm = $false
+            if (-not ((Resolve-Python) -and -not $script:ResolvedPythonIsArm)) {
+                Write-Host "winget produced no x64 interpreter; falling back to python.org." -ForegroundColor Yellow
+                if (Install-PythonFromPythonOrg -X64) { return $true }
+            }
+        }
     } catch {
         Write-Host "winget Python install raised: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -266,21 +485,65 @@ function Do-PythonVenv {
     if ($LASTEXITCODE -ne 0) { throw "venv creation failed" }
 }
 
+function Test-VenvImports {
+    # Returns the failure text, or "" when the wheels load. Native stderr is
+    # captured deliberately: with $ErrorActionPreference = 'Stop', PowerShell
+    # 5.1 turns the FIRST stderr line of a native command into a terminating
+    # error, so a traceback printed straight through arrives as one useless
+    # line ("Traceback (most recent call last):") and the reason is lost.
+    param([string]$VenvPython)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $VenvPython -c "import numpy, matplotlib, pandas" 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) { return "" }
+        return $output.Trim()
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Install-PythonPackages {
+    param([string]$VenvPython)
+    & $VenvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+    & $VenvPython -m pip install -r $ReqFile
+    if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
+    & $VenvPython -m pip install -e $RepoRoot
+    if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+}
+
 function Do-PythonDeps {
     $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
     if (-not (Test-Path $venvPython)) { throw "venv python missing at $venvPython" }
-    & $venvPython -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
-    & $venvPython -m pip install -r $ReqFile
-    if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
-    & $venvPython -m pip install -e $RepoRoot
-    if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+    Install-PythonPackages $venvPython
 
     # Prove the binary wheels actually load in THIS interpreter. pip reports
     # success from metadata alone, so an ABI mismatch stays silent until the
-    # first plot fails hours later. A failed import is a failed step.
-    & $venvPython -c "import numpy, matplotlib, pandas"
-    if ($LASTEXITCODE -ne 0) { throw "installed packages do not import (see the traceback above)" }
+    # first plot fails hours later.
+    $failure = Test-VenvImports $venvPython
+    if ($failure) {
+        # An already-corrupted venv reaches here: pyvenv.cfg agrees with the
+        # interpreter (it was repointed, not rebuilt) so the version check in
+        # Do-PythonVenv sees nothing wrong, while site-packages still holds
+        # wheels built for the previous Python. pip then "succeeds" in seconds
+        # because the metadata says installed. Rebuilding the venv is the only
+        # thing that clears it, and doing it here means the user does not have
+        # to know that: one re-run repairs the install.
+        Write-Host "Installed packages do not import; rebuilding the virtualenv from scratch." -ForegroundColor Yellow
+        Write-Host $failure
+        Remove-Item -Recurse -Force $VenvDir -ErrorAction SilentlyContinue
+        & $script:ResolvedPython -m venv $VenvDir
+        if ($LASTEXITCODE -ne 0) { throw "venv rebuild failed" }
+        Install-PythonPackages $venvPython
+        $failure = Test-VenvImports $venvPython
+        if ($failure) {
+            # Rebuilt and still broken: this is not a stale venv, so say what
+            # Python actually reported instead of a generic dependency error.
+            throw "installed packages still do not import after a clean rebuild:`n$failure"
+        }
+        Write-Host "Rebuild succeeded; the installed packages import cleanly." -ForegroundColor Green
+    }
 
     # Put the venv's Scripts dir on PATH so `aiswmm` resolves. pip -e drops
     # aiswmm.exe there, but nothing else adds it to PATH — without this the
@@ -418,6 +681,26 @@ function Do-SwmmEngine {
 # Prereq gate
 # ---------------------------------------------------------------------------
 
+$script:ResolvedPythonIsArm = $false
+if ((Resolve-Python) -and $script:ResolvedPythonIsArm) {
+    # Found a Python, but the wrong architecture for this machine's wheels.
+    Write-Host "The Python on PATH is an ARM64 build; the geospatial dependencies have no" -ForegroundColor Yellow
+    Write-Host "ARM64 wheels. Installing the x64 build alongside it." -ForegroundColor Yellow
+    $script:ResolvedPythonIsArm = $false
+    if (-not (Install-PythonViaWinget) -or $script:ResolvedPythonIsArm) {
+        Print-Failure "An x64 Python is required on Windows on ARM." @(
+            "shapely and pyogrio publish no win_arm64 wheels, so an ARM64 interpreter",
+            "  cannot install them and pip falls back to a source build that needs GDAL.",
+            "winget keys on the package id, so asking for x64 of a version you already",
+            "  have as ARM64 reports 'No available upgrade found' and installs nothing.",
+            "--force is what gets past that:",
+            "  winget install -e --id Python.Python.3.12 --architecture x64 --force",
+            "Or download the 'Windows installer (64-bit)' from https://www.python.org/downloads/",
+            "Then re-run this installer; it prefers the x64 interpreter on ARM machines."
+        )
+        exit 2
+    }
+}
 if (-not (Resolve-Python)) {
     if (-not (Install-PythonViaWinget)) {
         Print-Failure "Python 3.10+ is required and could not be installed automatically." @(
