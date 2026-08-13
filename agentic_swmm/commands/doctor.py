@@ -33,7 +33,7 @@ from agentic_swmm.diagnostics.fixes import (
     fix_action_to_dict,
 )
 from agentic_swmm.config import mcp_registry_path
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_path
 
 
 _DOCTOR_EXAMPLE = "aiswmm doctor --fix --yes"
@@ -370,14 +370,44 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
             False,
         )
     )
+    # The Word deliverable is a headline capability (see the case study in
+    # cases/), but python-docx is an optional extra, so a plain
+    # `pip install aiswmm` cannot write a report until the user knows to ask
+    # for it. Report it the same way the anywhere extra is reported: not a
+    # required check, but never silent (issue #347, extras coverage).
+    report_installed = _module_available("docx")
+    checks.append(
+        (
+            "swmm-report extra",
+            report_installed,
+            "installed (Word deliverables available)"
+            if report_installed
+            else (
+                "not installed; install with: pip install aiswmm[report] "
+                "(needed for Word report export; the rest of the workflow "
+                "runs without it)"
+            ),
+            False,
+        )
+    )
     for path in (
         Path("skills/swmm-runner/scripts/swmm_runner.py"),
         Path("skills/swmm-experiment-audit/scripts/audit_run.py"),
         Path("skills/swmm-plot/scripts/plot_rain_runoff_si.py"),
         Path("skills/swmm-modeling-memory/scripts/summarize_memory.py"),
     ):
-        full = root / path
-        checks.append((str(path), full.exists(), str(full), True))
+        # Resolve the SAME way the runtime does. `root / path` is source-tree
+        # only: on a pip install the scripts ship under the wheel's data dir,
+        # not under site-packages, so this check reported four core scripts
+        # MISSING on every pip install while the runtime happily executed them
+        # (caught 2026-08-11 by running doctor in a clean venv).
+        try:
+            full = resource_path(*path.parts)
+            present = full.exists()
+        except FileNotFoundError:
+            full = root / path
+            present = False
+        checks.append((str(path), present, str(full), True))
     return checks
 
 

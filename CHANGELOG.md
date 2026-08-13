@@ -2,6 +2,35 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.9.1 - Install-path honesty (2026-08-11)
+
+A clean-venv audit of what a brand-new user actually receives. Two gaps
+between "installed" and "capable" are closed.
+
+### Fixed
+
+- **Doctor no longer cries wolf on a pip install.** The required-scripts
+  check resolved paths as `repo_root() / path`, which is source-tree only,
+  so a `pip install aiswmm` reported four core scripts (runner, audit, plot,
+  memory summary) as MISSING while the runtime executed them without
+  trouble. A new user's very first diagnostic said the install was broken
+  when it was not. The check now resolves exactly the way the runtime does.
+- **The one-liner installer ships the Word-report dependency.** The Word
+  deliverable is on the README front page and in the case study, but
+  `python-docx` was in neither the core dependencies nor
+  `scripts/requirements.txt`, so a `curl … | bash` user could complete
+  every step of the chain except the one that produces the client
+  document.
+
+### Added
+
+- **Doctor reports the report extra.** Absent `python-docx` is now surfaced
+  the same way the anywhere extra already was, naming the exact command
+  (`pip install aiswmm[report]`) instead of leaving the gap silent.
+- **A `full` extra.** `pip install aiswmm[full]` installs report, gis, and
+  anywhere in one go, for users who want every capability without tracking
+  which extra covers which skill.
+
 ## v0.9.0 - The interactive product release (2026-08-09)
 
 41 PRs since v0.8.0 (#363 to #403), driven by live natural-language sessions

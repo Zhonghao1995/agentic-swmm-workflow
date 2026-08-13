@@ -11,4 +11,5 @@ geopandas
 shapely
 pyogrio
 PyYAML
+python-docx
 pytest
