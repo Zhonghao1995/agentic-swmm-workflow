@@ -95,4 +95,13 @@ grep -q 'Test-Path -LiteralPath' <<<"$probe_block" \
 grep -q 'if ($onArm)' <<<"$body" \
   || fail "the x64 request is not gated on the host being ARM64"
 
+# --- 6. the matrix must contain an actual ARM machine ----------------------
+# Every layer of this bug was invisible to CI because windows-latest is x64.
+# Static locks cannot prove an install works; only an ARM runner can.
+WF="$REPO_ROOT/.github/workflows/windows-smoke.yml"
+grep -q 'windows-11-arm' "$WF" \
+  || fail "no ARM runner in the Windows smoke matrix; the ARM install path is unverifiable in CI"
+grep -q 'import numpy, matplotlib, pandas, shapely, pyogrio, geopandas, rasterio' "$WF" \
+  || fail "the ARM job must import the geospatial stack; numpy alone passing is what the last release mistook for a working install"
+
 echo "PASS: windows-on-arm python architecture locks"

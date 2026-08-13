@@ -95,3 +95,53 @@ jobs:
           $aiswmm = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow\.venv\Scripts\aiswmm.exe"
           & $aiswmm doctor
           if ($LASTEXITCODE -ne 0) { throw "aiswmm doctor failed after upgrade" }
+
+  # Windows on ARM is where the install actually breaks, and nothing in this
+  # matrix could see it: windows-latest is x64, so the one check that installs
+  # on Windows has always had every wheel available to it. shapely and pyogrio
+  # have never published a win_arm64 wheel (issue #414), so an ARM64
+  # interpreter falls back to a source build and dies on a missing GDAL. The
+  # installer is supposed to steer to an x64 interpreter instead; this is what
+  # proves it does.
+  arm-install:
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report the machine's interpreter inventory
+        shell: powershell
+        run: |
+          "host arch: $env:PROCESSOR_ARCHITECTURE / ARCHITEW6432=$env:PROCESSOR_ARCHITEW6432"
+          py -0p
+          foreach ($v in @('-3.13','-3.12','-3.11','-3.10')) {
+            try { "$v -> " + (& py $v -c "import platform,sys; print(platform.machine(), sys.executable)" 2>$null) }
+            catch { "$v -> absent" }
+          }
+
+      - name: Run the documented one-liner
+        shell: powershell
+        env:
+          AISWMM_NO_SETUP: "1"
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: ./web/install.ps1
+
+      - name: Prove the geospatial stack imports
+        shell: powershell
+        run: |
+          # The whole point. numpy alone passing is what the previous release
+          # mistook for a working install.
+          $py = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow\.venv\Scripts\python.exe"
+          if (-not (Test-Path $py)) { throw "venv python missing at $py" }
+          & $py -c "import platform, sys; print('venv:', platform.machine(), sys.version)"
+          & $py -c "import numpy, matplotlib, pandas, shapely, pyogrio, geopandas, rasterio; print('all geospatial imports ok')"
+          if ($LASTEXITCODE -ne 0) { throw "the installed environment cannot import the geospatial stack" }
+
+      - name: Smoke the installed CLI
+        shell: powershell
+        run: |
+          $aiswmm = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow\.venv\Scripts\aiswmm.exe"
+          & $aiswmm --version
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm --version failed" }
+          & $aiswmm doctor
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm doctor failed" }
