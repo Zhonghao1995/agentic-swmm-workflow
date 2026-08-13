@@ -24,7 +24,26 @@ from agentic_swmm.commands import gateway
 
 
 BINARY_BODY = b"#!/bin/sh\necho gateway\n"
-CONFIG_BODY = b"port: 8317\n"
+# Shaped like the real config.example.yaml: an all-interfaces host, three
+# placeholder api-keys, and comments that must survive the rewrite.
+CONFIG_BODY = b"""# Server host/interface to bind to. Default is empty ("") to bind all interfaces.
+host: ""
+
+# Server port
+port: 8317
+
+# API keys for authentication
+api-keys:
+  - "your-api-key-1"
+  - "your-api-key-2"
+  - "your-api-key-3"
+
+# Enable debug logging
+debug: false
+
+pprof:
+  host: "127.0.0.1:6060"
+"""
 
 
 def _tar_bytes(binary_name: str = "cli-proxy-api") -> bytes:
@@ -115,6 +134,39 @@ class AssetNameTests(unittest.TestCase):
         self.assertEqual(gateway.binary_name("Linux"), "cli-proxy-api")
 
 
+class HardenConfigTests(unittest.TestCase):
+    """The shipped example is not a runnable config.
+
+    CLIProxyAPI refuses every proxy request while api-keys holds the
+    template values ("unsafe_example_api_key", HTTP 403), and its default
+    host binds every interface. Seeding it verbatim produced a gateway that
+    both refused to work and would have been LAN-reachable if it had.
+    """
+
+    def test_placeholder_keys_are_removed(self) -> None:
+        out = gateway.harden_config(CONFIG_BODY.decode())
+        self.assertIn("api-keys: []", out)
+        self.assertNotIn("your-api-key-1", out)
+
+    def test_host_is_pinned_to_loopback(self) -> None:
+        out = gateway.harden_config(CONFIG_BODY.decode())
+        self.assertIn('host: "127.0.0.1"', out)
+
+    def test_nested_host_keys_are_left_alone(self) -> None:
+        # pprof has its own indented host:; only the top-level one is ours.
+        out = gateway.harden_config(CONFIG_BODY.decode())
+        self.assertIn('  host: "127.0.0.1:6060"', out)
+
+    def test_comments_survive(self) -> None:
+        out = gateway.harden_config(CONFIG_BODY.decode())
+        self.assertIn("# Server port", out)
+        self.assertIn("# Enable debug logging", out)
+
+    def test_idempotent(self) -> None:
+        once = gateway.harden_config(CONFIG_BODY.decode())
+        self.assertEqual(gateway.harden_config(once), once)
+
+
 class InstallTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
@@ -139,8 +191,11 @@ class InstallTests(unittest.TestCase):
         self.assertTrue(result.path.exists())
         self.assertEqual(result.path.read_bytes(), BINARY_BODY)
         # The release ships config.example.yaml only; the binary needs a real
-        # config path, so first install seeds one.
-        self.assertTrue(gateway.config_path().exists())
+        # config path, so first install seeds one, hardened.
+        seeded = gateway.config_path().read_text(encoding="utf-8")
+        self.assertIn("api-keys: []", seeded)
+        self.assertIn('host: "127.0.0.1"', seeded)
+        self.assertNotIn("your-api-key-1", seeded)
         self.assertTrue(os.access(result.path, os.X_OK))
 
     def test_windows_zip_path(self) -> None:
@@ -190,6 +245,21 @@ class InstallTests(unittest.TestCase):
             again = gateway.install_gateway(fetch=counting_fetch)
         self.assertTrue(again.skipped)
         self.assertEqual(calls, [], "an installed gateway must not be re-downloaded")
+
+    def test_an_existing_template_config_is_repaired(self) -> None:
+        # Anyone who installed before the hardening landed has a config that
+        # makes the gateway answer 403 to everything.
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        gateway.config_path().write_text(CONFIG_BODY.decode(), encoding="utf-8")
+        self.assertTrue(gateway.ensure_serving_config())
+        self.assertNotIn("your-api-key-1", gateway.config_path().read_text(encoding="utf-8"))
+
+    def test_an_edited_config_is_never_clobbered(self) -> None:
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        mine = 'host: "0.0.0.0"\napi-keys:\n  - "a-real-key"\n'
+        gateway.config_path().write_text(mine, encoding="utf-8")
+        self.assertFalse(gateway.ensure_serving_config())
+        self.assertEqual(gateway.config_path().read_text(encoding="utf-8"), mine)
 
     def test_status_runs_without_an_install(self) -> None:
         self.assertFalse(gateway.is_installed())

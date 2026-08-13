@@ -186,6 +186,63 @@ def _extract(archive: bytes, asset: str, target: Path, wanted: str) -> None:
                     shutil.copyfileobj(src, dst)
 
 
+# The shipped example is not a runnable config. Its api-keys are three
+# placeholders, and the gateway refuses every proxy request while they are
+# there ("unsafe_example_api_key", HTTP 403). Its host is "", which binds
+# every interface. Seeding it verbatim produced a gateway that was both
+# refusing to work and, had it worked, reachable from the LAN.
+_TEMPLATE_KEY_MARKER = "your-api-key-1"
+
+
+def harden_config(text: str) -> str:
+    """Make the shipped example config safe and actually serving.
+
+    ``host`` is pinned to loopback because that is the only address aiswmm
+    ever talks to, and ``api-keys`` is emptied so a local, loopback-only
+    gateway needs no inbound token. Line-based on purpose: the example is
+    37 KB of documented defaults and round-tripping it through a YAML
+    parser would throw every comment away.
+    """
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        top_level = line[:1] not in (" ", "\t")
+        stripped = line.strip()
+        if top_level and stripped.startswith("host:"):
+            out.append('host: "127.0.0.1"\n')
+            index += 1
+            continue
+        if top_level and stripped == "api-keys:":
+            out.append("api-keys: []\n")
+            index += 1
+            while index < len(lines) and lines[index].lstrip().startswith("- "):
+                index += 1
+            continue
+        out.append(line)
+        index += 1
+    return "".join(out)
+
+
+def ensure_serving_config() -> bool:
+    """Repair a config still carrying the example's placeholder keys.
+
+    Returns True when the file was rewritten. Only touches a config that
+    still contains the template marker, so an edited config is never
+    clobbered.
+    """
+    path = config_path()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if _TEMPLATE_KEY_MARKER not in text:
+        return False
+    path.write_text(harden_config(text), encoding="utf-8")
+    return True
+
+
 @dataclass(frozen=True)
 class InstallResult:
     path: Path
@@ -228,7 +285,11 @@ def install_gateway(*, force: bool = False, fetch=_fetch) -> InstallResult:
     # config on --force.
     example = target / "config.example.yaml"
     if example.exists() and not config_path().exists():
-        shutil.copyfile(example, config_path())
+        config_path().write_text(
+            harden_config(example.read_text(encoding="utf-8")), encoding="utf-8"
+        )
+    else:
+        ensure_serving_config()
 
     return InstallResult(path=binary, version=GATEWAY_VERSION, verified=verified, skipped=False)
 
@@ -252,6 +313,11 @@ def _run_binary(extra_args: list[str]) -> int:
     return subprocess.call(_command(extra_args))
 
 
+def _repair_config_and_note() -> None:
+    if ensure_serving_config():
+        print("Repaired the gateway config (placeholder api-keys removed, bound to loopback).")
+
+
 def start_background(*, wait_s: float = 20.0) -> bool:
     """Serve detached and return True once the port answers.
 
@@ -261,6 +327,7 @@ def start_background(*, wait_s: float = 20.0) -> bool:
     """
     if is_listening():
         return True
+    _repair_config_and_note()
     cmd = _command([])
     gateway_dir().mkdir(parents=True, exist_ok=True)
     log = open(log_path(), "ab")
@@ -318,6 +385,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     start = sub.add_parser("start", help=f"Serve on :{GATEWAY_PORT} (detached by default).")
     start.add_argument("--foreground", action="store_true", help="Attach to this terminal instead.")
     sub.add_parser("stop", help="Stop a gateway started in the background.")
+    sub.add_parser("restart", help="Stop and start again (use after a config repair).")
     sub.add_parser("status", help="Show where the gateway is and whether it is listening.")
     register_example_flag(parser, example_text="aiswmm gateway install")
     parser.set_defaults(func=main)
@@ -334,6 +402,9 @@ def main(args: argparse.Namespace) -> int:
             return _cmd_start(foreground=getattr(args, "foreground", False))
         if action == "stop":
             return _cmd_stop()
+        if action == "restart":
+            stop_background()
+            return _cmd_start(foreground=False)
         return _cmd_status()
     except GatewayError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -413,6 +484,8 @@ __all__ = [
     "binary_path",
     "detect_machine",
     "gateway_dir",
+    "ensure_serving_config",
+    "harden_config",
     "install_gateway",
     "is_installed",
     "is_listening",
