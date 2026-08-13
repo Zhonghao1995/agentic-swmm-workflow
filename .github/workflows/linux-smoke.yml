@@ -1,0 +1,76 @@
+name: Linux Install Smoke
+
+# The bash one-liner had never been exercised by CI. The only workflow that
+# mentioned scripts/install.sh copied it to the website. Two defects were
+# sitting in it, both found the first time it was run in a container:
+# `sudo` was hardcoded, so on any image that runs as root and ships no sudo
+# (most of them) the bootstrap died as "sudo: command not found", and the
+# engine build hit the same call and left the install reporting success with
+# no SWMM engine at all.
+#
+# Root is the default in containers and common on servers, so it is the case
+# worth testing, not the exception.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "web/install.sh"
+      - "scripts/bootstrap.sh"
+      - "scripts/install.sh"
+      - ".github/workflows/linux-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/install.sh"
+      - "scripts/bootstrap.sh"
+      - "scripts/install.sh"
+      - ".github/workflows/linux-smoke.yml"
+  schedule:
+    - cron: "0 7 * * 1" # weekly, alongside the Windows smoke
+
+jobs:
+  root-container-install:
+    runs-on: ubuntu-latest
+    # No sudo inside, which is the point: this is what a server image looks
+    # like, and it is where the hardcoded sudo call used to die.
+    container:
+      image: ubuntu:24.04
+    steps:
+      - name: Prerequisites a real server would already have
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y -qq curl ca-certificates git python3 python3-venv python3-pip nodejs npm
+          echo "sudo present: $(command -v sudo || echo no)"
+          echo "uid: $(id -u)"
+
+      - uses: actions/checkout@v4
+
+      - name: Run the documented one-liner
+        env:
+          AISWMM_NO_SETUP: "1"
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: |
+          # bootstrap.sh clones into the CURRENT directory (TARGET_DIR is
+          # relative), unlike the Windows path which pins LOCALAPPDATA. Run
+          # from $HOME so the checkout lands where a user typing the one-liner
+          # in their home directory would get it, and where the later steps
+          # look.
+          cd "$HOME"
+          bash "$GITHUB_WORKSPACE/web/install.sh"
+
+      - name: The engine must actually be there
+        run: |
+          # "Install complete" with no solver is the failure this job exists
+          # to catch: the engine step is non-fatal by design, so a broken
+          # prerequisite install used to pass silently.
+          test -x "$HOME/.aiswmm/swmm/swmm5" || { echo "swmm5 missing"; exit 1; }
+          "$HOME/.aiswmm/swmm/swmm5" --version
+
+      - name: Smoke the installed CLI
+        run: |
+          VENV="$HOME/agentic-swmm-workflow/.venv/bin"
+          "$VENV/python" -c "import numpy, matplotlib, pandas, shapely, pyogrio, geopandas, rasterio, swmmtoolbox; print('imports ok')"
+          "$VENV/aiswmm" --version
+          "$VENV/aiswmm" doctor

@@ -108,6 +108,22 @@ resolve_python() {
 # Step implementations
 # ---------------------------------------------------------------------------
 
+as_root() {
+  # Run a privileged command the way the machine actually allows. Already
+  # root (containers, many server images): run it directly, because those
+  # images frequently have no sudo at all and the bare call died under set -e
+  # as "sudo: command not found". Not root: use sudo when present, and say
+  # what is needed when it is not, rather than failing as a shell error.
+  if [[ "$(id -u)" -eq 0 ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    printf '[ERROR] this step needs root and sudo is not available: %s\n' "$*" >&2
+    return 1
+  fi
+}
+
 do_python_venv() {
   if [[ "$TEST_MODE" == "1" ]]; then
     mkdir -p "$VENV_DIR/bin"
@@ -261,15 +277,20 @@ do_swmm_engine() {
     command -v cmake >/dev/null 2>&1 || brew install cmake || { echo "cmake install failed."; return 1; }
     brew list libomp >/dev/null 2>&1 || brew install libomp || { echo "libomp install failed."; return 1; }
   else
-    # Linux: a C compiler + cmake via the system package manager (needs sudo).
+    # Linux: a C compiler + cmake via the system package manager, as root.
+    # sudo is not a given: containers and many server images run as root and
+    # ship no sudo, where the hardcoded call died as "sudo: command not found"
+    # and the install went on to report success with no SWMM engine at all.
     if ! { command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1; } \
         || ! command -v cmake >/dev/null 2>&1; then
       if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update && sudo apt-get install -y build-essential cmake || { echo "apt-get install failed."; return 1; }
+        as_root apt-get update && as_root apt-get install -y build-essential cmake || { echo "apt-get install failed."; return 1; }
       elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y gcc gcc-c++ make cmake || { echo "dnf install failed."; return 1; }
+        as_root dnf install -y gcc gcc-c++ make cmake || { echo "dnf install failed."; return 1; }
       elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y gcc gcc-c++ make cmake || { echo "yum install failed."; return 1; }
+        as_root yum install -y gcc gcc-c++ make cmake || { echo "yum install failed."; return 1; }
+      elif command -v apk >/dev/null 2>&1; then
+        as_root apk add --no-cache build-base cmake || { echo "apk add failed."; return 1; }
       else
         echo "Install a C compiler + cmake with your package manager, then re-run."; return 1
       fi
