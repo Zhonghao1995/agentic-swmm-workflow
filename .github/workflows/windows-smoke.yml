@@ -114,10 +114,15 @@ jobs:
         run: |
           "host arch: $env:PROCESSOR_ARCHITECTURE / ARCHITEW6432=$env:PROCESSOR_ARCHITEW6432"
           py -0p
-          foreach ($v in @('-3.13','-3.12','-3.11','-3.10')) {
+          foreach ($v in @('-3.14','-3.13','-3.12','-3.11','-3.10')) {
             try { "$v -> " + (& py $v -c "import platform,sys; print(platform.machine(), sys.executable)" 2>$null) }
             catch { "$v -> absent" }
           }
+          # A probe for an absent version leaves $LASTEXITCODE non-zero, and
+          # the shell appends `exit $LASTEXITCODE`, so an inventory step that
+          # worked perfectly reported failure and the job never reached the
+          # install it exists to run.
+          exit 0
 
       - name: Run the documented one-liner
         shell: powershell
