@@ -73,6 +73,20 @@ grep -q "Args = @('-3.11')" <<<"$body" \
 grep -q 'sys.executable' <<<"$body" \
   || fail "a launcher-resolved candidate must collapse to its own interpreter path, or every later call needs the args"
 
+# --- 4d. interpreter probes must validate output, not $LASTEXITCODE --------
+# `... | Select-Object -First 1` tears the pipeline down early
+# (StopUpstreamCommandsException) and leaves $LASTEXITCODE unreliable. An
+# exit-code check in those probes rejected every candidate, so Resolve-Python
+# found nothing at all, including a Python that winget had just installed
+# successfully in the same run.
+probe_block="$(awk '/^function Get-PythonExecutable/,/^}/' "$PS1"; awk '/^function Get-PythonArchitecture/,/^}/' "$PS1")"
+[[ -n "$probe_block" ]] || fail "the interpreter probes are gone"
+if grep -q 'LASTEXITCODE' <<<"$(strip_comments <<<"$probe_block")"; then
+  fail "an interpreter probe still gates on \$LASTEXITCODE; Select-Object -First 1 makes it unreliable"
+fi
+grep -q 'Test-Path -LiteralPath' <<<"$probe_block" \
+  || fail "Get-PythonExecutable must verify the path it was handed actually exists"
+
 # --- 5. x64 hosts keep their existing path untouched -----------------------
 # The whole change must be a no-op off ARM: the arch arguments are built only
 # under the ARM branch.

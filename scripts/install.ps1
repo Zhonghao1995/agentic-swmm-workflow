@@ -133,10 +133,19 @@ function Get-PythonExecutable {
     # Absolute path of the interpreter a candidate actually starts. Resolving
     # `py -3.11` down to its own sys.executable keeps every downstream call a
     # single string, so nothing else has to know the launcher was involved.
+    #
+    # Validate the OUTPUT, never $LASTEXITCODE. `... | Select-Object -First 1`
+    # tears the pipeline down early (StopUpstreamCommandsException) and leaves
+    # $LASTEXITCODE unreliable, so an exit-code check here rejected every
+    # candidate and Resolve-Python found nothing at all, including a Python
+    # winget had just installed successfully.
     param([string]$Exe, [string[]]$LauncherArgs = @())
     try {
-        $value = (& $Exe @LauncherArgs -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -eq 0 -and $value) { return $value.Trim() }
+        $lines = @(& $Exe @LauncherArgs -c "import sys; print(sys.executable)" 2>$null)
+        foreach ($line in $lines) {
+            $candidate = "$line".Trim()
+            if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+        }
     } catch { }
     return ''
 }
@@ -145,16 +154,20 @@ function Get-HostArchitecture {
     # The machine's architecture, not the shell's. An x64 PowerShell on an
     # ARM64 machine reports AMD64 through PROCESSOR_ARCHITECTURE; Windows puts
     # the truth in PROCESSOR_ARCHITEW6432 in exactly that emulated case.
-    if ($env:PROCESSOR_ARCHITEW6432) { return $env:PROCESSOR_ARCHITEW6432.ToUpper() }
-    if ($env:PROCESSOR_ARCHITECTURE) { return $env:PROCESSOR_ARCHITECTURE.ToUpper() }
+    if ($env:PROCESSOR_ARCHITEW6432) { return "$env:PROCESSOR_ARCHITEW6432".ToUpper() }
+    if ($env:PROCESSOR_ARCHITECTURE) { return "$env:PROCESSOR_ARCHITECTURE".ToUpper() }
     return ''
 }
 
 function Get-PythonArchitecture {
+    # Same rule as Get-PythonExecutable: trust the output, not $LASTEXITCODE.
     param([string]$Exe, [string[]]$LauncherArgs = @())
     try {
-        $value = (& $Exe @LauncherArgs -c "import platform; print(platform.machine())" 2>$null | Select-Object -First 1)
-        if ($LASTEXITCODE -eq 0 -and $value) { return $value.Trim().ToUpper() }
+        $lines = @(& $Exe @LauncherArgs -c "import platform; print(platform.machine())" 2>$null)
+        foreach ($line in $lines) {
+            $value = "$line".Trim().ToUpper()
+            if ($value -match '^(AMD64|ARM64|X86|I386)$') { return $value }
+        }
     } catch { }
     return ''
 }
