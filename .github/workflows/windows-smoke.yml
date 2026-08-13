@@ -28,16 +28,21 @@ on:
 jobs:
   one-line-install:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run the documented one-liner (pinned to main)
+      - name: Run the documented one-liner (the PR's own installer)
         shell: powershell
         env:
-          # bootstrap clones with `git clone --branch`, which takes a
-          # branch/tag, not a bare sha: main is the honest pin here.
-          AISWMM_INSTALL_REF: main
+          # On a pull request, install the PR's own installer. This pinned
+          # `main` unconditionally, so the one check whose entire job is to
+          # validate an installer change was validating the installer already
+          # on main: a PR that fixed the installer failed, and a PR that broke
+          # it would have passed. bootstrap clones with `git clone --branch`,
+          # which takes a branch or tag, so a head ref works and a bare sha
+          # would not. Fork PRs have no branch in this repo, hence the fallback.
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
         run: ./web/install.ps1
 
       - name: Smoke the installed CLI
@@ -51,3 +56,37 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "aiswmm capabilities failed" }
           & $aiswmm doctor
           if ($LASTEXITCODE -ne 0) { throw "aiswmm doctor failed" }
+
+      # A first install on a clean runner is the easy case, and it is all this
+      # workflow used to cover. Every Windows install failure reported from the
+      # field came from the SECOND run over an existing checkout, so exercise it:
+      #   - npm writes mcp/<server>/package-lock.json. When such a file is
+      #     untracked locally but tracked at the target ref, `git checkout`
+      #     aborts; bootstrap did not check the exit code and reinstalled the
+      #     stale tree while printing the new tag.
+      #   - node_modules/ from the first run made the MCP step enumerate every
+      #     nested dependency's package.json.
+      - name: Re-run the one-liner over the existing install (upgrade path)
+        shell: powershell
+        env:
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: |
+          $root = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow"
+          $rel = "mcp/swmm-runner/package-lock.json"
+          # Recreate the field state: the file exists on disk but is untracked
+          # here, and is tracked at the ref we are about to check out.
+          & git -C $root rm --cached -q -- $rel
+          if ($LASTEXITCODE -ne 0) { throw "could not untrack $rel" }
+          if (-not (Test-Path (Join-Path $root $rel))) { throw "$rel should still be on disk" }
+          ./web/install.ps1
+          if ($LASTEXITCODE -ne 0) { throw "second install run failed" }
+          # If the checkout had been skipped, the file would still be untracked.
+          & git -C $root ls-files --error-unmatch $rel
+          if ($LASTEXITCODE -ne 0) { throw "checkout did not run: $rel is still untracked, so the install ran against a stale tree" }
+
+      - name: Smoke the installed CLI again
+        shell: powershell
+        run: |
+          $aiswmm = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow\.venv\Scripts\aiswmm.exe"
+          & $aiswmm doctor
+          if ($LASTEXITCODE -ne 0) { throw "aiswmm doctor failed after upgrade" }
