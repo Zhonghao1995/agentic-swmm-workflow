@@ -38,7 +38,9 @@ from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_fo
 
 def _safe_name(value: str) -> str:
     """Normalise an arbitrary string into a filesystem-safe slug."""
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
+    # Mirror of session_bootstrap.safe_name: ``\w`` keeps CJK and accented
+    # text, which the old ASCII-only class collapsed to nothing.
+    cleaned = re.sub(r"[^\w.-]+", "-", value.strip())
     return cleaned.strip("-") or "agent"
 
 
