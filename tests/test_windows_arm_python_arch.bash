@@ -50,7 +50,7 @@ grep -qE "'--architecture', 'x64'" <<<"$body" \
 # in the dependency step with a GDAL error that names nothing recognisable.
 grep -q 'x64 Python is required on Windows on ARM' <<<"$body" \
   || fail "install.ps1 does not fail clearly when only an ARM64 Python is available"
-grep -q 'winget install -e --id Python.Python.3.11 --architecture x64' <<<"$body" \
+grep -q 'winget install -e --id Python.Python.3.12 --architecture x64 --force' <<<"$body" \
   || fail "the remediation must give a command that actually installs an x64 interpreter"
 
 # --- 4b. winget keys on the package id, not the architecture ---------------
@@ -58,8 +58,10 @@ grep -q 'winget install -e --id Python.Python.3.11 --architecture x64' <<<"$body
 # check: "Found an existing package already installed... No available upgrade
 # found." Nothing is installed and the exit code is 0. Trying a different minor
 # version is what actually lands an x64 interpreter beside the ARM64 one.
-grep -q "'Python.Python.3.11'" <<<"$body" \
+grep -q "'Python.Python.3.13'" <<<"$body" \
   || fail "install.ps1 only ever asks winget for one Python version; on ARM that can be a silent no-op"
+grep -q -- "'--force'" <<<"$body" \
+  || fail "winget needs --force on ARM: without it an x64 request for an id installed as ARM64 is an upgrade check that installs nothing"
 grep -q 'did not yield an x64 interpreter' <<<"$body" \
   || fail "install.ps1 must notice when a winget install produced nothing usable and move on"
 

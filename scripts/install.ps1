@@ -187,10 +187,17 @@ function Resolve-Python {
     # an ARM64 one is invisible, because bare `python` and bare `py` both
     # resolve to the newest interpreter, which is the ARM64 one. That is
     # exactly how a machine with a perfectly good x64 3.11 still failed.
+    # Newest first, because the geospatial wheels bound the useful range from
+    # both ends: rasterio's win_amd64 wheels start at cp312, pyogrio ships a
+    # cp311-abi3 wheel that covers everything above it, and shapely covers
+    # cp310 up. An x64 3.12 or 3.13 gets all three; an x64 3.11 works only
+    # because pip falls back to an older rasterio.
     $candidates = @(
+        @{ Exe = 'py';         Args = @('-3.13') },
         @{ Exe = 'py';         Args = @('-3.12') },
         @{ Exe = 'py';         Args = @('-3.11') },
         @{ Exe = 'py';         Args = @('-3.10') },
+        @{ Exe = 'python3.13'; Args = @() },
         @{ Exe = 'python3.12'; Args = @() },
         @{ Exe = 'python3.11'; Args = @() },
         @{ Exe = 'python3.10'; Args = @() },
@@ -244,7 +251,11 @@ function Install-PythonViaWinget {
         Write-Host "  shapely and pyogrio publish no ARM64 wheels, so an ARM64 interpreter"
         Write-Host "  cannot install the geospatial dependencies at all. The x64 build runs"
         Write-Host "  under Windows' emulation and installs everything."
-        $archArgs = @('--architecture', 'x64')
+        # --force is what makes this work at all. winget keys on the package
+        # id, not the architecture: with an ARM64 Python.Python.3.12 already
+        # present it turns an x64 request into an upgrade check and reports
+        # "No available upgrade found" having installed nothing.
+        $archArgs = @('--architecture', 'x64', '--force')
     }
     # winget keys on the package id, not the architecture. When an ARM64
     # Python.Python.3.12 is already installed, `winget install --architecture
@@ -253,7 +264,7 @@ function Install-PythonViaWinget {
     # different minor version is what actually lands an x64 interpreter next
     # to the ARM64 one.
     $ids = @('Python.Python.3.12')
-    if ($onArm) { $ids = @('Python.Python.3.12', 'Python.Python.3.11', 'Python.Python.3.13') }
+    if ($onArm) { $ids = @('Python.Python.3.12', 'Python.Python.3.13') }
     Write-Host "Installing Python via winget (user scope, no admin)..."
     try {
         # Out-Host, not the output stream: `& winget` output otherwise lands in
@@ -588,8 +599,8 @@ if ((Resolve-Python) -and $script:ResolvedPythonIsArm) {
             "  cannot install them and pip falls back to a source build that needs GDAL.",
             "winget keys on the package id, so asking for x64 of a version you already",
             "  have as ARM64 reports 'No available upgrade found' and installs nothing.",
-            "Install a different minor version as x64, which lands beside it:",
-            "  winget install -e --id Python.Python.3.11 --architecture x64",
+            "--force is what gets past that:",
+            "  winget install -e --id Python.Python.3.12 --architecture x64 --force",
             "Or download the 'Windows installer (64-bit)' from https://www.python.org/downloads/",
             "Then re-run this installer; it prefers the x64 interpreter on ARM machines."
         )
