@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run the documented one-liner (pinned to main)
+      - name: Run the documented one-liner (the PR's own installer)
         shell: powershell
         env:
           # On a pull request, install the PR's own installer. This pinned
