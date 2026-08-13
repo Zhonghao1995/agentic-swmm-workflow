@@ -233,7 +233,35 @@ function Run-Step {
 # Step bodies
 # ---------------------------------------------------------------------------
 
+function Get-VenvPythonVersion {
+    # "version = 3.11.9" in pyvenv.cfg records the interpreter that built the
+    # venv. Returns "3.11", or "" when there is no venv to ask.
+    param([string]$Dir)
+    $cfg = Join-Path $Dir 'pyvenv.cfg'
+    if (-not (Test-Path $cfg)) { return "" }
+    foreach ($line in Get-Content $cfg) {
+        if ($line -match '^\s*version(_info)?\s*=\s*(\d+)\.(\d+)') {
+            return "$($Matches[2]).$($Matches[3])"
+        }
+    }
+    return ""
+}
+
 function Do-PythonVenv {
+    # `python -m venv <existing dir>` does NOT rebuild it and does NOT clear
+    # site-packages: it repoints pyvenv.cfg and Scripts at the new interpreter
+    # and leaves the old packages in place. When the resolved interpreter
+    # changes between installs (3.11 present first, winget adds 3.12 later,
+    # Resolve-Python prefers 3.12) the result is a 3.12 venv full of cp311
+    # binaries, and the first import fails with
+    #   _multiarray_umath.cp311-win_amd64.pyd ... incompatible with cpython-312
+    # pip does not notice, because the metadata says everything is installed.
+    $wanted = (& $script:ResolvedPython -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null | Select-Object -First 1)
+    $existing = Get-VenvPythonVersion $VenvDir
+    if ($existing -and $wanted -and $existing -ne $wanted) {
+        Write-Host "Existing venv was built with Python $existing; interpreter is now $wanted. Rebuilding."
+        Remove-Item -Recurse -Force $VenvDir -ErrorAction SilentlyContinue
+    }
     & $script:ResolvedPython -m venv $VenvDir
     if ($LASTEXITCODE -ne 0) { throw "venv creation failed" }
 }
@@ -247,6 +275,12 @@ function Do-PythonDeps {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
     & $venvPython -m pip install -e $RepoRoot
     if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+
+    # Prove the binary wheels actually load in THIS interpreter. pip reports
+    # success from metadata alone, so an ABI mismatch stays silent until the
+    # first plot fails hours later. A failed import is a failed step.
+    & $venvPython -c "import numpy, matplotlib, pandas"
+    if ($LASTEXITCODE -ne 0) { throw "installed packages do not import (see the traceback above)" }
 
     # Put the venv's Scripts dir on PATH so `aiswmm` resolves. pip -e drops
     # aiswmm.exe there, but nothing else adds it to PATH — without this the
