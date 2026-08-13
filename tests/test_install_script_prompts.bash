@@ -34,8 +34,10 @@ assert_log_contains "Install complete"
 assert_log_not_contains "Continue with installation?"
 # Default provider is openai and --auto stores no key (the harness pins
 # OPENAI_API_KEY empty), so the always-visible Next steps must tell the user
-# how to add one — the in-step "skipped" hint is swallowed on success.
-assert_log_contains "aiswmm login --openai"
+# how to get a working provider: the in-step "skipped" hint is swallowed on
+# success. That used to be `aiswmm login --openai`; the picker supersedes it,
+# collects an OpenAI key just the same, and also reaches the keyless routes.
+assert_log_contains "aiswmm setup"
 harness_teardown
 
 # --- 2. Y at risk warning + Y at every step --------------------------------

@@ -452,7 +452,6 @@ Summary
 
 Next steps
   1. Open a new shell so PATH updates take effect.
-  2. Run: aiswmm doctor
 SUMMARY
 
 # Provider key guidance lives here, not in Step 5: run_step hides a step's
@@ -460,21 +459,23 @@ SUMMARY
 # re-derive the key state at summary time (the same condition do_api_key uses):
 #   - non-openai: the installer never prompts for a key -> always point at login
 #   - openai with no key saved or pre-existing (user pressed Enter to skip, or
-#     no tty was available) -> tell them how to add it
+#     no tty was available) -> send them to the picker
 #   - openai with a key already configured -> just start chatting
+#
+# Two numbered commands, never a menu. The picker itself lists the routes and
+# detects what is already running; reprinting that list here made the summary
+# read like a second decision the user had to make before running anything.
 if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
-  echo "  3. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
-  echo "  4. Run: aiswmm"
+  echo "  2. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
+  echo "  3. Run: aiswmm"
 elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
-  echo "  3. Pick your AI provider: aiswmm setup"
-  echo "       An API key (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini),"
-  echo "       a local gateway that fronts a ChatGPT plan (no API key), or a local"
-  echo "       model (Ollama, LM Studio). The picker detects what is already running."
-  echo "       Already have an OpenAI key? aiswmm login --openai"
-  echo "  4. Run: aiswmm"
+  echo "  2. Run: aiswmm setup      (pick your AI provider; some need no API key)"
+  echo "  3. Run: aiswmm"
 else
-  echo "  3. Run: aiswmm            (change provider any time: aiswmm setup)"
+  echo "  2. Run: aiswmm            (change provider any time: aiswmm setup)"
 fi
+echo ""
+echo "  Something looks wrong? aiswmm doctor"
 echo ""
 
 exit 0

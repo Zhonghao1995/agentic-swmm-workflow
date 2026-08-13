@@ -534,24 +534,22 @@ Write-Host "- AI provider:  choose after install (aiswmm setup)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
-Write-Host "  2. Run: aiswmm doctor"
-# Mirror of the bash installer's provider guidance. `aiswmm setup` is the
-# interactive picker over the whole route table; naming only OpenAI and Claude
-# here hid every keyless route (local gateway, Ollama, LM Studio) from anyone
-# who arrived through the installer.
+# Mirror of the bash installer's provider guidance: two numbered commands,
+# never a menu. `aiswmm setup` is the interactive picker over the whole route
+# table and lists the options itself; naming only OpenAI and Claude here hid
+# every keyless route, and reprinting the full list here just moved the
+# confusion instead of removing it.
 if ($Provider -ne 'openai') {
-    Write-Host "  3. Store your $Provider API key: aiswmm login --$Provider"
-    Write-Host "  4. Start: aiswmm"
+    Write-Host "  2. Store your $Provider API key: aiswmm login --$Provider"
+    Write-Host "  3. Start: aiswmm"
 } elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {
-    Write-Host "  3. Pick your AI provider: aiswmm setup"
-    Write-Host "       An API key (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini),"
-    Write-Host "       a local gateway that fronts a ChatGPT plan (no API key), or a local"
-    Write-Host "       model (Ollama, LM Studio). The picker detects what is already running."
-    Write-Host "       Already have an OpenAI key? aiswmm login --openai"
-    Write-Host "  4. Start: aiswmm"
+    Write-Host "  2. Run: aiswmm setup      (pick your AI provider; some need no API key)"
+    Write-Host "  3. Start: aiswmm"
 } else {
-    Write-Host "  3. Start: aiswmm            (change provider any time: aiswmm setup)"
+    Write-Host "  2. Start: aiswmm            (change provider any time: aiswmm setup)"
 }
+Write-Host ""
+Write-Host "  Something looks wrong? aiswmm doctor"
 Write-Host ""
 
 exit 0

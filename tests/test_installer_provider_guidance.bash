@@ -56,10 +56,13 @@ for f in "$REPO_ROOT/scripts/install.ps1" "$REPO_ROOT/scripts/install.sh"; do
     || fail "$(basename "$f") should say a route exists that needs no API key"
 done
 
-# --- 4. the direct-key shortcut stays, for users who have one --------------
+# --- 4. the summary must stay a command list, not a menu -------------------
+# Reprinting the route list in Next steps made the summary read as a second
+# decision to make before anything could be run. The picker lists the routes.
 for f in "$REPO_ROOT/scripts/install.ps1" "$REPO_ROOT/scripts/install.sh"; do
-  grep -q 'aiswmm login --openai' "$f" \
-    || fail "$(basename "$f") dropped the 'aiswmm login --openai' shortcut"
+  if grep -qE 'OpenRouter, DeepSeek|Ollama, LM Studio' "$f"; then
+    fail "$(basename "$f") enumerates routes in the summary; that belongs to aiswmm setup"
+  fi
 done
 
 # --- 5. the setup wizard's gateway recipe must cover Windows ---------------
