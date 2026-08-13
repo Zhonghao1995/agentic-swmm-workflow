@@ -95,6 +95,9 @@ sections:
       project configuration; PASS/FAIL status is read from experiment_provenance.json and
       is not recomputed here.
 
+  - id: hydraulic_results
+    title: "Hydraulic Results"
+
   - id: figures
     title: "Figures"
     plot_dirs:

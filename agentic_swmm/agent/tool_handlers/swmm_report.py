@@ -68,6 +68,17 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if isinstance(title_raw, str) and title_raw.strip():
         cli_args.extend(["--title", title_raw])
 
+    # Extract the .rpt hydraulic tables first. The skill script is stdlib +
+    # python-docx + PyYAML only and cannot parse a report file, so it reads
+    # this as JSON like every other artifact. Best-effort by design: a run
+    # whose .rpt cannot be parsed still gets its report, minus that section.
+    try:
+        from agentic_swmm.reporting.hydraulic_summary import write_hydraulic_summary
+
+        write_hydraulic_summary(Path(run_dir))
+    except Exception:
+        pass
+
     result = _run_script_tool(call, session_dir, cli_args)
 
     # Surface the install hint when python-docx is missing (exit 1, stderr
