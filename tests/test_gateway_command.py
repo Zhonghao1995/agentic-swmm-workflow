@@ -207,7 +207,7 @@ class InstallTests(unittest.TestCase):
 class WizardOffersTheGatewayTests(unittest.TestCase):
     """The wizard must offer the install, not print a recipe and stop."""
 
-    def _run(self, answers: list[str], installer):
+    def _run(self, answers: list[str], installer, login=None):
         from agentic_swmm.commands.setup_wizard import run_wizard
 
         printed: list[str] = []
@@ -219,6 +219,7 @@ class WizardOffersTheGatewayTests(unittest.TestCase):
                 print_fn=printed.append,
                 probe=lambda *a, **k: None,  # nothing detected anywhere
                 install_gateway=installer,
+                gateway_login=login or (lambda: 0),
             ),
             printed,
         )
@@ -232,13 +233,45 @@ class WizardOffersTheGatewayTests(unittest.TestCase):
                 path=Path("/tmp/cli-proxy-api"), version="7.2.130", verified=True, skipped=False
             )
 
-        # route=codex, install=yes, model=default, key=skip
-        result, printed = self._run(["codex", "y", "", ""], installer)
+        signed_in = []
+        # route=codex, install=yes, sign in=yes, model=default, key=skip
+        result, printed = self._run(
+            ["codex", "y", "y", "", ""], installer, login=lambda: signed_in.append(True) or 0
+        )
         self.assertEqual(installed, [True], "the wizard never called the installer")
+        self.assertEqual(signed_in, [True], "the wizard installed but never signed in")
         self.assertIsNotNone(result)
         self.assertEqual(result.route, "codex")
-        body = "\n".join(printed)
-        self.assertIn("aiswmm gateway login", body)
+
+    def test_declining_the_sign_in_leaves_the_one_command_behind(self) -> None:
+        def installer():
+            return gateway.InstallResult(
+                path=Path("/tmp/cli-proxy-api"), version="7.2.130", verified=True, skipped=False
+            )
+
+        def login():  # pragma: no cover - must not be called
+            raise AssertionError("declined sign-in still ran")
+
+        result, printed = self._run(["codex", "y", "n", "", ""], installer, login=login)
+        self.assertIsNotNone(result)
+        self.assertIn("aiswmm gateway login", "\n".join(printed))
+
+    def test_a_caller_that_omits_the_callables_gets_the_recipe_not_a_download(self) -> None:
+        # run_wizard must never reach for the real installer or the real
+        # browser flow by omission: those download 58 MB and write vendor
+        # credentials. Omitting them falls back to the printed recipe.
+        from agentic_swmm.commands.setup_wizard import run_wizard
+
+        printed: list[str] = []
+        pending = ["codex", "", ""]
+        result = run_wizard(
+            ask=lambda _p: pending.pop(0),
+            ask_secret=lambda _p: "",
+            print_fn=printed.append,
+            probe=lambda *a, **k: None,
+        )
+        self.assertIsNotNone(result)
+        self.assertIn("aiswmm gateway install", "\n".join(printed))
 
     def test_declining_falls_back_to_the_printed_recipe(self) -> None:
         def installer():  # pragma: no cover - must not be called

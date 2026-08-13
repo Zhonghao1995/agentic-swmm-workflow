@@ -146,13 +146,15 @@ _GATEWAY_RECIPE = (
 )
 
 
-def _offer_gateway(ask, print_fn, install) -> bool:
-    """Offer to install the local gateway the codex route needs.
+def _offer_gateway(ask, print_fn, install, login) -> bool:
+    """Install the local gateway the codex route needs, and sign in.
 
     The wizard used to print a shell recipe and stop, which left the only
     keyless-with-a-real-model route reachable solely by users who already
-    knew what a gateway was. ``install`` is injected so this stays testable
-    without a network.
+    knew what a gateway was. Stopping at "installed" was barely better: it
+    handed back two more commands and then ran a connection test that could
+    not pass yet. ``install`` and ``login`` are injected so this stays
+    testable without a network or a browser.
     """
     print_fn("The codex route needs a local gateway that fronts your ChatGPT plan.")
     print_fn("aiswmm can install a pinned CLIProxyAPI build (MIT) under ~/.aiswmm/gateway/.")
@@ -164,8 +166,11 @@ def _offer_gateway(ask, print_fn, install) -> bool:
         print_fn(f"Gateway install failed: {exc}")
         return False
     print_fn(f"Installed -> {result.path}")
-    print_fn("Sign in once:  aiswmm gateway login    (opens a browser)")
-    print_fn("Then start it: aiswmm gateway start")
+    if ask("Sign in to ChatGPT now? [Y/n]: ").strip().lower() in ("n", "no"):
+        print_fn("Later, run:  aiswmm gateway login    (signs in, then serves)")
+        return True
+    if login() != 0:
+        print_fn("Sign-in did not finish. Run `aiswmm gateway login` when ready.")
     return True
 
 
@@ -177,12 +182,16 @@ def run_wizard(
     probe: Callable[..., Any | None] = probe_json,
     verify: Callable[[RouteSpec, str, str], tuple[bool, str]] | None = None,
     install_gateway: Callable[[], Any] | None = None,
+    gateway_login: Callable[[], int] | None = None,
 ) -> WizardResult | None:
-    """Drive the interactive flow; return ``None`` when the user aborts."""
-    if install_gateway is None:
-        from agentic_swmm.commands import gateway as _gateway
+    """Drive the interactive flow; return ``None`` when the user aborts.
 
-        install_gateway = _gateway.install_gateway
+    ``install_gateway`` and ``gateway_login`` are NOT defaulted to the real
+    implementations here. They download 58 MB and open a browser OAuth flow
+    that writes vendor credentials, and a caller that has not opted in must
+    never trigger either by omission: the wizard falls back to printing the
+    manual recipe. ``commands/setup.py`` wires both explicitly.
+    """
 
     try:
         return _run(
@@ -192,6 +201,7 @@ def run_wizard(
             probe=probe,
             verify=verify,
             install_gateway=install_gateway,
+            gateway_login=gateway_login,
         )
     except (EOFError, KeyboardInterrupt):
         print_fn("")
@@ -200,7 +210,7 @@ def run_wizard(
         return None
 
 
-def _run(*, ask, ask_secret, print_fn, probe, verify, install_gateway) -> WizardResult | None:
+def _run(*, ask, ask_secret, print_fn, probe, verify, install_gateway, gateway_login) -> WizardResult | None:
     print_fn("Agentic SWMM setup — LLM route")
     print_fn("")
 
@@ -221,7 +231,8 @@ def _run(*, ask, ask_secret, print_fn, probe, verify, install_gateway) -> Wizard
 
     if route == "codex" and det.alive is False:
         print_fn("")
-        if not _offer_gateway(ask, print_fn, install_gateway):
+        managed = install_gateway is not None and gateway_login is not None
+        if not managed or not _offer_gateway(ask, print_fn, install_gateway, gateway_login):
             print_fn(_GATEWAY_RECIPE)
         print_fn("")
 

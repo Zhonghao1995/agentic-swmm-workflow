@@ -20,9 +20,10 @@ downloaded unless the user asks for it, so the API-key routes carry no cost.
 Subcommands
 -----------
 ``install``  fetch + verify + unpack (idempotent; ``--force`` re-fetches).
-``login``    run the gateway's OAuth flow (opens a browser), installing first
-             if needed, so the whole path is one command.
-``start``    run the gateway in the foreground on :8317.
+``login``    install if needed, run the vendor OAuth flow (opens a browser),
+             then leave the gateway serving. One command, start to finish.
+``start``    serve on :8317, detached by default (``--foreground`` to attach).
+``stop``     stop a gateway started in the background.
 ``status``   where the binary is, whether it is listening.
 """
 
@@ -34,9 +35,11 @@ import io
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -230,12 +233,72 @@ def install_gateway(*, force: bool = False, fetch=_fetch) -> InstallResult:
     return InstallResult(path=binary, version=GATEWAY_VERSION, verified=verified, skipped=False)
 
 
-def _run_binary(extra_args: list[str]) -> int:
+def pid_path() -> Path:
+    return gateway_dir() / "gateway.pid"
+
+
+def log_path() -> Path:
+    return gateway_dir() / "gateway.log"
+
+
+def _command(extra_args: list[str]) -> list[str]:
     binary = binary_path()
     if not binary.exists():
         raise GatewayError("Gateway is not installed. Run: aiswmm gateway install")
-    cmd = [str(binary), "-config", str(config_path()), *extra_args]
-    return subprocess.call(cmd)
+    return [str(binary), "-config", str(config_path()), *extra_args]
+
+
+def _run_binary(extra_args: list[str]) -> int:
+    return subprocess.call(_command(extra_args))
+
+
+def start_background(*, wait_s: float = 20.0) -> bool:
+    """Serve detached and return True once the port answers.
+
+    Foreground-only was the wrong default for the one command a user is
+    told to run: it pins a terminal window open for the rest of the
+    session, and closing that window silently takes the provider down.
+    """
+    if is_listening():
+        return True
+    cmd = _command([])
+    gateway_dir().mkdir(parents=True, exist_ok=True)
+    log = open(log_path(), "ab")
+    kwargs: dict = {"stdout": log, "stderr": log, "stdin": subprocess.DEVNULL, "close_fds": True}
+    if os.name == "nt":
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP: survives the shell
+        # that launched it, and Ctrl-C in that shell does not kill it.
+        kwargs["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        kwargs["start_new_session"] = True
+    process = subprocess.Popen(cmd, **kwargs)  # noqa: S603 - path we unpacked ourselves
+    pid_path().write_text(str(process.pid), encoding="utf-8")
+
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:
+        if is_listening():
+            return True
+        if process.poll() is not None:
+            return False
+        time.sleep(0.4)
+    return is_listening()
+
+
+def stop_background() -> bool:
+    """Stop a gateway started by :func:`start_background`."""
+    try:
+        pid = int(pid_path().read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        if os.name == "nt":
+            subprocess.call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return False
+    pid_path().unlink(missing_ok=True)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -251,8 +314,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     sub = parser.add_subparsers(dest="gateway_action")
     install = sub.add_parser("install", help="Download the pinned gateway for this machine.")
     install.add_argument("--force", action="store_true", help="Re-download even if present.")
-    sub.add_parser("login", help="Run the gateway's ChatGPT OAuth flow (opens a browser).")
-    sub.add_parser("start", help=f"Run the gateway in the foreground on :{GATEWAY_PORT}.")
+    sub.add_parser("login", help="Sign in to ChatGPT (opens a browser) and leave the gateway serving.")
+    start = sub.add_parser("start", help=f"Serve on :{GATEWAY_PORT} (detached by default).")
+    start.add_argument("--foreground", action="store_true", help="Attach to this terminal instead.")
+    sub.add_parser("stop", help="Stop a gateway started in the background.")
     sub.add_parser("status", help="Show where the gateway is and whether it is listening.")
     register_example_flag(parser, example_text="aiswmm gateway install")
     parser.set_defaults(func=main)
@@ -266,7 +331,9 @@ def main(args: argparse.Namespace) -> int:
         if action == "login":
             return _cmd_login()
         if action == "start":
-            return _cmd_start()
+            return _cmd_start(foreground=getattr(args, "foreground", False))
+        if action == "stop":
+            return _cmd_stop()
         return _cmd_status()
     except GatewayError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -285,16 +352,44 @@ def _cmd_install(*, force: bool) -> int:
 
 
 def _cmd_login() -> int:
+    """Install if needed, sign in, and leave the gateway serving.
+
+    This is the command the setup wizard and the installer both point at,
+    so it has to finish the job rather than hand back another instruction.
+    """
     if not is_installed():
-        _cmd_install(force=False)
-    print("Opening the ChatGPT sign-in flow. Finish it in the browser, then:")
-    print("  aiswmm gateway start")
-    return _run_binary(["-codex-login"])
+        install_gateway(force=False)
+    print("Opening your browser to sign in to ChatGPT. Finish it there, then come back.")
+    status = _run_binary(["-codex-login"])
+    if status != 0:
+        print("Sign-in did not complete. Retry with: aiswmm gateway login", file=sys.stderr)
+        return status
+    print("Signed in. Starting the gateway...")
+    if not start_background():
+        print(f"Gateway did not come up; see {log_path()}", file=sys.stderr)
+        return 1
+    print(f"Gateway is serving on http://127.0.0.1:{GATEWAY_PORT}. Run: aiswmm")
+    return 0
 
 
-def _cmd_start() -> int:
-    print(f"Serving on http://127.0.0.1:{GATEWAY_PORT}. Leave this window open; Ctrl-C stops it.")
-    return _run_binary([])
+def _cmd_start(*, foreground: bool = False) -> int:
+    if foreground:
+        print(f"Serving on http://127.0.0.1:{GATEWAY_PORT}. Ctrl-C stops it.")
+        return _run_binary([])
+    if start_background():
+        print(f"Gateway is serving on http://127.0.0.1:{GATEWAY_PORT} (detached).")
+        print(f"Stop it with: aiswmm gateway stop    Log: {log_path()}")
+        return 0
+    print(f"Gateway did not come up; see {log_path()}", file=sys.stderr)
+    return 1
+
+
+def _cmd_stop() -> int:
+    if stop_background():
+        print("Gateway stopped.")
+        return 0
+    print("No background gateway to stop (or it was already gone).")
+    return 0
 
 
 def _cmd_status() -> int:
@@ -304,7 +399,7 @@ def _cmd_status() -> int:
     print(f"Gateway:   {binary_path()} (CLIProxyAPI {GATEWAY_VERSION})")
     print(f"Config:    {config_path()}")
     listening = is_listening()
-    print(f"Port {GATEWAY_PORT}: {'listening' if listening else 'not listening (aiswmm gateway start)'}")
+    print(f"Port {GATEWAY_PORT}: {'listening' if listening else 'not listening (aiswmm gateway login)'}")
     return 0
 
 
@@ -321,6 +416,8 @@ __all__ = [
     "install_gateway",
     "is_installed",
     "is_listening",
+    "start_background",
+    "stop_background",
     "main",
     "register",
 ]
