@@ -133,6 +133,23 @@ paths relative to the `.inp` file's own directory, which is why copying a lone
 `.inp` into a new folder breaks it. The error now names the file and where a
 copy of it exists.
 
+## Which platforms are actually tested
+
+Every platform below runs the documented one-liner in CI on a real machine of
+that kind, then asserts the solver binary exists and the geospatial stack
+imports:
+
+| Platform | Runner |
+|---|---|
+| Windows x64 | `windows-latest` |
+| Windows on ARM | `windows-11-arm` |
+| Linux | `ubuntu-latest`, inside a root container with no sudo |
+| macOS | `macos-latest` |
+
+One gap worth naming: GitHub's macOS images ship Homebrew, so the branch where
+the installer installs Homebrew itself is not exercised. That is the path a
+brand-new Mac takes.
+
 ## Where a run puts things
 
 ```

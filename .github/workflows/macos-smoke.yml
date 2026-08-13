@@ -1,0 +1,69 @@
+name: macOS Install Smoke
+
+# macOS was the last platform with no automated install verification, and its
+# standing rested on one manual run. That is exactly the position Windows on
+# ARM and Linux were in the day before both turned out to be uninstallable:
+# the defects were not subtle, they were simply never executed by CI.
+#
+# Not covered here, and worth being explicit about: GitHub's macOS images ship
+# Homebrew, so the branch where bootstrap.sh installs Homebrew itself is still
+# unexercised. That is the path a brand-new Mac takes.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "web/install.sh"
+      - "scripts/bootstrap.sh"
+      - "scripts/install.sh"
+      - ".github/workflows/macos-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web/install.sh"
+      - "scripts/bootstrap.sh"
+      - "scripts/install.sh"
+      - ".github/workflows/macos-smoke.yml"
+  schedule:
+    - cron: "0 8 * * 1" # weekly, after the Windows and Linux smokes
+
+jobs:
+  one-line-install:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report what the machine already has
+        run: |
+          echo "arch:    $(uname -m)"
+          echo "python3: $(python3 --version 2>&1)"
+          echo "git:     $(git --version)"
+          echo "node:    $(node --version 2>&1 || echo absent)"
+          echo "brew:    $(brew --version 2>&1 | head -1 || echo absent)"
+
+      - name: Run the documented one-liner
+        env:
+          AISWMM_NO_SETUP: "1"
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
+        run: |
+          # bootstrap.sh clones into the current directory, so run from $HOME
+          # where a user typing the one-liner would be.
+          cd "$HOME"
+          bash "$GITHUB_WORKSPACE/web/install.sh"
+
+      - name: The engine must actually be there
+        run: |
+          # The engine step is non-fatal by design. On Linux that let a broken
+          # prerequisite install pass silently with no solver at all, so assert
+          # the binary rather than trusting "Install complete".
+          test -x "$HOME/.aiswmm/swmm/swmm5" || { echo "swmm5 missing"; exit 1; }
+          "$HOME/.aiswmm/swmm/swmm5" --version
+
+      - name: Smoke the installed CLI
+        run: |
+          VENV="$HOME/agentic-swmm-workflow/.venv/bin"
+          "$VENV/python" -c "import platform, sys; print('venv:', platform.machine(), sys.version)"
+          "$VENV/python" -c "import numpy, matplotlib, pandas, shapely, pyogrio, geopandas, rasterio, swmmtoolbox; print('all imports ok')"
+          "$VENV/aiswmm" --version
+          "$VENV/aiswmm" doctor
