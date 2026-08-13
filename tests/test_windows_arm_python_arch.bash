@@ -95,6 +95,18 @@ grep -q 'Test-Path -LiteralPath' <<<"$probe_block" \
 grep -q 'if ($onArm)' <<<"$body" \
   || fail "the x64 request is not gated on the host being ARM64"
 
+# --- 5b. winget cannot be assumed to exist ---------------------------------
+# GitHub's windows-11-arm runner has no winget, and neither do Windows Server
+# images. Without a direct fallback the ARM path ended in 0.16 seconds having
+# printed nothing about what it wanted: the winget helper returned false on
+# its first line, before any of its explanatory output.
+grep -q 'www.python.org/ftp/python' <<<"$body" \
+  || fail "no direct python.org fallback; on a machine without winget the ARM path cannot install anything"
+grep -q 'Include_launcher=1' <<<"$body" \
+  || fail "the python.org install must register with the py launcher, or a specific version stays unaddressable"
+grep -q 'winget is not available on this machine' <<<"$body" \
+  || fail "a missing winget must be reported, not returned silently"
+
 # --- 6. the matrix must contain an actual ARM machine ----------------------
 # Every layer of this bug was invisible to CI because windows-latest is x64.
 # Static locks cannot prove an install works; only an ARM runner can.

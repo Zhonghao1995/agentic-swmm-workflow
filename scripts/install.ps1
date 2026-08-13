@@ -242,8 +242,51 @@ function Test-NodeOk {
     return (($major -as [int]) -and [int]$major -ge 18)
 }
 
+# Pinned like the SWMM solver: a reproducible install beats "whatever winget
+# has today", and this path exists precisely because winget cannot be assumed.
+$PythonFallbackVersion = '3.12.10'
+
+function Install-PythonFromPythonOrg {
+    # Direct download from python.org, for machines with no winget at all.
+    # GitHub's windows-11-arm runner is one, and so is any Windows Server
+    # image: without this the ARM path could only ever fail there, having
+    # never printed a word about what it wanted to do.
+    param([switch]$X64)
+    $url = "https://www.python.org/ftp/python/$PythonFallbackVersion/python-$PythonFallbackVersion-amd64.exe"
+    $work = Join-Path ([System.IO.Path]::GetTempPath()) ('aiswmm-python-' + [System.IO.Path]::GetRandomFileName())
+    New-Item -ItemType Directory -Force -Path $work | Out-Null
+    $exe = Join-Path $work 'python-installer.exe'
+    try {
+        Write-Host "Downloading Python $PythonFallbackVersion (x64) from python.org..."
+        Invoke-WebRequest -Uri $url -OutFile $exe -UseBasicParsing
+        # Per-user, no admin. Include_launcher registers it with the py
+        # launcher, which is the only way a specific version is addressable
+        # on Windows; PrependPath puts it on PATH for later shells.
+        $proc = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList @(
+            '/quiet', 'InstallAllUsers=0', 'PrependPath=1', 'Include_launcher=1', 'Include_test=0'
+        )
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "python.org installer exited with $($proc.ExitCode)." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "python.org download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        return $false
+    } finally {
+        Remove-Item -Path $work -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Update-SessionPath
+    $script:ResolvedPythonIsArm = $false
+    return ((Resolve-Python) -and -not $script:ResolvedPythonIsArm)
+}
+
 function Install-PythonViaWinget {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        # No winget at all: CI images and Windows Server routinely lack it.
+        # Returning false here used to end the ARM path in 0.16 seconds
+        # without printing a single line about what was needed.
+        Write-Host "winget is not available on this machine; using python.org directly."
+        return (Install-PythonFromPythonOrg -X64:((Get-HostArchitecture) -eq 'ARM64'))
+    }
     $onArm = (Get-HostArchitecture) -eq 'ARM64'
     $archArgs = @()
     if ($onArm) {
@@ -280,6 +323,13 @@ function Install-PythonViaWinget {
                 Write-Host "$id did not yield an x64 interpreter; trying the next version." -ForegroundColor Yellow
             } else {
                 break
+            }
+        }
+        if ($onArm) {
+            $script:ResolvedPythonIsArm = $false
+            if (-not ((Resolve-Python) -and -not $script:ResolvedPythonIsArm)) {
+                Write-Host "winget produced no x64 interpreter; falling back to python.org." -ForegroundColor Yellow
+                if (Install-PythonFromPythonOrg -X64) { return $true }
             }
         }
     } catch {
