@@ -35,6 +35,7 @@ caller does not opt into a builder. The summary line keeps the legacy
 from __future__ import annotations
 
 import difflib
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -181,6 +182,134 @@ def file_resolution_error(
 
     hint = "; ".join(hint_parts) if hint_parts else None
     return RemediationError(summary=summary, cause=cause, hint=hint)
+
+
+# SWMM reports a missing external data file by the *series* name, not by the
+# filename, and the filename lives in a different section of the INP than the
+# error. A planner given only the raw engine line has no way to name the file
+# it needs, which is why one of these cost a live session two and a half
+# minutes of repository-wide search before it worked the answer out.
+_SWMM_EXTERNAL_FILE_RE = re.compile(
+    r"ERROR\s+3\d\d:\s*could not open external file used for\s+"
+    r"(?:Time\s*Series|Rain\s*Gage|rainfall file)?\s*(?P<name>[A-Za-z0-9_.\-]+)",
+    re.IGNORECASE,
+)
+# The INP names the file two sections away: `TEMP_ROME FILE "EXT_TEM_....dat"`.
+_TIMESERIES_FILE_RE_TEMPLATE = r"^\s*{name}\s+FILE\s+\"?(?P<file>[^\"\s]+)\"?"
+# Bounded lookup for a replacement copy. Deep enough to reach examples/ and
+# runs/, shallow enough that this never becomes the slow search it replaces.
+_EXTERNAL_FILE_SEARCH_LIMIT = 400
+
+
+def swmm_external_file_error(
+    message: str,
+    *,
+    inp_path: str | Path | None = None,
+    search_root: str | Path | None = None,
+) -> RemediationError | None:
+    """Turn a SWMM "could not open external file" line into a next step.
+
+    Returns ``None`` when ``message`` is not that error, so callers can pass
+    every failure through and keep the original summary otherwise.
+
+    SWMM names the *series* (``TEMP_ROME``); the filename it actually wanted
+    is in the INP's ``[TIMESERIES]`` section. This resolves that name, says
+    whether the file is missing beside the INP, and points at a copy
+    elsewhere in the project when one exists. Paths in an INP resolve
+    relative to the INP's own directory, which is the whole reason copying a
+    lone .inp into a new folder breaks it.
+    """
+    match = _SWMM_EXTERNAL_FILE_RE.search(message or "")
+    if match is None:
+        return None
+    # SWMM ends the line with a period, and a greedy name class swallows it:
+    # "TEMP_ROME." then matches nothing in [TIMESERIES].
+    series = match.group("name").rstrip(".")
+    summary = message.strip().splitlines()[0] if message.strip() else "SWMM external file error"
+    if inp_path is None:
+        return RemediationError(
+            summary=summary,
+            cause=f"the model references external data for '{series}' that SWMM could not open",
+            hint="external file paths in an INP resolve relative to the INP's own directory",
+        )
+
+    inp = Path(inp_path)
+    referenced = _referenced_external_file(inp, series)
+    if referenced is None:
+        return RemediationError(
+            summary=summary,
+            cause=f"'{series}' is declared with an external FILE that SWMM could not open",
+            hint=(
+                f"check the [TIMESERIES] entry for {series} in {inp.name}; its file path "
+                "resolves relative to the INP's own directory"
+            ),
+        )
+
+    expected = inp.parent / referenced
+    if expected.exists():
+        return RemediationError(
+            summary=summary,
+            cause=f"'{series}' reads {referenced}, which is present but could not be opened",
+            hint=f"check permissions and encoding on {expected}",
+        )
+
+    cause = f"'{series}' reads {referenced}, which is not in {inp.parent}"
+    donor = _find_external_file(referenced, search_root)
+    if donor is not None:
+        return RemediationError(
+            summary=summary,
+            cause=cause,
+            hint=f"a file with that name exists at {donor}; copy it next to {inp.name} and re-run",
+        )
+    return RemediationError(
+        summary=summary,
+        cause=cause,
+        hint=(
+            f"copy {referenced} into {inp.parent} (INP file references resolve relative "
+            "to the INP's own directory), then re-run"
+        ),
+    )
+
+
+def _referenced_external_file(inp: Path, series: str) -> str | None:
+    """Filename the INP's [TIMESERIES] section binds to ``series``."""
+    try:
+        text = inp.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    pattern = re.compile(
+        _TIMESERIES_FILE_RE_TEMPLATE.format(name=re.escape(series)),
+        re.IGNORECASE | re.MULTILINE,
+    )
+    found = pattern.search(text)
+    return found.group("file") if found else None
+
+
+def _find_external_file(name: str, search_root: str | Path | None) -> Path | None:
+    """First copy of ``name`` under ``search_root``, or None.
+
+    Bounded on purpose: this exists to save a repository-wide scan, not to
+    become one.
+    """
+    if search_root is None:
+        return None
+    root = Path(search_root)
+    if not root.is_dir():
+        return None
+    skip = {".git", ".venv", "__pycache__", "node_modules", "build", "dist"}
+    seen = 0
+    try:
+        for candidate in root.rglob(Path(name).name):
+            seen += 1
+            if seen > _EXTERNAL_FILE_SEARCH_LIMIT:
+                return None
+            if any(part in skip for part in candidate.parts):
+                continue
+            if candidate.is_file():
+                return candidate
+    except OSError:
+        return None
+    return None
 
 
 def parameter_lookup_error(
@@ -429,6 +558,7 @@ def staged_facts_empty(*, staging_md: Path | None = None) -> RemediationError:
 
 
 __all__ = [
+    "swmm_external_file_error",
     "RemediationError",
     "fuzzy_match_suggestions",
     "parameter_lookup_error",

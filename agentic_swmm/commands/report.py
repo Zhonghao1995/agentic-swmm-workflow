@@ -46,6 +46,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 def main(args: argparse.Namespace) -> int:
     run_dir = require_dir(args.run_dir, "run directory")
+    # Same pre-step as the agent tool path: the skill script cannot parse a
+    # .rpt, so the hydraulic tables are extracted here and handed over as JSON.
+    try:
+        from agentic_swmm.reporting.hydraulic_summary import write_hydraulic_summary
+
+        write_hydraulic_summary(Path(run_dir))
+    except Exception:
+        pass
     cmd = python_command(
         script_path("skills", "swmm-report", "scripts", "generate_report.py"),
         "--run-dir", str(run_dir),
