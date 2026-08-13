@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from agentic_swmm.cli import main as cli_main
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 def _build_args(run_dir: Path, *, print_every: int = 2, total: int = 6) -> list[str]:
@@ -92,7 +93,7 @@ class ProgressNonTtyTests(unittest.TestCase):
                 ):
                     rc = cli_main(_build_args(run_dir, print_every=3, total=9))
             self.assertEqual(rc, 0)
-            trace = run_dir / "agent_trace.jsonl"
+            trace = agent_file(run_dir, "agent_trace.jsonl")
             self.assertTrue(trace.is_file())
             lines = [
                 json.loads(ln)

@@ -57,6 +57,7 @@ from typing import Any, Callable
 
 from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
 # Stakes labels callers may pass in. Kept small on purpose — the four
@@ -300,7 +301,7 @@ def _write_session_history_trace_row(
         ),
         **payload,
     }
-    with (trace_dir / "agent_trace.jsonl").open(
+    with (agent_file_for_write(trace_dir, "agent_trace.jsonl")).open(
         "a", encoding="utf-8"
     ) as handle:
         handle.write(json.dumps(out, sort_keys=True) + "\n")

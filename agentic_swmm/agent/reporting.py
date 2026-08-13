@@ -120,6 +120,7 @@ def write_report(
     ok = all(result.get("ok") for result in results) if results else dry_run
     status = "DRY RUN" if dry_run else ("PASS" if ok else "FAIL")
 
+
     lines: list[str] = [
         "# Agentic SWMM Executor Report",
         "",
@@ -155,6 +156,17 @@ def write_report(
         ]
     )
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # One page at the top of the folder, written for whoever opens it next.
+    # After the report exists, so it can list it: rendered from what is
+    # actually on disk, it never advertises an artifact that was not produced.
+    # Best-effort, because an index is not worth failing a finished run.
+    try:
+        from agentic_swmm.reporting.run_readme import write_run_readme
+
+        write_run_readme(session_dir, goal=goal, status=status)
+    except Exception:
+        pass
     return report_path
 
 

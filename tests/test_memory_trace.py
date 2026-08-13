@@ -21,6 +21,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from agentic_swmm.agent.memory_context import MemoryContext, ParametricRecord
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 from agentic_swmm.agent.memory_trace import (
     MEMORY_TRACE_FILENAME,
     VALID_CONFIDENCE_LABELS,
@@ -57,7 +58,7 @@ class LogWritesOneLineTests(unittest.TestCase):
                 confidence="auto_complete",
             )
 
-            trace = run_dir / MEMORY_TRACE_FILENAME
+            trace = agent_file(run_dir, MEMORY_TRACE_FILENAME)
             self.assertTrue(trace.is_file())
             lines = trace.read_text(encoding="utf-8").splitlines()
             self.assertEqual(len(lines), 1)
@@ -85,7 +86,7 @@ class LogWritesOneLineTests(unittest.TestCase):
                     confidence="llm",
                 )
 
-            lines = (run_dir / MEMORY_TRACE_FILENAME).read_text(
+            lines = (agent_file(run_dir, MEMORY_TRACE_FILENAME)).read_text(
                 encoding="utf-8"
             ).splitlines()
 
@@ -106,7 +107,7 @@ class LogWritesOneLineTests(unittest.TestCase):
                 confidence="memory_informed",
             )
 
-            self.assertTrue((run_dir / MEMORY_TRACE_FILENAME).is_file())
+            self.assertTrue((agent_file(run_dir, MEMORY_TRACE_FILENAME)).is_file())
 
 
 class ConfidenceWhitelistTests(unittest.TestCase):
@@ -192,7 +193,7 @@ class TornFinalLineTests(unittest.TestCase):
                 confidence="auto_complete",
             )
             # Simulate a crash mid-write.
-            trace = run_dir / MEMORY_TRACE_FILENAME
+            trace = agent_file(run_dir, MEMORY_TRACE_FILENAME)
             with trace.open("a", encoding="utf-8") as handle:
                 handle.write('{"decision_point": "broken", "confidence":')
 
@@ -212,7 +213,7 @@ class TornFinalLineTests(unittest.TestCase):
                 decision="v",
                 confidence="auto_complete",
             )
-            data = (run_dir / MEMORY_TRACE_FILENAME).read_bytes()
+            data = (agent_file(run_dir, MEMORY_TRACE_FILENAME)).read_bytes()
         self.assertTrue(data.endswith(b"\n"))
         # And only one newline at the very end, not blank-line padding.
         self.assertFalse(data.endswith(b"\n\n"))
