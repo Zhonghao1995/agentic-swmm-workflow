@@ -266,21 +266,65 @@ function Do-PythonVenv {
     if ($LASTEXITCODE -ne 0) { throw "venv creation failed" }
 }
 
+function Test-VenvImports {
+    # Returns the failure text, or "" when the wheels load. Native stderr is
+    # captured deliberately: with $ErrorActionPreference = 'Stop', PowerShell
+    # 5.1 turns the FIRST stderr line of a native command into a terminating
+    # error, so a traceback printed straight through arrives as one useless
+    # line ("Traceback (most recent call last):") and the reason is lost.
+    param([string]$VenvPython)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = & $VenvPython -c "import numpy, matplotlib, pandas" 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0) { return "" }
+        return $output.Trim()
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+function Install-PythonPackages {
+    param([string]$VenvPython)
+    & $VenvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
+    & $VenvPython -m pip install -r $ReqFile
+    if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
+    & $VenvPython -m pip install -e $RepoRoot
+    if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+}
+
 function Do-PythonDeps {
     $venvPython = Join-Path $VenvDir 'Scripts\python.exe'
     if (-not (Test-Path $venvPython)) { throw "venv python missing at $venvPython" }
-    & $venvPython -m pip install --upgrade pip
-    if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
-    & $venvPython -m pip install -r $ReqFile
-    if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
-    & $venvPython -m pip install -e $RepoRoot
-    if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+    Install-PythonPackages $venvPython
 
     # Prove the binary wheels actually load in THIS interpreter. pip reports
     # success from metadata alone, so an ABI mismatch stays silent until the
-    # first plot fails hours later. A failed import is a failed step.
-    & $venvPython -c "import numpy, matplotlib, pandas"
-    if ($LASTEXITCODE -ne 0) { throw "installed packages do not import (see the traceback above)" }
+    # first plot fails hours later.
+    $failure = Test-VenvImports $venvPython
+    if ($failure) {
+        # An already-corrupted venv reaches here: pyvenv.cfg agrees with the
+        # interpreter (it was repointed, not rebuilt) so the version check in
+        # Do-PythonVenv sees nothing wrong, while site-packages still holds
+        # wheels built for the previous Python. pip then "succeeds" in seconds
+        # because the metadata says installed. Rebuilding the venv is the only
+        # thing that clears it, and doing it here means the user does not have
+        # to know that: one re-run repairs the install.
+        Write-Host "Installed packages do not import; rebuilding the virtualenv from scratch." -ForegroundColor Yellow
+        Write-Host $failure
+        Remove-Item -Recurse -Force $VenvDir -ErrorAction SilentlyContinue
+        & $script:ResolvedPython -m venv $VenvDir
+        if ($LASTEXITCODE -ne 0) { throw "venv rebuild failed" }
+        Install-PythonPackages $venvPython
+        $failure = Test-VenvImports $venvPython
+        if ($failure) {
+            # Rebuilt and still broken: this is not a stale venv, so say what
+            # Python actually reported instead of a generic dependency error.
+            throw "installed packages still do not import after a clean rebuild:`n$failure"
+        }
+        Write-Host "Rebuild succeeded; the installed packages import cleanly." -ForegroundColor Green
+    }
 
     # Put the venv's Scripts dir on PATH so `aiswmm` resolves. pip -e drops
     # aiswmm.exe there, but nothing else adds it to PATH — without this the
