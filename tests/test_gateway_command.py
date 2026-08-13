@@ -454,3 +454,91 @@ class WizardOffersTheGatewayTests(unittest.TestCase):
 
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
+
+
+class CommandSurfaceTests(unittest.TestCase):
+    """The verbs a user actually types, including the failure paths.
+
+    These are the branches a person hits when something is wrong: a gateway
+    that was never installed, a stop with no pidfile, a status while the port
+    is refusing. Each one has to answer rather than raise.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.dict(os.environ, {"AISWMM_CONFIG_DIR": self._tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self._out = mock.patch("builtins.print")
+        self.print_mock = self._out.start()
+        self.addCleanup(self._out.stop)
+
+    def _printed(self) -> str:
+        return "\n".join(str(call.args[0]) for call in self.print_mock.call_args_list if call.args)
+
+    def _install_fake_binary(self) -> None:
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        gateway.binary_path().write_bytes(BINARY_BODY)
+        gateway.config_path().write_text("port: 8317\n", encoding="utf-8")
+
+    def test_register_exposes_every_verb(self) -> None:
+        import argparse
+
+        parser = argparse.ArgumentParser()
+        gateway.register(parser.add_subparsers())
+        args = parser.parse_args(["gateway", "install", "--force"])
+        self.assertEqual(args.gateway_action, "install")
+        self.assertTrue(args.force)
+        self.assertTrue(parser.parse_args(["gateway", "start", "--foreground"]).foreground)
+
+    def test_a_bare_gateway_call_reports_status(self) -> None:
+        self.assertEqual(gateway.main(mock.Mock(gateway_action=None)), 0)
+        self.assertIn("not installed", self._printed())
+
+    def test_status_distinguishes_serving_from_refusing(self) -> None:
+        self._install_fake_binary()
+        with mock.patch.object(gateway, "is_listening", return_value=True), \
+             mock.patch.object(gateway, "is_healthy", return_value=False):
+            gateway.main(mock.Mock(gateway_action="status"))
+        self.assertIn("listening but refusing requests", self._printed())
+
+    def test_status_says_serving_when_it_is(self) -> None:
+        self._install_fake_binary()
+        with mock.patch.object(gateway, "is_listening", return_value=True), \
+             mock.patch.object(gateway, "is_healthy", return_value=True):
+            gateway.main(mock.Mock(gateway_action="status"))
+        self.assertIn("serving", self._printed())
+
+    def test_installing_twice_says_so_instead_of_re_downloading(self) -> None:
+        self._install_fake_binary()
+        self.assertEqual(gateway.main(mock.Mock(gateway_action="install", force=False)), 0)
+        self.assertIn("already installed", self._printed())
+
+    def test_stop_without_a_pidfile_is_not_an_error(self) -> None:
+        # A user who never started one, or already stopped it, should not get
+        # a non-zero exit for asking.
+        self.assertEqual(gateway.main(mock.Mock(gateway_action="stop")), 0)
+        self.assertIn("No background gateway", self._printed())
+
+    def test_stop_with_a_corrupt_pidfile_does_not_raise(self) -> None:
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        gateway.pid_path().write_text("not a pid", encoding="utf-8")
+        self.assertFalse(gateway.stop_background())
+
+    def test_restart_stops_then_starts(self) -> None:
+        self._install_fake_binary()
+        calls = []
+        with mock.patch.object(gateway, "stop_background", lambda: calls.append("stop") or True), \
+             mock.patch.object(gateway, "start_background", lambda **_k: calls.append("start") or True):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="restart")), 0)
+        self.assertEqual(calls, ["stop", "start"])
+
+    def test_start_reports_the_log_when_the_gateway_will_not_come_up(self) -> None:
+        self._install_fake_binary()
+        with mock.patch.object(gateway, "start_background", return_value=False):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="start", foreground=False)), 1)
+
+    def test_a_gateway_error_becomes_an_exit_code_not_a_traceback(self) -> None:
+        with mock.patch.object(gateway, "install_gateway", side_effect=gateway.GatewayError("nope")):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="install", force=False)), 1)
