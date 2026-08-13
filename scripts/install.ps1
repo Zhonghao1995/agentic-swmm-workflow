@@ -205,6 +205,24 @@ function Resolve-Python {
         @{ Exe = 'python';     Args = @() },
         @{ Exe = 'py';         Args = @() }
     )
+    # Interpreters found on disk, appended after the launcher entries. The
+    # launcher is not enough on its own: with an ARM64 3.12 already registered,
+    # installing an x64 3.12 leaves `py -3.12` pointing at whichever was
+    # registered first, so a freshly installed x64 build is invisible through
+    # it. These are the standard per-user and machine-wide install roots.
+    foreach ($root in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python'),
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)}
+    )) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $exe = Join-Path $_.FullName 'python.exe'
+                if (Test-Path $exe) { $candidates += @{ Exe = $exe; Args = @() } }
+            }
+    }
+
     $onArm = (Get-HostArchitecture) -eq 'ARM64'
     $fallback = ''
     foreach ($candidate in $candidates) {
@@ -276,7 +294,18 @@ function Install-PythonFromPythonOrg {
     }
     Update-SessionPath
     $script:ResolvedPythonIsArm = $false
-    return ((Resolve-Python) -and -not $script:ResolvedPythonIsArm)
+    if ((Resolve-Python) -and -not $script:ResolvedPythonIsArm) { return $true }
+    Write-Host "python.org install finished but no x64 interpreter resolved." -ForegroundColor Yellow
+    Write-Host "Interpreters found on disk:"
+    foreach ($root in @((Join-Path $env:LOCALAPPDATA 'Programs\Python'), $env:ProgramFiles)) {
+        if (-not $root -or -not (Test-Path $root)) { continue }
+        Get-ChildItem -Path $root -Directory -Filter 'Python3*' -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $exe = Join-Path $_.FullName 'python.exe'
+                if (Test-Path $exe) { Write-Host "  $exe -> $(Get-PythonArchitecture $exe)" }
+            }
+    }
+    return $false
 }
 
 function Install-PythonViaWinget {
