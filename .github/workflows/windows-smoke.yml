@@ -35,9 +35,14 @@ jobs:
       - name: Run the documented one-liner (pinned to main)
         shell: powershell
         env:
-          # bootstrap clones with `git clone --branch`, which takes a
-          # branch/tag, not a bare sha: main is the honest pin here.
-          AISWMM_INSTALL_REF: main
+          # On a pull request, install the PR's own installer. This pinned
+          # `main` unconditionally, so the one check whose entire job is to
+          # validate an installer change was validating the installer already
+          # on main: a PR that fixed the installer failed, and a PR that broke
+          # it would have passed. bootstrap clones with `git clone --branch`,
+          # which takes a branch or tag, so a head ref works and a bare sha
+          # would not. Fork PRs have no branch in this repo, hence the fallback.
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
         run: ./web/install.ps1
 
       - name: Smoke the installed CLI
@@ -64,7 +69,7 @@ jobs:
       - name: Re-run the one-liner over the existing install (upgrade path)
         shell: powershell
         env:
-          AISWMM_INSTALL_REF: main
+          AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
         run: |
           $root = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow"
           $rel = "mcp/swmm-runner/package-lock.json"
