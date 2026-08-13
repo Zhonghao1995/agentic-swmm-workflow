@@ -36,6 +36,7 @@ from agentic_swmm.agent.swmm_runtime import run_layout
 from typing import Any
 
 from agentic_swmm.agent.ui import display_path
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 __all__ = [
     "bootstrap_prior_state",
@@ -90,7 +91,11 @@ def safe_name(value: str) -> str:
     empty result falls back to ``"agent"`` so callers can rely on a
     non-empty filename fragment.
     """
-    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip())
+    # ``\w`` with the default Unicode semantics keeps CJK and accented text.
+    # The old ASCII-only class destroyed every non-Latin prompt, so five
+    # different Chinese questions all produced folders named "agent_chat" and
+    # a user scrolling their runs could not tell them apart.
+    cleaned = re.sub(r"[^\w.-]+", "-", value.strip())
     return cleaned.strip("-") or "agent"
 
 
@@ -126,7 +131,35 @@ def infer_case_slug(prompt: str) -> str:
         return place
     if any(word in lowered for word in ("plot", "作图", "画图", "图")):
         return "plot-selection"
+    path_slug = _slug_from_path_mention(prompt)
+    if path_slug:
+        return path_slug
     return safe_name(prompt)[:32]
+
+
+#: A path a user pasted: Windows drive form, UNC, or POSIX absolute.
+_PATH_MENTION = re.compile(r"(?:[A-Za-z]:)?(?:[\\/][^\s\"\',，。；;)]+){2,}")
+
+
+def _slug_from_path_mention(prompt: str) -> str | None:
+    """Name a folder after the thing at the end of a pasted path.
+
+    ``C:\\Users\\Hoz\\AppData\\Local\\agentic-swmm-workflow\\examples\\33``
+    used to slug the whole string and truncate it, producing the run folder
+    ``193233_C-Users-Hoz-AppData-Local-agenti_run``: 32 characters that name
+    the user's home directory and not the work. The last component is the
+    part that identifies it.
+    """
+    match = _PATH_MENTION.search(prompt)
+    if match is None:
+        return None
+    raw = match.group(0).rstrip("\\/")
+    tail = re.split(r"[\\/]", raw)[-1]
+    if not tail:
+        return None
+    stem = tail.rsplit(".", 1)[0] if "." in tail[1:] else tail
+    slug = safe_name(stem)[:32]
+    return slug if slug and slug != "agent" else None
 
 
 #: Lowercase district qualifiers that may precede a proper place name.
@@ -281,7 +314,7 @@ def bootstrap_prior_state(active_run_dir: Path | None) -> dict[str, Any] | None:
     """
     if active_run_dir is None:
         return None
-    state_file = active_run_dir / "aiswmm_state.json"
+    state_file = agent_file(active_run_dir, "aiswmm_state.json")
     if not state_file.exists():
         return None
     try:

@@ -483,6 +483,118 @@ def _render_diagnostics(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
     doc.add_paragraph()
 
 
+def _render_hydraulic_results(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> None:
+    """Node, outfall and conduit results from the run's own .rpt.
+
+    Without this the deliverable carried provenance and QA gates and no
+    hydraulics, so a reader asked where the node flows were. SWMM had computed
+    them; nothing downstream looked.
+    """
+    data = artifacts.get("hydraulics") or {}
+
+    ctx["section_number"] += 1
+    raw_title = cfg.get("title", "Hydraulic Results")
+    doc.add_heading(_numbered_heading(ctx["section_number"], raw_title), level=2)
+
+    if not data:
+        p = doc.add_paragraph(
+            cfg.get(
+                "no_results_note",
+                "No hydraulic summary was extracted for this run, so no node, "
+                "outfall or conduit results are reported here.",
+            )
+        )
+        p.italic = True
+        doc.add_paragraph()
+        return
+
+    units = data.get("flow_units") or "flow units per model"
+    counts = data.get("counts") or {}
+    top_n = data.get("top_n")
+
+    def _shown_of(kind: str) -> str:
+        total = counts.get(kind)
+        rows = data.get(kind) or []
+        if total and total > len(rows):
+            return f" (top {len(rows)} of {total} by peak)"
+        return ""
+
+    nodes = data.get("nodes") or []
+    if nodes:
+        _add_table_caption(
+            doc,
+            cfg.get("nodes_caption", f"Node inflow summary, flow in {units}{_shown_of('nodes')}."),
+            ctx["table_counter"],
+        )
+        columns = ["Node", "Type", f"Peak total inflow ({units})", "Time of peak", "Flow balance error (%)"]
+        table = doc.add_table(rows=1 + len(nodes), cols=len(columns))
+        table.style = "Table Grid"
+        for i, name in enumerate(columns):
+            table.rows[0].cells[i].text = name
+        for i, row in enumerate(nodes):
+            cells = table.rows[i + 1].cells
+            cells[0].text = _na(row.get("node"))
+            cells[1].text = _na(row.get("type"))
+            cells[2].text = _na(row.get("max_total_inflow"))
+            cells[3].text = _na(row.get("time_of_max"))
+            cells[4].text = _na(row.get("flow_balance_error_pct"))
+        doc.add_paragraph()
+
+    outfalls = data.get("outfalls") or []
+    if outfalls:
+        _add_table_caption(
+            doc,
+            cfg.get("outfalls_caption", f"Outfall loading summary, flow in {units}{_shown_of('outfalls')}."),
+            ctx["table_counter"],
+        )
+        columns = ["Outfall", "Flow frequency (%)", f"Average flow ({units})", f"Peak flow ({units})", "Total volume (10^6 L)"]
+        table = doc.add_table(rows=1 + len(outfalls), cols=len(columns))
+        table.style = "Table Grid"
+        for i, name in enumerate(columns):
+            table.rows[0].cells[i].text = name
+        for i, row in enumerate(outfalls):
+            cells = table.rows[i + 1].cells
+            cells[0].text = _na(row.get("node"))
+            cells[1].text = _na(row.get("flow_freq_pct"))
+            cells[2].text = _na(row.get("avg_flow"))
+            cells[3].text = _na(row.get("max_flow"))
+            cells[4].text = _na(row.get("total_volume_10_6_ltr"))
+        doc.add_paragraph()
+
+    links = data.get("links") or []
+    if links:
+        _add_table_caption(
+            doc,
+            cfg.get("links_caption", f"Conduit peak flows, flow in {units}{_shown_of('links')}."),
+            ctx["table_counter"],
+        )
+        columns = ["Link", "Type", f"Peak flow ({units})", "Time of peak", "Max/full flow", "Max/full depth"]
+        table = doc.add_table(rows=1 + len(links), cols=len(columns))
+        table.style = "Table Grid"
+        for i, name in enumerate(columns):
+            table.rows[0].cells[i].text = name
+        for i, row in enumerate(links):
+            cells = table.rows[i + 1].cells
+            cells[0].text = _na(row.get("link"))
+            cells[1].text = _na(row.get("type"))
+            cells[2].text = _na(row.get("peak_flow"))
+            cells[3].text = _na(f"{row.get('time_days')} {row.get('time_hhmm')}" if row.get("time_hhmm") else None)
+            cells[4].text = _na(row.get("max_full_flow_ratio"))
+            cells[5].text = _na(row.get("max_full_depth_ratio"))
+        doc.add_paragraph()
+
+    _add_narrative(
+        doc,
+        cfg.get(
+            "narrative",
+            "Values are read from the run's own SWMM report file. A completed "
+            "simulation is not a calibrated or validated one: these are model "
+            "outputs, not measurements.",
+        ),
+    )
+    doc.add_paragraph()
+
+
 def _render_comparison(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> None:
     """Conditionally rendered — skipped entirely when comparison_available is false."""
     comp = artifacts.get("comparison", {})
@@ -638,6 +750,7 @@ SECTION_RENDERERS = {
     "run_summary": _render_run_summary,
     "model_description": _render_model_description,
     "qa_gates": _render_qa_gates,
+    "hydraulic_results": _render_hydraulic_results,
     "figures": _render_figures,
     "diagnostics": _render_diagnostics,
     "comparison": _render_comparison,
@@ -798,6 +911,12 @@ def _load_artifacts(run_dir: str) -> dict:
         "provenance": _load_json(provenance_path),
         "diagnostics": _load_json(os.path.join(run_dir, "model_diagnostics.json")),
         "comparison": _load_json(os.path.join(audit_dir, "comparison.json")),
+        # Written by agentic_swmm.reporting.hydraulic_summary before this
+        # script runs. This script is stdlib + python-docx + PyYAML only, so
+        # the .rpt parsing happens on that side and arrives as JSON like every
+        # other artifact here. Absent for runs generated before that step
+        # existed; the section then says so instead of inventing numbers.
+        "hydraulics": _load_json(os.path.join(audit_dir, "hydraulic_summary.json")),
     }
 
 

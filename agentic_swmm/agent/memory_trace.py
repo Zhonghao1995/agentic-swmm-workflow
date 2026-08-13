@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.memory_context import MemoryContext
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
 MEMORY_TRACE_FILENAME = "memory_trace.jsonl"
@@ -133,7 +134,7 @@ def log_memory_decision(
 
     run_dir_path = Path(run_dir)
     run_dir_path.mkdir(parents=True, exist_ok=True)
-    trace_path = run_dir_path / MEMORY_TRACE_FILENAME
+    trace_path = agent_file_for_write(run_dir_path, MEMORY_TRACE_FILENAME)
 
     entry = MemoryTraceEntry(
         timestamp=_now_iso(),
@@ -162,7 +163,7 @@ def read_memory_trace(run_dir: Path) -> list[dict[str, Any]]:
     reader so the runtime never has to special-case "trace not
     initialised yet".
     """
-    trace_path = Path(run_dir) / MEMORY_TRACE_FILENAME
+    trace_path = agent_file(Path(run_dir), MEMORY_TRACE_FILENAME)
     if not trace_path.is_file():
         return []
 

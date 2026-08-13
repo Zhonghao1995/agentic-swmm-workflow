@@ -308,7 +308,7 @@ def _make_mcp_routed_handler(
                 "tool": call.name,
                 "args": call.args,
                 "ok": False,
-                "summary": f"MCP transport failed: {exc}",
+                "summary": _augment_engine_failure(call, f"MCP transport failed: {exc}"),
             }
         return _wrap_mcp_result(call, server, tool, result)
 
@@ -319,6 +319,33 @@ def _make_mcp_routed_handler(
     # built via this factory and not a legacy subprocess shim.
     handler._mcp_routing = {"server": server, "tool": tool}  # type: ignore[attr-defined]
     return handler
+
+
+def _augment_engine_failure(call: ToolCall, summary: str) -> str:
+    """Attach a next step to engine errors the raw line cannot explain.
+
+    SWMM reports a missing external data file by series name and leaves the
+    filename in a different INP section, so a planner holding only
+    "ERROR 361 ... TEMP_ROME" has nothing to act on. One of these cost a live
+    session a repository-wide search before it worked the answer out. When the
+    builder does not recognise the message it returns None and the summary is
+    passed through untouched.
+    """
+    from agentic_swmm.agent.error_remediation import swmm_external_file_error
+
+    inp_arg = call.args.get("inp_path") or call.args.get("inp")
+    try:
+        remediation = swmm_external_file_error(
+            summary,
+            inp_path=Path(str(inp_arg)) if inp_arg else None,
+            search_root=repo_root(),
+        )
+    except Exception:  # never let a hint helper turn into a second failure
+        return summary
+    if remediation is None:
+        return summary
+    extra = [part for part in (remediation.cause, remediation.hint) if part]
+    return summary if not extra else summary + " — " + "; ".join(extra)
 
 
 def _wrap_mcp_result(

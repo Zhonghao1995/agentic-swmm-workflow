@@ -26,6 +26,7 @@ from tempfile import TemporaryDirectory
 
 import pandas as pd
 
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 from agentic_swmm.agent.swmm_runtime.calibration_runner import (
     RealCalibrationConfig,
     run_real_calibration,
@@ -339,7 +340,7 @@ class RealEngineCliHappyPathTests(unittest.TestCase):
         with TemporaryDirectory() as raw:
             rc, _, _, run_dir = self._drive(Path(raw), progress=True)
             self.assertEqual(rc, 0)
-            trace = (run_dir / "agent_trace.jsonl").read_text(encoding="utf-8").splitlines()
+            trace = (agent_file(run_dir, "agent_trace.jsonl")).read_text(encoding="utf-8").splitlines()
         events = [json.loads(line) for line in trace]
         self.assertEqual([e["iter_index"] for e in events], [2, 4])
         self.assertTrue(all(e["event"] == "calibrate_progress" for e in events))

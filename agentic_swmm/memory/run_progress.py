@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 SCHEMA_VERSION = "1.0"
@@ -203,7 +204,7 @@ def list_partial_state_files(run_dir: "Path | None") -> list[str]:
             entries.append(f"{progress} ({summary})")
         else:
             entries.append(str(progress))
-    trace = run_dir / "agent_trace.jsonl"
+    trace = agent_file(run_dir, "agent_trace.jsonl")
     if trace.is_file() and trace.stat().st_size > 0:
         entries.append(str(trace))
     chat_note = run_dir / "chat_note.md"

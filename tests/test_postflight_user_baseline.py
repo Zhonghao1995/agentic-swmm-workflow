@@ -18,6 +18,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 from agentic_swmm.agent.swmm_runtime.postflight import (
     QAReport,
     postflight_qa,
@@ -266,7 +267,7 @@ class TraceEmittedTests(unittest.TestCase):
                 use_case="stormwater_event",
             )
 
-            trace = run_dir / "memory_trace.jsonl"
+            trace = agent_file(run_dir, "memory_trace.jsonl")
             self.assertTrue(trace.is_file())
             lines = trace.read_text(encoding="utf-8").splitlines()
         events = [json.loads(l) for l in lines if l.strip()]

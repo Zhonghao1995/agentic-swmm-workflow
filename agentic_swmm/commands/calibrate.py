@@ -39,6 +39,7 @@ from agentic_swmm.agent.swmm_runtime.calibration_runner import (
     CalibrationRunConfig,
     run_calibration_with_checkpoints,
 )
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 from agentic_swmm.memory.run_progress import (
     ProgressCheckpoint,
     summarize_progress,
@@ -246,7 +247,7 @@ def _is_tty() -> bool:
 
 def _append_trace_line(run_dir: Path, payload: dict[str, Any]) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    trace = run_dir / "agent_trace.jsonl"
+    trace = agent_file_for_write(run_dir, "agent_trace.jsonl")
     with trace.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
 

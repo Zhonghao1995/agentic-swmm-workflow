@@ -36,6 +36,7 @@ from agentic_swmm.memory.parametric_memory import (
     record_parametric_run,
 )
 from agentic_swmm.providers.base import ProviderToolCall, ProviderToolResponse
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 class _ScriptedProvider:
@@ -141,7 +142,7 @@ class _PlannerHarness:
 
     def run(self) -> tuple[Path, Path]:
         trace_path = self.tmp / "agent_trace.jsonl"
-        memory_trace_path = self.tmp / "memory_trace.jsonl"
+        memory_trace_path = agent_file(self.tmp, "memory_trace.jsonl")
         registry = AgentToolRegistry()
         executor = AgentExecutor(
             registry,

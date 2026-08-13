@@ -41,6 +41,7 @@ import yaml
 from agentic_swmm import __version__ as _DIST_VERSION
 from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.paths import repo_root, resource_root
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file_for_write
 
 
 def _aiswmm_version() -> str:
@@ -191,7 +192,9 @@ def write_session_header(
         system_prompt=system_prompt,
     )
     snapshot_text = json.dumps(snapshot, indent=2, sort_keys=True)
-    (session_dir / AGENT_SNAPSHOT_NAME).write_text(snapshot_text + "\n", encoding="utf-8")
+    agent_file_for_write(session_dir, AGENT_SNAPSHOT_NAME).write_text(
+        snapshot_text + "\n", encoding="utf-8"
+    )
 
     env = environment_fingerprint()
     header = {

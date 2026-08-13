@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from agentic_swmm.agent.warm_intro import WarmIntroState, maybe_emit_warm_intro
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 __all__ = ["run_repl", "PlannerRunner"]
 
@@ -130,7 +131,10 @@ def run_repl(
         # string and a placeholder session directory; downstream
         # collaborators decide chat-vs-run.
         session_dir = base_dir
-        trace_path = session_dir / "agent_trace.jsonl"
+        # Placeholder, as the comment above says: the real session directory is
+        # chosen per turn downstream. Resolve without creating, or the runs
+        # base collects an empty _agent/ that nothing ever writes to.
+        trace_path = agent_file(session_dir, "agent_trace.jsonl")
         rc = planner_runner(
             args,
             prompt,

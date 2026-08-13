@@ -308,11 +308,16 @@ class TestHeadingsPresent:
             "1 Run Summary",
             "2 Model Description",
             "3 QA Gates",
-            "4 Figures",
-            "5 Model Diagnostics",
+            # Hydraulic Results is numbered even with no hydraulic_summary.json:
+            # the run in this fixture has none, and the section says so rather
+            # than vanishing. A reader must be able to tell "no results were
+            # extracted" from "this deliverable never reports results".
+            "4 Hydraulic Results",
+            "5 Figures",
+            "6 Model Diagnostics",
             # comparison skipped because comparison_available=false
-            "6 Artifact Provenance",
-            "7 Appendix: Generation Environment",
+            "7 Artifact Provenance",
+            "8 Appendix: Generation Environment",
         ]
         for heading in expected:
             assert heading in headings, f"Heading {heading!r} not found in {headings}"
