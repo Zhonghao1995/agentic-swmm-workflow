@@ -105,6 +105,34 @@ _PLANNER_INTERNAL_FRAGMENTS = (
 _LLM_INPUT_FRAGMENTS = ("/skills/", "/docs/")
 
 
+#: Everything from these markers on is context assembled for the model, not
+#: something a reader asked for. A continued turn carries the previous
+#: message's tail so the planner keeps its thread, and that whole block was
+#: being echoed back as the run's stated goal: ten lines of plumbing under the
+#: one line saying what the run was, opening mid-word from a truncated tail.
+_GOAL_DISPLAY_CUTS = (
+    "\n\n[Continuation of the previous turn",
+    "\n\nPrevious run directory:",
+    "\nPrevious run directory:",
+)
+
+
+def display_goal(goal: str) -> str:
+    """The part of ``goal`` the user actually typed.
+
+    The augmented string still goes to the planner, which needs the thread.
+    Only the surfaces a person reads are trimmed: the terminal echo, the run
+    README, and the report header. A goal with no continuation block comes
+    back unchanged.
+    """
+    text = goal or ""
+    for marker in _GOAL_DISPLAY_CUTS:
+        index = text.find(marker)
+        if index != -1:
+            text = text[:index]
+    return text.strip()
+
+
 def write_report(
     session_dir: Path,
     goal: str,
@@ -124,7 +152,7 @@ def write_report(
     lines: list[str] = [
         "# Agentic SWMM Executor Report",
         "",
-        f"- goal: {goal}",
+        f"- goal: {display_goal(goal)}",
         f"- planner: {planner}",
         f"- status: {status}",
         f"- session_dir: {session_dir}",
@@ -164,7 +192,7 @@ def write_report(
     try:
         from agentic_swmm.reporting.run_readme import write_run_readme
 
-        write_run_readme(session_dir, goal=goal, status=status)
+        write_run_readme(session_dir, goal=display_goal(goal), status=status)
     except Exception:
         pass
     return report_path

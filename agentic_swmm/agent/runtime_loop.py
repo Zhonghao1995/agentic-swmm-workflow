@@ -57,7 +57,7 @@ from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.prompts import WARM_INTRO_TEMPLATE
-from agentic_swmm.agent.reporting import write_event as _write_event
+from agentic_swmm.agent.reporting import display_goal, write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
 from agentic_swmm.agent.runtime import run_openai_plan
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
@@ -333,7 +333,7 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     try:
         from agentic_swmm.reporting.run_readme import write_run_readme
 
-        write_run_readme(session_dir, goal=str(getattr(state, "goal", "") or ""))
+        write_run_readme(session_dir, goal=display_goal(str(getattr(state, "goal", "") or "")))
     except Exception:
         pass
     return note_path
@@ -381,7 +381,10 @@ def run_openai_planner(
     # ("aiswmm executor" carried no information; planner and evidence
     # folder now share a line — the turn's tail still prints the final
     # report path when there is something to read).
-    _agent_say(f"Goal: {goal}")
+    # The continuation block is for the planner, not for the person
+    # watching. Echoing it put ten lines of internal plumbing on screen
+    # every time a turn continued the previous one.
+    _agent_say(f"Goal: {display_goal(goal)}")
     _agent_say(
         f"Session: {provider_name} ({model}) → {_display_path(session_dir)}"
     )
