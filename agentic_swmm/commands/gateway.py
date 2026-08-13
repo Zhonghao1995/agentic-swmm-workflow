@@ -138,6 +138,24 @@ def is_listening(port: int = GATEWAY_PORT, timeout: float = 0.8) -> bool:
         return False
 
 
+def is_healthy(timeout: float = 3.0) -> bool:
+    """True when the gateway answers ``/v1/models`` with a 2xx.
+
+    Listening is not the same as serving. With the example config's
+    placeholder api-keys the gateway binds the port and then 403s every
+    request, and a port probe calls that "ready" forever: the repair was
+    gated behind "nothing is listening", so a running-but-refusing gateway
+    was the one state that could never heal itself.
+    """
+    try:
+        with urlopen(  # noqa: S310 - fixed loopback URL
+            f"http://127.0.0.1:{GATEWAY_PORT}/v1/models", timeout=timeout
+        ) as response:
+            return 200 <= response.status < 300
+    except Exception:
+        return False
+
+
 def _fetch(url: str) -> bytes:
     with urlopen(url, timeout=_DOWNLOAD_TIMEOUT_S) as response:  # noqa: S310 - pinned https release URL
         return response.read()
@@ -319,15 +337,29 @@ def _repair_config_and_note() -> None:
 
 
 def start_background(*, wait_s: float = 20.0) -> bool:
-    """Serve detached and return True once the port answers.
+    """Serve detached and return True once the gateway actually answers.
 
     Foreground-only was the wrong default for the one command a user is
     told to run: it pins a terminal window open for the rest of the
     session, and closing that window silently takes the provider down.
+
+    The config repair runs first, unconditionally. A gateway that is up but
+    refusing (safe mode) is stopped and relaunched so the repaired config is
+    the one in memory; one we did not start has no pidfile, and that is
+    reported rather than guessed at.
     """
-    if is_listening():
-        return True
     _repair_config_and_note()
+    if is_listening():
+        if is_healthy():
+            return True
+        print("Gateway is listening but refusing requests; restarting it with the repaired config.")
+        if not stop_background():
+            print(
+                "Could not stop it: no pidfile, so this gateway was started outside aiswmm. "
+                "Stop it yourself, then run `aiswmm gateway start`.",
+                file=sys.stderr,
+            )
+            return False
     cmd = _command([])
     gateway_dir().mkdir(parents=True, exist_ok=True)
     log = open(log_path(), "ab")
@@ -343,12 +375,12 @@ def start_background(*, wait_s: float = 20.0) -> bool:
 
     deadline = time.monotonic() + wait_s
     while time.monotonic() < deadline:
-        if is_listening():
+        if is_listening() and is_healthy():
             return True
         if process.poll() is not None:
             return False
         time.sleep(0.4)
-    return is_listening()
+    return is_listening() and is_healthy()
 
 
 def stop_background() -> bool:
@@ -469,8 +501,12 @@ def _cmd_status() -> int:
         return 0
     print(f"Gateway:   {binary_path()} (CLIProxyAPI {GATEWAY_VERSION})")
     print(f"Config:    {config_path()}")
-    listening = is_listening()
-    print(f"Port {GATEWAY_PORT}: {'listening' if listening else 'not listening (aiswmm gateway login)'}")
+    if not is_listening():
+        print(f"Port {GATEWAY_PORT}: not listening (aiswmm gateway login)")
+    elif is_healthy():
+        print(f"Port {GATEWAY_PORT}: serving")
+    else:
+        print(f"Port {GATEWAY_PORT}: listening but refusing requests (aiswmm gateway restart)")
     return 0
 
 
@@ -488,6 +524,7 @@ __all__ = [
     "harden_config",
     "install_gateway",
     "is_installed",
+    "is_healthy",
     "is_listening",
     "start_background",
     "stop_background",

@@ -274,6 +274,105 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(gateway.main(args), 1)
 
 
+class HealthTests(unittest.TestCase):
+    """Listening is not serving.
+
+    The safe-mode gateway binds :8317 and 403s everything. A port probe
+    called that "ready", so the one broken state the tool could produce was
+    also the one state it could never repair.
+    """
+
+    def test_a_2xx_on_v1_models_is_healthy(self) -> None:
+        response = mock.MagicMock()
+        response.status = 200
+        response.__enter__ = lambda self_: response
+        response.__exit__ = lambda *a: False
+        with mock.patch.object(gateway, "urlopen", return_value=response):
+            self.assertTrue(gateway.is_healthy())
+
+    def test_a_refusing_gateway_is_not_healthy(self) -> None:
+        with mock.patch.object(gateway, "urlopen", side_effect=OSError("403")):
+            self.assertFalse(gateway.is_healthy())
+
+
+class RestartWhenRefusingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.dict(os.environ, {"AISWMM_CONFIG_DIR": self._tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        gateway.binary_path().write_bytes(BINARY_BODY)
+        gateway.config_path().write_text(CONFIG_BODY.decode(), encoding="utf-8")
+
+    def test_a_listening_but_refusing_gateway_is_stopped_and_relaunched(self) -> None:
+        stopped: list[bool] = []
+        with mock.patch.object(gateway, "is_listening", return_value=True), \
+             mock.patch.object(gateway, "is_healthy", side_effect=[False, True]), \
+             mock.patch.object(gateway, "stop_background", lambda: stopped.append(True) or True), \
+             mock.patch.object(gateway.subprocess, "Popen") as popen:
+            popen.return_value.pid = 4242
+            popen.return_value.poll.return_value = None
+            self.assertTrue(gateway.start_background(wait_s=1))
+        self.assertEqual(stopped, [True], "the broken gateway was left running")
+        popen.assert_called_once()
+        # The relaunch must use a config that no longer trips safe mode.
+        self.assertNotIn("your-api-key-1", gateway.config_path().read_text(encoding="utf-8"))
+
+    def test_a_gateway_we_did_not_start_is_reported_not_guessed_at(self) -> None:
+        with mock.patch.object(gateway, "is_listening", return_value=True), \
+             mock.patch.object(gateway, "is_healthy", return_value=False), \
+             mock.patch.object(gateway, "stop_background", return_value=False), \
+             mock.patch.object(gateway.subprocess, "Popen") as popen:
+            self.assertFalse(gateway.start_background(wait_s=1))
+        popen.assert_not_called()
+
+
+class SafeModeHintTests(unittest.TestCase):
+    """The generic 401/403 advice was wrong for this failure, and looping."""
+
+    def _error(self, body: str):
+        import urllib.error
+
+        return urllib.error.HTTPError(
+            "http://localhost:8317/v1/chat/completions", 403, "Forbidden", {}, io.BytesIO(body.encode())
+        )
+
+    def test_safe_mode_403_points_at_the_gateway_not_a_key(self) -> None:
+        from agentic_swmm.providers import _http
+
+        body = '{"error":"unsafe_example_api_key","message":"Proxy API endpoints are disabled"}'
+        with self.assertRaises(_http.ProviderHTTPError) as caught:
+            _http.post_json_with_retry(
+                mock.Mock(),
+                timeout=1,
+                provider_label="Local gateway",
+                auth_hint=" — your AISWMM_CODEX_API_KEY is missing",
+                max_attempts=1,
+                opener=mock.Mock(side_effect=self._error(body)),
+                sleep=lambda _s: None,
+            )
+        message = str(caught.exception)
+        self.assertIn("aiswmm gateway restart", message)
+        self.assertNotIn("AISWMM_CODEX_API_KEY is missing", message)
+
+    def test_an_ordinary_403_keeps_the_key_advice(self) -> None:
+        from agentic_swmm.providers import _http
+
+        with self.assertRaises(_http.ProviderHTTPError) as caught:
+            _http.post_json_with_retry(
+                mock.Mock(),
+                timeout=1,
+                provider_label="OpenAI",
+                auth_hint=" — check your OPENAI_API_KEY",
+                max_attempts=1,
+                opener=mock.Mock(side_effect=self._error('{"error":"invalid_api_key"}')),
+                sleep=lambda _s: None,
+            )
+        self.assertIn("check your OPENAI_API_KEY", str(caught.exception))
+
+
 class WizardOffersTheGatewayTests(unittest.TestCase):
     """The wizard must offer the install, not print a recipe and stop."""
 
