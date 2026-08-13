@@ -28,15 +28,37 @@ install_git_if_needed() {
       brew install git
       ;;
     Linux)
+      # sudo is not a given. Containers and plenty of server images run as
+      # root and ship no sudo at all, where the hardcoded call died as
+      # "sudo: command not found" under set -e: a bare shell error, with
+      # nothing said about git, package managers, or what to do next.
+      _as_root() {
+        if [[ "$(id -u)" -eq 0 ]]; then
+          "$@"
+        elif command -v sudo >/dev/null 2>&1; then
+          sudo "$@"
+        else
+          printf '[ERROR] git is missing, and installing it needs root.\n' >&2
+          printf '        This shell is not root and sudo is not available.\n' >&2
+          printf '        Install git yourself and re-run, for example:\n' >&2
+          printf '          apt-get install -y git   # or dnf/yum/apk\n' >&2
+          return 1
+        fi
+      }
       if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update
-        sudo apt-get install -y git
+        _as_root apt-get update
+        _as_root apt-get install -y git
       elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y git
+        _as_root dnf install -y git
       elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y git
+        _as_root yum install -y git
+      elif command -v apk >/dev/null 2>&1; then
+        _as_root apk add --no-cache git
+      elif command -v pacman >/dev/null 2>&1; then
+        _as_root pacman -Sy --noconfirm git
       else
         printf '[ERROR] git is required and no supported package manager was found.\n' >&2
+        printf '        Tried: apt-get, dnf, yum, apk, pacman. Install git and re-run.\n' >&2
         exit 1
       fi
       ;;
