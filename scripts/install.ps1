@@ -539,7 +539,12 @@ Write-Host "  1. Open a new shell so PATH updates take effect."
 # table and lists the options itself; naming only OpenAI and Claude here hid
 # every keyless route, and reprinting the full list here just moved the
 # confusion instead of removing it.
-if ($Provider -ne 'openai') {
+if (Test-Path (Join-Path $AiswmmConfigDir 'setup_state.json')) {
+    # Already ran the picker. The key-file probe below cannot see this: the
+    # keyless routes (codex gateway, ollama, lmstudio) never write one, so a
+    # returning codex user was told to go pick a provider they had picked.
+    Write-Host "  2. Start: aiswmm            (change provider any time: aiswmm setup)"
+} elseif ($Provider -ne 'openai') {
     Write-Host "  2. Store your $Provider API key: aiswmm login --$Provider"
     Write-Host "  3. Start: aiswmm"
 } elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {

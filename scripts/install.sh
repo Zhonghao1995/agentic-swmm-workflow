@@ -465,7 +465,12 @@ SUMMARY
 # Two numbered commands, never a menu. The picker itself lists the routes and
 # detects what is already running; reprinting that list here made the summary
 # read like a second decision the user had to make before running anything.
-if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
+if [[ -f "$AISWMM_CONFIG_DIR/setup_state.json" ]]; then
+  # Already ran the picker. The key-file probe below cannot see this: the
+  # keyless routes (codex gateway, ollama, lmstudio) never write one, so a
+  # returning codex user was told to go pick a provider they had picked.
+  echo "  2. Run: aiswmm            (change provider any time: aiswmm setup)"
+elif [[ "$AISWMM_PROVIDER" != "openai" ]]; then
   echo "  2. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
   echo "  3. Run: aiswmm"
 elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then

@@ -92,6 +92,19 @@ assert_log_contains "aiswmm setup"
 assert_log_contains "no API key"
 harness_teardown
 
+# --- 5c. a user who already ran the picker is not sent back to it ---------
+# setup_state.json is the only signal a keyless choice leaves behind: the
+# codex gateway, ollama and lmstudio never write a key file, so probing for
+# one told a configured codex user to go pick a provider again.
+harness_setup
+mkdir -p "$SANDBOX/home/.aiswmm"
+printf '{"route": "codex"}\n' > "$SANDBOX/home/.aiswmm/setup_state.json"
+run_install --auto
+assert_status 0
+assert_log_contains "Install complete"
+assert_log_not_contains "pick your AI provider"
+harness_teardown
+
 # --- 6. openai with a pre-existing key gets no login nag ------------------
 # A user who already has a key (env file present) must NOT be told to log in
 # again; Next steps should just point at chat.
