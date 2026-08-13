@@ -134,9 +134,10 @@ def _badge(spec: RouteSpec, det: RouteDetection) -> str:
 _GATEWAY_RECIPE = (
     "No local gateway detected on :8317 (CLIProxyAPI) or :20128 (OmniRoute).\n"
     "The codex route talks to any local OpenAI-compatible gateway that fronts\n"
-    "your ChatGPT subscription. One-time setup with CLIProxyAPI:\n"
-    "  brew install cliproxyapi && brew services start cliproxyapi\n"
-    "  cli-proxy-api --codex-login\n"
+    "your ChatGPT subscription. One-time setup:\n"
+    "  macOS:          brew install cliproxyapi && brew services start cliproxyapi\n"
+    "                  cli-proxy-api --codex-login\n"
+    "  Windows, Linux: npm install -g omniroute && omniroute\n"
     "Your selection is saved either way; start the gateway before the first run."
 )
 

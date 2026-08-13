@@ -102,13 +102,16 @@ owns the vendor login and quota handling, and aiswmm talks to
 open-source gateways:
 
 ```bash
-# CLIProxyAPI (default port 8317)
+# CLIProxyAPI (default port 8317), macOS
 brew install cliproxyapi && brew services start cliproxyapi
 cli-proxy-api --codex-login
 
-# OmniRoute (default port 20128)
+# OmniRoute (default port 20128), any platform with Node
 npm install -g omniroute && omniroute
 ```
+
+On Windows the brew recipe does not apply; use the npm one. The installer
+already puts Node 18+ on the machine, so no extra prerequisite.
 
 Then run `aiswmm setup`, pick `codex`, and the wizard finds whichever gateway
 is listening. Subscription terms are between you and your model vendor;

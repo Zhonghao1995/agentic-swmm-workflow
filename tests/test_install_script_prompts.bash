@@ -79,6 +79,17 @@ assert_status 0
 assert_log_contains "aiswmm login --anthropic"
 harness_teardown
 
+# --- 5b. openai with no key points at the picker, not just at a key -------
+# ADR-0008 added keyless routes (local codex gateway, Ollama, LM Studio). A
+# user with no OpenAI key must learn that `aiswmm setup` exists, otherwise the
+# only path the installer ever showed them was "go buy an API key".
+harness_setup
+run_install --auto
+assert_status 0
+assert_log_contains "aiswmm setup"
+assert_log_contains "no API key"
+harness_teardown
+
 # --- 6. openai with a pre-existing key gets no login nag ------------------
 # A user who already has a key (env file present) must NOT be told to log in
 # again; Next steps should just point at chat.

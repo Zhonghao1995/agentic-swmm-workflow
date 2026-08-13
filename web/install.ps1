@@ -23,7 +23,8 @@ if ([string]::IsNullOrWhiteSpace($Ref)) {
 
 $url = "https://raw.githubusercontent.com/$repo/$Ref/scripts/bootstrap.ps1"
 Write-Host "[INFO] Installing Agentic SWMM from $repo ($Ref)"
-Write-Host "[INFO] You'll pick your AI provider (OpenAI or Claude) and model after install."
+Write-Host "[INFO] You'll pick your AI provider and model after install: an API key, a local"
+Write-Host "[INFO] gateway that fronts a ChatGPT plan, or a local model. No key needed to start."
 
 $scriptText = (New-Object System.Net.WebClient).DownloadString($url)
 $block = [scriptblock]::Create($scriptText)

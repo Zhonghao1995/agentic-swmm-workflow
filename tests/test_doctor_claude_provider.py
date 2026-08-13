@@ -83,6 +83,13 @@ class RenderLLMProviderSectionTests(_CleanKeyEnvMixin):
         body = render_llm_provider_section(collect_llm_provider_status())
         self.assertIn("aiswmm login --anthropic", body)
 
+    def test_section_points_at_the_route_picker(self) -> None:
+        # Two key rows alone read as "OpenAI or Anthropic, pick one", which
+        # stopped being the whole menu at ADR-0008. Doctor has to name the
+        # picker or the keyless routes are invisible from the CLI.
+        body = render_llm_provider_section(collect_llm_provider_status())
+        self.assertIn("aiswmm setup", body)
+
 
 class DoctorJsonCarriesProviderTests(_CleanKeyEnvMixin):
     def test_json_payload_carries_both_key_flags(self) -> None:

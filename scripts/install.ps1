@@ -58,7 +58,7 @@ function Print-Banner {
     Write-Host '|  - Install Python deps (~150 MB)                  |'
     Write-Host '|  - Install MCP servers via npm (~400 MB)          |'
     Write-Host '|  - Copy skill files to ~/.aiswmm/                 |'
-    Write-Host '|  - Optionally configure your OpenAI API key       |'
+    Write-Host '|  - Optionally store an API key (or pick later)    |'
     Write-Host '|                                                   |'
     Write-Host '|  Estimated total time: 3-5 minutes                |'
     Write-Host '|  Total disk: ~600 MB                              |'
@@ -530,15 +530,28 @@ Write-Host ("- Python venv:  " + $(if ($SkipPython) { 'skipped' } else { $VenvDi
 Write-Host ("- MCP servers:  " + $(if ($SkipMcp -or $script:SkipMcpAuto) { 'skipped' } else { 'installed' }))
 Write-Host "- SWMM engine:  $swmmStatus"
 Write-Host "- Config dir:   $AiswmmConfigDir"
-Write-Host "- AI provider:  choose after install (OpenAI or Claude)"
+Write-Host "- AI provider:  choose after install (aiswmm setup)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
 Write-Host "  2. Run: aiswmm doctor"
-Write-Host "  3. Choose your AI provider and store your key (the only manual step):"
-Write-Host "       OpenAI:  aiswmm login              (optional: pick a model with 'aiswmm model')"
-Write-Host "       Claude:  aiswmm login --anthropic"
-Write-Host "  4. Start: aiswmm"
+# Mirror of the bash installer's provider guidance. `aiswmm setup` is the
+# interactive picker over the whole route table; naming only OpenAI and Claude
+# here hid every keyless route (local gateway, Ollama, LM Studio) from anyone
+# who arrived through the installer.
+if ($Provider -ne 'openai') {
+    Write-Host "  3. Store your $Provider API key: aiswmm login --$Provider"
+    Write-Host "  4. Start: aiswmm"
+} elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {
+    Write-Host "  3. Pick your AI provider: aiswmm setup"
+    Write-Host "       An API key (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini),"
+    Write-Host "       a local gateway that fronts a ChatGPT plan (no API key), or a local"
+    Write-Host "       model (Ollama, LM Studio). The picker detects what is already running."
+    Write-Host "       Already have an OpenAI key? aiswmm login --openai"
+    Write-Host "  4. Start: aiswmm"
+} else {
+    Write-Host "  3. Start: aiswmm            (change provider any time: aiswmm setup)"
+}
 Write-Host ""
 
 exit 0

@@ -184,7 +184,7 @@ print_banner() {
 |  - Install Python deps (~150 MB)                  |
 |  - Install MCP servers via npm (~400 MB)          |
 |  - Copy skill files to ~/.aiswmm/                 |
-|  - Optionally configure your OpenAI API key       |
+|  - Optionally store an API key (or pick later)    |
 |                                                   |
 |  Estimated total time: 3-5 minutes                |
 |  Total disk: ~600 MB                              |
