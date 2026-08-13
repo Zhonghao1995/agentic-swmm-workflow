@@ -51,7 +51,14 @@ jobs:
         env:
           AISWMM_NO_SETUP: "1"
           AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
-        run: bash web/install.sh
+        run: |
+          # bootstrap.sh clones into the CURRENT directory (TARGET_DIR is
+          # relative), unlike the Windows path which pins LOCALAPPDATA. Run
+          # from $HOME so the checkout lands where a user typing the one-liner
+          # in their home directory would get it, and where the later steps
+          # look.
+          cd "$HOME"
+          bash "$GITHUB_WORKSPACE/web/install.sh"
 
       - name: The engine must actually be there
         run: |
