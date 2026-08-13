@@ -115,6 +115,19 @@ do_python_venv() {
     chmod +x "$VENV_DIR/bin/python"
     return 0
   fi
+  # `python -m venv <existing dir>` repoints the interpreter and leaves
+  # site-packages alone, so a venv built by 3.11 and later reused by 3.12 ends
+  # up with cp311 binaries under a cpython-312 interpreter and every import
+  # fails. pip does not notice: the metadata still says installed.
+  if [[ -f "$VENV_DIR/pyvenv.cfg" ]]; then
+    local existing_version wanted_version
+    existing_version="$(sed -n 's/^[[:space:]]*version[_a-z]*[[:space:]]*=[[:space:]]*\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' "$VENV_DIR/pyvenv.cfg" | head -1)"
+    wanted_version="$("$RESOLVED_PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)"
+    if [[ -n "$existing_version" && -n "$wanted_version" && "$existing_version" != "$wanted_version" ]]; then
+      echo "Existing venv was built with Python $existing_version; interpreter is now $wanted_version. Rebuilding."
+      rm -rf "$VENV_DIR"
+    fi
+  fi
   "$RESOLVED_PYTHON" -m venv "$VENV_DIR"
 }
 
@@ -126,6 +139,10 @@ do_python_deps() {
   "$venv_python" -m pip install --upgrade pip
   "$venv_python" -m pip install -r "$REQ_FILE"
   "$venv_python" -m pip install -e "$REPO_ROOT"
+  # Prove the binary wheels actually load in THIS interpreter. pip reports
+  # success from metadata alone, so an ABI mismatch stays silent until the
+  # first plot fails hours later. A failed import is a failed step.
+  "$venv_python" -c "import numpy, matplotlib, pandas"
 }
 
 do_mcp_install() {
@@ -452,7 +469,6 @@ Summary
 
 Next steps
   1. Open a new shell so PATH updates take effect.
-  2. Run: aiswmm doctor
 SUMMARY
 
 # Provider key guidance lives here, not in Step 5: run_step hides a step's
@@ -460,17 +476,43 @@ SUMMARY
 # re-derive the key state at summary time (the same condition do_api_key uses):
 #   - non-openai: the installer never prompts for a key -> always point at login
 #   - openai with no key saved or pre-existing (user pressed Enter to skip, or
-#     no tty was available) -> tell them how to add it
+#     no tty was available) -> send them to the picker
 #   - openai with a key already configured -> just start chatting
-if [[ "$AISWMM_PROVIDER" != "openai" ]]; then
-  echo "  3. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
-  echo "  4. Run: aiswmm"
-elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
-  echo "  3. Add your OpenAI API key: aiswmm login --openai"
-  echo "  4. Run: aiswmm"
-else
-  echo "  3. Run: aiswmm"
+#
+# Two numbered commands, never a menu. The picker itself lists the routes and
+# detects what is already running; reprinting that list here made the summary
+# read like a second decision the user had to make before running anything.
+# Hand straight over to the picker instead of printing a command and hoping.
+# Guards, in order: an explicit opt-out for scripted installs, a real tty (CI
+# pipes the installer and would hang on the first prompt), a venv to run it
+# from, and nothing configured yet (never re-open the picker on an upgrade).
+if [[ "${AISWMM_NO_SETUP:-}" != "1" ]] \
+   && [[ -t 0 ]] \
+   && [[ -x "$VENV_DIR/bin/aiswmm" ]] \
+   && [[ ! -f "$AISWMM_CONFIG_DIR/setup_state.json" ]]; then
+  echo ""
+  echo "Setting up your AI provider now. Pick a route; some need no API key."
+  echo ""
+  "$VENV_DIR/bin/aiswmm" setup || true
+  echo ""
 fi
+
+if [[ -f "$AISWMM_CONFIG_DIR/setup_state.json" ]]; then
+  # Already ran the picker. The key-file probe below cannot see this: the
+  # keyless routes (codex gateway, ollama, lmstudio) never write one, so a
+  # returning codex user was told to go pick a provider they had picked.
+  echo "  2. Run: aiswmm            (change provider any time: aiswmm setup)"
+elif [[ "$AISWMM_PROVIDER" != "openai" ]]; then
+  echo "  2. Store your $AISWMM_PROVIDER API key: aiswmm login --$AISWMM_PROVIDER"
+  echo "  3. Run: aiswmm"
+elif [[ -z "${OPENAI_API_KEY:-}" && ! -f "$AISWMM_ENV_FILE" ]]; then
+  echo "  2. Run: aiswmm setup      (pick your AI provider; some need no API key)"
+  echo "  3. Run: aiswmm"
+else
+  echo "  2. Run: aiswmm            (change provider any time: aiswmm setup)"
+fi
+echo ""
+echo "  Something looks wrong? aiswmm doctor"
 echo ""
 
 exit 0

@@ -62,6 +62,20 @@ _AUTH_REMEDIATION = {
 }
 
 
+# CLIProxyAPI binds its port and then refuses every proxy request while its
+# config still holds the shipped placeholder api-keys. The generic 401/403
+# advice ("your key is missing or expired, run aiswmm login") is exactly
+# wrong here: there is no key to fix, and following it loops the user
+# through a browser sign-in that succeeds and changes nothing.
+_GATEWAY_SAFE_MODE_MARKER = "unsafe_example_api_key"
+_GATEWAY_SAFE_MODE_HINT = (
+    " — the local gateway is up but refusing requests: its config still has the"
+    " example placeholder api-keys. This is not a credential problem, and signing"
+    " in again will not fix it. Run `aiswmm gateway restart` to repair the config"
+    " and reload it."
+)
+
+
 def _auth_hint(provider_label: str) -> str:
     """Return a one-line ' — how to fix your key' suffix for a 401/403."""
     env_var, login_cmd = _AUTH_REMEDIATION.get(
@@ -130,7 +144,10 @@ def post_json_with_retry(
                 f"{provider_label} API request failed with HTTP {exc.code}: {detail}"
             )
             if exc.code in AUTH_STATUSES:
-                message += auth_hint if auth_hint is not None else _auth_hint(provider_label)
+                if _GATEWAY_SAFE_MODE_MARKER in message:
+                    message += _GATEWAY_SAFE_MODE_HINT
+                else:
+                    message += auth_hint if auth_hint is not None else _auth_hint(provider_label)
             raise ProviderHTTPError(message, status=exc.code) from exc
         except urllib.error.URLError as exc:
             # Connection-level blip (DNS, refused, socket timeout) — transient.

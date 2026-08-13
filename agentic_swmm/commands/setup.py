@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import argparse as _argparse
 import json
 import shutil
 import sys
@@ -80,7 +81,19 @@ def main(args: argparse.Namespace) -> int:
 
         from agentic_swmm.commands.setup_wizard import run_wizard
 
-        result = run_wizard(ask=input, ask_secret=_getpass.getpass)
+        # The two managed-gateway callables are passed explicitly: run_wizard
+        # deliberately does not default them, so no caller can start a 58 MB
+        # download or a browser OAuth flow by omission.
+        from agentic_swmm.commands import gateway as _gateway
+
+        result = run_wizard(
+            ask=input,
+            ask_secret=_getpass.getpass,
+            install_gateway=_gateway.install_gateway,
+            gateway_login=lambda: _gateway.main(
+                _argparse.Namespace(gateway_action="login")
+            ),
+        )
         if result is None:
             return 1
         provider = result.route

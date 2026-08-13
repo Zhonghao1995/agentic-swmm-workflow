@@ -720,6 +720,7 @@ def render_llm_provider_section(status: LLMProviderStatus) -> str:
         LLM provider (default: openai):
           OpenAI API key        OPENAI_API_KEY      - present
           Anthropic API key     ANTHROPIC_API_KEY   - absent (opt-in: aiswmm login --anthropic)
+          Other routes          aiswmm setup        - picker for the local gateway (codex), ...
     """
     openai_state = (
         "present" if status.openai_key_present else "absent (set it: aiswmm login --openai)"
@@ -731,8 +732,8 @@ def render_llm_provider_section(status: LLMProviderStatus) -> str:
     )
     lines = [
         f"LLM provider (default: {status.default_provider}):",
-        f"  {'OpenAI API key':21} {'OPENAI_API_KEY':19} - {openai_state}",
-        f"  {'Anthropic API key':21} {'ANTHROPIC_API_KEY':19} - {anthropic_state}",
+        f"  {'OpenAI API key':21} {'OPENAI_API_KEY':20} - {openai_state}",
+        f"  {'Anthropic API key':21} {'ANTHROPIC_API_KEY':20} - {anthropic_state}",
     ]
     if status.default_provider not in ("openai", "anthropic"):
         key_label = status.default_key_env or "(keyless)"
@@ -741,9 +742,16 @@ def render_llm_provider_section(status: LLMProviderStatus) -> str:
             if status.default_route_ready
             else f"not ready (set it: aiswmm login {status.default_provider})"
         )
-        lines.append(f"  {'Default route':21} {key_label:19} - {route_state}")
+        lines.append(f"  {'Default route':21} {key_label:20} - {route_state}")
     if status.fallback_provider:
-        lines.append(f"  {'Fallback route':21} {status.fallback_provider:19} - configured")
+        lines.append(f"  {'Fallback route':21} {status.fallback_provider:20} - configured")
+    # Without this row the section reads as "OpenAI or Anthropic, pick one",
+    # which is what the route table stopped meaning at ADR-0008. The keyless
+    # routes are invisible to anyone who only ever runs `aiswmm doctor`.
+    lines.append(
+        f"  {'Other routes':21} {'aiswmm setup':20} - "
+        "picker for the local gateway (codex), OpenRouter, Ollama, LM Studio, ..."
+    )
     return "\n".join(lines)
 
 

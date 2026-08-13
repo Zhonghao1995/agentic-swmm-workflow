@@ -58,7 +58,7 @@ function Print-Banner {
     Write-Host '|  - Install Python deps (~150 MB)                  |'
     Write-Host '|  - Install MCP servers via npm (~400 MB)          |'
     Write-Host '|  - Copy skill files to ~/.aiswmm/                 |'
-    Write-Host '|  - Optionally configure your OpenAI API key       |'
+    Write-Host '|  - Optionally store an API key (or pick later)    |'
     Write-Host '|                                                   |'
     Write-Host '|  Estimated total time: 3-5 minutes                |'
     Write-Host '|  Total disk: ~600 MB                              |'
@@ -233,7 +233,35 @@ function Run-Step {
 # Step bodies
 # ---------------------------------------------------------------------------
 
+function Get-VenvPythonVersion {
+    # "version = 3.11.9" in pyvenv.cfg records the interpreter that built the
+    # venv. Returns "3.11", or "" when there is no venv to ask.
+    param([string]$Dir)
+    $cfg = Join-Path $Dir 'pyvenv.cfg'
+    if (-not (Test-Path $cfg)) { return "" }
+    foreach ($line in Get-Content $cfg) {
+        if ($line -match '^\s*version(_info)?\s*=\s*(\d+)\.(\d+)') {
+            return "$($Matches[2]).$($Matches[3])"
+        }
+    }
+    return ""
+}
+
 function Do-PythonVenv {
+    # `python -m venv <existing dir>` does NOT rebuild it and does NOT clear
+    # site-packages: it repoints pyvenv.cfg and Scripts at the new interpreter
+    # and leaves the old packages in place. When the resolved interpreter
+    # changes between installs (3.11 present first, winget adds 3.12 later,
+    # Resolve-Python prefers 3.12) the result is a 3.12 venv full of cp311
+    # binaries, and the first import fails with
+    #   _multiarray_umath.cp311-win_amd64.pyd ... incompatible with cpython-312
+    # pip does not notice, because the metadata says everything is installed.
+    $wanted = (& $script:ResolvedPython -c "import sys; print('%d.%d' % sys.version_info[:2])" 2>$null | Select-Object -First 1)
+    $existing = Get-VenvPythonVersion $VenvDir
+    if ($existing -and $wanted -and $existing -ne $wanted) {
+        Write-Host "Existing venv was built with Python $existing; interpreter is now $wanted. Rebuilding."
+        Remove-Item -Recurse -Force $VenvDir -ErrorAction SilentlyContinue
+    }
     & $script:ResolvedPython -m venv $VenvDir
     if ($LASTEXITCODE -ne 0) { throw "venv creation failed" }
 }
@@ -247,6 +275,12 @@ function Do-PythonDeps {
     if ($LASTEXITCODE -ne 0) { throw "pip install -r requirements failed" }
     & $venvPython -m pip install -e $RepoRoot
     if ($LASTEXITCODE -ne 0) { throw "pip install -e . failed" }
+
+    # Prove the binary wheels actually load in THIS interpreter. pip reports
+    # success from metadata alone, so an ABI mismatch stays silent until the
+    # first plot fails hours later. A failed import is a failed step.
+    & $venvPython -c "import numpy, matplotlib, pandas"
+    if ($LASTEXITCODE -ne 0) { throw "installed packages do not import (see the traceback above)" }
 
     # Put the venv's Scripts dir on PATH so `aiswmm` resolves. pip -e drops
     # aiswmm.exe there, but nothing else adds it to PATH — without this the
@@ -530,15 +564,49 @@ Write-Host ("- Python venv:  " + $(if ($SkipPython) { 'skipped' } else { $VenvDi
 Write-Host ("- MCP servers:  " + $(if ($SkipMcp -or $script:SkipMcpAuto) { 'skipped' } else { 'installed' }))
 Write-Host "- SWMM engine:  $swmmStatus"
 Write-Host "- Config dir:   $AiswmmConfigDir"
-Write-Host "- AI provider:  choose after install (OpenAI or Claude)"
+Write-Host "- AI provider:  choose after install (aiswmm setup)"
 Write-Host ""
 Write-Host "Next steps"
 Write-Host "  1. Open a new shell so PATH updates take effect."
-Write-Host "  2. Run: aiswmm doctor"
-Write-Host "  3. Choose your AI provider and store your key (the only manual step):"
-Write-Host "       OpenAI:  aiswmm login              (optional: pick a model with 'aiswmm model')"
-Write-Host "       Claude:  aiswmm login --anthropic"
-Write-Host "  4. Start: aiswmm"
+# Mirror of the bash installer's provider guidance: two numbered commands,
+# never a menu. `aiswmm setup` is the interactive picker over the whole route
+# table and lists the options itself; naming only OpenAI and Claude here hid
+# every keyless route, and reprinting the full list here just moved the
+# confusion instead of removing it.
+# Hand straight over to the picker instead of printing a command and hoping.
+# Guards, in order: an explicit opt-out for scripted installs, a real
+# interactive console (CI runs this with stdin redirected and would hang on
+# the first prompt), a venv to run it from, and nothing configured yet.
+$venvAiswmm = Join-Path $VenvDir 'Scripts\aiswmm.exe'
+$canPrompt = $false
+if ($env:AISWMM_NO_SETUP -ne '1' -and [Environment]::UserInteractive) {
+    try { $canPrompt = -not [Console]::IsInputRedirected } catch { $canPrompt = $false }
+}
+if ($canPrompt -and (Test-Path $venvAiswmm) -and
+    -not (Test-Path (Join-Path $AiswmmConfigDir 'setup_state.json'))) {
+    Write-Host ""
+    Write-Host "Setting up your AI provider now. Pick a route; some need no API key."
+    Write-Host ""
+    & $venvAiswmm setup
+    Write-Host ""
+}
+
+if (Test-Path (Join-Path $AiswmmConfigDir 'setup_state.json')) {
+    # Already ran the picker. The key-file probe below cannot see this: the
+    # keyless routes (codex gateway, ollama, lmstudio) never write one, so a
+    # returning codex user was told to go pick a provider they had picked.
+    Write-Host "  2. Start: aiswmm            (change provider any time: aiswmm setup)"
+} elseif ($Provider -ne 'openai') {
+    Write-Host "  2. Store your $Provider API key: aiswmm login --$Provider"
+    Write-Host "  3. Start: aiswmm"
+} elseif (-not $env:OPENAI_API_KEY -and -not (Test-Path $AiswmmEnvFile)) {
+    Write-Host "  2. Run: aiswmm setup      (pick your AI provider; some need no API key)"
+    Write-Host "  3. Start: aiswmm"
+} else {
+    Write-Host "  2. Start: aiswmm            (change provider any time: aiswmm setup)"
+}
+Write-Host ""
+Write-Host "  Something looks wrong? aiswmm doctor"
 Write-Host ""
 
 exit 0

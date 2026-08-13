@@ -24,6 +24,7 @@ export AISWMM_INSTALL_REF="$REF"
 URL="https://raw.githubusercontent.com/${REPO}/${REF}/scripts/bootstrap.sh"
 
 printf '[INFO] Installing Agentic SWMM from %s (%s)\n' "$REPO" "$REF"
-printf '[INFO] You will pick your AI provider (OpenAI or Claude) and model after install.\n'
+printf '[INFO] You will pick your AI provider and model after install: an API key, a local\n'
+printf '[INFO] gateway that fronts a ChatGPT plan, or a local model. No key needed to start.\n'
 
 curl -fsSL "$URL" | bash -s -- "$@"

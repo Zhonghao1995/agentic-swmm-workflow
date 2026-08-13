@@ -21,7 +21,7 @@ PINNED_CLI_VERBS = [
     "agent", "audit", "bootstrap", "calibrate",
     "capabilities", "case", "cite", "cite-param", "climate", "compare",
     "config",
-    "demo", "doctor", "expert", "help", "list", "login", "map", "mcp",
+    "demo", "doctor", "expert", "gateway", "help", "list", "login", "map", "mcp",
     "memory", "model", "plot", "report",
     "review", "run", "runs", "setup", "skill", "storm",
     "trace", "transfer", "uncertainty",

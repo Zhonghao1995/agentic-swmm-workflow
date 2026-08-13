@@ -34,8 +34,10 @@ assert_log_contains "Install complete"
 assert_log_not_contains "Continue with installation?"
 # Default provider is openai and --auto stores no key (the harness pins
 # OPENAI_API_KEY empty), so the always-visible Next steps must tell the user
-# how to add one — the in-step "skipped" hint is swallowed on success.
-assert_log_contains "aiswmm login --openai"
+# how to get a working provider: the in-step "skipped" hint is swallowed on
+# success. That used to be `aiswmm login --openai`; the picker supersedes it,
+# collects an OpenAI key just the same, and also reaches the keyless routes.
+assert_log_contains "aiswmm setup"
 harness_teardown
 
 # --- 2. Y at risk warning + Y at every step --------------------------------
@@ -77,6 +79,40 @@ harness_setup
 run_install --auto --provider anthropic
 assert_status 0
 assert_log_contains "aiswmm login --anthropic"
+harness_teardown
+
+# --- 5b. openai with no key points at the picker, not just at a key -------
+# ADR-0008 added keyless routes (local codex gateway, Ollama, LM Studio). A
+# user with no OpenAI key must learn that `aiswmm setup` exists, otherwise the
+# only path the installer ever showed them was "go buy an API key".
+harness_setup
+run_install --auto
+assert_status 0
+assert_log_contains "aiswmm setup"
+assert_log_contains "no API key"
+harness_teardown
+
+# --- 5c. a user who already ran the picker is not sent back to it ---------
+# setup_state.json is the only signal a keyless choice leaves behind: the
+# codex gateway, ollama and lmstudio never write a key file, so probing for
+# one told a configured codex user to go pick a provider again.
+harness_setup
+mkdir -p "$SANDBOX/home/.aiswmm"
+printf '{"route": "codex"}\n' > "$SANDBOX/home/.aiswmm/setup_state.json"
+run_install --auto
+assert_status 0
+assert_log_contains "Install complete"
+assert_log_not_contains "pick your AI provider"
+harness_teardown
+
+# --- 5d. a non-interactive install never opens the picker -----------------
+# The harness pipes stdin, which is what CI does. If the guard regressed this
+# case would hang instead of failing, so the assertion is on the banner the
+# hand-off prints.
+harness_setup
+run_install --auto
+assert_status 0
+assert_log_not_contains "Setting up your AI provider now"
 harness_teardown
 
 # --- 6. openai with a pre-existing key gets no login nag ------------------

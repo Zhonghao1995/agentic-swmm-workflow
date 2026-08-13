@@ -307,7 +307,29 @@ def _provider_key_present_keyed(provider: str) -> bool:
 
 # Registry: route name -> login handler, derived from the route table.
 # Adding a route in routes.py adds its login surface automatically.
+def _codex_handler(args: argparse.Namespace) -> int:
+    """``aiswmm login codex`` runs the gateway's OAuth, not a key prompt.
+
+    The generic handler asks every route with a ``key_env`` for a key, and
+    for codex that key is optional and almost always empty: the credential
+    the route actually needs is a ChatGPT sign-in held by the local gateway.
+    Asking for a key here sent users looking for a token that does not
+    exist, twice in the same session, while the browser flow that does work
+    sat behind a different verb. Set AISWMM_CODEX_API_KEY yourself if your
+    gateway is the rare one that requires an inbound key.
+    """
+    from agentic_swmm.commands import gateway
+
+    spec = ROUTES["codex"]
+    set_config_value("provider.default", "codex")
+    set_config_value("codex.model", spec.default_model)
+    print(f"Default provider route set to codex; codex.model set to {spec.default_model}.")
+    return gateway.main(argparse.Namespace(gateway_action="login"))
+
+
 _LOGIN_HANDLERS = {name: _make_route_handler(name) for name in ROUTES}
+# codex authenticates through the gateway's browser flow, not a stored key.
+_LOGIN_HANDLERS["codex"] = _codex_handler
 
 
 __all__ = ["register", "main"]

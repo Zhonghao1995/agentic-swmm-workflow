@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import importlib.util
 import json
 import os
@@ -40,7 +41,27 @@ _DOCTOR_EXAMPLE = "aiswmm doctor --fix --yes"
 
 
 def _module_available(name: str) -> bool:
-    return importlib.util.find_spec(name) is not None
+    """True only when the module actually imports.
+
+    find_spec() alone was a lie detector that could not detect lies: it
+    answers "is this package on disk", not "does it work". A venv carrying
+    numpy binaries built for another Python (cp311 wheels under cpython-312,
+    which is what happens when `python -m venv` is re-run over an existing
+    venv with a different interpreter) has a perfectly findable spec and
+    raises ImportError on use. doctor printed "numpy - importable OK" while
+    every plot in the product failed.
+    """
+    return _module_import_error(name) is None
+
+
+def _module_import_error(name: str) -> str | None:
+    """None when ``name`` imports, else a one-line reason."""
+    try:
+        importlib.import_module(name)
+    except BaseException as exc:  # a broken C extension can raise anything
+        first = str(exc).strip().splitlines()
+        return first[0][:200] if first else exc.__class__.__name__
+    return None
 
 
 def _swmm_version() -> str | None:
@@ -342,14 +363,19 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     )
     checks.append(("swmm5 executable", swmm is not None, swmm_detail, True))
     for module in ("numpy", "matplotlib", "swmmtoolbox"):
-        checks.append(
-            (
-                f"python module: {module}",
-                _module_available(module),
-                "importable" if _module_available(module) else "missing",
-                True,
+        reason = _module_import_error(module)
+        detail = "importable"
+        if reason is not None:
+            # "missing" was wrong for the case that actually bites: the package
+            # is present and unusable. Say which it is, and quote the reason.
+            found = importlib.util.find_spec(module) is not None
+            detail = (
+                f"installed but fails to import: {reason}; "
+                "re-run the installer to rebuild the virtualenv"
+                if found
+                else "missing"
             )
-        )
+        checks.append((f"python module: {module}", reason is None, detail, True))
     # Optional [anywhere] extra — swmm-anywhere skill is callable iff
     # swmmanywhere is importable. We deliberately treat absence as INFO,
     # not WARN, since the default pip install aiswmm intentionally omits

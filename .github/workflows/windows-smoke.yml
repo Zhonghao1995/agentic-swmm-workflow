@@ -35,6 +35,10 @@ jobs:
       - name: Run the documented one-liner (the PR's own installer)
         shell: powershell
         env:
+          # The installer hands over to the interactive picker when it detects
+          # a console. Belt and braces on top of that detection: a hung prompt
+          # here would burn the job's whole timeout.
+          AISWMM_NO_SETUP: "1"
           # On a pull request, install the PR's own installer. This pinned
           # `main` unconditionally, so the one check whose entire job is to
           # validate an installer change was validating the installer already
@@ -69,6 +73,7 @@ jobs:
       - name: Re-run the one-liner over the existing install (upgrade path)
         shell: powershell
         env:
+          AISWMM_NO_SETUP: "1"
           AISWMM_INSTALL_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || 'main' }}
         run: |
           $root = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow"

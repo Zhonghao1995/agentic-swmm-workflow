@@ -16,7 +16,7 @@ from agentic_swmm.agent.help_router import (
     render_top_level_help,
     route_help_verb,
 )
-from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, climate, compare, config, demo, doctor, login, map as map_cmd, mcp, memory, model, plot, report, review, run, runs_tidy, setup, skill, storm, trace, transfer, uncertainty
+from agentic_swmm.commands import agent, audit, bootstrap_memory, calibrate, capabilities, cite, cite_param, climate, compare, config, demo, doctor, gateway, login, map as map_cmd, mcp, memory, model, plot, report, review, run, runs_tidy, setup, skill, storm, trace, transfer, uncertainty
 from agentic_swmm.commands.expert import calibration as expert_calibration
 from agentic_swmm.commands.expert import gap_promote as expert_gap_promote
 from agentic_swmm.commands.expert import pour_point as expert_pour_point
@@ -115,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     capabilities.register(subparsers)
     setup.register(subparsers)
     login.register(subparsers)
+    gateway.register(subparsers)
     mcp.register(subparsers)
     skill.register(subparsers)
     doctor.register(subparsers)
