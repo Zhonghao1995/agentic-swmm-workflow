@@ -113,7 +113,7 @@ function Update-SessionPath {
 }
 
 function Test-RealPython {
-    param([string]$Exe)
+    param([string]$Exe, [string[]]$LauncherArgs = @())
     # Windows ships python.exe/python3.exe "App execution alias" stubs under
     # WindowsApps that sit on PATH even with no Python installed; running one
     # prints "Python was not found" and opens the Store. Reject those by their
@@ -122,11 +122,23 @@ function Test-RealPython {
     if (-not $cmd) { return $false }
     if ($cmd.Source -and $cmd.Source -like '*\WindowsApps\*') { return $false }
     try {
-        & $Exe -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
+        & $Exe @LauncherArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
     }
+}
+
+function Get-PythonExecutable {
+    # Absolute path of the interpreter a candidate actually starts. Resolving
+    # `py -3.11` down to its own sys.executable keeps every downstream call a
+    # single string, so nothing else has to know the launcher was involved.
+    param([string]$Exe, [string[]]$LauncherArgs = @())
+    try {
+        $value = (& $Exe @LauncherArgs -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
+        if ($LASTEXITCODE -eq 0 -and $value) { return $value.Trim() }
+    } catch { }
+    return ''
 }
 
 function Get-HostArchitecture {
@@ -139,9 +151,9 @@ function Get-HostArchitecture {
 }
 
 function Get-PythonArchitecture {
-    param([string]$Exe)
+    param([string]$Exe, [string[]]$LauncherArgs = @())
     try {
-        $value = (& $Exe -c "import platform; print(platform.machine())" 2>$null | Select-Object -First 1)
+        $value = (& $Exe @LauncherArgs -c "import platform; print(platform.machine())" 2>$null | Select-Object -First 1)
         if ($LASTEXITCODE -eq 0 -and $value) { return $value.Trim().ToUpper() }
     } catch { }
     return ''
@@ -156,20 +168,39 @@ function Get-PythonArchitecture {
 # emulation Windows 11 provides, which is what every working install on these
 # machines has actually been doing.
 function Resolve-Python {
-    $candidates = @('python3.12', 'python3.11', 'python3.10', 'python3', 'python', 'py')
+    # `python3.11` and friends are a Unix convention and do not exist on
+    # Windows: a specific version is reachable only through the py launcher,
+    # as `py -3.11`. Without those entries an x64 Python installed alongside
+    # an ARM64 one is invisible, because bare `python` and bare `py` both
+    # resolve to the newest interpreter, which is the ARM64 one. That is
+    # exactly how a machine with a perfectly good x64 3.11 still failed.
+    $candidates = @(
+        @{ Exe = 'py';         Args = @('-3.12') },
+        @{ Exe = 'py';         Args = @('-3.11') },
+        @{ Exe = 'py';         Args = @('-3.10') },
+        @{ Exe = 'python3.12'; Args = @() },
+        @{ Exe = 'python3.11'; Args = @() },
+        @{ Exe = 'python3.10'; Args = @() },
+        @{ Exe = 'python3';    Args = @() },
+        @{ Exe = 'python';     Args = @() },
+        @{ Exe = 'py';         Args = @() }
+    )
     $onArm = (Get-HostArchitecture) -eq 'ARM64'
     $fallback = ''
     foreach ($candidate in $candidates) {
-        if (-not (Test-RealPython $candidate)) { continue }
+        if (-not (Test-RealPython $candidate.Exe $candidate.Args)) { continue }
+        # Resolve to the interpreter's own path so no caller needs the args.
+        $exe = Get-PythonExecutable $candidate.Exe $candidate.Args
+        if (-not $exe) { continue }
         if (-not $onArm) {
-            $script:ResolvedPython = $candidate
+            $script:ResolvedPython = $exe
             return $true
         }
-        if ((Get-PythonArchitecture $candidate) -eq 'AMD64') {
-            $script:ResolvedPython = $candidate
+        if ((Get-PythonArchitecture $exe) -eq 'AMD64') {
+            $script:ResolvedPython = $exe
             return $true
         }
-        if (-not $fallback) { $fallback = $candidate }
+        if (-not $fallback) { $fallback = $exe }
     }
     if ($onArm -and $fallback) {
         # An ARM64-only Python is worse than none: the install appears to work
@@ -202,13 +233,31 @@ function Install-PythonViaWinget {
         Write-Host "  under Windows' emulation and installs everything."
         $archArgs = @('--architecture', 'x64')
     }
-    Write-Host "Installing Python 3.12 via winget (user scope, no admin)..."
+    # winget keys on the package id, not the architecture. When an ARM64
+    # Python.Python.3.12 is already installed, `winget install --architecture
+    # x64` for that same id turns into an upgrade check and reports "No
+    # available upgrade found" while installing nothing. Asking for a
+    # different minor version is what actually lands an x64 interpreter next
+    # to the ARM64 one.
+    $ids = @('Python.Python.3.12')
+    if ($onArm) { $ids = @('Python.Python.3.12', 'Python.Python.3.11', 'Python.Python.3.13') }
+    Write-Host "Installing Python via winget (user scope, no admin)..."
     try {
         # Out-Host, not the output stream: `& winget` output otherwise lands in
         # this function's return value, making it a truthy array whatever the
         # install did, so the caller's `-not (Install-...)` never fired.
-        & winget install -e --id Python.Python.3.12 --scope user --silent `
-            @archArgs --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
+        foreach ($id in $ids) {
+            & winget install -e --id $id --scope user --silent `
+                @archArgs --accept-package-agreements --accept-source-agreements 2>&1 | Out-Host
+            Update-SessionPath
+            $script:ResolvedPythonIsArm = $false
+            if ((Resolve-Python) -and -not $script:ResolvedPythonIsArm) { break }
+            if ($onArm) {
+                Write-Host "$id did not yield an x64 interpreter; trying the next version." -ForegroundColor Yellow
+            } else {
+                break
+            }
+        }
     } catch {
         Write-Host "winget Python install raised: $($_.Exception.Message)" -ForegroundColor Yellow
     }
@@ -524,9 +573,12 @@ if ((Resolve-Python) -and $script:ResolvedPythonIsArm) {
         Print-Failure "An x64 Python is required on Windows on ARM." @(
             "shapely and pyogrio publish no win_arm64 wheels, so an ARM64 interpreter",
             "  cannot install them and pip falls back to a source build that needs GDAL.",
-            "Install the x64 build and re-run:",
-            "  winget install -e --id Python.Python.3.12 --architecture x64",
-            "Or download the 'Windows installer (64-bit)' from https://www.python.org/downloads/"
+            "winget keys on the package id, so asking for x64 of a version you already",
+            "  have as ARM64 reports 'No available upgrade found' and installs nothing.",
+            "Install a different minor version as x64, which lands beside it:",
+            "  winget install -e --id Python.Python.3.11 --architecture x64",
+            "Or download the 'Windows installer (64-bit)' from https://www.python.org/downloads/",
+            "Then re-run this installer; it prefers the x64 interpreter on ARM machines."
         )
         exit 2
     }

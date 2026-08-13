@@ -50,8 +50,28 @@ grep -qE "'--architecture', 'x64'" <<<"$body" \
 # in the dependency step with a GDAL error that names nothing recognisable.
 grep -q 'x64 Python is required on Windows on ARM' <<<"$body" \
   || fail "install.ps1 does not fail clearly when only an ARM64 Python is available"
-grep -q 'winget install -e --id Python.Python.3.12 --architecture x64' <<<"$body" \
-  || fail "the remediation must give the exact command that fixes it"
+grep -q 'winget install -e --id Python.Python.3.11 --architecture x64' <<<"$body" \
+  || fail "the remediation must give a command that actually installs an x64 interpreter"
+
+# --- 4b. winget keys on the package id, not the architecture ---------------
+# Asking for x64 of a version already installed as ARM64 turns into an upgrade
+# check: "Found an existing package already installed... No available upgrade
+# found." Nothing is installed and the exit code is 0. Trying a different minor
+# version is what actually lands an x64 interpreter beside the ARM64 one.
+grep -q "'Python.Python.3.11'" <<<"$body" \
+  || fail "install.ps1 only ever asks winget for one Python version; on ARM that can be a silent no-op"
+grep -q 'did not yield an x64 interpreter' <<<"$body" \
+  || fail "install.ps1 must notice when a winget install produced nothing usable and move on"
+
+# --- 4c. a specific version is only reachable through the py launcher ------
+# `python3.11` is a Unix convention that does not exist on Windows. Bare
+# `python` and bare `py` both resolve to the NEWEST interpreter, so an x64
+# Python installed alongside an ARM64 one is invisible without `py -3.11`.
+# A machine with a perfectly good x64 3.11 still failed for exactly this.
+grep -q "Args = @('-3.11')" <<<"$body" \
+  || fail "install.ps1 never asks the py launcher for a specific version; a second interpreter is unreachable"
+grep -q 'sys.executable' <<<"$body" \
+  || fail "a launcher-resolved candidate must collapse to its own interpreter path, or every later call needs the args"
 
 # --- 5. x64 hosts keep their existing path untouched -----------------------
 # The whole change must be a no-op off ARM: the arch arguments are built only
