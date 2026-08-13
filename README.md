@@ -107,7 +107,7 @@ After installation, launch the runtime with `aiswmm`.
 
 One-line installers run a remote script; review it first if you want to see what executes. The installer can set up your OpenAI API key, or you can configure one later via your shell; see [API key configuration](docs/api-key-configuration.md). Never paste API keys into the `aiswmm` conversation.
 
-**Three ways in** (one-line installer, Docker, or `pip`), compared side by side (what you get, prerequisites, reproducibility, when to pick each): [choosing an install path](docs/runtime-install-options.md).
+**Three ways in** (one-line installer, Docker, or `pip`), compared side by side (what you get, prerequisites, reproducibility, when to pick each): [choosing an install path](docs/runtime-install-options.md). If something goes wrong, or you want a provider that needs no API key: [install and troubleshooting](docs/install-troubleshooting.md).
 
 ## Workflow
 
