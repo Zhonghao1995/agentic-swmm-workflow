@@ -101,17 +101,31 @@ owns the vendor login and quota handling, and aiswmm talks to
 `http://localhost:8317/v1` (or any base URL you configure). Two widely used
 open-source gateways:
 
-```bash
-# CLIProxyAPI (default port 8317), macOS
-brew install cliproxyapi && brew services start cliproxyapi
-cli-proxy-api --codex-login
+The shortest path is the managed install, which picks the right build for the
+machine (including Windows on ARM, where an emulated x64 Python would
+otherwise report AMD64) and verifies it against the release checksums:
 
-# OmniRoute (default port 20128), any platform with Node
-npm install -g omniroute && omniroute
+```bash
+aiswmm gateway install
+aiswmm gateway login    # opens a browser to sign in to ChatGPT
+aiswmm gateway start    # serves on 127.0.0.1:8317
 ```
 
-On Windows the brew recipe does not apply; use the npm one. The installer
-already puts Node 18+ on the machine, so no extra prerequisite.
+`aiswmm setup` offers the same install when you pick `codex` and nothing is
+listening, so the usual path is to answer one prompt. The binary lands in
+`~/.aiswmm/gateway/` and is a pinned CLIProxyAPI release (MIT).
+
+Bring your own gateway instead, if you prefer:
+
+```bash
+# CLIProxyAPI via Homebrew, macOS. Note the formula links `cliproxyapi`,
+# while the GitHub release ships `cli-proxy-api`.
+brew install cliproxyapi && brew services start cliproxyapi
+cliproxyapi -codex-login
+
+# OmniRoute (default port 20128), needs Node 22+
+npm install -g omniroute && omniroute
+```
 
 Then run `aiswmm setup`, pick `codex`, and the wizard finds whichever gateway
 is listening. Subscription terms are between you and your model vendor;
