@@ -593,3 +593,72 @@ class CodexLoginRoutingTests(unittest.TestCase):
              mock.patch.object(gateway, "main", return_value=1), \
              mock.patch("builtins.print"):
             self.assertEqual(login_cmd._LOGIN_HANDLERS["codex"](mock.Mock()), 1)
+
+
+class LoginFlowTests(unittest.TestCase):
+    """`aiswmm gateway login` is the one command a user is told to run.
+
+    It has to finish the job: install if needed, sign in, and leave the
+    gateway serving. Each of its three outcomes is a different answer.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patcher = mock.patch.dict(os.environ, {"AISWMM_CONFIG_DIR": self._tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        gateway.gateway_dir().mkdir(parents=True, exist_ok=True)
+        gateway.binary_path().write_bytes(BINARY_BODY)
+        gateway.config_path().write_text("port: 8317\n", encoding="utf-8")
+        self._out = mock.patch("builtins.print")
+        self.print_mock = self._out.start()
+        self.addCleanup(self._out.stop)
+
+    def _printed(self) -> str:
+        return "\n".join(str(c.args[0]) for c in self.print_mock.call_args_list if c.args)
+
+    def test_a_successful_sign_in_leaves_it_serving(self) -> None:
+        with mock.patch.object(gateway, "_run_binary", return_value=0), \
+             mock.patch.object(gateway, "start_background", return_value=True):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="login")), 0)
+        self.assertIn("Gateway is serving", self._printed())
+
+    def test_an_abandoned_sign_in_does_not_claim_success(self) -> None:
+        # The browser flow can be closed. Reporting "serving" then would send
+        # the user to a gateway that has no credentials.
+        with mock.patch.object(gateway, "_run_binary", return_value=1), \
+             mock.patch.object(gateway, "start_background") as start:
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="login")), 1)
+        start.assert_not_called()
+
+    def test_a_signed_in_gateway_that_will_not_start_points_at_its_log(self) -> None:
+        with mock.patch.object(gateway, "_run_binary", return_value=0), \
+             mock.patch.object(gateway, "start_background", return_value=False):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="login")), 1)
+
+    def test_foreground_start_runs_the_binary_directly(self) -> None:
+        with mock.patch.object(gateway, "_run_binary", return_value=0) as run:
+            self.assertEqual(
+                gateway.main(mock.Mock(gateway_action="start", foreground=True)), 0
+            )
+        run.assert_called_once_with([])
+
+    def test_stop_reports_when_it_actually_stopped_one(self) -> None:
+        with mock.patch.object(gateway, "stop_background", return_value=True):
+            self.assertEqual(gateway.main(mock.Mock(gateway_action="stop")), 0)
+        self.assertIn("Gateway stopped", self._printed())
+
+    def test_stop_kills_the_recorded_pid(self) -> None:
+        gateway.pid_path().write_text("4242", encoding="utf-8")
+        with mock.patch.object(gateway.os, "name", "posix"), \
+             mock.patch.object(gateway.os, "kill") as kill:
+            self.assertTrue(gateway.stop_background())
+        kill.assert_called_once()
+        self.assertFalse(gateway.pid_path().exists(), "a stopped gateway must not leave its pidfile")
+
+    def test_a_dead_pid_is_reported_not_swallowed(self) -> None:
+        gateway.pid_path().write_text("4242", encoding="utf-8")
+        with mock.patch.object(gateway.os, "name", "posix"), \
+             mock.patch.object(gateway.os, "kill", side_effect=OSError("no such process")):
+            self.assertFalse(gateway.stop_background())
