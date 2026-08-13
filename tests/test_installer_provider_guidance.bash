@@ -65,6 +65,24 @@ for f in "$REPO_ROOT/scripts/install.ps1" "$REPO_ROOT/scripts/install.sh"; do
   fi
 done
 
+# --- 4b. the hand-off to the picker must be guarded ------------------------
+# Auto-launching an interactive picker from a piped one-liner is right for a
+# human and fatal for CI, which would hang on the first prompt until the job
+# times out. Every install surface that launches it must offer the opt-out
+# and check for a real console.
+for f in "$REPO_ROOT/scripts/install.ps1" "$REPO_ROOT/scripts/install.sh"; do
+  if grep -q 'aiswmm setup' "$f" && grep -qE 'aiswmm(\.exe)?" setup|\$venvAiswmm setup' "$f"; then
+    grep -q 'AISWMM_NO_SETUP' "$f" \
+      || fail "$(basename "$f") launches the picker with no AISWMM_NO_SETUP opt-out"
+  fi
+done
+grep -q 'IsInputRedirected' "$REPO_ROOT/scripts/install.ps1" \
+  || fail "install.ps1 must check for a real console before launching the picker"
+grep -q -- '-t 0' "$REPO_ROOT/scripts/install.sh" \
+  || fail "install.sh must check for a tty before launching the picker"
+grep -q 'AISWMM_NO_SETUP' "$REPO_ROOT/.github/workflows/windows-smoke.yml" \
+  || fail "windows-smoke.yml must set AISWMM_NO_SETUP; a hung prompt burns the job timeout"
+
 # --- 5. the setup wizard's gateway recipe must cover Windows ---------------
 # It used to print only `brew install cliproxyapi`, which is unusable on the
 # platform where the codex route is hardest to discover.

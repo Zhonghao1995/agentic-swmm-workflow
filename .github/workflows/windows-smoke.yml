@@ -35,6 +35,10 @@ jobs:
       - name: Run the documented one-liner (pinned to main)
         shell: powershell
         env:
+          # The installer hands over to the interactive picker when it detects
+          # a console. Belt and braces on top of that detection: a hung prompt
+          # here would burn the job's whole timeout.
+          AISWMM_NO_SETUP: "1"
           # bootstrap clones with `git clone --branch`, which takes a
           # branch/tag, not a bare sha: main is the honest pin here.
           AISWMM_INSTALL_REF: main
@@ -64,6 +68,7 @@ jobs:
       - name: Re-run the one-liner over the existing install (upgrade path)
         shell: powershell
         env:
+          AISWMM_NO_SETUP: "1"
           AISWMM_INSTALL_REF: main
         run: |
           $root = Join-Path $env:LOCALAPPDATA "agentic-swmm-workflow"

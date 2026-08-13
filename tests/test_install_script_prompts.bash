@@ -105,6 +105,16 @@ assert_log_contains "Install complete"
 assert_log_not_contains "pick your AI provider"
 harness_teardown
 
+# --- 5d. a non-interactive install never opens the picker -----------------
+# The harness pipes stdin, which is what CI does. If the guard regressed this
+# case would hang instead of failing, so the assertion is on the banner the
+# hand-off prints.
+harness_setup
+run_install --auto
+assert_status 0
+assert_log_not_contains "Setting up your AI provider now"
+harness_teardown
+
 # --- 6. openai with a pre-existing key gets no login nag ------------------
 # A user who already has a key (env file present) must NOT be told to log in
 # again; Next steps should just point at chat.

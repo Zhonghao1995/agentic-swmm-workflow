@@ -539,6 +539,24 @@ Write-Host "  1. Open a new shell so PATH updates take effect."
 # table and lists the options itself; naming only OpenAI and Claude here hid
 # every keyless route, and reprinting the full list here just moved the
 # confusion instead of removing it.
+# Hand straight over to the picker instead of printing a command and hoping.
+# Guards, in order: an explicit opt-out for scripted installs, a real
+# interactive console (CI runs this with stdin redirected and would hang on
+# the first prompt), a venv to run it from, and nothing configured yet.
+$venvAiswmm = Join-Path $VenvDir 'Scripts\aiswmm.exe'
+$canPrompt = $false
+if ($env:AISWMM_NO_SETUP -ne '1' -and [Environment]::UserInteractive) {
+    try { $canPrompt = -not [Console]::IsInputRedirected } catch { $canPrompt = $false }
+}
+if ($canPrompt -and (Test-Path $venvAiswmm) -and
+    -not (Test-Path (Join-Path $AiswmmConfigDir 'setup_state.json'))) {
+    Write-Host ""
+    Write-Host "Setting up your AI provider now. Pick a route; some need no API key."
+    Write-Host ""
+    & $venvAiswmm setup
+    Write-Host ""
+}
+
 if (Test-Path (Join-Path $AiswmmConfigDir 'setup_state.json')) {
     # Already ran the picker. The key-file probe below cannot see this: the
     # keyless routes (codex gateway, ollama, lmstudio) never write one, so a

@@ -465,6 +465,21 @@ SUMMARY
 # Two numbered commands, never a menu. The picker itself lists the routes and
 # detects what is already running; reprinting that list here made the summary
 # read like a second decision the user had to make before running anything.
+# Hand straight over to the picker instead of printing a command and hoping.
+# Guards, in order: an explicit opt-out for scripted installs, a real tty (CI
+# pipes the installer and would hang on the first prompt), a venv to run it
+# from, and nothing configured yet (never re-open the picker on an upgrade).
+if [[ "${AISWMM_NO_SETUP:-}" != "1" ]] \
+   && [[ -t 0 ]] \
+   && [[ -x "$VENV_DIR/bin/aiswmm" ]] \
+   && [[ ! -f "$AISWMM_CONFIG_DIR/setup_state.json" ]]; then
+  echo ""
+  echo "Setting up your AI provider now. Pick a route; some need no API key."
+  echo ""
+  "$VENV_DIR/bin/aiswmm" setup || true
+  echo ""
+fi
+
 if [[ -f "$AISWMM_CONFIG_DIR/setup_state.json" ]]; then
   # Already ran the picker. The key-file probe below cannot see this: the
   # keyless routes (codex gateway, ollama, lmstudio) never write one, so a
