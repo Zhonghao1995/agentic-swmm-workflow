@@ -40,6 +40,7 @@ from agentic_swmm.memory.benchmark_resolver import (
     resolve_threshold,
 )
 from agentic_swmm.memory.reference_benchmarks import classify_metric
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
 # Library-conservative fallbacks. These match the SWMM User Manual's
@@ -165,7 +166,7 @@ def _write_postflight_memory_trace(
             ),
             "schema_version": "1.0",
         }
-        trace_path = run_dir / "memory_trace.jsonl"
+        trace_path = agent_file_for_write(run_dir, "memory_trace.jsonl")
         with trace_path.open("a", encoding="utf-8") as handle:
             handle.write(
                 json.dumps(line, ensure_ascii=False, sort_keys=True) + "\n"

@@ -33,6 +33,7 @@ from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import compact_plan as _compact_plan
 from agentic_swmm.agent.ui import display_path as _display_path
 from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
 def _safe_name(value: str) -> str:
@@ -102,7 +103,7 @@ def run_single_shot(args: argparse.Namespace) -> int:
         date_dir = repo_root() / "runs" / datetime.now().strftime("%Y-%m-%d")
         session_dir = bootstrap_session_dir(date_dir, goal, kind="run")
     session_dir.mkdir(parents=True, exist_ok=True)
-    trace_path = session_dir / "agent_trace.jsonl"
+    trace_path = agent_file_for_write(session_dir, "agent_trace.jsonl")
     # ADR-0003: make the session dir self-describing before anything runs.
     # Provider/model mirror runtime_loop's resolution so the header records
     # what will actually be used, not just what the flags said. Best-effort:

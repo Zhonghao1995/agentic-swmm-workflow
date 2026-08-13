@@ -18,6 +18,7 @@ from unittest import mock
 import yaml
 
 from agentic_swmm.agent import session_header as sh
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 class _FakeRegistry:
@@ -110,7 +111,7 @@ class SessionHeaderLifecycleTests(unittest.TestCase):
             session_dir = Path(raw)
             header_path = self._write(session_dir)
             header = yaml.safe_load(header_path.read_text(encoding="utf-8"))
-            snapshot_text = (session_dir / sh.AGENT_SNAPSHOT_NAME).read_text(encoding="utf-8")
+            snapshot_text = agent_file(session_dir, sh.AGENT_SNAPSHOT_NAME).read_text(encoding="utf-8")
         self.assertEqual(header["session_id"], session_dir.name)
         self.assertEqual(header["goal"], "Generate a runnable model for Tod Creek")
         self.assertEqual(header["status"], "running")
@@ -173,7 +174,7 @@ class SingleShotWiringTests(unittest.TestCase):
                 (session_dir / sh.SESSION_HEADER_NAME).read_text(encoding="utf-8")
             )
             snapshot = json.loads(
-                (session_dir / sh.AGENT_SNAPSHOT_NAME).read_text(encoding="utf-8")
+                agent_file(session_dir, sh.AGENT_SNAPSHOT_NAME).read_text(encoding="utf-8")
             )
         self.assertEqual(rc, 0)
         self.assertEqual(header["goal"], "run doctor")

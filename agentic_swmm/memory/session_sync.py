@@ -18,6 +18,7 @@ from typing import Any
 
 from agentic_swmm.memory import session_db
 from agentic_swmm.memory.case_inference import infer_case_name
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 def default_db_path(repo_root: Path | None = None) -> Path:
@@ -61,8 +62,8 @@ def sync_session_to_db(
         summary["reason"] = f"session_dir missing: {session_dir}"
         return summary
 
-    trace_path = session_dir / "agent_trace.jsonl"
-    state_path = session_dir / "session_state.json"
+    trace_path = agent_file(session_dir, "agent_trace.jsonl")
+    state_path = agent_file(session_dir, "session_state.json")
     if not trace_path.exists():
         summary["reason"] = f"agent_trace.jsonl missing: {trace_path}"
         return summary

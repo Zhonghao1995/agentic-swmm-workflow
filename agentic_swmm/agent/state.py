@@ -8,6 +8,7 @@ from typing import Any
 
 from agentic_swmm.agent.intent_classifier import intent_contracts, select_relevant_intents
 from agentic_swmm.config import runtime_state_path
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
 def write_session_state(
@@ -47,8 +48,8 @@ def write_session_state(
         "workflow_state": workflow_state,
         "context_summary": summary,
     }
-    state_path = session_dir / "session_state.json"
-    context_path = session_dir / "context_summary.md"
+    state_path = agent_file_for_write(session_dir, "session_state.json")
+    context_path = agent_file_for_write(session_dir, "context_summary.md")
     state_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     context_path.write_text(_context_markdown(payload), encoding="utf-8")
     _write_global_runtime_state(payload)
@@ -120,7 +121,7 @@ def _write_case_runtime_state(session_payload: dict[str, Any]) -> None:
         "artifact_index": workflow_state.get("completed_artifacts", []),
         "updated_at_utc": session_payload["created_at_utc"],
     }
-    (run_dir / "aiswmm_state.json").write_text(json.dumps(case_state, indent=2, sort_keys=True), encoding="utf-8")
+    (agent_file_for_write(run_dir, "aiswmm_state.json")).write_text(json.dumps(case_state, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def _last_successful_stage(workflow_state: dict[str, Any]) -> str | None:

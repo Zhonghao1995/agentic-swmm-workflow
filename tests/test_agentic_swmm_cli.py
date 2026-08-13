@@ -22,6 +22,7 @@ from agentic_swmm.agent.intent_classifier import load_intent_map
 from agentic_swmm.agent.planner import _select_relevant_mcp_servers, _select_relevant_skills
 from agentic_swmm.agent.prompts import openai_planner_prompt
 from agentic_swmm.utils.paths import script_path
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -820,7 +821,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             )
 
             self.assertIn("state checked", proc.stdout)
-            state = json.loads((session_dir / "session_state.json").read_text(encoding="utf-8"))
+            state = json.loads((agent_file(session_dir, "session_state.json")).read_text(encoding="utf-8"))
             # "llm" = the LLM planner ran; the route that served it is
             # recorded separately since ADR-0009 (legacy traces carried
             # the literal "openai" for both meanings).
@@ -829,7 +830,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             self.assertIn("retry_policy", state)
             self.assertIn("intent_contracts", state)
             self.assertIn("workflow_state", state)
-            self.assertTrue((session_dir / "context_summary.md").exists())
+            self.assertTrue((agent_file(session_dir, "context_summary.md")).exists())
 
     def test_mcp_tool_list_returns_mapped_schemas(self) -> None:
         registry = AgentToolRegistry()

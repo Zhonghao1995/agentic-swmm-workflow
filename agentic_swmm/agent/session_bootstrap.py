@@ -36,6 +36,7 @@ from agentic_swmm.agent.swmm_runtime import run_layout
 from typing import Any
 
 from agentic_swmm.agent.ui import display_path
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 __all__ = [
     "bootstrap_prior_state",
@@ -281,7 +282,7 @@ def bootstrap_prior_state(active_run_dir: Path | None) -> dict[str, Any] | None:
     """
     if active_run_dir is None:
         return None
-    state_file = active_run_dir / "aiswmm_state.json"
+    state_file = agent_file(active_run_dir, "aiswmm_state.json")
     if not state_file.exists():
         return None
     try:

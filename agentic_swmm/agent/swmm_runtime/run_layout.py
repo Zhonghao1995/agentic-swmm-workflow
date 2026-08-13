@@ -47,18 +47,89 @@ CANONICAL_STAGES: tuple[str, ...] = (
 #: Non-stage entries that legitimately live at a run/session dir root.
 CANONICAL_ROOT_FILES: frozenset[str] = frozenset(
     {
+        # What a person opens the run to find.
+        "README.md",
         "manifest.json",
         "session.yaml",
+        "final_report.md",
+        "report.docx",
+        "acceptance_report.json",
+        "acceptance_report.md",
+        "chat_note.md",
+        "tool_results",
+        # Audience directories.
+        "_agent",
+        "_obsidian",
+        # Legacy: these moved under _agent/ and stay readable at the root
+        # forever (ADR-0004 section 3), so old runs do not become invalid.
         "agent_snapshot.json",
         "agent_trace.jsonl",
         "memory_trace.jsonl",
-        "final_report.md",
-        "acceptance_report.json",
-        "acceptance_report.md",
-        "tool_results",
-        "chat_note.md",
     }
 )
+
+#: Machine-facing sidecars live under this directory, not at the run root.
+#: A run root is what a person opens first, and it was showing them nine loose
+#: files with names like ``aiswmm_state.json`` next to the one report they
+#: wanted. The leading underscore sorts it below the numbered stages in both
+#: Explorer and ``ls``.
+AGENT_DIR = "_agent"
+
+#: What gets exported to an Obsidian vault, kept out of the same eyeline.
+OBSIDIAN_DIR = "_obsidian"
+
+#: Files that belong to the agent, not to the reader of the run. These are
+#: session ground truth (``agent_trace.jsonl`` is the record the sqlite session
+#: DB is rebuilt from), not deliverables.
+AGENT_FILES: frozenset[str] = frozenset(
+    {
+        "agent_trace.jsonl",
+        "memory_trace.jsonl",
+        "session_state.json",
+        "aiswmm_state.json",
+        "agent_snapshot.json",
+        "context_summary.md",
+    }
+)
+
+
+def agent_file(run_dir: "Path | str", name: str) -> "Path":
+    """Path for one agent sidecar, new location first, legacy root second.
+
+    One rule for readers and writers, because a split-brain run is worse than
+    an untidy one:
+
+    * fresh run -> ``<run>/_agent/<name>``;
+    * legacy run that already has ``<run>/<name>`` -> that path, so an append
+      keeps landing in the file the run already has;
+    * legacy run being read -> the root copy is found without a migration.
+
+    Pure: it touches nothing. An earlier version created ``_agent/`` here, and
+    a caller that only wanted to test ``.exists()`` left a stray directory
+    behind at whatever path it was handed, including the runs root. Writers
+    call :func:`agent_file_for_write`.
+
+    ADR-0004 keeps legacy layouts readable forever; this follows the same
+    rule as ``LEGACY_ALIASES``, one level up.
+    """
+    from pathlib import Path as _Path
+
+    root = _Path(run_dir)
+    new_path = root / AGENT_DIR / name
+    if new_path.exists():
+        return new_path
+    legacy = root / name
+    if legacy.exists():
+        return legacy
+    return new_path
+
+
+def agent_file_for_write(run_dir: "Path | str", name: str) -> "Path":
+    """:func:`agent_file`, with the parent directory guaranteed to exist."""
+    path = agent_file(run_dir, name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
 
 #: Upstream boxes get a named sub-box under 10_upstream.
 UPSTREAM_SWMMANYWHERE = "swmmanywhere"

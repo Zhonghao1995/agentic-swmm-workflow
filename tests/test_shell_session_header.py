@@ -21,6 +21,7 @@ import yaml
 
 from agentic_swmm.agent import runtime_loop
 from agentic_swmm.agent.session_header import AGENT_SNAPSHOT_NAME, SESSION_HEADER_NAME
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
 def _args(session_dir: Path) -> argparse.Namespace:
@@ -76,7 +77,7 @@ class ShellTurnHeaderTests(unittest.TestCase):
                 header = yaml.safe_load(
                     (turn_dir / SESSION_HEADER_NAME).read_text(encoding="utf-8")
                 )
-                snapshot_exists = (turn_dir / AGENT_SNAPSHOT_NAME).is_file()
+                snapshot_exists = (agent_file(turn_dir, AGENT_SNAPSHOT_NAME)).is_file()
             return header, snapshot_exists  # type: ignore[return-value]
 
     def test_successful_turn_gets_completed_header(self) -> None:

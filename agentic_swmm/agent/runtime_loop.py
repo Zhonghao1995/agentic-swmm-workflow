@@ -76,6 +76,7 @@ from agentic_swmm.utils.paths import repo_root
 
 # PRD-02 — deep-module split. New modules with the carved-out behaviour;
 # names below are re-exported so legacy imports continue to resolve.
+from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 from agentic_swmm.agent.repl import run_repl
 from agentic_swmm.agent.session_bootstrap import (
     bootstrap_prior_state as _bootstrap_prior_state,
@@ -228,7 +229,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="chat")
             is_chat_turn = True
         session_dir.mkdir(parents=True, exist_ok=True)
-        trace_path = session_dir / "agent_trace.jsonl"
+        trace_path = agent_file_for_write(session_dir, "agent_trace.jsonl")
         registry = AgentToolRegistry()
         # The turn dir IS the session dir (agent_trace.jsonl lives here):
         # it gets the ADR-0003 header exactly like a single-shot session.
@@ -300,8 +301,8 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     if _is_swmm_run_dir(session_dir):
         return None
 
-    state_path = session_dir / "session_state.json"
-    trace_path = session_dir / "agent_trace.jsonl"
+    state_path = agent_file_for_write(session_dir, "session_state.json")
+    trace_path = agent_file_for_write(session_dir, "agent_trace.jsonl")
     state: dict[str, Any] = {}
     if state_path.exists():
         try:
@@ -454,7 +455,7 @@ def run_openai_planner(
     if chat_session:
         # Persist a minimal session_state.json so the chat-note generator
         # has structured context to work with.
-        state_path = session_dir / "session_state.json"
+        state_path = agent_file_for_write(session_dir, "session_state.json")
         if not state_path.exists():
             state_path.write_text(
                 json.dumps(
