@@ -21,7 +21,7 @@ from pathlib import Path
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.planner import rule_plan
-from agentic_swmm.agent.reporting import write_event as _write_event
+from agentic_swmm.agent.reporting import display_goal, write_event as _write_event
 from agentic_swmm.agent.reporting import write_report as _write_report
 from agentic_swmm.agent.runtime import run_rule_plan
 from agentic_swmm.agent.session_header import (
@@ -147,7 +147,10 @@ def run_single_shot(args: argparse.Namespace) -> int:
     if len(preview_plan) > args.max_steps:
         preview_plan = preview_plan[: args.max_steps]
 
-    _agent_say(f"Goal: {goal}")
+    # The continuation block is for the planner, not for the person
+    # watching. Echoing it put ten lines of internal plumbing on screen
+    # every time a turn continued the previous one.
+    _agent_say(f"Goal: {display_goal(goal)}")
     _agent_say(f"Session: rule planner → {_display_path(session_dir)}")
     if args.verbose:
         _agent_say("Plan:")
