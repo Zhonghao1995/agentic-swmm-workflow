@@ -22,8 +22,11 @@ with a plain explanation instead of guessing.
 Dependencies: geopandas + rasterio (the aiswmm ``gis`` extra). Absent
 dependencies exit 2 with the install command.
 
-Style follows the repository plot conventions (Arial, ticks inward, no
-title); the cartouche carries the identifying text instead.
+Style follows the skill's standing figure standard (``plot_style``: the
+vendored Nature spec, 89 mm single column, 7 pt sans-serif, ticks out,
+no grid, Wong palette, no title); the cartouche carries the identifying
+text instead. Output is the ``--out-png`` preview plus its vector twin
+``<stem>.pdf``.
 """
 
 from __future__ import annotations
@@ -34,6 +37,13 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+# Shared style module next to this script (see plot_network_layout.py).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from plot_style import WONG, apply_style, legend_outside, map_figsize, save_figure  # noqa: E402
 
 
 _NETWORK_MEMBER = "preview/network.geojson"
@@ -138,8 +148,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--run-dir", type=Path, help="Run directory (canonical layout).")
     parser.add_argument("--bundle", type=Path, help="Explicit swmm_model.zip path.")
-    parser.add_argument("--out-png", type=Path, default=None)
-    parser.add_argument("--dpi", type=int, default=200)
+    parser.add_argument(
+        "--out-png",
+        type=Path,
+        default=None,
+        help="Preview PNG path; the vector twin <stem>.pdf is written beside it.",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=450,
+        help="Resolution of the preview PNG (the PDF is vector). Spec minimum for images is 450.",
+    )
     parser.add_argument(
         "--place",
         default=None,
@@ -155,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from matplotlib.ticker import ScalarFormatter
+    from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
     bundle = _resolve_bundle(args)
     with tempfile.TemporaryDirectory() as tmp:
@@ -179,72 +199,104 @@ def main(argv: list[str] | None = None) -> int:
             except Exception as exc:  # DEM is decoration; never fatal.
                 print(f"note: DEM hillshade skipped ({exc})", file=sys.stderr)
 
-        plt.rcParams.update({"font.family": "Arial", "font.size": 12})
-        fig, ax = plt.subplots(figsize=(7.2, 7.2))
+        frame = subs if not subs.empty else links
+        minx, miny, maxx, maxy = frame.total_bounds
+        pad = max((maxx - minx), (maxy - miny)) * 0.04
+
+        apply_style()
+        fig, ax = plt.subplots(
+            figsize=map_figsize((minx - pad, miny - pad, maxx + pad, maxy + pad)),
+            layout="constrained",
+        )
         if shade is not None:
             ax.imshow(shade, cmap="gray", extent=extent, alpha=0.55, zorder=1)
+        # Wong palette throughout: sky-blue subcatchments over the grey
+        # hillshade, black conduits, black outfall stars (same marker as
+        # the network map so the two figures of a run read as one set).
         if not subs.empty:
             subs.plot(
                 ax=ax,
-                facecolor="#7db8da",
-                edgecolor="#2f6a93",
-                linewidth=0.35,
+                facecolor=WONG["sky_blue"],
+                edgecolor=WONG["blue"],
+                linewidth=0.3,
                 alpha=0.35,
                 zorder=2,
             )
         if not links.empty:
-            links.plot(ax=ax, color="#12324a", linewidth=0.9, zorder=3)
+            links.plot(ax=ax, color=WONG["black"], linewidth=0.6, zorder=3)
         if not outfalls.empty:
             outfalls.plot(
-                ax=ax, color="#c62828", marker="v", markersize=60, zorder=4
+                ax=ax, color=WONG["black"], marker="*", markersize=40,
+                edgecolor="white", linewidth=0.3, zorder=4,
             )
 
-        frame = subs if not subs.empty else links
-        minx, miny, maxx, maxy = frame.total_bounds
-        pad = max((maxx - minx), (maxy - miny)) * 0.04
         ax.set_xlim(minx - pad, maxx + pad)
         ax.set_ylim(miny - pad, maxy + pad)
-        ax.set_aspect("equal")
-        ax.tick_params(direction="in")
+        # 'datalim': the panel keeps the space constrained layout gives it
+        # and shows a little more context instead of a blank band.
+        ax.set_aspect("equal", adjustable="datalim")
+        # Plain 6-7 digit coordinates: no offset, and few enough ticks
+        # that the labels do not touch at 89 mm.
         fmt = ScalarFormatter(useOffset=False)
         fmt.set_scientific(False)
-        ax.xaxis.set_major_formatter(fmt)
-        ax.yaxis.set_major_formatter(fmt)
+        for axis in (ax.xaxis, ax.yaxis):
+            axis.set_major_formatter(fmt)
+            axis.set_major_locator(MaxNLocator(nbins=5))
         zone = str(utm).split(":")[-1]
         ax.set_xlabel(f"Easting (m, EPSG:{zone})")
         ax.set_ylabel(f"Northing (m, EPSG:{zone})")
 
+        # Scale bar and north arrow inside the 0.25-1 pt line-weight band.
         bar = _scale_bar_length(maxx - minx)
         bx, by = minx + pad * 0.5, maxy - pad * 1.2
-        ax.plot([bx, bx + bar], [by, by], color="k", lw=2.5, zorder=5)
+        ax.plot([bx, bx + bar], [by, by], color="k", lw=1.0, zorder=5)
         bar_label = f"{bar} m" if bar < 1000 else f"{bar // 1000} km"
-        ax.text(bx + bar / 2, by + pad * 0.25, bar_label, ha="center", fontsize=10)
+        ax.text(bx + bar / 2, by + pad * 0.25, bar_label, ha="center")
         ax.annotate(
             "N",
             xy=(0.955, 0.94),
             xytext=(0.955, 0.865),
             xycoords="axes fraction",
             ha="center",
-            fontsize=13,
             fontweight="bold",
-            arrowprops=dict(arrowstyle="-|>", color="k", lw=1.6),
+            arrowprops=dict(arrowstyle="-|>", color="k", lw=0.75),
         )
 
+        # Cartouche: dense identifying text sits at the bottom of the
+        # 5-7 pt band, on a white box so it never reads over the hillshade.
+        # Short lines: at 89 mm a long line would spill past the panel and
+        # constrained layout would shrink the map to make room for it.
         wgs = frame.to_crs("EPSG:4326").total_bounds
-        place = f"{args.place} | " if args.place else ""
+        cartouche = [
+            f"{len(subs)} subcatchments, {len(links)} conduits, {len(outfalls)} outfalls",
+            f"AOI {wgs[0]:.3f} to {wgs[2]:.3f} E, {wgs[1]:.3f} to {wgs[3]:.3f} N (WGS84)",
+            "Data: SWMMCanada bundle",
+        ]
+        if args.place:
+            cartouche.insert(0, args.place)
         ax.text(
             0.012,
             0.012,
-            f"{place}{len(subs)} subcatchments, {len(links)} conduits, "
-            f"{len(outfalls)} outfalls\n"
-            f"AOI {wgs[0]:.3f} to {wgs[2]:.3f} E, {wgs[1]:.3f} to {wgs[3]:.3f} N "
-            f"(WGS84) | data: SWMMCanada bundle",
+            "\n".join(cartouche),
             transform=ax.transAxes,
-            fontsize=8.5,
+            fontsize=6,
             va="bottom",
             bbox=dict(facecolor="white", alpha=0.85, edgecolor="none"),
             zorder=6,
         )
+
+        # Key above the panel (proxy handles: geopandas layers do not
+        # register legend entries themselves).
+        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
+
+        handles = [
+            Patch(facecolor=WONG["sky_blue"], edgecolor=WONG["blue"], alpha=0.35, linewidth=0.3),
+            Line2D([], [], color=WONG["black"], linewidth=0.6),
+            Line2D([], [], linestyle="none", marker="*", markersize=6,
+                   markerfacecolor=WONG["black"], markeredgecolor="white", markeredgewidth=0.3),
+        ]
+        legend_outside(fig, handles, ["Subcatchment", "Conduit", "Outfall"])
 
         out_png = args.out_png
         if out_png is None:
@@ -252,12 +304,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise _fail("--out-png is required when only --bundle is given")
             out_png = Path(args.run_dir) / "08_plot" / "study_area.png"
         out_png = Path(out_png)
-        out_png.parent.mkdir(parents=True, exist_ok=True)
-        fig.tight_layout()
-        fig.savefig(out_png, dpi=args.dpi)
+        written = save_figure(fig, out_png, dpi=args.dpi)
         print(json.dumps({
             "ok": True,
             "out_png": str(out_png),
+            "out_pdf": str(written["pdf"]),
             "subcatchments": int(len(subs)),
             "conduits": int(len(links)),
             "outfalls": int(len(outfalls)),

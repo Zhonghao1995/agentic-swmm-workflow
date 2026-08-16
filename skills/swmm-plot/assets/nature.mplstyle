@@ -1,0 +1,116 @@
+# Nature journal figure style for matplotlib, vendored for the swmm-plot skill.
+# Spec: https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/
+#
+# Every figure this skill renders (hydrograph, network map, study area) starts
+# from this file via plot_style.apply_style(). Do not hand-set rcParams in the
+# scripts; change the style here so all three figures move together.
+#
+# Widths (inches): single column 3.5039 (89 mm) | double column 7.2047 (183 mm)
+# Max height: 6.6929 (170 mm)
+# Set figsize explicitly per figure via plot_style.figsize(); the default below
+# is single-column.
+#
+# WARNING: do NOT save with bbox_inches='tight' -- it changes the physical width
+# and breaks the 89/183 mm spec. Use layout='constrained' and plot_style.save_figure().
+#
+# The non-comment lines are kept identical to the upstream style asset in the
+# nature-figures skill (tests/test_swmm_plot_nature_style.py checks the drift
+# when that skill is present on the machine).
+
+# ---- Fonts: sans-serif, 5-7 pt --------------------------------------------
+font.family:          sans-serif
+font.sans-serif:      Arial, Helvetica, Nimbus Sans, DejaVu Sans
+font.size:            7
+axes.labelsize:       7
+axes.titlesize:       7
+# 7 pt is the Nature maximum -- use it. Production may reduce the figure, and 7 pt
+# survives a scale-down to 71% before hitting the 5 pt floor (6 pt only survives 83%).
+# Drop these toward 5 pt only when a dense panel genuinely runs out of room.
+xtick.labelsize:      7
+ytick.labelsize:      7
+legend.fontsize:      7
+legend.title_fontsize: 7
+figure.labelsize:     7
+figure.titlesize:     7
+
+# Panel labels are the one 8 pt exception -- set per-call:
+#   ax.text(-0.18, 1.05, 'a', transform=ax.transAxes,
+#           fontsize=8, fontweight='bold', va='top', ha='right')
+
+# ---- Editable, embedded text (NOT outlined) -------------------------------
+# TrueType (42), never Type 3. This is the single most common rejection cause.
+pdf.fonttype:         42
+ps.fonttype:          42
+pdf.compression:      6
+svg.fonttype:         none
+text.usetex:          False
+mathtext.fontset:     dejavusans
+mathtext.default:     regular
+
+# ---- Line weights: 0.25-1 pt ----------------------------------------------
+axes.linewidth:       0.5
+lines.linewidth:      1.0
+lines.markeredgewidth: 0.5
+patch.linewidth:      0.5
+hatch.linewidth:      0.5
+grid.linewidth:       0.5
+xtick.major.width:    0.5
+ytick.major.width:    0.5
+xtick.minor.width:    0.4
+ytick.minor.width:    0.4
+lines.markersize:     3
+
+# ---- Axes: lines and tick marks required, no gridlines --------------------
+axes.grid:            False
+axes.spines.top:      False
+axes.spines.right:    False
+axes.axisbelow:       True
+axes.titlelocation:   left
+axes.titlepad:        3.0
+axes.labelpad:        2.0
+axes.formatter.use_mathtext: True
+axes.unicode_minus:   True
+
+xtick.direction:      out
+ytick.direction:      out
+xtick.major.size:     2.0
+ytick.major.size:     2.0
+xtick.minor.size:     1.2
+ytick.minor.size:     1.2
+xtick.major.pad:      2.0
+ytick.major.pad:      2.0
+xtick.top:            False
+ytick.right:          False
+
+# ---- Colour: Wong colour-blind-safe palette, RGB --------------------------
+axes.prop_cycle: cycler('color', ['000000', 'E69F00', '56B4E9', '009E73', 'F0E442', '0072B2', 'D55E00', 'CC79A7'])
+image.cmap:           viridis
+text.color:           black
+axes.labelcolor:      black
+axes.edgecolor:       black
+xtick.color:          black
+ytick.color:          black
+
+# ---- Legend: no decoration -------------------------------------------------
+legend.frameon:       False
+legend.handlelength:  1.4
+legend.handletextpad: 0.5
+legend.labelspacing:  0.3
+legend.columnspacing: 1.0
+legend.borderpad:     0.3
+
+# ---- Figure and saving -----------------------------------------------------
+figure.figsize:       3.5039, 2.4
+figure.dpi:           450
+figure.constrained_layout.use:      True
+figure.constrained_layout.h_pad:    0.02
+figure.constrained_layout.w_pad:    0.02
+figure.constrained_layout.hspace:   0.03
+figure.constrained_layout.wspace:   0.03
+figure.facecolor:     white
+axes.facecolor:       white
+savefig.dpi:          450
+savefig.format:       pdf
+savefig.bbox:         standard
+savefig.facecolor:    white
+savefig.transparent:  False

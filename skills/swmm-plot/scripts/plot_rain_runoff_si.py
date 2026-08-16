@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Plot rainfall (inverted) vs runoff/outfall hydrograph with publication formatting.
+"""Plot rainfall (inverted) vs runoff/outfall hydrograph to the Nature figure spec.
 
-Requirements from Zhonghao:
-- SI units
-- Inverted rainfall axis
+Figure rules (the swmm-plot skill's standing standard, see SKILL.md):
+- SI units, every axis labelled with units in parentheses
+- Inverted rainfall axis (hyetograph convention), flow rising from the bottom
 - Hydrograph shape preserved (assumes output time step is sufficiently fine, e.g., 5-min)
-- Ticks inward
-- Font: Arial 12
-- No title
+- Style comes from ``plot_style.apply_style()`` (vendored nature.mplstyle):
+  89 mm single / 183 mm double column, 7 pt sans-serif, 0.25-1 pt lines,
+  ticks outward, no gridlines, Wong colour-blind-safe palette
+- No title (titles belong to the surrounding document)
 
 Inputs:
 - INP path (to read TIMESERIES for rainfall)
 - OUT path (to read node total inflow from SWMM output)
 
 Output:
-- PNG (and optionally PDF later)
+- ``--out-png`` (450 dpi preview) plus its vector twin ``<stem>.pdf`` (the
+  submission file), written by ``plot_style.save_figure``
 
 Agent-flow invariant (issue #125):
     The ``--rain-ts`` / ``--node`` / ``--node-attr`` defaults below are
@@ -82,6 +84,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from swmmtoolbox import extract
+
+# The shared style module lives next to this script. Tests load the script
+# through ``importlib.util.spec_from_file_location`` (no sys.path[0] entry
+# for this directory), so resolve the sibling explicitly.
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from plot_style import WONG, apply_style, figsize, legend_outside, save_figure  # noqa: E402
 
 
 def parse_timeseries_file(path: Path) -> tuple[list[datetime], list[float]]:
@@ -269,8 +280,12 @@ def main():
     entity_group.add_argument('--link', default=None,
                               help='SWMM link/conduit id; when set, the lower panel plots Flow_rate for the link instead of a node attribute. Mutually exclusive with --node.')
     ap.add_argument('--node-attr', default='Total_inflow')
-    ap.add_argument('--out-png', required=True, type=Path)
-    ap.add_argument('--dpi', type=int, default=300)
+    ap.add_argument('--out-png', required=True, type=Path,
+                    help='Preview PNG path; the vector twin <stem>.pdf is written beside it.')
+    ap.add_argument('--dpi', type=int, default=450,
+                    help='Resolution of the preview PNG (the PDF is vector). Spec minimum for images is 450.')
+    ap.add_argument('--width', choices=['single', 'double'], default='single',
+                    help='Figure width: single column (89 mm, default) or double column (183 mm).')
     ap.add_argument('--focus-day', type=str, default=None,
                     help='If set (YYYY-MM-DD), base day for x-axis formatting.')
     ap.add_argument('--window-start', type=str, default=None,
@@ -321,18 +336,9 @@ def main():
             "and use HH:MM format. They cannot be used without --focus-day."
         )
 
-    # Matplotlib styling: Arial 12, ticks inward
-    plt.rcParams.update({
-        'font.family': 'Arial',
-        'font.size': 12,
-        'axes.titlesize': 12,
-        'axes.labelsize': 12,
-        'xtick.labelsize': 12,
-        'ytick.labelsize': 12,
-        'legend.fontsize': 12,
-        'xtick.direction': 'in',
-        'ytick.direction': 'in',
-    })
+    # Matplotlib styling: the vendored Nature stylesheet (7 pt sans-serif,
+    # ticks out, no grid, Wong palette, TrueType-embedded text).
+    apply_style()
 
     rain_t, rain_v = parse_timeseries_from_inp(args.inp, args.rain_ts)
     rain_v = np.asarray(rain_v, dtype=float)
@@ -410,31 +416,52 @@ def main():
     flow_t = flow_df.index.to_pydatetime()
     flow_v = flow_df.iloc[:, 0].to_numpy(dtype=float)
 
-    # Figure
-    fig, ax_rain = plt.subplots(figsize=(9, 3.8), dpi=args.dpi)
+    # Keep only the rainfall inside the reported period (plus the pad).
+    # Continuous-simulation INPs often point at multi-year climate files
+    # (a 30-year 5-min file is 3M rows): drawing every bar stalls
+    # matplotlib for minutes and would bloat the vector PDF, and rain
+    # outside the run says nothing about the run.
+    if flow_t.size and rain_t:
+        pad = timedelta(hours=float(args.pad_hours))
+        rt = np.asarray(rain_t, dtype='datetime64[s]')
+        keep = (rt >= np.datetime64(flow_t[0] - pad, 's')) & (rt <= np.datetime64(flow_t[-1] + pad, 's'))
+        rain_t = [t for t, k in zip(rain_t, keep) if k]
+        rain_plot = rain_plot[keep]
 
-    # Rain bars
+    # Figure: spec-legal column width; a hydrograph wants a wide panel, so
+    # the double-column variant is flatter than the golden-ratio single.
+    fig, ax_rain = plt.subplots(
+        figsize=figsize(args.width, aspect=0.618 if args.width == 'single' else 0.40),
+        layout='constrained',
+    )
+
+    # Rain bars: sky blue from the Wong palette, solid (no alpha, no hatching).
     bar_width_days = (args.dt_min / 60.0) / 24.0
     ax_rain.bar(
         rain_t,
         rain_plot,
         width=bar_width_days,
-        color='#4C78A8',
-        alpha=0.45,
+        color=WONG['sky_blue'],
         edgecolor='none',
+        linewidth=0,
         label='Rain',
         zorder=1,
     )
     ax_rain.set_ylabel(rain_ylabel)
-    ax_rain.set_xlabel('Time')
+    ax_rain.set_xlabel('Time of day (hh:mm)' if args.focus_day else 'Time')
 
     # invert rain axis (hyetograph convention)
     ax_rain.invert_yaxis()
 
-    # Flow line (draw above rain)
+    # Flow line (draw above rain): black, the palette's first colour, for
+    # the primary series. The twin axis carries its own right-hand spine
+    # (the stylesheet hides top/right spines by default, and its left one
+    # would double-draw the rain axis).
     ax_flow = ax_rain.twinx()
-    ax_flow.plot(flow_t, flow_v, color='#F58518', linewidth=1.8, label=flow_label, zorder=3)
+    ax_flow.plot(flow_t, flow_v, color=WONG['black'], linewidth=0.75, label=flow_label, zorder=3)
     ax_flow.set_ylabel(flow_ylabel)
+    ax_flow.spines['right'].set_visible(True)
+    ax_flow.spines['left'].set_visible(False)
 
     rain_max = float(np.nanmax(rain_plot)) if rain_plot.size else 0.0
     if rain_max > 0:
@@ -477,20 +504,16 @@ def main():
         ax_rain.xaxis.set_major_locator(locator)
         ax_rain.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
-    # Ticks inward on both axes
-    ax_rain.tick_params(direction='in', which='both', top=True, right=False)
-    ax_flow.tick_params(direction='in', which='both', top=True, right=True)
+    # Ticks: outward on every axis, from the stylesheet. No title (per spec).
 
-    # No title (per spec)
-
-    # Legend: combine
+    # Legend: one combined key above the panel so it never sits on the
+    # bars or the hydrograph (text over data is a spec violation).
     h1, l1 = ax_rain.get_legend_handles_labels()
     h2, l2 = ax_flow.get_legend_handles_labels()
-    ax_flow.legend(h1 + h2, l1 + l2, loc='upper left', framealpha=0.9)
+    legend_outside(fig, h1 + h2, l1 + l2)
 
-    fig.tight_layout()
-    args.out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(args.out_png, dpi=args.dpi)
+    # Vector PDF (submission) + PNG preview, default bbox (never 'tight').
+    save_figure(fig, args.out_png, dpi=args.dpi)
 
 
 if __name__ == '__main__':

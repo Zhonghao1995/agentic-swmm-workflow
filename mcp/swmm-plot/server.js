@@ -103,7 +103,10 @@ const Args = z.object({
   // emits ``--link`` to the script INSTEAD OF ``--node`` (the script
   // declares the two in a mutually-exclusive argparse group).
   link: z.string().optional(),
-  dpi: z.number().default(300),
+  // Nature spec: 89 mm single column by default, 183 mm double on request.
+  width: z.enum(["single", "double"]).default("single"),
+  // PNG preview resolution only; the PDF twin is vector.
+  dpi: z.number().default(450),
   focusDay: z.string().optional(),
   windowStart: z.string().optional(),
   windowEnd: z.string().optional(),
@@ -120,20 +123,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "plot_rain_runoff_si",
-        description: "Publication-style rainfall (inverted) vs outfall hydrograph plot (SI, mm/5min default, Arial 12, inward ticks, no title).",
+        description: "Rainfall (inverted) vs node/link flow hydrograph to the Nature figure spec (SI, mm/5min default, 89 mm single column, 7 pt sans-serif, ticks out, Wong palette, no title). Writes outPng (450 dpi preview) plus its vector twin outPdf.",
         inputSchema: {
           type: "object",
           properties: {
             inp: { type: "string" },
             out: { type: "string" },
-            outPng: { type: "string" },
+            outPng: { type: "string", description: "PNG preview path; the vector PDF twin is written beside it with the same stem." },
             rainTs: { type: "string", default: "<rainfall-series-name>" },
             rainKind: { type: "string", enum: ["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"], default: "depth_mm_per_dt" },
             dtMin: { type: "number", default: 5 },
             node: { type: "string", default: "<outfall-or-junction>" },
             nodeAttr: { type: "string", default: "Total_inflow" },
             link: { type: "string", description: "SWMM conduit/link id; when set, the lower panel plots Flow_rate for the conduit instead of a node attribute. Mutually exclusive with 'node'." },
-            dpi: { type: "number", default: 300 },
+            width: { type: "string", enum: ["single", "double"], default: "single", description: "Figure width: single column (89 mm) or double column (183 mm)." },
+            dpi: { type: "number", default: 450, description: "PNG preview resolution; the PDF is vector." },
             focusDay: { type: "string" },
             windowStart: { type: "string" },
             windowEnd: { type: "string" },
@@ -160,7 +164,8 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     "--rain-ts", a.rainTs,
     "--rain-kind", a.rainKind,
     "--dt-min", String(a.dtMin),
-    "--dpi", String(a.dpi)
+    "--dpi", String(a.dpi),
+    "--width", a.width
   ];
   // ``link`` and ``node`` are mutually exclusive at the script's
   // argparse layer. Branch on link presence so the script never sees
@@ -193,7 +198,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   await runPy(pyArgs);
 
-  return { content: [{ type: "text", text: JSON.stringify({ ok: true, outPng: a.outPng }, null, 2) }] };
+  // The script writes the vector twin next to the PNG (same stem, .pdf).
+  const outPdf = a.outPng.replace(/\.[^./\\]+$/, "") + ".pdf";
+  return { content: [{ type: "text", text: JSON.stringify({ ok: true, outPng: a.outPng, outPdf }, null, 2) }] };
 });
 
 // Kick off preheat before the transport handshake — it runs in parallel

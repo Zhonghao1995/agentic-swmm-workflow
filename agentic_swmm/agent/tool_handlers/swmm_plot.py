@@ -315,7 +315,8 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             "plot_run",
-            "Create a rainfall + flow hydrograph plot from a run directory. "
+            "Create a rainfall + flow hydrograph plot from a run directory, to the Nature figure spec "
+            "(89 mm single column, 7 pt sans-serif, Wong palette); writes the PNG preview plus a vector PDF twin with the same stem. "
             "The lower panel renders EITHER a node attribute (when 'node' is supplied — typical for an outfall rain-runoff hydrograph) "
             "OR a conduit Flow_rate time series (when 'link' is supplied — for a pipe/conduit hydrograph). "
             "'node' and 'link' are mutually exclusive; pass one. "

@@ -76,7 +76,7 @@ def tool_specs() -> list[ToolSpec]:
     return [
         ToolSpec(
             "map_run",
-            "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG. Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.",
+            "Render the spatial network layout (subcatchments + conduits + outfalls) of a SWMM model as a PNG preview plus a vector PDF twin, to the Nature figure spec (89 mm single column, Wong palette). Sibling of plot_run: plot_run draws the rainfall-runoff hydrograph; map_run draws the network map. Auto-discovers the INP from the run directory; pass inp to override.",
             _object({"run_dir": {"type": "string"}, "inp": {"type": "string"}, "out_png": {"type": "string"}, "dpi": {"type": "integer"}, "no_subcatchments": {"type": "boolean"}, "no_vertices": {"type": "boolean"}}, ["run_dir"]),
             _map_run_tool,
         ),
