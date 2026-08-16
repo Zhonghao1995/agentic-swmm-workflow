@@ -6,8 +6,11 @@ Companion to ``plot_rain_runoff_si.py`` (which is the hydrograph view).
 time?". ``aiswmm map`` answers "what does the network look like in
 space?" — the question every reviewer asks before they trust a SWMM
 model. Both scripts share the same skill (``swmm-plot``) and the same
-matplotlib stylesheet (Arial 12, ticks inward, no title) so a paper
-with both figures reads as one consistent diagnostic pair.
+stylesheet (``plot_style.apply_style()``: the vendored Nature spec, 89 mm
+single column, 7 pt sans-serif, ticks out, no grid, Wong palette, no
+title) so a paper with both figures reads as one consistent diagnostic
+pair. Output is the ``--out-png`` preview plus its vector twin
+``<stem>.pdf`` (the submission file).
 
 The data path is deliberately two-tier:
 
@@ -34,18 +37,19 @@ The data path is deliberately two-tier:
 
 Colouring strategy: every conduit is traced upstream→downstream to its
 terminal outfall via the ``[CONDUITS]`` adjacency. All conduits in the
-same drainage area share that outfall's colour, so a sub-network jumps
-out visually. Subcatchments are tinted by the colour of the outfall
-their outlet drains to (transitively). Junctions are small grey dots;
-outfalls are large red ``★`` markers so reviewers can find the model
-discharge points in one glance.
+same drainage area share that outfall's colour (the Wong palette's
+categorical cycle), so a sub-network jumps out visually. Subcatchments
+are tinted by the colour of the outfall their outlet drains to
+(transitively). Junctions are small grey dots; outfalls are black ``★``
+markers (the palette's first colour, kept out of the sub-network cycle)
+so reviewers can find the model discharge points in one glance.
 
 CLI surface (the driver — ``aiswmm map`` — forwards these):
 
     --inp <path>      explicit INP (overrides discovery)
     --run-dir <path>  run directory (used only to find the geoparquet trio)
-    --out-png <path>  output PNG path (required)
-    --dpi <int>       output resolution (default 200; matches print-friendly)
+    --out-png <path>  output PNG path (required); <stem>.pdf is written beside it
+    --dpi <int>       resolution of the PNG preview (default 450; the PDF is vector)
     --no-subcatchments  skip the polygon layer
     --no-vertices       draw conduits as straight lines (ignore [VERTICES])
 """
@@ -63,7 +67,22 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
-import numpy as np
+
+# Shared style module next to this script (tests load the script through
+# ``importlib.util.spec_from_file_location``, which does not put this
+# directory on sys.path).
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+
+from plot_style import (  # noqa: E402
+    CATEGORY_CYCLE,
+    WONG,
+    apply_style,
+    legend_outside,
+    map_figsize,
+    save_figure,
+)
 
 
 # --------------------------------------------------------------------- #
@@ -251,14 +270,16 @@ def assign_outfall_colours(
 def palette_for(outfalls: list[str]) -> dict[str, tuple[float, float, float]]:
     """Deterministic colour wheel for outfall sub-networks.
 
-    Uses matplotlib's ``tab10`` cmap, cycling for >10 outfalls. The
-    sorted outfall list drives the order so the same network always
-    yields the same picture.
+    Uses the Wong colour-blind-safe categorical cycle from ``plot_style``
+    (black excluded: it marks the outfalls themselves), cycling when
+    there are more outfalls than colours. The sorted outfall list drives
+    the order so the same network always yields the same picture.
     """
-    cmap = matplotlib.colormaps["tab10"]
+    from matplotlib.colors import to_rgb
+
     out: dict[str, tuple[float, float, float]] = {}
     for i, o in enumerate(sorted(outfalls)):
-        out[o] = cmap(i % 10)[:3]
+        out[o] = to_rgb(CATEGORY_CYCLE[i % len(CATEGORY_CYCLE)])
     return out
 
 
@@ -300,21 +321,27 @@ def try_load_geoparquet(synth_dir: Path) -> dict[str, Any] | None:
 # --------------------------------------------------------------------- #
 
 
-def _apply_style() -> None:
-    """Same stylesheet as plot_rain_runoff_si.py for visual consistency."""
-    plt.rcParams.update(
-        {
-            "font.family": "Arial",
-            "font.size": 12,
-            "axes.titlesize": 12,
-            "axes.labelsize": 12,
-            "xtick.labelsize": 10,
-            "ytick.labelsize": 10,
-            "legend.fontsize": 10,
-            "xtick.direction": "in",
-            "ytick.direction": "in",
-        }
-    )
+def _finish_map(fig, ax, out_png: Path, dpi: int) -> None:
+    """Common tail: equal aspect, plain coordinates, legend above, PDF + PNG."""
+    from matplotlib.ticker import MaxNLocator, ScalarFormatter
+
+    ax.set_aspect("equal", adjustable="datalim")
+    # Coordinates read as coordinates: no "x 10^6" offset pulled out of
+    # the tick labels, and few enough ticks that 6-7 digit labels do not
+    # touch at 89 mm (same choices as plot_study_area.py).
+    for axis in (ax.xaxis, ax.yaxis):
+        fmt = ScalarFormatter(useOffset=False)
+        fmt.set_scientific(False)
+        axis.set_major_formatter(fmt)
+        axis.set_major_locator(MaxNLocator(nbins=5))
+    handles, labels = ax.get_legend_handles_labels()
+    if labels:
+        legend_outside(fig, handles, labels)
+    save_figure(fig, out_png, dpi=dpi)
+    plt.close(fig)
+
+
+_JUNCTION_GREY = "#555555"
 
 
 def render_from_inp(
@@ -349,8 +376,13 @@ def render_from_inp(
     outfalls = sorted(n for n, k in node_kinds.items() if k == "outfall")
     colours = palette_for(outfalls) if outfalls else {}
 
-    _apply_style()
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=dpi)
+    apply_style()
+    xs_all = [x for x, _ in coords.values()]
+    ys_all = [y for _, y in coords.values()]
+    fig, ax = plt.subplots(
+        figsize=map_figsize((min(xs_all), min(ys_all), max(xs_all), max(ys_all))),
+        layout="constrained",
+    )
 
     # Layer 1: subcatchment polygons (light blue, optional). Tint by
     # the outlet's outfall colour when available so sub-networks are
@@ -366,7 +398,7 @@ def render_from_inp(
                 closed=True,
                 facecolor=(*tint, 0.18),
                 edgecolor=(*tint, 0.6),
-                linewidth=0.6,
+                linewidth=0.3,
                 zorder=1,
             )
             ax.add_patch(patch)
@@ -386,9 +418,9 @@ def render_from_inp(
         xs.append(coords[dst][0])
         ys.append(coords[dst][1])
         colour = colours.get(conduit_outfall.get(name, ""), fallback_colour)
-        ax.plot(xs, ys, color=colour, linewidth=1.2, zorder=3)
+        ax.plot(xs, ys, color=colour, linewidth=0.6, zorder=3)
 
-    # Layer 3: junctions (small grey dot) + storage (medium blue dot).
+    # Layer 3: junctions (small grey dot) + storage (blue square).
     jx, jy, sx, sy = [], [], [], []
     for name, (x, y) in coords.items():
         kind = node_kinds.get(name, "junction")
@@ -401,9 +433,9 @@ def render_from_inp(
             jx.append(x)
             jy.append(y)
     if jx:
-        ax.scatter(jx, jy, s=12, c="#555555", marker="o", zorder=4, label="Junction")
+        ax.scatter(jx, jy, s=4, c=_JUNCTION_GREY, marker="o", linewidths=0, zorder=4, label="Junction")
     if sx:
-        ax.scatter(sx, sy, s=40, c="#1f77b4", marker="s", zorder=4, label="Storage")
+        ax.scatter(sx, sy, s=9, c=WONG["blue"], marker="s", linewidths=0, zorder=4, label="Storage")
 
     # Layer 4: outfalls — drawn last so they stack on top.
     ox, oy = [], []
@@ -416,29 +448,20 @@ def render_from_inp(
         ax.scatter(
             ox,
             oy,
-            s=160,
-            c="#d62728",
+            s=40,
+            c=WONG["black"],
             marker="*",
-            edgecolor="black",
-            linewidth=0.5,
+            edgecolor="white",
+            linewidth=0.3,
             zorder=5,
             label="Outfall",
         )
 
-    # Axis tidy-up. Keep the picture square-ish and unitless: the INP
-    # might be in metres, feet, or projected XY — we don't know and we
-    # don't want to mislead.
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.grid(True, linewidth=0.3, alpha=0.4)
-    if outfalls:
-        ax.legend(loc="best", framealpha=0.85)
-
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
+    # Axis tidy-up. The INP might be in metres, feet, or projected XY;
+    # we don't know, so the axis says so instead of guessing a unit.
+    ax.set_xlabel("X (INP units)")
+    ax.set_ylabel("Y (INP units)")
+    _finish_map(fig, ax, out_png, dpi)
 
 
 def render_from_geoparquet(
@@ -490,8 +513,12 @@ def render_from_geoparquet(
     outfalls = sorted(n for n, k in node_kinds.items() if k == "outfall")
     colours = palette_for(outfalls) if outfalls else {}
 
-    _apply_style()
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=dpi)
+    apply_style()
+    frame = subs if (draw_subcatchments and not subs.empty) else edges
+    fig, ax = plt.subplots(
+        figsize=map_figsize(tuple(frame.total_bounds)),
+        layout="constrained",
+    )
 
     if draw_subcatchments and not subs.empty:
         if "outlet" in subs.columns:
@@ -508,7 +535,7 @@ def render_from_geoparquet(
             polys = [geom] if geom.geom_type == "Polygon" else list(geom.geoms)
             for poly in polys:
                 xs, ys = poly.exterior.xy
-                ax.fill(xs, ys, color=(*tint, 0.18), edgecolor=(*tint, 0.6), linewidth=0.6, zorder=1)
+                ax.fill(xs, ys, color=(*tint, 0.18), edgecolor=(*tint, 0.6), linewidth=0.3, zorder=1)
 
     # Conduits via LINESTRING geometry; falls back to (u, v) end nodes
     # when geometry is missing.
@@ -527,13 +554,13 @@ def render_from_geoparquet(
         geom = row.geometry if "geometry" in edges.columns else None
         if geom is not None and not geom.is_empty:
             xs, ys = geom.xy
-            ax.plot(xs, ys, color=colour, linewidth=1.2, zorder=3)
+            ax.plot(xs, ys, color=colour, linewidth=0.6, zorder=3)
         elif u in coord_lookup and v in coord_lookup:
             ax.plot(
                 [coord_lookup[u][0], coord_lookup[v][0]],
                 [coord_lookup[u][1], coord_lookup[v][1]],
                 color=colour,
-                linewidth=1.2,
+                linewidth=0.6,
                 zorder=3,
             )
 
@@ -547,31 +574,38 @@ def render_from_geoparquet(
             jx.append(x)
             jy.append(y)
     if jx:
-        ax.scatter(jx, jy, s=12, c="#555555", marker="o", zorder=4, label="Junction")
+        ax.scatter(jx, jy, s=4, c=_JUNCTION_GREY, marker="o", linewidths=0, zorder=4, label="Junction")
     if ox:
         ax.scatter(
             ox,
             oy,
-            s=160,
-            c="#d62728",
+            s=40,
+            c=WONG["black"],
             marker="*",
-            edgecolor="black",
-            linewidth=0.5,
+            edgecolor="white",
+            linewidth=0.3,
             zorder=5,
             label="Outfall",
         )
 
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.grid(True, linewidth=0.3, alpha=0.4)
-    if outfalls:
-        ax.legend(loc="best", framealpha=0.85)
+    xlabel, ylabel = _crs_axis_labels(getattr(nodes, "crs", None))
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    _finish_map(fig, ax, out_png, dpi)
 
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
-    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
+
+def _crs_axis_labels(crs: Any) -> tuple[str, str]:
+    """Axis labels with units, read off the geoparquet CRS when it has one."""
+    try:
+        if crs is None:
+            return ("X (CRS units)", "Y (CRS units)")
+        if crs.is_geographic:
+            return ("Longitude (°)", "Latitude (°)")
+        unit = crs.axis_info[0].unit_name if crs.axis_info else ""
+        unit = {"metre": "m", "meter": "m", "foot": "ft", "US survey foot": "ft"}.get(unit, unit)
+        return (f"Easting ({unit or 'CRS units'})", f"Northing ({unit or 'CRS units'})")
+    except Exception:  # pragma: no cover - defensive against exotic CRS objects
+        return ("X (CRS units)", "Y (CRS units)")
 
 
 # --------------------------------------------------------------------- #
@@ -606,8 +640,18 @@ def _build_argparser() -> argparse.ArgumentParser:
             "legacy <run-dir>/10_swmmanywhere/ for older runs)."
         ),
     )
-    p.add_argument("--out-png", type=Path, required=True)
-    p.add_argument("--dpi", type=int, default=200)
+    p.add_argument(
+        "--out-png",
+        type=Path,
+        required=True,
+        help="Preview PNG path; the vector twin <stem>.pdf is written beside it.",
+    )
+    p.add_argument(
+        "--dpi",
+        type=int,
+        default=450,
+        help="Resolution of the preview PNG (the PDF is vector). Spec minimum for images is 450.",
+    )
     p.add_argument(
         "--no-subcatchments",
         action="store_true",

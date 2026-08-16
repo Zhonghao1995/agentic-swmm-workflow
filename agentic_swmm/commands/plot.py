@@ -71,7 +71,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         choices=["intensity_mm_per_hr", "depth_mm_per_dt", "cumulative_depth_mm"],
         help="How to interpret rainfall values. Defaults to INP-based inference, then depth_mm_per_dt.",
     )
-    parser.add_argument("--out-png", type=Path, help=f"Output PNG path. Defaults to run-dir/{run_layout.PLOT}/fig_rain_runoff.png.")
+    parser.add_argument("--out-png", type=Path, help=f"Output PNG path (the vector PDF twin lands beside it). Defaults to run-dir/{run_layout.PLOT}/fig_rain_runoff.png.")
+    parser.add_argument(
+        "--width",
+        choices=["single", "double"],
+        default="single",
+        help="Figure width per the Nature spec: single column (89 mm, default) or double column (183 mm).",
+    )
     parser.add_argument("--focus-day", help="Optional focus day in YYYY-MM-DD format.")
     parser.add_argument("--window-start", help="Optional HH:MM start time when --focus-day is set.")
     parser.add_argument("--window-end", help="Optional HH:MM end time when --focus-day is set.")
@@ -137,6 +143,8 @@ def main(args: argparse.Namespace) -> int:
         str(out_png),
         "--pad-hours",
         str(args.pad_hours),
+        "--width",
+        getattr(args, "width", None) or "single",
     )
     # ``--node`` and ``--link`` are mutually exclusive at parse time
     # (see ``register``). Forward whichever the user picked. When

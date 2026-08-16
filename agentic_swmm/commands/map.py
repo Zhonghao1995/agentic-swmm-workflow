@@ -104,8 +104,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--dpi",
         type=int,
-        default=200,
-        help="Output resolution (default 200 — print-friendly).",
+        default=450,
+        help="Resolution of the PNG preview (default 450, the figure spec's minimum for images); the PDF twin is vector.",
     )
     parser.add_argument(
         "--no-subcatchments",
