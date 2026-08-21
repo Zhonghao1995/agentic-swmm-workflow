@@ -38,17 +38,13 @@
 
 ## Highlights
 
-- **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, with a verification-first workflow and Obsidian-compatible audit trail.
-- **Five minutes, one command:** an Agentic SWMM workflow that is auditable, memory-informed, and agent-ready.
-- **Live demo (no install, offline case replay):** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
-- **Case study, a model that said not to trust it:** the same Victoria AOI against the real municipal network on a Windows 11 ARM laptop, where the requested week turned out to be dry: the run reported a 6.111% routing continuity error and a flooding volume against zero rainfall, named both as disqualifying, and proposed the design storm that would settle it, in [cases/downtown-victoria-on-arm.md](cases/downtown-victoria-on-arm.md).
-- **Case study, one prompt to client deliverable:** a single English sentence fetched the real downtown Victoria, BC municipal storm network (423 subcatchments), ran SWMM, audited it, screened it against the design rulebook, plotted the hydrograph, and exported a Word report with the figures embedded; the exact prompt, the numbers, and every artifact are in [cases/downtown-victoria](cases/downtown-victoria/).
-- **[SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) upstream, ready to use:** inside Canada, real municipal storm networks for 35 cities or synthesis anywhere else in the country, built from Canadian open data and fetched directly into aiswmm through the `fetch_swmm_from_canada` tool; outside Canada, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere)-based synthesis covers the rest of the globe. Two complementary upstream sources, and one goal can chain fetch, simulate, and audit into a single run folder.
-- **Bring the LLM you already pay for:** ten provider routes behind one detect-first `aiswmm setup` wizard (OpenAI, Anthropic, OpenRouter, DeepSeek, Groq, Gemini, local Ollama and LM Studio, OpenAI-compatible gateways, custom endpoints), with an optional local fallback chain that keeps sessions alive through outages and quota windows.
-- **Calibrate, then force:** `aiswmm climate` batches precipitation-scaled climate scenarios over a calibrated model and writes a per-scenario comparison of runoff, flooding, outflow, and peak flow.
-- **A domain-specific agent runtime, managed-agent style:** every session is self-describing (verbatim goal, auto-derived agent snapshot with tool/skill/prompt hashes, environment fingerprint, append-only event log, status lifecycle), and the orchestration plus verification rules are open source and auditable.
-- **Runtime-portable:** the Skills and MCP servers also work with [Codex](https://openai.com/codex/), [OpenClaw](https://github.com/openclaw/openclaw), and [Hermes Agent](https://github.com/NousResearch/hermes-agent).
-- **Published research:** our paper is published in *AI for Engineering* (MDPI), June 9, 2026: [read the paper](https://doi.org/10.3390/aieng1010005).
+- **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, verification-first, with a full audit trail.
+- **Live demo, no install:** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
+- **One prompt to client deliverable:** one English sentence fetched the real downtown Victoria storm network, ran SWMM, audited it, and exported a Word report: [cases/downtown-victoria](cases/downtown-victoria/).
+- **A model that said not to trust it:** when the requested week turned out dry, the run named its own errors as disqualifying instead of handing over bad numbers: [cases/downtown-victoria-on-arm.md](cases/downtown-victoria-on-arm.md).
+- **Real networks upstream:** [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) covers 35 Canadian cities, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) synthesis covers the rest of the globe.
+- **Bring the LLM you already pay for:** ten provider routes behind one `aiswmm setup` wizard, with a local fallback chain.
+- **Published research:** published in *AI for Engineering* (MDPI, 2026): [read the paper](https://doi.org/10.3390/aieng1010005).
 
 ## Project Overview
 
