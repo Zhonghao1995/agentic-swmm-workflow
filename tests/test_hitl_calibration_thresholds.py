@@ -64,31 +64,44 @@ class CalibrationKgeLowHitTests(unittest.TestCase):
         self.assertEqual(hit.severity, "block")
         self.assertEqual(hit.measured_value, 0.4)
 
-    def test_kge_at_or_above_05_is_not_a_hit(self) -> None:
+    def test_kge_at_the_centre_anchor_is_a_warn_hit(self) -> None:
+        # Graded contract (spec fuzzy-hitl-gates): 0.5 is the centre of
+        # the uncertain band, the peak of "medium", so it now warns
+        # instead of passing silently one hundredth above a hard cliff.
         qa = {"calibration": {"kge": 0.5}}
         hits = [h for h in evaluate(qa, _load()) if h.pattern == "calibration_kge_low"]
-        self.assertEqual(hits, [])
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].severity, "warn")
+        self.assertEqual(hits[0].level, "medium")
 
 
 class CalibrationPbiasHighHitTests(unittest.TestCase):
     """|PBIAS| > 30 fires warn severity."""
 
-    def test_high_pbias_abs_fires_warn(self) -> None:
+    def test_pbias_deep_in_the_high_band_blocks(self) -> None:
+        # Graded contract: 42 sits closer to the bad anchor (45) than to
+        # the centre (30), so the dominant band is high and the hit
+        # escalates to block instead of the old flat warn.
         qa = {"calibration": {"pbias_pct_abs": 42.0}}
         hits = evaluate(qa, _load())
         names = [h.pattern for h in hits]
         self.assertIn("calibration_pbias_high", names)
         hit = next(h for h in hits if h.pattern == "calibration_pbias_high")
-        self.assertEqual(hit.severity, "warn")
+        self.assertEqual(hit.severity, "block")
+        self.assertEqual(hit.level, "high")
 
-    def test_pbias_at_threshold_is_not_a_hit(self) -> None:
+    def test_pbias_at_the_centre_anchor_is_a_warn_hit(self) -> None:
+        # Graded contract: 30 is the centre anchor, the peak of
+        # "medium"; it warns rather than passing silently.
         qa = {"calibration": {"pbias_pct_abs": 30.0}}
         hits = [
             h
             for h in evaluate(qa, _load())
             if h.pattern == "calibration_pbias_high"
         ]
-        self.assertEqual(hits, [])
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0].severity, "warn")
+        self.assertEqual(hits[0].level, "medium")
 
 
 class SobolFirstOrderDominantHitTests(unittest.TestCase):

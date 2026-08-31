@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "status": "pass",
+  "checks": [
+    {
+      "id": "swmm_return_code_zero",
+      "ok": true,
+      "detail": "return_code=0"
+    },
+    {
+      "id": "runner_rpt_exists",
+      "ok": true,
+      "detail": "/home/user/agentic-swmm-workflow/runs/maint-sweep2-1310/06_runner/model.rpt"
+    },
+    {
+      "id": "runner_out_exists",
+      "ok": true,
+      "detail": "/home/user/agentic-swmm-workflow/runs/maint-sweep2-1310/06_runner/model.out"
+    },
+    {
+      "id": "peak_parsed",
+      "ok": true,
+      "detail": "node=OU2 source=Node Inflow Summary peak=0.061"
+    },
+    {
+      "id": "continuity_parsed",
+      "ok": true,
+      "detail": {
+        "runoff_quantity": -0.13,
+        "flow_routing": -0.004
+      }
+    }
+  ],
+  "peak_file": "/home/user/agentic-swmm-workflow/runs/maint-sweep2-1310/07_qa/runner_peak.json",
+  "continuity_file": "/home/user/agentic-swmm-workflow/runs/maint-sweep2-1310/07_qa/runner_continuity.json"
+}
