@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.audit.moc_generator import generate_moc
 from agentic_swmm.utils.paths import require_dir, script_path
+from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
 
@@ -167,8 +167,16 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
     sensitivity = _load_optional_json(
         run_dir / "09_audit" / "sensitivity_indices.json"
     )
+    calibration = _load_optional_json(
+        run_dir / "09_audit" / "calibration_summary.json"
+    ) or _load_optional_json(run_dir / "calibration_summary.json")
     merged = dict(qa)
-    for key, value in project_qa(qa, sensitivity_indices=sensitivity).items():
+    derived = project_qa(
+        qa,
+        sensitivity_indices=sensitivity,
+        calibration_summary=calibration,
+    )
+    for key, value in derived.items():
         merged.setdefault(key, value)
     hits = evaluate(merged, thresholds)
     if not hits:
@@ -184,9 +192,7 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
         "generated_at_utc": _utc_stamp(),
         "qa_summary": qa_summary_rel,
         "thresholds_doc": "docs/hitl-thresholds.md",
-        "thresholds_doc_sha256": hashlib.sha256(
-            thresholds_doc.read_bytes()
-        ).hexdigest(),
+        "thresholds_doc_sha256": sha256_of_file(thresholds_doc),
         "hits": [_hit_payload(hit) for hit in hits],
     }
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

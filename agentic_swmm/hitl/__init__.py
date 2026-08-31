@@ -11,7 +11,7 @@ This package adds three coupled mechanisms on top of the audit layer:
 3. The ``request_expert_review`` agent tool (registered in
    ``agentic_swmm.agent.tool_registry``) — a pause-and-prompt seam that
    blocks the agent until the human answers Y/N on stdin.
-4. ``qa_projection`` / ``banding`` — the graded-gate half (spec
+4. ``qa_projection`` / ``banding``: the graded-gate half (spec
    fuzzy-hitl-gates): project real QA artifact shapes into the dotted
    namespace the thresholds doc declares, and grade banded entries
    low / medium / high instead of a crisp cutoff.

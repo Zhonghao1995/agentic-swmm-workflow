@@ -49,6 +49,33 @@ class ProjectionTests(unittest.TestCase):
             derived["sensitivity"]["sobol"]["S_i_max"], 0.82
         )
 
+    def test_calibration_summary_projects_metrics(self) -> None:
+        # Shape locked by tests/test_calibration_summary_schema.py:
+        # KGE is the primary objective, NSE/PBIAS are secondary metrics.
+        summary = {
+            "primary_objective": "kge",
+            "primary_value": 0.41,
+            "secondary_metrics": {"nse": 0.38, "pbias_pct": -31.5},
+        }
+        derived = project_qa({}, calibration_summary=summary)
+        self.assertAlmostEqual(derived["calibration"]["kge"], 0.41)
+        self.assertAlmostEqual(derived["calibration"]["nse"], 0.38)
+        self.assertAlmostEqual(derived["calibration"]["pbias_pct_abs"], 31.5)
+
+    def test_calibration_partial_summary_projects_what_exists(self) -> None:
+        summary = {"primary_objective": "rmse", "primary_value": 1.2}
+        self.assertEqual(project_qa({}, calibration_summary=summary), {})
+        summary = {
+            "primary_objective": "rmse",
+            "primary_value": 1.2,
+            "secondary_metrics": {"nse": 0.7},
+        }
+        derived = project_qa({}, calibration_summary=summary)
+        self.assertEqual(derived["calibration"], {"nse": 0.7})
+
+    def test_malformed_calibration_summary_yields_nothing(self) -> None:
+        self.assertEqual(project_qa({}, calibration_summary={"secondary_metrics": "x"}), {})
+
     def test_non_sobol_sensitivity_ignored(self) -> None:
         sens = {"method": "morris", "indices": {"imperv": {"mu_star": 1.0}}}
         self.assertEqual(project_qa({}, sensitivity_indices=sens), {})

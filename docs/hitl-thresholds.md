@@ -45,7 +45,7 @@ thresholds:
       fine: 0.65
       centre: 0.5
       bad: 0.3
-    evidence_path: "06_qa/qa_summary.json"
+    evidence_path: "09_audit/calibration_summary.json"
     message: "Calibration Nash-Sutcliffe Efficiency below 0.5 — calibration likely unusable."
     rationale: "Guards against shipping a calibration that performs no better than predicting the observed mean. Moriasi 2015 streamflow tiers: NSE > 0.5 satisfactory, > 0.7 good, > 0.8 very good. 0.5 is a hard screening floor — below this the model captures less variance than the long-term average and the calibrated parameters are not informative. Urban stormwater calibrations against sparse or noisy gauge records may legitimately struggle to reach NSE > 0.7; pair this metric with KGE (next threshold) since NSE alone over-penalises timing errors common in event-scale runoff, and reflect domain-specific targets in `09_audit/calibration_summary.json` before publication."
   calibration_kge_low:
@@ -58,7 +58,7 @@ thresholds:
       fine: 0.7
       centre: 0.5
       bad: 0.3
-    evidence_path: "06_qa/calibration_summary.json"
+    evidence_path: "09_audit/calibration_summary.json"
     message: "Calibration Kling-Gupta Efficiency below 0.5 — calibration likely unusable."
     rationale: "Guards against the same 'no better than the mean' failure mode as NSE but using the Gupta et al. 2009 / Kling et al. 2012 decomposition into correlation r, variability ratio α, and bias ratio β. KGE > 0.5 means the model jointly beats the mean on all three components. When the threshold fires, inspect r / α / β separately in `calibration_summary.json`: low r indicates timing or shape problems (rainfall lag, routing storage); α far from 1 indicates variance mis-match (often hydrograph attenuation); β far from 1 indicates systematic over- or under-prediction (often imperviousness or infiltration parameterisation). For event-scale storm runoff KGE > 0.75 is a reasonable production target; for long-term water balance KGE > 0.85 is achievable on well-instrumented sites. Override per study via `aiswmm thresholds override`."
   calibration_pbias_high:
@@ -71,7 +71,7 @@ thresholds:
       fine: 15.0
       centre: 30.0
       bad: 45.0
-    evidence_path: "06_qa/calibration_summary.json"
+    evidence_path: "09_audit/calibration_summary.json"
     message: "Absolute percent bias |PBIAS| exceeds 30% — systematic over/under-prediction."
     rationale: "Guards against systematic volumetric bias. Moriasi 2015 streamflow tiers: |PBIAS| < 5% very good, 5–10% good, 10–15% satisfactory, > 15% unsatisfactory. The 30% warn threshold is intentionally loose because aiswmm primarily targets stormwater event modelling — short event records and combined-sewer dynamics legitimately produce higher PBIAS noise than the annual streamflow water balance that the Moriasi tiers were calibrated for. Water-balance studies (LID retrofit volume accounting, climate scenario annualised volumes) should tighten to |PBIAS| < 15% via `aiswmm thresholds override <run_dir> calibration_pbias_high <value>`."
   sobol_first_order_dominant:

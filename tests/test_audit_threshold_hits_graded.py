@@ -113,6 +113,36 @@ class GradedAuditIntegrationTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertFalse(hits_path.exists(), f"unexpected: {hits_path}")
 
+    def test_calibration_summary_feeds_the_gate(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = _seed_run(Path(tmp), _real_shape_qa(-0.004))
+            (run_dir / "09_audit" / "calibration_summary.json").write_text(
+                json.dumps(
+                    {
+                        "primary_objective": "kge",
+                        "primary_value": 0.4,
+                        "secondary_metrics": {"nse": 0.72, "pbias_pct": -12.0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            rc, _ = _run_audit_main(run_dir)
+            hits_path = run_dir / "09_audit" / "threshold_hits.json"
+            self.assertEqual(rc, 0)
+            self.assertTrue(hits_path.is_file(), f"expected {hits_path}")
+            data = json.loads(hits_path.read_text(encoding="utf-8"))
+        hit = next(
+            h for h in data["hits"] if h["pattern"] == "calibration_kge_low"
+        )
+        # KGE 0.4 is exactly halfway between the centre (0.5) and bad
+        # (0.3) anchors; the tie resolves severe (issue #52 bullet).
+        self.assertEqual(hit["severity"], "block")
+        self.assertEqual(hit["level"], "high")
+        # NSE 0.72 and |PBIAS| 12 sit in their low bands: no hits.
+        patterns = [h["pattern"] for h in data["hits"]]
+        self.assertNotIn("calibration_nse_low", patterns)
+        self.assertNotIn("calibration_pbias_high", patterns)
+
     def test_sensitivity_indices_feed_the_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             run_dir = _seed_run(Path(tmp), _real_shape_qa(-0.004))

@@ -96,5 +96,24 @@ class BandedEvaluateTests(unittest.TestCase):
         self.assertIsNone(hits[0].level)
 
 
+class LoaderRobustnessTests(unittest.TestCase):
+    def test_malformed_front_matter_raises_value_error(self) -> None:
+        # The audit seam catches ValueError; a leaking yaml.YAMLError
+        # would crash `aiswmm audit` on a hand-edit typo in the
+        # thresholds doc (standards review, quiet-on-malformed rule).
+        import tempfile
+        from pathlib import Path
+
+        from agentic_swmm.hitl.threshold_evaluator import load_thresholds_from_md
+
+        with tempfile.TemporaryDirectory() as tmp:
+            doc = Path(tmp) / "thresholds.md"
+            doc.write_text(
+                "---\nthresholds:\n  broken: [unclosed\n---\n", encoding="utf-8"
+            )
+            with self.assertRaises(ValueError):
+                load_thresholds_from_md(doc)
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()

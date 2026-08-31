@@ -8,10 +8,14 @@ on real runs (spec: fuzzy-hitl-gates).
 
 Only namespaces with a verified producer are derived: continuity (from
 the parsed-continuity check, compared on the absolute value with the
-signed raw kept alongside) and the Sobol maximum first-order index.
-``peak.deviation_percent``, ``calibration.*`` and ``pour_point.suspect``
-have no verified producer today and stay absent, which the evaluator
-treats exactly as before (missing key, no hit).
+signed raw kept alongside), the calibration metrics (from the
+``calibration_summary.json`` shape locked by
+``tests/test_calibration_summary_schema.py``: KGE as the primary
+objective, NSE and PBIAS as secondary metrics, PBIAS projected as its
+absolute value) and the Sobol maximum first-order index.
+``peak.deviation_percent`` and ``pour_point.suspect`` have no verified
+producer today and stay absent, which the evaluator treats exactly as
+before (missing key, no hit).
 """
 from __future__ import annotations
 
@@ -22,6 +26,7 @@ def project_qa(
     qa: dict[str, Any],
     *,
     sensitivity_indices: dict[str, Any] | None = None,
+    calibration_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return only the derived namespaces; the caller merges them in
     without overriding keys the QA report already carries."""
@@ -36,6 +41,9 @@ def project_qa(
                 block[f"{key}_signed"] = float(value)
         if block:
             derived["continuity"] = block
+    calibration = _calibration_metrics(calibration_summary)
+    if calibration:
+        derived["calibration"] = calibration
     s_i_max = _sobol_max_first_order(sensitivity_indices)
     if s_i_max is not None:
         derived["sensitivity"] = {"sobol": {"S_i_max": s_i_max}}
@@ -51,6 +59,27 @@ def _continuity_detail(qa: dict[str, Any]) -> dict[str, Any] | None:
             detail = check.get("detail")
             return detail if isinstance(detail, dict) else None
     return None
+
+
+def _calibration_metrics(summary: dict[str, Any] | None) -> dict[str, float]:
+    if not isinstance(summary, dict):
+        return {}
+    out: dict[str, float] = {}
+    if summary.get("primary_objective") == "kge" and _is_number(
+        summary.get("primary_value")
+    ):
+        out["kge"] = float(summary["primary_value"])
+    secondary = summary.get("secondary_metrics")
+    if isinstance(secondary, dict):
+        if _is_number(secondary.get("nse")):
+            out["nse"] = float(secondary["nse"])
+        if _is_number(secondary.get("pbias_pct")):
+            out["pbias_pct_abs"] = abs(float(secondary["pbias_pct"]))
+    return out
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _sobol_max_first_order(payload: dict[str, Any] | None) -> float | None:

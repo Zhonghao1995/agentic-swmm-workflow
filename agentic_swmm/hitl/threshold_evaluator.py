@@ -192,7 +192,12 @@ def load_thresholds_from_md(path: Path) -> dict:
             f"{path}: no YAML front-matter found "
             "(expected --- delimited block at top of file)"
         )
-    data = yaml.safe_load(front)
+    try:
+        data = yaml.safe_load(front)
+    except yaml.YAMLError as exc:
+        # The audit seam catches ValueError; a leaking yaml error would
+        # crash `aiswmm audit` on a hand-edit typo in the doc.
+        raise ValueError(f"{path}: malformed YAML front-matter: {exc}") from exc
     if not isinstance(data, dict):
         data = {}
     thresholds = data.get("thresholds")
