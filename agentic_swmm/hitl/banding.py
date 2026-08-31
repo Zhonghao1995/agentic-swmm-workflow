@@ -62,7 +62,14 @@ def memberships(value: float, bands: Bands) -> dict[str, float]:
 
 
 def grade(value: float, bands: Bands) -> tuple[dict[str, float], str]:
-    """Return ``(memberships, level)``; membership ties resolve severe."""
+    """Return ``(memberships, level)``; membership ties resolve severe.
+
+    Ties are decided on memberships rounded to 1e-12: a value exactly
+    halfway between two anchors is a true tie in real arithmetic, and
+    without the rounding, float noise picks a side arbitrarily (KGE 0.4
+    against the 0.5 / 0.3 anchors landed epsilon-medium instead of the
+    severe band).
+    """
     m = memberships(value, bands)
-    level = max(_LEVELS, key=lambda k: (m[k], _LEVELS.index(k)))
+    level = max(_LEVELS, key=lambda k: (round(m[k], 12), _LEVELS.index(k)))
     return m, level

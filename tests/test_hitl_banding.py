@@ -78,6 +78,22 @@ class GradeTests(unittest.TestCase):
             _, level = grade(value, self.continuity)
             self.assertEqual(level, "low", f"value={value}")
 
+    def test_float_noise_cannot_flip_a_tie(self) -> None:
+        # KGE 0.4 against anchors 0.7 / 0.5 / 0.3 is exactly halfway
+        # between centre and bad in real arithmetic; binary floats make
+        # the raw memberships differ by ~1e-16. The tie must still
+        # resolve severe (this also preserves the issue #52 acceptance
+        # bullet: KGE 0.4 blocks).
+        kge = Bands.from_spec(
+            {
+                "direction": "higher_is_better",
+                "bands": {"fine": 0.7, "centre": 0.5, "bad": 0.3},
+            }
+        )
+        assert kge is not None
+        _, level = grade(0.4, kge)
+        self.assertEqual(level, "high")
+
     def test_higher_is_better_mirrors(self) -> None:
         nse = Bands.from_spec(
             {

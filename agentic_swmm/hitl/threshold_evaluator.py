@@ -30,6 +30,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
+import yaml
+
+from agentic_swmm.hitl.banding import Bands, grade
+
 
 _PLACEHOLDER_RATIONALE_MARKER = "HYDROLOGY-TODO"
 
@@ -45,6 +49,11 @@ class ThresholdHit:
     evidence_ref: str
     message: str
     rationale_is_placeholder: bool = False
+    # Graded fields (spec fuzzy-hitl-gates); ``None`` on crisp entries.
+    level: str | None = None
+    memberships: dict[str, float] | None = None
+    bands: dict[str, float] | None = None
+    direction: str | None = None
 
 
 _OPERATORS = {
@@ -101,6 +110,39 @@ def evaluate(qa_report: dict, thresholds: dict) -> list[ThresholdHit]:
         measured = _dotted_lookup(qa_report, str(measured_key))
         if measured is None:
             continue
+        # Graded path (spec fuzzy-hitl-gates): a bands block replaces
+        # the crisp comparison for numeric values. Malformed bands
+        # parse to None and fall through to the crisp path, so a
+        # misconfigured entry can weaken nothing.
+        graded_bands = Bands.from_spec(spec)
+        if (
+            graded_bands is not None
+            and isinstance(measured, (int, float))
+            and not isinstance(measured, bool)
+        ):
+            band_memberships, band_level = grade(float(measured), graded_bands)
+            if band_level == "low":
+                continue
+            hits.append(
+                ThresholdHit(
+                    pattern=str(pattern),
+                    severity="warn" if band_level == "medium" else "block",
+                    measured_value=measured,
+                    threshold_value=threshold_value,
+                    evidence_ref=str(spec.get("evidence_path", "")),
+                    message=str(spec.get("message", "")),
+                    rationale_is_placeholder=_is_placeholder_rationale(spec.get("rationale")),
+                    level=band_level,
+                    memberships=band_memberships,
+                    bands={
+                        "fine": graded_bands.fine,
+                        "centre": graded_bands.centre,
+                        "bad": graded_bands.bad,
+                    },
+                    direction=graded_bands.direction,
+                )
+            )
+            continue
         try:
             triggered = bool(compare(measured, threshold_value))
         except TypeError:
@@ -150,7 +192,9 @@ def load_thresholds_from_md(path: Path) -> dict:
             f"{path}: no YAML front-matter found "
             "(expected --- delimited block at top of file)"
         )
-    data = _parse_simple_yaml(front)
+    data = yaml.safe_load(front)
+    if not isinstance(data, dict):
+        data = {}
     thresholds = data.get("thresholds")
     if not isinstance(thresholds, dict):
         raise ValueError(
@@ -170,65 +214,6 @@ def _extract_front_matter(text: str) -> str | None:
             return "\n".join(body)
         body.append(raw)
     return None
-
-
-def _parse_simple_yaml(text: str) -> dict[str, Any]:
-    """Tiny YAML subset parser sufficient for ``hitl-thresholds.md``.
-
-    The PRD prescribes a specific shape (mapping → mapping → scalars).
-    We avoid taking on a PyYAML dependency just for this loader; if a
-    future threshold needs more advanced YAML the call-site can switch
-    to ``yaml.safe_load`` without touching :func:`evaluate`.
-    """
-    root: dict[str, Any] = {}
-    stack: list[tuple[int, dict[str, Any]]] = [(-1, root)]
-    for raw_line in text.splitlines():
-        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
-            continue
-        indent = len(raw_line) - len(raw_line.lstrip(" "))
-        line = raw_line.strip()
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        key = key.strip()
-        value = value.strip()
-        # Pop deeper scopes that are no longer in scope.
-        while stack and indent <= stack[-1][0]:
-            stack.pop()
-        if not stack:
-            stack = [(-1, root)]
-        parent = stack[-1][1]
-        if value == "":
-            child: dict[str, Any] = {}
-            parent[key] = child
-            stack.append((indent, child))
-        else:
-            parent[key] = _coerce_scalar(value)
-    return root
-
-
-def _coerce_scalar(value: str) -> Any:
-    """Coerce a YAML scalar literal into a Python value.
-
-    Handles quoted strings, booleans, integers, floats, and falls back
-    to the original string. This intentionally does not handle every
-    YAML corner case — see the docstring on :func:`_parse_simple_yaml`.
-    """
-    if (value.startswith('"') and value.endswith('"')) or (
-        value.startswith("'") and value.endswith("'")
-    ):
-        return value[1:-1]
-    lowered = value.lower()
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-    if lowered in {"null", "~"}:
-        return None
-    try:
-        if "." in value or "e" in lowered:
-            return float(value)
-        return int(value)
-    except ValueError:
-        return value
 
 
 def patterns(thresholds: dict) -> Iterable[str]:
