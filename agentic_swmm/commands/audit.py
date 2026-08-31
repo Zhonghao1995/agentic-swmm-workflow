@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
@@ -102,6 +103,36 @@ def _write_moc(run_dir: Path) -> Path | None:
     return index_path
 
 
+def _load_optional_json(path: Path) -> dict | None:
+    """Best-effort read of an optional JSON artifact; anything wrong is None."""
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _hit_payload(hit) -> dict:
+    entry = {
+        "pattern": hit.pattern,
+        "severity": hit.severity,
+        "measured_value": hit.measured_value,
+        "threshold_value": hit.threshold_value,
+        "evidence_ref": hit.evidence_ref,
+        "message": hit.message,
+        "rationale_is_placeholder": hit.rationale_is_placeholder,
+    }
+    if hit.level is not None:
+        # Graded entries carry their judgement provenance (spec
+        # fuzzy-hitl-gates): which band fired, how deeply, against
+        # which anchors.
+        entry["level"] = hit.level
+        entry["memberships"] = hit.memberships
+        entry["bands"] = hit.bands
+        entry["direction"] = hit.direction
+    return entry
+
+
 def _write_threshold_hits(run_dir: Path) -> Path | None:
     """Run the HITL threshold evaluator against the run's QA summary.
 
@@ -128,7 +159,18 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
         thresholds = load_thresholds_from_md(thresholds_doc)
     except (OSError, ValueError, FileNotFoundError):
         return None
-    hits = evaluate(qa, thresholds)
+    # spec fuzzy-hitl-gates: project the real QA / uncertainty artifact
+    # shapes into the dotted namespace the thresholds doc declares.
+    # Derived keys never override anything the QA report already has.
+    from agentic_swmm.hitl import project_qa
+
+    sensitivity = _load_optional_json(
+        run_dir / "09_audit" / "sensitivity_indices.json"
+    )
+    merged = dict(qa)
+    for key, value in project_qa(qa, sensitivity_indices=sensitivity).items():
+        merged.setdefault(key, value)
+    hits = evaluate(merged, thresholds)
     if not hits:
         return None
     audit_dir = run_dir / "09_audit"
@@ -142,18 +184,10 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
         "generated_at_utc": _utc_stamp(),
         "qa_summary": qa_summary_rel,
         "thresholds_doc": "docs/hitl-thresholds.md",
-        "hits": [
-            {
-                "pattern": hit.pattern,
-                "severity": hit.severity,
-                "measured_value": hit.measured_value,
-                "threshold_value": hit.threshold_value,
-                "evidence_ref": hit.evidence_ref,
-                "message": hit.message,
-                "rationale_is_placeholder": hit.rationale_is_placeholder,
-            }
-            for hit in hits
-        ],
+        "thresholds_doc_sha256": hashlib.sha256(
+            thresholds_doc.read_bytes()
+        ).hexdigest(),
+        "hits": [_hit_payload(hit) for hit in hits],
     }
     out_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return out_path
@@ -312,5 +346,13 @@ def main(args: argparse.Namespace) -> int:
         payload["threshold_hits"] = (
             str(threshold_hits_path) if threshold_hits_path else None
         )
+        if threshold_hits_path is not None:
+            counts = {"block": 0, "warn": 0}
+            hits_doc = _load_optional_json(threshold_hits_path)
+            for hit in (hits_doc or {}).get("hits", []):
+                severity = hit.get("severity")
+                if severity in counts:
+                    counts[severity] += 1
+            payload["threshold_hit_levels"] = counts
         print(json.dumps(payload, indent=2))
     return result.return_code

@@ -11,6 +11,10 @@ This package adds three coupled mechanisms on top of the audit layer:
 3. The ``request_expert_review`` agent tool (registered in
    ``agentic_swmm.agent.tool_registry``) — a pause-and-prompt seam that
    blocks the agent until the human answers Y/N on stdin.
+4. ``qa_projection`` / ``banding`` — the graded-gate half (spec
+   fuzzy-hitl-gates): project real QA artifact shapes into the dotted
+   namespace the thresholds doc declares, and grade banded entries
+   low / medium / high instead of a crisp cutoff.
 
 These three layers together turn the audit/provenance pipeline from a
 post-hoc record into a runtime governance gate: the agent can pause at
@@ -26,6 +30,7 @@ from agentic_swmm.hitl.decision_recorder import (
     now_utc_iso,
     read_decisions,
 )
+from agentic_swmm.hitl.qa_projection import project_qa
 from agentic_swmm.hitl.threshold_evaluator import (
     ThresholdHit,
     evaluate,
@@ -48,5 +53,6 @@ __all__ = [
     "make_decision",
     "new_decision_id",
     "now_utc_iso",
+    "project_qa",
     "read_decisions",
 ]
