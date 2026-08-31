@@ -1,157 +1,133 @@
 # Repository Map
 
-This repository is the Agentic SWMM workflow layer: a compact set of skills, scripts, examples, benchmarks, audit records, and modeling-memory artifacts for reproducible SWMM work.
-
-The development checkout is your local clone of this repo, e.g.:
-
-```text
-~/agentic-swmm-workflow
-```
-
-The private GitHub remote is:
-
-```text
-Zhonghao1995/agentic-swmm-workflow-private
-```
-
-The public-facing repository remains:
+This repository is the Agentic SWMM workflow layer: the `aiswmm` runtime, twenty workflow-stage skills, eleven MCP servers, and the test suite that keeps their contracts honest. The public repository is:
 
 ```text
 Zhonghao1995/agentic-swmm-workflow
 ```
 
-## Organization Principle
+## The four layers
 
-Skills are grouped by workflow stage, not by every algorithm. New methods should usually become scripts, examples, or strategy options inside an existing stage skill.
+| Layer | Where | What it does |
+|---|---|---|
+| Runtime | `agentic_swmm/` | The pip-installable package (`pip install aiswmm`). Registers the CLI verbs, runs the LLM planner loop, enforces permissions and HITL gates, and manages memory and providers. |
+| Skills | `skills/` | Twenty skills, each a `SKILL.md` contract plus `scripts/`. The domain logic lives in these scripts; both CLI verbs and agent tools execute them. |
+| MCP servers | `mcp/` | Eleven Node stdio servers that wrap the same skill scripts for external agent runtimes (Codex, Claude, OpenClaw, Hermes). |
+| Tests | `tests/` | The largest layer by volume. Contract, drift-guard, and integration tests over the other three. |
 
-For example, entropy-guided LID placement belongs inside `swmm-lid-optimization`, not in a separate `swmm-entropy-lid` skill.
+One table binds the layers: `EXPECTED_BINDINGS` in `agentic_swmm/agent/mcp_coverage.py` maps each typed agent tool to its skill script and its MCP server/tool, so the same fact is never maintained twice.
 
-## Top-Level Folders
+## Top-level folders
 
 | Folder | Role |
 |---|---|
-| `skills/` | Reusable workflow-stage skills and their scripts, examples, tests, and optional MCP scaffolds. |
-| `scripts/` | Repository-level bootstrap, acceptance, benchmark, and real-case runner scripts. |
-| `examples/` | Small reusable input fixtures and prepared examples. |
-| `docs/` | Human-readable workflow, validation, audit, memory, runtime, and planning documents. |
-| `runs/` | Generated benchmark, acceptance, audit, and experiment outputs. |
-| `memory/modeling-memory/` | Generated project modeling memory derived from audited runs. |
-| `agentic-ai/memory/` | Public Agentic AI memory preload files for project identity and evidence posture. |
-| `tests/` | Top-level lightweight tests for shared audit, runner, and memory behavior. |
+| `agentic_swmm/` | Python runtime and CLI (see below). |
+| `skills/` | Workflow-stage skills: `SKILL.md` + `scripts/`, some with `examples/` and `tests/`. |
+| `mcp/` | MCP servers, one directory per server, plus the shared `_lib/` prologue. |
+| `tests/` | Top-level test suite. |
+| `scripts/` | Installers and bootstrap, benchmarks, acceptance runner, MCP config generation. |
+| `agent/` | Startup memory files the planner loads, plus `config/intent_map.json` (keyword-to-skill routing hints). |
+| `memory/modeling-memory/` | Generated modeling memory derived from audited runs. |
+| `examples/` | Small reusable input fixtures and prepared cases. |
+| `cases/` | Public case studies with their figures and sample deliverables. |
+| `data/` | Raw GIS inputs backing the bundled cases. |
+| `docs/` | Human-readable documentation (entry points below). |
+| `runs/` | Generated outputs; not committed. `runs/README.md` documents where new runs land. |
+| `web/` | The one-line installer scripts served from aiswmm.com. |
+| `integrations/` | Setup guidance for wiring the MCP servers and skills into external runtimes. |
 
-## Skill Layer
+## Runtime (`agentic_swmm/`)
 
-Keep these as the main skill boundaries:
+| Subpackage | Role |
+|---|---|
+| `agent/` | Planner loop, tool registry, skill router, permissions and profiles, HITL surface, gap-fill runtime, session bootstrap, SWMM runtime helpers. |
+| `commands/` | One module per CLI verb; `expert/` holds the operator-only authority verbs. |
+| `memory/` | Cross-run memory: parametric records, lessons lifecycle, recall, session store. |
+| `providers/` | LLM providers (openai default, anthropic opt-in), standard-library HTTP clients. |
+| `gap_fill/` | Detect-propose-review-record loop for missing inputs. |
+| `hitl/` | Threshold evaluator and expert-review pause. |
+| `audit/` | Run-folder invariants, provenance records, the Obsidian MOC generator. |
+| `integrations/` | SWMMCanada and SWMManywhere upstream runners. |
+| `diagnostics/` | `aiswmm doctor` report and fixes. |
+| `case/`, `reporting/`, `runtime/`, `utils/` | Case registry, run README rendering, resource registry, shared helpers. |
 
-| Skill | Main Question | Current Form |
-|---|---|---|
-| `swmm-gis` | How are subcatchment GIS inputs preprocessed? | CLI skill, MCP-oriented scaffolding where present. |
-| `swmm-network` | How are junctions, conduits, outfalls, and network QA handled? | CLI skill with MCP server. |
-| `swmm-params` | How are land-use and soil inputs mapped to SWMM parameters? | CLI/reference skill. |
-| `swmm-climate` | How is rainfall formatted for SWMM? | CLI skill with MCP server. |
-| `swmm-builder` | How is a SWMM INP assembled from prepared artifacts? | Builder skill. |
-| `swmm-runner` | How is SWMM executed and parsed reproducibly? | CLI skill with MCP server. |
-| `swmm-plot` | How are rainfall-runoff figures generated? | CLI skill with MCP server. |
-| `swmm-calibration` | Which parameters best match observations? | CLI skill with MCP server. |
-| `swmm-uncertainty` | How much output spread follows from uncertain inputs? | CLI skill; future MCP wrapper documented. |
-| `swmm-lid-optimization` | Which LID type, size, and placement choices improve objectives? | CLI skill; future MCP wrapper documented. |
-| `swmm-experiment-audit` | What happened in one run, and what evidence supports it? | CLI audit skill. |
-| `swmm-modeling-memory` | What keeps happening across audited runs? | CLI memory summarizer. |
-| `swmm-end-to-end` | Which module should run next in an agent-orchestrated workflow? | Top-level orchestration skill. |
+The CLI registers 33 verbs in seven help groups (Core workflow, Analysis, Memory, Expert, Inspection, Case namespace, Setup). Any input that is not a registered verb routes to the agent and its LLM planner. The expert authority verbs (`aiswmm expert calibration accept`, `pour_point confirm`, `thresholds override`, `publish`, and related) are deliberately not exposed as agent tools; a test pins that boundary.
 
-## LID Skill Internal Layout
+## Skill layer
 
-LID-related work should stay under:
+Skills are grouped by workflow stage, not by algorithm. New methods should become scripts, examples, or strategy options inside an existing stage skill rather than new skills.
 
-```text
-skills/swmm-lid-optimization/
-```
+| Skill | Main question |
+|---|---|
+| `swmm-gis` | How are subcatchment inputs derived from the user's GIS and DEM layers? |
+| `swmm-network` | How are junctions, conduits, and outfalls built and checked from raw network data? |
+| `swmm-params` | How do land use and soils map to SWMM runoff and infiltration parameters? |
+| `swmm-climate` | How is rainfall formatted, and how are design storms generated? |
+| `swmm-builder` | How is a runnable INP assembled from prepared artifacts? |
+| `swmm-runner` | How is SWMM executed reproducibly and its report parsed? |
+| `swmm-plot` | How are hydrographs and network maps rendered from a run? |
+| `swmm-calibration` | Which parameters best match observations? |
+| `swmm-uncertainty` | How much output spread follows from uncertain inputs? |
+| `swmm-lid-optimization` | Which LID scenario choices improve objectives? |
+| `swmm-water-quality` | What pollutant loads does a run report? |
+| `swmm-design-review` | Does a run comply with a design rulebook? |
+| `swmm-report` | How does an audited run become a client Word deliverable? |
+| `swmm-experiment-audit` | What happened in one run, and what evidence supports it? |
+| `swmm-modeling-memory` | What keeps happening across audited runs? |
+| `swmm-rag-memory` | How is past modeling memory retrieved for a new question? |
+| `swmm-canada` | How is a ready-to-run model fetched for a Canadian area from the SWMMCanada upstream? |
+| `swmm-anywhere` | How is a plausible network synthesized from OSM and DEM data where no pipe data exists? |
+| `swmm-end-to-end` | Which module should run next in an agent-orchestrated workflow? |
+| `skill-author` | How is a new skill scaffolded from a described recurring need? |
 
-Use this internal structure:
+## MCP servers
 
-| Layer | Files | Purpose |
-|---|---|---|
-| Priority diagnostics | `scripts/entropy_lid_priority.py` | Convert subcatchment metric tables or D8 raster diagnostics into `lid_priority_score`. |
-| Scenario generation | `scripts/lid_scenario_builder.py` | Insert `[LID_CONTROLS]` and `[LID_USAGE]`, rank candidates, and write scenario manifests. |
-| Examples | `examples/*.json`, `examples/*.csv` | Small configs and priority tables for reproducible smoke tests. |
-| Tests | `tests/test_*.py` | Keep ranking, scenario generation, and priority scoring behavior stable. |
-| Benchmark execution | `scripts/benchmarks/run_tecnopolo_lid_placement_smoke.py` | Run generated scenarios through SWMM and score outputs. |
+Eleven stdio servers: `swmm-builder`, `swmm-calibration`, `swmm-climate`, `swmm-experiment-audit`, `swmm-gis`, `swmm-modeling-memory`, `swmm-network`, `swmm-params`, `swmm-plot`, `swmm-runner`, `swmm-uncertainty`. Each is a thin wrapper that spawns the corresponding skill script and returns its output. Generate runtime configs with `node scripts/generate_mcp_configs.mjs` and smoke-test discovery with `node scripts/smoke_mcp_servers.mjs`; see `integrations/` for per-runtime guidance.
 
-Do not create new skills for each LID strategy. Random placement, imperviousness-based placement, flooding-based placement, entropy-guided placement, cost-effectiveness, and resilience scoring should be strategy options inside `swmm-lid-optimization`.
+## Run layout
 
-## Memory and Audit Layers
+New sessions land under `runs/<YYYY-MM-DD>/<HHMMSS>_<case>_run/` (a goal that executed tools) or `..._chat/` (a conversational turn). Inside a run, the canonical numbered stages `00_raw` through `11_review` are defined in `agentic_swmm/agent/swmm_runtime/run_layout.py`. The one enforced invariant: an audited run carries `09_audit/experiment_note.md` and `09_audit/experiment_provenance.json` (`agentic_swmm/audit/run_folder_layout.py`). `runs/INDEX.md` is a regenerated map of content; legacy folders are read-only forever. Details: `runs/README.md`.
 
-There are three memory-like systems, each with a different job:
+## Memory and audit layers
 
 | Layer | Path | Job |
 |---|---|---|
-| Codex long-term memory | `~/.codex/memories/` | Remembers user/project history across Codex sessions (per-user, platform-agnostic). |
-| Agentic SWMM modeling memory | `memory/modeling-memory/` | Summarizes audited SWMM runs, repeated issues, and skill update proposals. |
-| Agentic AI preload memory | `agentic-ai/memory/` | Gives external agent runtimes stable project identity, operating posture, and evidence boundaries. |
+| Startup memory | `agent/memory/` | Identity and operating posture the planner loads into its system prompt. |
+| Modeling memory | `memory/modeling-memory/` | Generated summaries of audited runs: lessons, parametric records, proposals. |
+| Session evidence | `runs/**/agent_trace.jsonl` and `09_audit/` | Per-session event log and derived audit records. |
 
-The audit layer sits before modeling memory:
-
-```text
-SWMM run -> swmm-experiment-audit -> 09_audit/{experiment_provenance.json,comparison.json,experiment_note.md} -> swmm-modeling-memory
-```
-
-Audit records are evidence for a run. Modeling memory is a summary of repeated patterns. Neither one proves a scientific claim by itself.
-
-### Audit-artefact location invariant
-
-Every audited run dir writes its audit artefacts into a single canonical subdir, regardless of where the run dir lives in `runs/` and regardless of which stage-numbering scheme that run dir uses:
+The audit layer feeds modeling memory:
 
 ```text
-<run-dir>/                                # any depth under runs/
-└── 09_audit/
-    ├── experiment_note.md                # required
-    ├── experiment_provenance.json        # required (schema_version: 1.1)
-    ├── comparison.json                   # optional
-    ├── model_diagnostics.json            # optional
-    └── experiment_note.<utc-ts>.md.bak   # prior versions on re-audit
+SWMM run -> swmm-experiment-audit -> 09_audit/ -> swmm-modeling-memory
 ```
 
-Rules:
+Modeling memory can propose skill updates, but proposals are evidence-gated (a pattern must recur across at least three runs) and always human-approved. Audit records are evidence for a run; modeling memory is a summary of repeated patterns; neither proves a scientific claim by itself.
 
-- The only invariant enforced by `agentic_swmm.audit.run_folder_layout.validate()` is the presence of `09_audit/experiment_note.md` and `09_audit/experiment_provenance.json` for SWMM run dirs. No other stage subdir is required.
-- Filenames inside `09_audit/` are unprefixed. On re-audit, the prior version is renamed `<name>.<utc-ts>.<ext>.bak` before the new file is written.
-- Chat sessions live at `runs/YYYY-MM-DD/HHMMSS_<slug>_chat/` and carry `chat_note.md` (Obsidian frontmatter `type: chat-session`) instead of a SWMM `09_audit/`. Chat sessions do not produce `final_report.md`.
-- Zombie `runs/agent/agent-<digits>/` dirs are archived to `runs/.archive/` via `scripts/archive_zombies.py`. `runs/agent/interactive/` (the current CLI output target) stays in place.
+## Documentation entry points
 
-### Obsidian MOC
-
-After every successful `aiswmm audit`, `agentic_swmm.audit.moc_generator.generate_moc()` regenerates `runs/INDEX.md`. The MOC walks the tree breadth-first via `RunFolderLayout.discover` (unlimited depth, so nested `external-case-candidates/<bucket>/<month>/<runner>/` cases surface alongside top-level ones), and emits two tables — by date and by first-segment bucket — plus an `Unaudited run dirs` section. The filesystem layout under `runs/` is otherwise untouched.
-
-### Migration scripts
-
-| Script | Job |
+| Document | Use when |
 |---|---|
-| `scripts/migrate_audit_layout.py` | Converge legacy audit artefacts (P1 root files, P2 bucket root, P3 deeply nested, P4 unnumbered `audit/` from GIS-style cases, P5 empty `06_audit/`) into `09_audit/`. `--dry-run` default; `--apply` to commit. Idempotent. |
-| `scripts/archive_zombies.py` | Move `runs/agent/agent-<digits>/` dirs under `runs/.archive/`. Never touches `runs/agent/interactive/`. `--dry-run` default; `--apply` to commit. Idempotent. |
-
-Both scripts use `git mv` when the tree is tracked so the moves are reversible via `git revert` + `git mv` back (PRD Rollback).
-
-## Documentation Entry Points
-
-| Document | Use When |
-|---|---|
-| `docs/openclaw-execution-path.md` | You need the stage-by-stage external agent execution contract. |
-| `docs/codex-runtime.md` | You need Codex-specific local runtime behavior. |
+| `docs/installation.md`, `docs/runtime-install-options.md` | You are installing the runtime or choosing an install path. |
+| `docs/install-troubleshooting.md` | An install failed and you need the known fixes. |
 | `docs/validation-evidence.md` | You need benchmark evidence boundaries and runnable verification paths. |
-| `docs/lid-optimization-workflow.md` | You need the LID scenario-generation and evaluation workflow. |
-| `docs/lid-entropy-decision-support-plan.md` | You need the second-paper LID/entropy planning logic. |
+| `docs/experiment-audit-framework.md` | You need the audit artifact contracts. |
 | `docs/calibration-uncertainty-workflow.md` | You need calibration and uncertainty boundaries. |
-| `docs/experiment-audit-framework.md` | You need audit artifact contracts. |
-| `docs/modeling-memory-and-skill-evolution.md` | You need modeling-memory and controlled skill evolution rules. |
+| `docs/climate-scenarios.md` | You need the climate-forcing workflow. |
+| `docs/hitl-thresholds.md` | You need the QA thresholds that trigger expert review, with their rationale. |
+| `docs/modeling-memory-and-skill-evolution.md` | You need the modeling-memory and skill-evolution rules. |
+| `docs/byte-identical-reproducibility.md` | You need the reproducibility statement and its scope. |
+| `docs/llm_providers.md` | You are configuring an LLM provider route. |
+| `docs/swmm-anywhere-quickstart.md` | You are synthesizing a network from a bbox. |
+| `docs/openclaw-execution-path.md`, `docs/codex-runtime.md` | You are driving the skills from an external agent runtime. |
 
-## Evidence Boundary
+## Evidence boundary
 
 The repository is strongest as a reproducible, auditable workflow for:
 
 - prepared-input SWMM execution;
-- structured raw GIS-to-INP benchmark paths;
-- uncertainty and entropy propagation;
-- LID scenario generation and placement evaluation;
+- real storm networks fetched from the SWMMCanada upstream inside Canada, and SWMManywhere synthesis elsewhere;
+- calibration, validation, and uncertainty propagation;
 - audit records and modeling-memory summaries.
 
 Do not overstate it as fully automatic greenfield watershed and pipe-network generation unless a case-specific benchmark has validated those inputs, outputs, and QA checks.
