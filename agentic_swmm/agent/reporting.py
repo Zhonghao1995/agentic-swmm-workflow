@@ -133,6 +133,31 @@ def display_goal(goal: str) -> str:
     return text.strip()
 
 
+def _keep_previous_turn_report(session_dir: Path, report_path: Path) -> None:
+    """Move an earlier turn's ``final_report.md`` under ``_agent/`` before
+    the next turn overwrites it.
+
+    Live finding F-20 (2026-09-02): in a three-turn session the chain's
+    report at the run root was replaced by the plot turn's executor log,
+    and the session-level narrative survived only in the transcript. The
+    root file stays "the latest"; earlier turns are ``_agent/final_report_turn<N>.md``.
+    """
+    if not report_path.is_file():
+        return
+    from agentic_swmm.agent.swmm_runtime.run_layout import agent_file_for_write
+
+    index = 1
+    while True:
+        target = agent_file_for_write(session_dir, f"final_report_turn{index}.md")
+        if not target.exists():
+            break
+        index += 1
+    try:
+        report_path.replace(target)
+    except OSError:
+        pass
+
+
 def write_report(
     session_dir: Path,
     goal: str,
@@ -145,6 +170,7 @@ def write_report(
     final_text: str = "",
 ) -> Path:
     report_path = session_dir / "final_report.md"
+    _keep_previous_turn_report(session_dir, report_path)
     ok = all(result.get("ok") for result in results) if results else dry_run
     status = "DRY RUN" if dry_run else ("PASS" if ok else "FAIL")
 
