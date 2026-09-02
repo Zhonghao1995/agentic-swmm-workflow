@@ -57,6 +57,24 @@ _TERMINAL_OK = "SUCCEEDED"
 _TERMINAL_FAIL = "FAILED"
 
 
+def resolve_base_url(explicit: str | None = None) -> str:
+    """Return the service URL this process will use, or ``""`` when off.
+
+    Precedence: an explicit argument (the tool's ``base_url``), then the
+    environment, then the env file ``aiswmm setup`` writes. The runner,
+    ``aiswmm doctor`` and the setup opt-in all ask this one function, so
+    "enabled" means the same thing in every one of them. The file tier is
+    the fix for a setup-enabled install that stayed off in every shell
+    that did not source the file (finding F-01, 2026-09-02).
+    """
+    candidate = (explicit or "").strip()
+    if not candidate:
+        from agentic_swmm.agent.provider_preflight import stored_env_value
+
+        candidate = (stored_env_value(BASE_URL_ENV) or "").strip()
+    return candidate.rstrip("/")
+
+
 def _report(progress: Callable[[str, Any], None] | None, stage: str, pct: Any) -> None:
     """Fire the progress callback, swallowing its errors (best-effort UI)."""
     if progress is None:
@@ -161,11 +179,12 @@ def fetch_from_aoi(
     ``swmm_model.zip`` kept alongside it in the ``10_upstream/swmmcanada/``
     box (ADR-0004).
     """
-    service_url = (base_url or os.environ.get(BASE_URL_ENV) or "").strip().rstrip("/")
+    service_url = resolve_base_url(base_url)
     if not service_url:
         raise CanadaFetchError(
             "config_missing",
-            f"no SWMMCanada base URL — pass base_url= or set ${BASE_URL_ENV}",
+            f"SWMMCanada is not enabled: no ${BASE_URL_ENV} in the environment "
+            "or in ~/.aiswmm/env (run `aiswmm setup`)",
         )
 
     _announce_preview(

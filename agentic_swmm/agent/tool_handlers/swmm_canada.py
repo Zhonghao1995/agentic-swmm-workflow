@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -42,15 +43,50 @@ from agentic_swmm.agent.ui import update_tool_status
 HOSTED_SERVICE_URL = "https://swmm.h2ox.me"
 
 
+def _stdin_is_tty() -> bool:
+    """A consent question needs a human; tests force either answer."""
+    try:
+        return bool(sys.stdin.isatty())
+    except Exception:
+        return False
+
+
+def _offer_inline_enable() -> str | None:
+    """Ask the person at the keyboard, once, whether to enable SWMMCanada.
+
+    The setup wizard already owns this question (``upstream_optin.offer``
+    names where the area goes, persists the answer to the env file and
+    exports it for this process). Re-using it here means a user who
+    skipped setup and then asked for a Canadian network gets the same
+    one-time question in-flow instead of a dead end, and the planner
+    never has to invent a URL. Headless callers get ``None`` and keep the
+    fail-soft payload.
+    """
+    if not _stdin_is_tty():
+        return None
+    from agentic_swmm.agent import permissions
+    from agentic_swmm.commands import upstream_optin
+
+    permissions._prepare_prompt_line()
+    try:
+        return upstream_optin.offer(ask=input, print_fn=print)
+    except EOFError:
+        return None
+    finally:
+        permissions._restore_after_prompt()
+
+
 def _stage_hint(stage: str) -> str:
     """Return an actionable hint for a ``CanadaFetchError`` stage tag."""
     if stage == "config_missing":
         return (
-            "SWMMCanada is optional and off until its URL is set. The public "
-            f"deployment is {HOSTED_SERVICE_URL}; enable it with "
-            f"AISWMM_SWMMCANADA_URL={HOSTED_SERVICE_URL} (this sends the area "
-            "you request to that service), or point the variable at your own "
-            "deployment, or pass base_url. `aiswmm setup` offers the same choice."
+            "SWMMCanada is optional and stays off until the user enables it. "
+            f"The public deployment is {HOSTED_SERVICE_URL}; enabling it sends the "
+            "area the user requests to that service, so the choice is theirs: "
+            "`aiswmm setup` asks once and saves the answer, or they export "
+            f"AISWMM_SWMMCANADA_URL={HOSTED_SERVICE_URL} (or their own deployment). "
+            "Tell the user how to enable it and stop. Do not pass base_url on "
+            "the user's behalf unless they named a deployment themselves."
         )
     if stage == "task_failed":
         return (
@@ -203,7 +239,7 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
     # Lazy import — keeps the agent's import graph light. The runner is pure
     # stdlib, so this is cheap; the lazy form also matches swmm_anywhere.py and
     # lets tests patch ``swmmcanada_runner.fetch_from_aoi``.
-    from agentic_swmm.integrations.swmmcanada_runner import fetch_from_aoi
+    from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
 
     def _describe(result: Any) -> tuple[dict[str, Any], str]:
         return (
@@ -231,13 +267,33 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
             text += f" {int(pct)}%"
         update_tool_status(text)
 
+    def _fetch(url: str | None) -> Any:
+        return fetch_from_aoi(
+            aoi, start, end,
+            run_dir=run_dir, base_url=url, infiltration=infiltration,
+            progress=_progress,
+        )
+
+    def _fetch_with_consent() -> Any:
+        # Finding F-01 (live session 2026-09-02): with no URL stored
+        # anywhere, the planner copied the public address out of the error
+        # hint and passed it as base_url, so the opt-in that setup puts in
+        # front of the user was made by the model. Ask the human the
+        # wizard's own question instead; an explicit base_url is the
+        # caller's decision and is never second-guessed.
+        try:
+            return _fetch(base_url)
+        except CanadaFetchError as exc:
+            if exc.stage != "config_missing" or base_url:
+                raise
+            enabled = _offer_inline_enable()
+            if not enabled:
+                raise
+            return _fetch(enabled)
+
     return _inp_source_tool(
         call,
-        fetch=lambda: fetch_from_aoi(
-            aoi, start, end,
-            run_dir=run_dir, base_url=base_url, infiltration=infiltration,
-            progress=_progress,
-        ),
+        fetch=_fetch_with_consent,
         describe=_describe,
         stage_hint=_stage_hint,
     )
