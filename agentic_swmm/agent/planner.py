@@ -957,7 +957,17 @@ class Planner:
         calls: list[ToolCall] = []
         if not skip_skills:
             calls.append(ToolCall("list_skills", {}))
-            calls.extend(ToolCall("read_skill", {"skill_name": name}) for name in skill_names)
+            # Live finding F-05 (2026-09-02, 19 sessions measured): priming
+            # every relevant SKILL.md in full (7 files, 67k chars for a
+            # Canada chain) was re-sent on each of the 8 to 12 LLM calls of
+            # the turn and made up most of its 150k to 210k input tokens.
+            # The system prompt already carries every skill's description
+            # (skill_index_block) and select_skill returns the full
+            # contract on commit, so only the top candidates are primed.
+            calls.extend(
+                ToolCall("read_skill", {"skill_name": name})
+                for name in skill_names[: _skill_priming_limit(len(skill_names))]
+            )
         if not skip_mcp:
             calls.append(ToolCall("list_mcp_servers", {}))
             calls.extend(
@@ -973,6 +983,24 @@ class Planner:
                 result=result,
                 executor=executor,
             )
+
+
+#: How many relevant skills get their SKILL.md primed into the conversation
+#: before the first LLM call. ``AISWMM_PRIME_SKILL_READS=all`` restores the
+#: previous behaviour; any integer sets the cap.
+PRIME_SKILL_READS_ENV = "AISWMM_PRIME_SKILL_READS"
+DEFAULT_PRIME_SKILL_READS = 2
+
+
+def _skill_priming_limit(available: int) -> int:
+    raw = os.environ.get(PRIME_SKILL_READS_ENV, "").strip().lower()
+    if raw == "all":
+        return available
+    try:
+        limit = int(raw) if raw else DEFAULT_PRIME_SKILL_READS
+    except ValueError:
+        limit = DEFAULT_PRIME_SKILL_READS
+    return max(0, min(limit, available))
 
 
 def _looks_like_swmm_request(goal: str) -> bool:
