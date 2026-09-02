@@ -27,7 +27,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 _MANIFEST_OK = {
     "return_code": 0,
     "metrics": {
-        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15"},
+        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15", "units": "CMS"},
         "continuity": {
             "runoff_quantity": {"Continuity Error (%)": -0.13},
             "flow_routing": {"Continuity Error (%)": -0.004},

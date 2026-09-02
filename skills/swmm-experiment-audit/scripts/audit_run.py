@@ -222,11 +222,21 @@ def normalize_artifacts(records: list[dict[str, Any]]) -> dict[str, dict[str, An
     return out
 
 
+_FLOW_UNITS_RE = re.compile(r"Flow Units\s*\.*\s*([A-Za-z]+)")
+
+
+def flow_units_from_rpt_text(text: str) -> str | None:
+    """The report's own flow unit, or None (live finding F-52, 2026-09-02)."""
+    match = _FLOW_UNITS_RE.search(text)
+    return match.group(1).upper() if match else None
+
+
 def parse_node_inflow_peak(rpt_path: Path | None, node: str | None) -> dict[str, Any] | None:
     if not rpt_path or not node or not rpt_path.exists():
         return None
     text = rpt_path.read_text(errors="ignore")
     lines = text.splitlines()
+    units = flow_units_from_rpt_text(text)
 
     def extract_section(title: str) -> str:
         start_idx = None
@@ -253,7 +263,7 @@ def parse_node_inflow_peak(rpt_path: Path | None, node: str | None) -> dict[str,
         return {
             "node": node,
             "value": float(match.group(2)),
-            "unit": "CMS",
+            "unit": units,
             "time_hhmm": f"{match.group(3)}:{match.group(4)}",
             "source_section": "Node Inflow Summary",
             "source_field": "Maximum Total Inflow",
@@ -269,7 +279,7 @@ def parse_node_inflow_peak(rpt_path: Path | None, node: str | None) -> dict[str,
         return {
             "node": node,
             "value": float(fallback.group(3)),
-            "unit": "CMS",
+            "unit": units,
             "time_hhmm": None,
             "source_section": "Outfall Loading Summary",
             "source_field": "Max Flow",
@@ -458,7 +468,7 @@ def normalize_peak_metric(
         "name": "peak_flow",
         "node": node,
         "value": value,
-        "unit": "CMS",
+        "unit": (parsed or {}).get("unit") or peak.get("units") or peak.get("unit"),
         "time_hhmm": peak.get("time_hhmm"),
         "source_artifact": "runner_rpt" if runner_rpt_path else None,
         "source_section": source_section,
@@ -1394,7 +1404,9 @@ def render_run_results_section(runner_manifest: dict[str, Any] | None) -> str:
         if value is None or node is None:
             return "unavailable"
         time_part = f" at `{time}`" if time is not None else ""
-        return f"`{value}` CMS at node `{node}`{time_part}"
+        unit = payload.get("unit") or payload.get("units")
+        unit_part = f" {unit}" if unit else " (flow units not recorded)"
+        return f"`{value}`{unit_part} at node `{node}`{time_part}"
 
     def _continuity_cell(table: dict[str, Any]) -> str:
         value = table.get("Continuity Error (%)") if table else None
@@ -1550,7 +1562,7 @@ def render_note(
     ]
     if peak:
         summary.append(
-            f"The recorded peak flow is `{peak.get('value')}` {peak.get('unit') or ''} at `{peak.get('node')}`, "
+            f"The recorded peak flow is `{peak.get('value')}`{' ' + str(peak.get('unit')) if peak.get('unit') else ' (flow units not recorded)'} at `{peak.get('node')}`, "
             f"with source `{peak.get('source_section')}` / `{peak.get('source_field')}`."
         )
         summary.append("")
@@ -1630,7 +1642,7 @@ def render_note(
             [
                 f"Peak flow at `{peak.get('node')}`",
                 peak.get("value"),
-                peak.get("unit"),
+                peak.get("unit") or "not recorded",
                 f"`{peak.get('source_artifact')}`",
                 f"`{peak.get('source_section')}` / `{peak.get('source_field')}`",
             ]
@@ -1745,7 +1757,7 @@ def render_note(
                 [
                     "### Node Spread Ranking",
                     "",
-                    md_table(["Node", "Baseline peak CMS", "Relative spread percent", "Absolute spread CMS"], ranked_rows),
+                    md_table(["Node", "Baseline peak (model flow units)", "Relative spread percent", "Absolute spread (model flow units)"], ranked_rows),
                     "",
                 ]
             )

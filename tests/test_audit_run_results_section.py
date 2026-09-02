@@ -38,6 +38,7 @@ class RenderRunResultsSectionTests(unittest.TestCase):
                     "node": "OU2",
                     "peak": 0.061,
                     "time_hhmm": "03:15",
+                    "units": "CMS",
                 },
                 "continuity": {
                     "runoff_quantity": {
@@ -77,6 +78,7 @@ class RenderRunResultsSectionTests(unittest.TestCase):
                     "node": "OU2",
                     "peak": 0.061,
                     "time_hhmm": "03:15",
+                    "units": "CMS",
                 },
                 "continuity": {
                     "runoff_quantity": {
@@ -91,6 +93,7 @@ class RenderRunResultsSectionTests(unittest.TestCase):
                     "node": "J22",
                     "peak": 0.007,
                     "time_hhmm": "03:15",
+                    "units": "CMS",
                 },
             },
         }

@@ -233,7 +233,11 @@ def _format_peak(payload: dict[str, Any]) -> str | None:
     # Keep the precision present in the manifest; format only the
     # composition string. Trailing zeros on a float coming out of
     # JSON survive the round-trip.
-    return f"Peak: {value} CMS @ {time} at {node}"
+    # Live finding F-52 (2026-09-02): the unit is the report's, never an
+    # assumption; older manifests without one say so.
+    units = peak.get("units") or metrics.get("flow_units")
+    label = f" {units}" if units else " (flow units not recorded)"
+    return f"Peak: {value}{label} @ {time} at {node}"
 
 
 def _format_continuity(payload: dict[str, Any]) -> str | None:

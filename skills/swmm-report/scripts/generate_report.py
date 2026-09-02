@@ -259,6 +259,7 @@ def _render_run_summary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
     metrics = prov.get("metrics", {})
     peak_flow_obj = metrics.get("peak_flow") or {}
     peak_flow_val = peak_flow_obj.get("value") if isinstance(peak_flow_obj, dict) else None
+    peak_flow_unit = peak_flow_obj.get("unit") if isinstance(peak_flow_obj, dict) else None
     time_of_peak = peak_flow_obj.get("time_hhmm") if isinstance(peak_flow_obj, dict) else None
     continuity_error = metrics.get("continuity_error")
     return_code = metrics.get("swmm_return_code")
@@ -267,6 +268,7 @@ def _render_run_summary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
     if peak_flow_val is None:
         qoi = manifest.get("qoi", {})
         peak_flow_val = qoi.get("peak_flow_cms_at_O1")
+        peak_flow_unit = "CMS"
         time_of_peak = qoi.get("time_of_peak_hhmm")
 
     columns = cfg.get("columns", ["Metric", "Value", "Unit"])
@@ -280,7 +282,7 @@ def _render_run_summary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
     )
 
     value_map = {
-        "peak_flow": (_na(peak_flow_val), "CMS"),
+        "peak_flow": (_na(peak_flow_val), peak_flow_unit or "flow units not recorded"),
         "time_of_peak": (_na(time_of_peak), "hh:mm"),
         "continuity_error": (_continuity_text(continuity_error), "%"),
         "return_code": (_na(return_code), ""),

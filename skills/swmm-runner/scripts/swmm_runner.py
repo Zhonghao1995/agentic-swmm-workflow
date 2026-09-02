@@ -234,9 +234,24 @@ def resolve_report_node(requested: str, rpt: Path, inp: Path | None) -> tuple[st
     return "O1", "fallback O1 (no outfalls found)"
 
 
+FLOW_UNITS_RE = re.compile(r"Flow Units\s*\.*\s*([A-Za-z]+)")
+
+
+def flow_units_from_rpt_text(text: str) -> str | None:
+    """The report's own flow unit (CMS, LPS, CFS, ...), or None when absent.
+
+    Live finding F-52 (2026-09-02): the manifest carried no units, so every
+    consumer assumed CMS and a Seattle model running in LPS was reported a
+    thousand times too large.
+    """
+    match = FLOW_UNITS_RE.search(text)
+    return match.group(1).upper() if match else None
+
+
 def parse_peak_from_rpt(rpt: Path, node: str) -> dict:
     text = rpt.read_text(errors='ignore')
     lines = text.splitlines()
+    units = flow_units_from_rpt_text(text)
 
     def extract_section(title: str) -> str:
         start_idx = None
@@ -265,6 +280,7 @@ def parse_peak_from_rpt(rpt: Path, node: str) -> dict:
         return {
             "node": node,
             "peak": float(mt.group(2)),
+            "units": units,
             "time_hhmm": f"{mt.group(3)}:{mt.group(4)}",
             "source": "Node Inflow Summary",
         }
@@ -277,9 +293,9 @@ def parse_peak_from_rpt(rpt: Path, node: str) -> dict:
         re.M,
     )
     if m:
-        return {"node": node, "peak": float(m.group(3)), "time_hhmm": None, "source": "Outfall Loading Summary"}
+        return {"node": node, "peak": float(m.group(3)), "units": units, "time_hhmm": None, "source": "Outfall Loading Summary"}
 
-    return {"node": node, "peak": None, "time_hhmm": None, "source": None}
+    return {"node": node, "peak": None, "units": units, "time_hhmm": None, "source": None}
 
 
 def parse_continuity_blocks(text: str) -> dict:
@@ -435,7 +451,7 @@ def cmd_run(args):
         "inp": str(inp),
         "inp_sha256": sha256_file(inp),
         "files": {"rpt": str(rpt), "out": str(out), "stdout": str(stdout_path), "stderr": str(stderr_path)},
-        "metrics": {"peak": peak, "continuity": cont},
+        "metrics": {"peak": peak, "continuity": cont, "flow_units": peak.get("units")},
         "node_selection": node_selection,
         "return_code": rc,
         "run_ok": run_ok,
