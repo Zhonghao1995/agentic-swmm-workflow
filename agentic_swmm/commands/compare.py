@@ -35,17 +35,24 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         # PRD-06 B.1
         help="Compare two SWMM runs on continuity metrics.",
     )
+    # ``--run-dir`` / ``--compare-to`` are the spellings ``aiswmm audit`` uses;
+    # a user who learned them there typed them here and got a usage error
+    # (live finding F-24, 2026-09-02). Both spellings land in the same dest.
     parser.add_argument(
         "--run-a",
+        "--run-dir",
+        dest="run_a",
         type=Path,
         required=True,
-        help="Path to run directory A.",
+        help="Path to run directory A (alias: --run-dir).",
     )
     parser.add_argument(
         "--run-b",
+        "--compare-to",
+        dest="run_b",
         type=Path,
         required=True,
-        help="Path to run directory B.",
+        help="Path to run directory B (alias: --compare-to).",
     )
     parser.add_argument(
         "--metric",

@@ -10,6 +10,7 @@ Per CONTEXT.md: CLI verb modules MUST stay thin — argparse + help-text
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from agentic_swmm.agent.flag_naming import register_example_flag
@@ -21,7 +22,10 @@ from agentic_swmm.utils.subprocess_runner import python_command, run_command
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "review",
-        help="Run the design-review / code-compliance checklist against a completed run.",
+        help=(
+            "Run the design-review / code-compliance checklist against a completed run. "
+            "Exit code 1 means the verdict is FAIL (a result, not a crash)."
+        ),
     )
     parser.add_argument("--run-dir", type=Path, required=True, help="Run directory to review.")
     parser.add_argument(
@@ -54,7 +58,14 @@ def main(args: argparse.Namespace) -> int:
     )
     if args.rules:
         cmd.extend(["--rules", str(args.rules)])
-    result = run_command(cmd)
+    # The script exits 1 when the verdict is FAIL. That is a result, not a
+    # crash: printing it through CommandFailed wrapped the verdict in
+    # "error: command failed with exit code 1: Design review: FAIL ..."
+    # (live finding F-23, 2026-09-02). Print the verdict as the verdict and
+    # keep the exit code so scripts can still gate on it.
+    result = run_command(cmd, check=False)
     if result.stdout.strip():
         print(result.stdout.strip())
+    if result.return_code not in (0, 1) and result.stderr.strip():
+        print(result.stderr.strip(), file=sys.stderr)
     return result.return_code
