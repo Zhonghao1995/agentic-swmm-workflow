@@ -580,6 +580,15 @@ class Planner:
                             "tool_count": len(result.get("tools") or []),
                         },
                     )
+                    # Live finding F-50 (2026-09-02): the goal-scoped
+                    # schema subset (F-44) was computed once from the
+                    # goal's keywords, so a skill the keywords missed
+                    # stayed unreachable for the whole turn. Naming a
+                    # skill is the model's way of asking for its tools;
+                    # the next LLM call carries them.
+                    tool_subset = self._grow_tool_subset(
+                        tool_subset, str(result.get("skill_name") or ""), trace_path=trace_path
+                    )
                 outputs.append({"type": "function_call_output", "call_id": provider_call.call_id, "output": json.dumps(self.registry.output_for_model(result), sort_keys=True)})
                 # CONCURRENCY-OWNER: PRD-GF-L5
                 # L5 subjective-judgement replan injection. When the
@@ -940,6 +949,28 @@ class Planner:
                 ],
             },
         )
+
+    def _grow_tool_subset(
+        self, tool_subset: "set[str] | None", skill_name: str, *, trace_path: Path | None = None
+    ) -> "set[str] | None":
+        """Add ``skill_name``'s tools to an active subset; ``None`` stays ``None``."""
+        if tool_subset is None or not skill_name:
+            return tool_subset
+        from agentic_swmm.agent.skill_router import SkillRouter
+
+        try:
+            names = set(SkillRouter(self.registry).tools_for(skill_name).tool_names())
+        except KeyError:
+            return tool_subset
+        added = sorted(names - tool_subset)
+        if not added:
+            return tool_subset
+        grown = set(tool_subset) | names
+        _trace_event_best_effort(
+            trace_path,
+            {"event": "tool_subset_grown", "skill": skill_name, "added": added, "tool_count": len(grown)},
+        )
+        return grown
 
     def _tool_subset_for(self, goal: str, *, trace_path: Path | None = None) -> "set[str] | None":
         """The tool names this goal's skills need, or ``None`` for all.

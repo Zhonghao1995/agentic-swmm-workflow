@@ -165,7 +165,7 @@
     {
       "id": "uncertainty",
       "skills": ["swmm-uncertainty"],
-      "keywords": ["uncertainty", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "模糊"],
+      "keywords": ["uncertainty", "uncertain", "sensitivity", "monte carlo", "spread of", "the spread", "vary manning", "vary the", "confidence band", "fuzzy", "alpha-cut", "alpha cut", "membership", "不确定", "敏感性", "模糊"],
       "required_inputs": ["inp_path", "fuzzy_config", "node"],
       "optional_inputs": ["alpha_levels", "sample_policy", "output_metric"],
       "preferred_tools": ["swmm_sensitivity_oat", "swmm_sensitivity_morris", "swmm_sensitivity_sobol", "swmm_rainfall_ensemble"],
