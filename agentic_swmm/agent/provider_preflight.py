@@ -91,13 +91,23 @@ class ProviderPreflightResult:
 
 
 def _aiswmm_env_path() -> Path:
-    """Return ``~/.aiswmm/env`` resolved from ``$HOME``."""
-    return Path.home() / ".aiswmm" / "env"
+    """Return the env file ``aiswmm login`` / ``aiswmm setup`` write.
+
+    ``$AISWMM_CONFIG_DIR/env`` when the config dir is redirected, else
+    ``~/.aiswmm/env``. Resolved through :func:`config_dir` so the reader
+    and the writer (``login._write_key_to_env``) can never name two
+    different files.
+    """
+    from agentic_swmm.config import config_dir
+
+    return config_dir() / "env"
 
 
 def _aiswmm_config_path() -> Path:
-    """Return ``~/.aiswmm/config.toml`` resolved from ``$HOME``."""
-    return Path.home() / ".aiswmm" / "config.toml"
+    """Return ``config.toml`` in the same directory as the env file."""
+    from agentic_swmm.config import config_path
+
+    return config_path()
 
 
 def _config_default_provider(path: Path) -> str | None:
@@ -197,6 +207,24 @@ def _config_file_key_value(path: Path, section: str) -> str | None:
     return None
 
 
+def stored_env_value(var_name: str) -> str | None:
+    """Return ``var_name`` from the environment, else from the env file.
+
+    The two tiers every persisted setting shares: a shell ``export`` wins
+    for one session, and the file ``aiswmm login`` / ``aiswmm setup``
+    write is the durable fallback. API keys add a third tier
+    (``config.toml``) on top in :func:`provider_key_value`; plain settings
+    such as ``AISWMM_SWMMCANADA_URL`` stop here. Before this resolver
+    existed those settings were read from ``os.environ`` alone, so a
+    setup-enabled install was "not configured" in every shell that did
+    not source the file (live finding F-01, 2026-09-02).
+    """
+    from_env = os.environ.get(var_name, "").strip()
+    if from_env:
+        return from_env
+    return _env_file_key_value(_aiswmm_env_path(), var_name)
+
+
 def provider_key_value(provider_name: str) -> str | None:
     """Return ``provider_name``'s API key, or ``None`` when unreachable.
 
@@ -218,12 +246,9 @@ def provider_key_value(provider_name: str) -> str | None:
     var_name = _PROVIDER_KEY_ENV.get(provider_name)
     if not var_name:
         return None
-    from_env = os.environ.get(var_name, "").strip()
-    if from_env:
-        return from_env
-    from_env_file = _env_file_key_value(_aiswmm_env_path(), var_name)
-    if from_env_file:
-        return from_env_file
+    stored = stored_env_value(var_name)
+    if stored:
+        return stored
     return _config_file_key_value(_aiswmm_config_path(), provider_name)
 
 

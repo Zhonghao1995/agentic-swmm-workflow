@@ -104,8 +104,11 @@ class TestNaturalLanguageRoute:
 
 
 class TestDoctorUpstreamRow:
-    def test_unset_env_is_a_quiet_ok(self, monkeypatch):
+    def test_unset_env_is_a_quiet_ok(self, monkeypatch, tmp_path):
         monkeypatch.delenv("AISWMM_SWMMCANADA_URL", raising=False)
+        # The URL now also resolves from the env file setup writes; point
+        # the config dir at an empty tmp so "unset" means unset.
+        monkeypatch.setenv("AISWMM_CONFIG_DIR", str(tmp_path))
         name, ok, detail, required = _swmmcanada_upstream_check()
         assert name == "SWMMCanada upstream"
         assert ok is True

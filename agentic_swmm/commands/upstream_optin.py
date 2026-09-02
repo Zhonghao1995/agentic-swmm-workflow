@@ -24,8 +24,18 @@ ENV_VAR = "AISWMM_SWMMCANADA_URL"
 
 
 def is_configured(env: dict[str, str] | None = None) -> bool:
-    source = os.environ if env is None else env
-    return bool(str(source.get(ENV_VAR, "")).strip())
+    """True when a URL is set anywhere the runtime will find one.
+
+    ``env`` is a test seam: an explicit mapping is consulted alone. The
+    default asks the resolver the fetch tool and ``doctor`` use
+    (environment, then the env file this module writes), so setup's own
+    "already enabled" answer cannot disagree with them (finding F-01).
+    """
+    if env is not None:
+        return bool(str(env.get(ENV_VAR, "")).strip())
+    from agentic_swmm.integrations.swmmcanada_runner import resolve_base_url
+
+    return bool(resolve_base_url())
 
 
 def write_url(url: str) -> Path:

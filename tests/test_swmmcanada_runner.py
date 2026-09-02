@@ -265,14 +265,22 @@ class ConfigTests(unittest.TestCase):
 
         opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[])
         saved = os.environ.pop(BASE_URL_ENV, None)
+        saved_cfg = os.environ.get("AISWMM_CONFIG_DIR")
         try:
             with TemporaryDirectory() as tmp:
+                # The URL also resolves from the env file setup writes;
+                # an empty config dir keeps this machine's own file out.
+                os.environ["AISWMM_CONFIG_DIR"] = str(Path(tmp) / "cfg")
                 with self.assertRaises(CanadaFetchError) as ctx:
                     fetch_from_aoi(AOI, START, END, run_dir=Path(tmp) / "run", base_url=None, opener=opener)
             self.assertEqual(ctx.exception.stage, "config_missing")
         finally:
             if saved is not None:
                 os.environ[BASE_URL_ENV] = saved
+            if saved_cfg is None:
+                os.environ.pop("AISWMM_CONFIG_DIR", None)
+            else:
+                os.environ["AISWMM_CONFIG_DIR"] = saved_cfg
 
 
 class _FlakyOpener:

@@ -285,7 +285,9 @@ def _swmmcanada_upstream_check() -> tuple[str, bool, str, bool]:
     at call time. Unset stays a quiet OK (the upstream is optional);
     when set, a 2 s ``GET /api/v1/healthz`` probe reports reachability.
     """
-    url = os.environ.get("AISWMM_SWMMCANADA_URL", "").strip().rstrip("/")
+    from agentic_swmm.integrations.swmmcanada_runner import resolve_base_url
+
+    url = resolve_base_url()
     if not url:
         return (
             "SWMMCanada upstream",
