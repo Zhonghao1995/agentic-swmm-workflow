@@ -19,7 +19,7 @@ from agentic_swmm.runtime.registry import enabled_startup_memory_files
 WARM_INTRO_TEMPLATE = (
     "Hi! I'm Agentic SWMM, your stormwater modeling collaborator. "
     "I can help with building EPA SWMM inputs, running simulations, "
-    "calibrating against observed data, and quantifying uncertainty — "
+    "calibrating against observed data, and quantifying uncertainty, "
     "always with an audit trail so you can verify what I did. "
     "What would you like to work on? Some quick starts: "
     '"run the tecnopolo demo", '
