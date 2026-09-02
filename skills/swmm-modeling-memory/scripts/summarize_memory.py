@@ -66,6 +66,53 @@ def _inject_metadata_fence(pattern_block: str, fence: str) -> str:
     return "".join(out)
 
 
+_ARCHIVE_HEADER = (
+    "<!-- schema_version: 1.1 -->\n"
+    "# Lessons Archived\n"
+    "\n"
+    "Patterns that decayed below the dormant threshold, or that a re-render\n"
+    "no longer produced, land here. Each block keeps its metadata fence so\n"
+    "the pattern can be revived by moving the block back into\n"
+    "``lessons_learned.md``.\n"
+    "\n"
+)
+
+
+def _archive_vanished_patterns(old_path: Path, old_text: str, new_lessons: str) -> list[str]:
+    """Move ``## pattern`` blocks the re-render dropped into the archive.
+
+    Live finding F-33 (2026-09-02): the first real audit of the day
+    re-rendered lessons_learned.md from run summaries and the shipped,
+    curated ``comparison_mismatch`` section simply vanished, while the
+    decay design says retired patterns go to ``lessons_archived.md``.
+    Returns the archived pattern names.
+    """
+    old_matches = list(_PATTERN_HEADING_RE.finditer(old_text))
+    if not old_matches:
+        return []
+    new_names = {m.group("name") for m in _PATTERN_HEADING_RE.finditer(new_lessons)}
+    archived: list[str] = []
+    archive_path = old_path.parent / "lessons_archived.md"
+    for i, match in enumerate(old_matches):
+        name = match.group("name")
+        if name in new_names:
+            continue
+        end = old_matches[i + 1].start() if i + 1 < len(old_matches) else len(old_text)
+        block = old_text[match.start():end].rstrip("\n") + "\n"
+        block = re.sub(r"(?m)^(\s*status:\s*)\S+$", r"\1archived", block)
+        try:
+            if not archive_path.is_file():
+                archive_path.write_text(_ARCHIVE_HEADER, encoding="utf-8")
+            existing = archive_path.read_text(encoding="utf-8")
+            if not existing.endswith("\n\n"):
+                existing = existing.rstrip("\n") + "\n\n"
+            archive_path.write_text(existing + block, encoding="utf-8")
+        except OSError:
+            continue
+        archived.append(name)
+    return archived
+
+
 def _merge_existing_metadata(old_path: Path, new_lessons: str) -> str:
     """Re-attach metadata fences from ``old_path`` to ``new_lessons``."""
     if not old_path.exists():
@@ -74,6 +121,7 @@ def _merge_existing_metadata(old_path: Path, new_lessons: str) -> str:
         old_text = old_path.read_text(encoding="utf-8")
     except OSError:
         return new_lessons
+    _archive_vanished_patterns(old_path, old_text, new_lessons)
     fences = _extract_metadata_fences(old_text)
     if not fences:
         return new_lessons

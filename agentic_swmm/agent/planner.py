@@ -233,6 +233,16 @@ def _resolve_case_name_for_memory(
                 rid = first.get("case_id")
                 if isinstance(rid, str) and rid.strip():
                     return rid.strip()
+    # Live finding F-21 (2026-09-02): "Fetch a SWMM model ... for downtown
+    # Victoria BC" tokenises to ten candidates, so the sniff below returned
+    # None in every session and the parametric store was never consulted.
+    # The run directory and provenance.case_name already carry the place
+    # slug ("downtown-victoria-bc"); anchor memory on the same key.
+    from agentic_swmm.agent.session_bootstrap import _extract_place_slug
+
+    place = _extract_place_slug(goal)
+    if place:
+        return place
     # Fall back to a token sniff. We deliberately import the policy's
     # token helper lazily so the import cycle stays shallow.
     from agentic_swmm.agent.memory_informed_policy import _utterance_tokens

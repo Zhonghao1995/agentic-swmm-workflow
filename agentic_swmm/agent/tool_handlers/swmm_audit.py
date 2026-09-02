@@ -56,13 +56,48 @@ def _audit_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return args
 
 
+def _feed_memory_after_audit(call: ToolCall, session_dir: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Run the audit -> memory hook the CLI verb has always run.
+
+    Live finding F-35 (2026-09-02): ``trigger_memory_refresh`` was called
+    only by ``aiswmm audit``; the agent's audit_run went to the skill
+    script and returned, so four real interactive runs left zero
+    parametric rows and no lessons refresh. The golden path did not feed
+    the memory it was meant to learn from. Fail-soft: a memory failure
+    never turns a finished audit into a failed tool call.
+    """
+    if not result.get("ok"):
+        return result
+    run_dir = _resolve_run_dir(call, "run_dir")
+    if isinstance(run_dir, dict):
+        return result
+    try:
+        from agentic_swmm.memory import trigger_memory_refresh
+
+        hook = trigger_memory_refresh(Path(run_dir))
+    except Exception as exc:  # pragma: no cover - defensive: memory must never break the audit
+        hook = {"skipped": True, "reason": f"memory refresh failed: {exc}"}
+    if isinstance(hook, dict):
+        result["memory_hook"] = {
+            key: hook.get(key) for key in ("skipped", "reason", "lessons", "errors") if key in hook
+        }
+    return result
+
+
 def _build_handler() -> Any:
     # Lazy import — see ``swmm_network`` module docstring.
     from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
-    return _make_mcp_routed_handler(
+    mcp_handler = _make_mcp_routed_handler(
         "swmm-experiment-audit", "audit_run", args_mapper=_audit_run_args
     )
+
+    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+        return _feed_memory_after_audit(call, session_dir, mcp_handler(call, session_dir))
+
+    # The routing metadata the lock-in and ratchet tests read.
+    handler._mcp_routing = mcp_handler._mcp_routing  # type: ignore[attr-defined]
+    return handler
 
 
 _audit_run_tool = _build_handler()
