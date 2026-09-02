@@ -417,6 +417,87 @@ def looks_like_swmm_request(goal: str) -> bool:
     return _contains_any_list(lowered, keywords("swmm_request_keywords"))
 
 
+#: A pasted model source always means a fresh run folder.
+_MODEL_SOURCE = re.compile(r"\S+\.inp\b|\bbbox\b|\bgeojson\b|\bpolygon\b", re.IGNORECASE)
+
+#: Words that point back at the work already in hand.
+_POINTS_BACK = re.compile(
+    r"\b(?:that|this|last|previous|same|current|latest)\s+"
+    r"(?:run|model|session|result|results|simulation|network|report|figure)\b"
+    r"|\bit\b|\bits\b|\bagain\b"
+    r"|刚才|刚刚|上一个|上次|这个|那个|重新",
+    re.IGNORECASE,
+)
+
+#: Verbs that start NEW modelling work (a model that does not exist yet).
+_STARTS_NEW_WORK = (
+    "fetch", "download", "get me", "build", "synthesize", "synthesise", "synth ",
+    "create a model", "create a swmm", "generate a model", "generate a swmm",
+    "make me a model", "model for downtown", "model of downtown",
+    "给我", "帮我建", "建一个", "生成一个", "抓取", "下载", "自动建模", "合成一个",
+)
+
+
+#: The shapes an assistant message takes when it ends by asking for input.
+_ASKS_FOR_INPUT = re.compile(
+    r"\?|？|\breply\b|\bplease\s+(?:provide|give|specify|confirm|choose|paste|share|tell)\b"
+    r"|\blet me know\b|请提供|请回复|请告诉|请选择|请确认|请给",
+    re.IGNORECASE,
+)
+
+
+def message_asks_for_input(text: str) -> bool:
+    """True when the assistant's message ends by asking the user for something.
+
+    Only the closing lines count: a question buried in the middle of a
+    report is not an open question. The shell uses this to decide whether
+    the next input is an ANSWER (which continues the same turn even when
+    it names a file or a bbox) or a fresh request.
+    """
+    lines = [line for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    return bool(_ASKS_FOR_INPUT.search("\n".join(lines[-2:])))
+
+
+def looks_like_new_modeling_request(goal: str, *, answering_question: bool = False) -> bool:
+    """True only when ``goal`` STARTS new modelling work.
+
+    The interactive shell asks this once a turn or run is already in hand,
+    to choose between continuing it and opening a fresh run folder.
+    :func:`looks_like_swmm_request` is the wrong question there: it
+    matches vocabulary ("node", "map", "plot"), and every follow-up about
+    a finished run uses that vocabulary. Live finding F-07 (2026-09-02):
+    "Draw the network map for that run." and "Which node flooded the
+    most, and for how long?" each opened an empty run folder named after
+    the sentence.
+
+    Rules, in order:
+
+    1. ``answering_question`` (the previous turn ended with a question):
+       the input is the answer unless it plainly starts other work with a
+       new-work verb. A bare bbox or a pasted path is an answer.
+    2. A pasted model source (``.inp``, ``bbox``, GeoJSON, polygon) is
+       new work.
+    3. A sentence that points back at the run in hand ("that run", "it",
+       "again", 刚才 ...) continues it, whatever verbs it carries:
+       calibrating or forcing the model in hand stays in its folder.
+    4. Otherwise only a new-work verb (fetch, download, build, synthesize,
+       get me, 给我 ...) opens a folder. Bare "run the model", "plot",
+       "audit", questions and confirmations all continue.
+    """
+    lowered = goal.lower()
+    starts_work = any(marker in lowered for marker in _STARTS_NEW_WORK)
+    points_back = bool(_POINTS_BACK.search(goal))
+    if answering_question:
+        return starts_work and not points_back
+    if _MODEL_SOURCE.search(goal):
+        return True
+    if points_back:
+        return False
+    return starts_work
+
+
 def looks_like_plot_request(goal: str) -> bool:
     return _contains_any_list(goal.lower(), keywords("plot_keywords"))
 
@@ -507,6 +588,8 @@ __all__ = [
     "load_intent_map",
     "keywords",
     "looks_like_swmm_request",
+    "looks_like_new_modeling_request",
+    "message_asks_for_input",
     "looks_like_plot_request",
     "select_relevant_skills",
     "select_relevant_intents",

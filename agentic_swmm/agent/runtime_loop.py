@@ -55,6 +55,10 @@ from agentic_swmm.agent.error_boundary import on_exception_return_default
 from agentic_swmm.agent.executor import AgentExecutor
 from agentic_swmm.agent.intent_classifier import classify_intent
 from agentic_swmm.agent.mcp_pool import ensure_session_pool
+from agentic_swmm.agent.intent_classifier import (
+    looks_like_new_modeling_request,
+    message_asks_for_input,
+)
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.prompts import WARM_INTRO_TEMPLATE
 from agentic_swmm.agent.reporting import display_goal, write_event as _write_event
@@ -208,8 +212,22 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         #   4. Fallback -> chat dir.
         goal = prompt
         is_chat_turn = False
-        new_request = _looks_like_swmm_request(prompt)
         pending = pending_box[0]
+        # Finding F-07 (live sessions 2026-09-02): with a turn or run in
+        # hand, the broad vocabulary matcher is the wrong question ("node",
+        # "map", "plot" describe every follow-up about a finished run, and
+        # each one opened an empty folder named after the sentence). Ask
+        # instead whether the sentence STARTS new modelling work. With
+        # nothing in hand the vocabulary matcher still decides run vs chat.
+        if pending is not None or active_run_dir[0] is not None:
+            answering = pending is not None and message_asks_for_input(
+                str(pending.get("tail") or "")
+            )
+            new_request = looks_like_new_modeling_request(
+                prompt, answering_question=answering
+            )
+        else:
+            new_request = _looks_like_swmm_request(prompt)
         if pending is not None and not new_request:
             session_dir = pending["session_dir"]
             is_chat_turn = bool(pending.get("is_chat", False))
