@@ -13,7 +13,7 @@ from typing import IO, Any, Callable
 from agentic_swmm.agent.digest_render import brief_result, render_step
 from agentic_swmm.agent.executor import DENIED_SUMMARY, AgentExecutor
 from agentic_swmm.agent.intent_classifier import looks_like_plot_request, looks_like_swmm_request, select_relevant_mcp_servers, select_relevant_skills
-from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context
+from agentic_swmm.agent.memory_context import MemoryContext, gather_memory_context, parametric_memory_block
 from agentic_swmm.agent.memory_informed_policy import (
     MemoryHITLRequired,
     PolicyDecision,
@@ -815,6 +815,22 @@ class Planner:
                     f"dispatch goal {goal!r} (stakes={stakes})"
                 ),
                 decision_point="planner_intent_disambiguation",
+            )
+
+        # Live finding F-39 (2026-09-02): the decision above was only ever
+        # logged. Two sessions, one with a parametric hit and one without,
+        # made identical tool calls because nothing put the prior runs in
+        # front of the planner. Now the hits ride into the system prompt.
+        block = parametric_memory_block(context)
+        if block:
+            self.system_prompt_extras.append(block)
+            _trace_event_best_effort(
+                trace_path,
+                {
+                    "event": "memory_context_injected",
+                    "case_name": decision.resolved_case or case_name,
+                    "prior_runs": context.parametric_hit_count,
+                },
             )
 
         return decision

@@ -241,6 +241,64 @@ def _gather_thresholds(
     return out
 
 
+#: How many prior runs the prompt block names (newest first).
+PARAMETRIC_BLOCK_LIMIT = 3
+
+
+def parametric_memory_block(context: "MemoryContext", *, limit: int = PARAMETRIC_BLOCK_LIMIT) -> str:
+    """Render the parametric hits as a ``<parametric-memory>`` prompt block.
+
+    Live finding F-39 (2026-09-02): the memory-informed policy resolved
+    the case and logged "1 prior run of downtown-victoria-bc, mean runoff
+    continuity -0.09%", and nothing put that in front of the planner, so
+    two sessions with and without the hit made identical tool calls. This
+    block is what the planner now reads before its first call. Empty when
+    there are no hits, so a fresh case pays nothing.
+    """
+    hits = list(getattr(context, "parametric_hits", None) or [])
+    if not hits:
+        return ""
+    hits.sort(key=lambda rec: str(getattr(rec, "recorded_utc", "") or ""), reverse=True)
+    case = str(getattr(hits[0], "case_name", "") or "")
+    lines = [
+        f'<parametric-memory case="{case}" prior_runs="{len(hits)}">',
+        "Prior audited runs of this case (newest first), from parametric_memory.jsonl:",
+    ]
+    for rec in hits[:limit]:
+        qa = dict(getattr(rec, "qa_metrics", None) or {})
+        parts: list[str] = []
+        peak = qa.get("peak_flow_value")
+        if peak is not None:
+            unit = qa.get("peak_flow_unit") or "CMS"
+            node = qa.get("peak_flow_node")
+            when = qa.get("peak_flow_time_hhmm")
+            text = f"peak {peak} {unit}"
+            if node:
+                text += f" at {node}"
+            if when:
+                text += f" @{when}"
+            parts.append(text)
+        if qa.get("runoff_continuity_pct") is not None:
+            parts.append(f"runoff continuity {qa['runoff_continuity_pct']}%")
+        if qa.get("flow_continuity_pct") is not None:
+            parts.append(f"flow continuity {qa['flow_continuity_pct']}%")
+        status = getattr(rec, "calibration_status", None) or "uncalibrated"
+        parts.append(f"calibration: {status}")
+        stamp = str(getattr(rec, "recorded_utc", "") or "")[:16]
+        run_id = str(getattr(rec, "run_id", "") or "")
+        lines.append(f"- {run_id} ({stamp}): " + "; ".join(parts))
+    if len(hits) > limit:
+        lines.append(f"- ... and {len(hits) - limit} older run(s)")
+    lines.append(
+        "Use these as the baseline: when the user asks whether a new run matches, or "
+        "what changed, compare against these numbers first (recall_memory has the "
+        "full records). Do not re-fetch or re-run what they already answer unless "
+        "the user asked for a fresh run."
+    )
+    lines.append("</parametric-memory>")
+    return "\n".join(lines)
+
+
 def gather_memory_context(
     *,
     memory_dir: Path,
@@ -345,6 +403,7 @@ def gather_memory_context(
 
 
 __all__ = [
+    "parametric_memory_block",
     "MemoryContext",
     "ParametricRecord",
     "gather_memory_context",
