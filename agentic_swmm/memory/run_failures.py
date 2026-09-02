@@ -150,10 +150,13 @@ def resolve_store(memory_dir: Path | None = None) -> Path:
     """
     if memory_dir is not None:
         return Path(memory_dir) / "run_failures.jsonl"
-    override = os.environ.get("AISWMM_MEMORY_DIR")
-    if override:
-        return Path(override) / "run_failures.jsonl"
-    return Path("memory/modeling-memory") / "run_failures.jsonl"
+    # Anchored on the repository, not the process cwd: `aiswmm` run from
+    # another directory used to create a stray memory/modeling-memory/
+    # there and record failures nobody would ever read (finding F-15,
+    # 2026-09-02). utils.paths.resolve_memory_dir owns the env override.
+    from agentic_swmm.utils.paths import resolve_memory_dir
+
+    return resolve_memory_dir() / "run_failures.jsonl"
 
 
 def record_run_failures(
