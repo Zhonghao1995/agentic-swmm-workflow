@@ -347,7 +347,23 @@ def bootstrap_system_prompt(
     )
     if prev_block:
         extras.append(prev_block)
+    failures_block = _safe_recent_failures_block()
+    if failures_block:
+        extras.append(failures_block)
     return extras
+
+
+def _safe_recent_failures_block() -> str:
+    """The read side of the run-failure memory (finding F-09, 2026-09-02).
+
+    Wrapped like the facts block: the digest must never block a turn.
+    """
+    from agentic_swmm.memory import run_failures as _failures_mod
+
+    try:
+        return _failures_mod.recent_failure_digest()
+    except Exception:
+        return ""
 
 
 def _safe_facts_block() -> str:

@@ -195,6 +195,75 @@ def record_run_failures(
     return failures
 
 
+#: Default window and size of the digest handed to the planner.
+DIGEST_DAYS = 7
+DIGEST_LIMIT = 8
+
+
+def recent_failure_digest(
+    store: Path | None = None,
+    *,
+    days: int = DIGEST_DAYS,
+    limit: int = DIGEST_LIMIT,
+    now: datetime | None = None,
+) -> str:
+    """Return a ``<recent-failures>`` block for the planner, or ``""``.
+
+    Until 2026-09-02 this store had writers only: every failed tool call
+    was recorded and nothing ever read the record back, so a planner
+    repeated the same refused ``python -c`` command in session after
+    session (live finding F-09). The digest is the read side: the
+    distinct (tool, summary) pairs that failed inside ``days``, most
+    frequent first, capped at ``limit``, wrapped with one instruction.
+    Empty when there is nothing recent, so a clean project pays nothing.
+    """
+    path = Path(store) if store is not None else resolve_store()
+    rows = read_run_failures(path)
+    if not rows:
+        return ""
+    moment = now or datetime.now(timezone.utc)
+    cutoff = moment.timestamp() - days * 86400
+    counts: dict[tuple[str, str], int] = {}
+    latest: dict[tuple[str, str], float] = {}
+    for row in rows:
+        stamp = _parse_stamp(row.recorded_at)
+        if stamp is None or stamp < cutoff:
+            continue
+        key = (row.tool, row.summary)
+        counts[key] = counts.get(key, 0) + 1
+        latest[key] = max(latest.get(key, 0.0), stamp)
+    if not counts:
+        return ""
+    ordered = sorted(counts, key=lambda key: (-counts[key], -latest[key]))[:limit]
+    lines = [
+        "<recent-failures>",
+        f"Tool calls that failed in this project during the last {days} days. "
+        "Do not repeat them as written; use the alternative each hint names "
+        "(read_rpt_summary for .rpt data, read_file / search_files for files).",
+    ]
+    for tool, summary in ordered:
+        times = counts[(tool, summary)]
+        suffix = f" (x{times})" if times > 1 else ""
+        lines.append(f"- {tool}: {summary}{suffix}")
+    lines.append("</recent-failures>")
+    return "\n".join(lines)
+
+
+def _parse_stamp(value: str | None) -> float | None:
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
 def read_run_failures(store: Path) -> list[RunFailure]:
     """Return all recorded failures from ``store`` (``[]`` if missing).
 
