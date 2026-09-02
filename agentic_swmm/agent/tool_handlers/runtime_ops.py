@@ -50,8 +50,28 @@ from agentic_swmm.runtime.registry import discover_skills
 from agentic_swmm.utils.paths import repo_root
 
 
+_PATH_LINE_SUFFIX = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?$")
+
+
+def _split_path_line(raw: str) -> tuple[str, int | None]:
+    """Split ``path:391`` (or ``path:391:7``) into the path and the line.
+
+    Planners quote files the way grep and tracebacks do (live finding
+    F-29, 2026-09-02: ``agent_trace.jsonl:391`` was answered "file not
+    found"). A path that exists as written is never split.
+    """
+    match = _PATH_LINE_SUFFIX.match(raw.strip())
+    if not match:
+        return raw, None
+    candidate = _repo_path(raw)
+    if candidate is not None and candidate.exists():
+        return raw, None
+    return match.group("path"), int(match.group("line"))
+
+
 def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    path = _repo_path(str(call.args["path"]))
+    raw, line_hint = _split_path_line(str(call.args["path"]))
+    path = _repo_path(raw)
     if path is None:
         return _failure(call, "refusing to read outside repository")
     if not path.exists() or not path.is_file():
@@ -60,7 +80,17 @@ def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         )
         return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     text = path.read_text(encoding="utf-8", errors="replace")
-    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": text[:4000], "summary": f"read {path.relative_to(repo_root())}"}
+    excerpt = text[:4000]
+    summary = f"read {path.relative_to(repo_root())}"
+    if line_hint is not None:
+        # Centre the bounded excerpt on the requested line instead of the
+        # top of the file, so the reference the planner quoted is what it
+        # gets back.
+        lines = text.splitlines(keepends=True)
+        start = max(0, min(line_hint - 1, len(lines)) - 20)
+        excerpt = "".join(lines[start:])[:4000]
+        summary += f" from line {start + 1} (requested line {line_hint})"
+    return {"tool": call.name, "args": call.args, "ok": True, "path": str(path), "chars": len(text), "excerpt": excerpt, "summary": summary}
 
 
 def _list_skills_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

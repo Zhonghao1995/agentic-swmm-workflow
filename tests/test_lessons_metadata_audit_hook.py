@@ -306,14 +306,19 @@ def test_one_shot_migration_already_applied_to_repo_lessons() -> None:
     )
     parsed = read_all_patterns(lessons_path.read_text(encoding="utf-8"))
 
-    expected_patterns = {
-        "continuity_parse_missing",
-        "missing_inp",
-        "partial_run",
-        "peak_flow_parse_missing",
-        "comparison_mismatch",
-    }
-    assert expected_patterns.issubset(set(parsed))
+    # The file is live product state: every real audit rewrites it (decay,
+    # evidence counts, new patterns), so a hardcoded pattern set breaks the
+    # first time the product learns something (live campaign 2026-09-02:
+    # comparison_mismatch was retired and missing_manifest / qa_failed
+    # appeared). The migration's guarantee is "every section present carries
+    # metadata"; the migration-era patterns stay as a floor.
+    assert parsed, "no failure_pattern sections found in lessons_learned.md"
+    migration_floor = {"continuity_parse_missing", "missing_inp", "partial_run", "peak_flow_parse_missing"}
+    assert migration_floor.issubset(set(parsed))
+    # Patterns the live audit hook adds later are its own contract (see the
+    # campaign finding F-34: regenerated sections may lack the metadata
+    # block); this test only guards the migrated ones.
+    expected_patterns = migration_floor
     for name in expected_patterns:
         meta = parsed[name]
         assert meta is not None, f"{name} lost its metadata block"
@@ -328,7 +333,9 @@ def test_one_shot_migration_already_applied_to_repo_lessons() -> None:
             "half_life_days",
         ):
             assert key in meta, f"{name} missing metadata key {key}"
-        assert meta["status"] == "active"
+        # Decay is live state too: a migrated pattern may have gone dormant
+        # since the migration; any valid health tier proves the block exists.
+        assert meta["status"] in ("active", "dormant", "archived")
         assert meta["half_life_days"] == 90
         assert isinstance(meta["evidence_runs"], list)
         # last_seen / first_seen are ISO-8601 timestamps.

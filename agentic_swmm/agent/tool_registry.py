@@ -628,7 +628,17 @@ def _call_mcp_tool_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     try:
         result = mcp_client.call_tool(str(server["command"]), [str(arg) for arg in server.get("args", [])], str(call.args["tool"]), arguments)
     except Exception as exc:
-        return _mcp_failure(call, f"MCP tools/call failed: {exc}", server=str(server["name"]))
+        failure = _mcp_failure(call, f"MCP tools/call failed: {exc}", server=str(server["name"]))
+        requested = str(call.args.get("tool") or "")
+        if "unknown tool" in str(exc).lower() and requested in AgentToolRegistry().names:
+            # Live finding F-30 (2026-09-02): the planner sent the in-process
+            # read_rpt_summary to an MCP server and got the raw JSON-RPC
+            # error back. Name the route instead.
+            failure["hint"] = (
+                f"{requested} is an in-process tool of this runtime, not an MCP tool: "
+                f"call {requested} directly with the same arguments."
+            )
+        return failure
     return {"tool": call.name, "args": call.args, "ok": True, "results": result, "summary": f"called MCP tool {server['name']}.{call.args['tool']}"}
 
 
