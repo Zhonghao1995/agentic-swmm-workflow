@@ -28,6 +28,7 @@ The module is pure-functional and exposes one IO entrypoint
 from __future__ import annotations
 
 import json
+import shlex
 import os
 import sqlite3
 import sys
@@ -389,8 +390,10 @@ def render_extended_welcome() -> str:
     # ``compare`` / ``transfer`` from the warm-intro alone. The first-
     # case display name (when present) feeds the transfer suggestion
     # so the example is grounded in the user's own data.
+    # Live finding F-49 (2026-09-02): the first case is "tecnopolo (rome
+    # 1994)", so the unquoted path broke when pasted into a shell.
     transfer_line = (
-        f'  - "aiswmm transfer --inp examples/{first_case.lower()}/scenario.inp"'
+        f'  - "aiswmm transfer --inp {shlex.quote(f"examples/{first_case.lower()}/scenario.inp")}"'
         if first_case
         else '  - "aiswmm transfer --inp <case>.inp"'
     )
