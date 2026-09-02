@@ -10,7 +10,7 @@ and the factory-built handler that pairs it with
 ``_make_mcp_routed_handler``.
 
 ``_make_mcp_routed_handler`` and the cross-family path/INP helpers
-(``_resolve_inp_for_run``, ``_node_suggestions``) still live in
+(``_resolve_inp_for_run``) still live in
 ``tool_registry`` (deferred per #211 and reused across other groups).
 They are imported lazily inside the body of ``_run_swmm_inp_args``
 and ``_build_run_swmm_inp_tool`` to break a load-time circular import
@@ -103,10 +103,7 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     unchanged; only the MCP-facing ``runDir`` gains the stage subdir.
     """
     # Lazy import — see module docstring on the circular-load reasoning.
-    from agentic_swmm.agent.tool_registry import (
-        _node_suggestions,
-        _resolve_inp_for_run,
-    )
+    from agentic_swmm.agent.tool_registry import _resolve_inp_for_run
 
     inp = _resolve_inp_for_run(call)
     if isinstance(inp, dict):
@@ -121,8 +118,11 @@ def _run_swmm_inp_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         run_id = str(call.args.get("run_id") or f"{_safe_name(inp.stem)}-{int(time.time())}")
         run_dir = repo_root() / "runs" / "agent" / _safe_name(run_id)
     runner_dir = run_layout.stage_dir(run_dir, run_layout.RUNNER, create=True)
-    default_node = _node_suggestions(str(inp), limit=1)
-    node = str(call.args.get("node") or (default_node[0] if default_node else "O1"))
+    # ``auto`` resolves AFTER the run (swmm_runner.py resolve_report_node)
+    # to the outfall carrying the largest total volume, not the INP's
+    # first outfall, which was dry on real multi-outfall networks and put
+    # a flat hydrograph in the client report (finding F-02, 2026-09-02).
+    node = str(call.args.get("node") or "auto")
     return {"inp": str(inp), "runDir": str(runner_dir), "node": node}
 
 

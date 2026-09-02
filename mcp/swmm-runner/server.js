@@ -47,23 +47,6 @@ const RunArgs = z.object({
 });
 const RptNodeArgs = z.object({ rpt: z.string(), node: z.string() });
 
-function detectFirstOutfall(inpPath) {
-  const text = fs.readFileSync(inpPath, "utf8");
-  const lines = text.split(/\r?\n/);
-  let inSection = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("[")) {
-      inSection = trimmed.toUpperCase() === "[OUTFALLS]";
-      continue;
-    }
-    if (!inSection) continue;
-    if (!trimmed || trimmed.startsWith(";")) continue;
-    const token = trimmed.split(/\s+/)[0];
-    if (token) return token;
-  }
-  return null;
-}
 const RptArgs = z.object({ rpt: z.string() });
 const CompareArgs = z.object({ rpt: z.string(), rpt2: z.string() });
 
@@ -77,13 +60,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "swmm_run",
-        description: "Run swmm5 on an INP and write rpt/out + manifest.json into runDir. When 'node' is omitted, auto-detect the first entry of the .inp [OUTFALLS] section so the manifest's peak metric targets the real outfall.",
+        description: "Run swmm5 on an INP and write rpt/out + manifest.json into runDir. When 'node' is omitted the runner resolves 'auto' after the run: the outfall carrying the largest total volume in the Outfall Loading Summary (else the first [OUTFALLS] entry), so the manifest's peak metric targets the outfall that matters.",
         inputSchema: {
           type: "object",
           properties: {
             inp: { type: "string" },
             runDir: { type: "string" },
-            node: { type: "string", description: "Optional. If omitted, the first [OUTFALLS] entry of the .inp is used." },
+            node: { type: "string", description: "Optional. Omit (or pass 'auto') to report on the outfall carrying the largest total volume after the run." },
             rptName: { type: "string" },
             outName: { type: "string" },
             memoriesApplied: {
@@ -132,16 +115,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
   if (name === "swmm_run") {
     const a = RunArgs.parse(raw ?? {});
     fs.mkdirSync(a.runDir, { recursive: true });
-    let node = a.node;
-    if (!node) {
-      node = detectFirstOutfall(a.inp);
-      if (!node) {
-        throw new Error(
-          "swmm_run: 'node' not supplied and could not auto-detect from .inp [OUTFALLS]. " +
-          "Either pass node explicitly or ensure the .inp has a non-empty [OUTFALLS] section."
-        );
-      }
-    }
+    // "auto" is resolved by swmm_runner.py AFTER the run: the outfall carrying
+    // the largest total volume in the Outfall Loading Summary, else the first
+    // [OUTFALLS] entry. The first-outfall guess was dry on real networks
+    // (finding F-02, 2026-09-02).
+    const node = a.node || "auto";
     // --gate: this is the agent path. runPy() rejects on a non-zero exit, so
     // gating makes a solver ERROR / non-zero rc / timeout surface to the LLM
     // as a tool failure instead of flowing back as a success.

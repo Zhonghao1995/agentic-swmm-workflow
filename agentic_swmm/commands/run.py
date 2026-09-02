@@ -43,8 +43,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--node",
         default=None,
         help=(
-            "Node/outfall used for peak-flow parsing. Default: the INP's "
-            "first outfall (else first junction), falling back to O1."
+            "Node/outfall used for peak-flow parsing. Default: auto, the "
+            "outfall carrying the largest total volume in the run (else the "
+            "INP's first outfall)."
         ),
     )
     parser.add_argument("--rpt-name", help="Report file name. Defaults to model.rpt.")
@@ -79,11 +80,10 @@ def main(args: argparse.Namespace) -> int:
         if sidecar.resolve() != target.resolve():
             shutil.copy2(sidecar, target)
 
-    node = args.node
-    if not node:
-        from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
-
-        node = default_report_node(builder_inp) or "O1"
+    # ``auto`` is resolved by the runner script AFTER the run: the outfall
+    # carrying the largest total volume in the Outfall Loading Summary,
+    # else the INP's first outfall (finding F-02, 2026-09-02).
+    node = args.node or "auto"
 
     script = script_path("skills", "swmm-runner", "scripts", "swmm_runner.py")
     command = python_command(

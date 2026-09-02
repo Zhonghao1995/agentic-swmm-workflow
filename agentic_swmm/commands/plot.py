@@ -159,9 +159,11 @@ def main(args: argparse.Namespace) -> int:
         command.extend(["--link", link_id])
     else:
         if not node_id:
-            from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
+            # The outfall carrying the largest total volume in this run,
+            # else the INP's first outfall (finding F-02, 2026-09-02).
+            from agentic_swmm.agent.swmm_runtime.run_artifacts import preferred_report_node
 
-            node_id = default_report_node(inp) or "O1"
+            node_id = preferred_report_node(run_dir, manifest, inp)[0] or "O1"
         command.extend(["--node", node_id])
     if args.focus_day:
         command.extend(["--focus-day", args.focus_day])

@@ -51,6 +51,7 @@ from agentic_swmm.agent.swmm_runtime.inp_parsing import rainfall_timeseries_opti
 from agentic_swmm.agent.swmm_runtime.run_artifacts import (
     find_inp as _find_inp,
     find_out as _find_out,
+    preferred_report_node,
     read_manifest as _read_manifest,
 )
 from agentic_swmm.commands.plot import DEFAULT_NODE_ATTR
@@ -110,6 +111,19 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
 
     rainfall_options = rainfall_timeseries_options(inp) if inp is not None else []
     node_options = _node_suggestions(str(inp), limit=100) if inp is not None else []
+    # Finding F-02 (live 2026-09-02): the first node in the INP was a dry
+    # outfall on real multi-outfall networks, and the flat hydrograph it
+    # produced went into the client report. Once the run exists, the
+    # outfall carrying the largest total volume leads the list and the
+    # reason rides along so the planner can say why.
+    node_reason = "first node listed in the INP (outfalls first)" if node_options else ""
+    if run_dir is not None:
+        preferred, reason = preferred_report_node(run_dir, _read_manifest(run_dir), inp)
+        if preferred:
+            if preferred in node_options:
+                node_options.remove(preferred)
+            node_options.insert(0, preferred)
+            node_reason = reason
     node_attribute_options = _node_attribute_options(out_file, node_options)
     default_rain = next((option["name"] for option in rainfall_options if option.get("used_by_raingage")), None)
     if default_rain is None and rainfall_options:
@@ -133,7 +147,12 @@ def _inspect_plot_options_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         "rainfall_options": rainfall_options,
         "node_options": node_options,
         "node_attribute_options": node_attribute_options,
-        "defaults": {"rain_ts": default_rain, "node": default_node, "node_attr": DEFAULT_NODE_ATTR},
+        "defaults": {
+            "rain_ts": default_rain,
+            "node": default_node,
+            "node_attr": DEFAULT_NODE_ATTR,
+            "node_reason": node_reason,
+        },
         "selections_needed": selections_needed,
         "user_prompt": user_prompt,
     }
