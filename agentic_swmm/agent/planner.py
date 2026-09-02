@@ -434,6 +434,7 @@ class Planner:
                 prior_session_state=prior_state,
             )
 
+        tool_subset = self._tool_subset_for(goal, trace_path=trace_path)
         input_items: list[dict[str, Any]] = [
             {
                 "role": "user",
@@ -488,7 +489,7 @@ class Planner:
                 response = self.provider.respond_with_tools(
                     system_prompt=system_prompt_text,
                     input_items=input_items,
-                    tools=self.registry.schemas(),
+                    tools=self.registry.schemas(tool_subset),
                     previous_response_id=previous_response_id,
                 )
                 _llm_call_duration_ms = int((time.monotonic() - _llm_call_start) * 1000)
@@ -940,6 +941,39 @@ class Planner:
             },
         )
 
+    def _tool_subset_for(self, goal: str, *, trace_path: Path | None = None) -> "set[str] | None":
+        """The tool names this goal's skills need, or ``None`` for all.
+
+        Live finding F-44 (2026-09-02): the 57 tool schemas (64k
+        characters) went out on every LLM call and were most of the 150k
+        to 210k input tokens of a Canada chain turn. Behind
+        AISWMM_TOOL_SUBSET=1 the schemas sent are the agent-internal
+        bucket plus the tools of the skills ``select_relevant_skills``
+        picks for the goal; unknown skills are skipped. Off by default
+        until the live measurement says the planner never misses a tool.
+        """
+        if os.environ.get(TOOL_SUBSET_ENV, "").strip() not in ("1", "true", "yes"):
+            return None
+        from agentic_swmm.agent.skill_router import AGENT_INTERNAL_SKILL, SkillRouter
+
+        router = SkillRouter(self.registry)
+        skills = [AGENT_INTERNAL_SKILL, *_select_relevant_skills(goal)]
+        names: set[str] = set()
+        used: list[str] = []
+        for skill in skills:
+            try:
+                names.update(router.tools_for(skill).tool_names())
+            except KeyError:
+                continue
+            used.append(skill)
+        if not names:
+            return None
+        _trace_event_best_effort(
+            trace_path,
+            {"event": "tool_subset", "skills": used, "tool_count": len(names), "total_tools": len(self.registry.names)},
+        )
+        return names
+
     def _consult_workflow_skills(
         self,
         *,
@@ -957,13 +991,15 @@ class Planner:
         calls: list[ToolCall] = []
         if not skip_skills:
             calls.append(ToolCall("list_skills", {}))
-            # Live finding F-05 (2026-09-02, 19 sessions measured): priming
-            # every relevant SKILL.md in full (7 files, 67k chars for a
-            # Canada chain) was re-sent on each of the 8 to 12 LLM calls of
-            # the turn and made up most of its 150k to 210k input tokens.
-            # The system prompt already carries every skill's description
-            # (skill_index_block) and select_skill returns the full
-            # contract on commit, so only the top candidates are primed.
+            # Live finding F-44 (2026-09-02): the results of these primed
+            # calls were never sent to the model. ``run`` builds its
+            # input_items from the goal alone, so seven SKILL.md reads per
+            # session (67k chars) were executed, traced and discarded; #447's
+            # cap changed the token count by nothing. The reads are off by
+            # default now; AISWMM_PRIME_SKILL_READS restores them for anyone
+            # who wants the old trace shape. list_skills stays (it is what
+            # should_introspect keys on) and the MCP listing below warms the
+            # node servers, which is a real effect.
             calls.extend(
                 ToolCall("read_skill", {"skill_name": name})
                 for name in skill_names[: _skill_priming_limit(len(skill_names))]
@@ -989,7 +1025,9 @@ class Planner:
 #: before the first LLM call. ``AISWMM_PRIME_SKILL_READS=all`` restores the
 #: previous behaviour; any integer sets the cap.
 PRIME_SKILL_READS_ENV = "AISWMM_PRIME_SKILL_READS"
-DEFAULT_PRIME_SKILL_READS = 2
+#: Send only the goal's skills' tool schemas to the model (experiment, F-44).
+TOOL_SUBSET_ENV = "AISWMM_TOOL_SUBSET"
+DEFAULT_PRIME_SKILL_READS = 0
 
 
 def _skill_priming_limit(available: int) -> int:

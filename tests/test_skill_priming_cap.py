@@ -32,10 +32,12 @@ def _prime(tmp: Path) -> list[str]:
 
 
 class TestLimit:
-    def test_default_is_two(self, monkeypatch):
+    def test_default_is_zero_because_the_reads_never_reached_the_model(self, monkeypatch):
+        # F-44: planner.run builds input_items from the goal alone, so the
+        # primed reads were executed and discarded. Off by default.
         monkeypatch.delenv("AISWMM_PRIME_SKILL_READS", raising=False)
-        assert DEFAULT_PRIME_SKILL_READS == 2
-        assert _skill_priming_limit(6) == 2 and _skill_priming_limit(1) == 1
+        assert DEFAULT_PRIME_SKILL_READS == 0
+        assert _skill_priming_limit(6) == 0 and _skill_priming_limit(1) == 0
 
     def test_all_restores_everything_and_integers_cap(self, monkeypatch):
         monkeypatch.setenv("AISWMM_PRIME_SKILL_READS", "all")
@@ -43,18 +45,24 @@ class TestLimit:
         monkeypatch.setenv("AISWMM_PRIME_SKILL_READS", "4")
         assert _skill_priming_limit(6) == 4
         monkeypatch.setenv("AISWMM_PRIME_SKILL_READS", "nonsense")
-        assert _skill_priming_limit(6) == 2
+        assert _skill_priming_limit(6) == 0
 
 
 class TestPriming:
-    def test_only_the_top_two_skills_are_read_in_full(self, monkeypatch):
+    def test_no_skill_is_read_in_full_by_default(self, monkeypatch):
         monkeypatch.delenv("AISWMM_PRIME_SKILL_READS", raising=False)
+        with TemporaryDirectory() as raw:
+            names = _prime(Path(raw))
+        assert not [n for n in names if n.startswith("read_skill:")]
+        assert "list_skills:" in names and "list_mcp_servers:" in names
+        assert any(n.startswith("list_mcp_tools:") for n in names)
+
+    def test_an_integer_restores_that_many_reads(self, monkeypatch):
+        monkeypatch.setenv("AISWMM_PRIME_SKILL_READS", "2")
         with TemporaryDirectory() as raw:
             names = _prime(Path(raw))
         reads = [n for n in names if n.startswith("read_skill:")]
         assert reads == ["read_skill:swmm-end-to-end", "read_skill:swmm-canada"]
-        assert "list_skills:" in names and "list_mcp_servers:" in names
-        assert any(n.startswith("list_mcp_tools:") for n in names)
 
     def test_all_primes_every_relevant_skill(self, monkeypatch):
         monkeypatch.setenv("AISWMM_PRIME_SKILL_READS", "all")
