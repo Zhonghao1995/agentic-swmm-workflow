@@ -657,7 +657,7 @@ def _command_allowed(command: list[str]) -> bool:
     exe = Path(command[0]).name.lower()
     if exe in {"pytest", "pytest.exe"}:
         return _pytest_args_ok(command[1:])
-    if exe in {"python", "python.exe"} or command[0] == sys.executable:
+    if exe in {"python", "python.exe"} or exe.startswith("python3") or command[0] == sys.executable:
         if not (len(command) >= 3 and command[1] == "-m" and command[2] in {"pytest", "agentic_swmm.cli"}):
             return False
         return _pytest_args_ok(command[3:]) if command[2] == "pytest" else True

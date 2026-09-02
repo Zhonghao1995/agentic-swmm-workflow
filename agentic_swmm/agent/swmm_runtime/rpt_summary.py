@@ -152,6 +152,74 @@ def _parse_node_inflow_row(tokens: list[str]) -> dict[str, Any]:
     }
 
 
+def _parse_node_flooding_row(tokens: list[str]) -> dict[str, Any]:
+    # node, hours_flooded, max_rate, days, hh:mm, total_flood_volume, max_ponded_depth
+    return {
+        "node": tokens[0],
+        "hours_flooded": float(tokens[1]),
+        "max_flood_rate": float(tokens[2]),
+        "time_days": int(tokens[3]),
+        "time_hhmm": tokens[4],
+        "total_flood_volume_10_6_ltr": float(tokens[5]),
+        "max_ponded_depth": float(tokens[6]),
+    }
+
+
+def _parse_node_surcharge_row(tokens: list[str]) -> dict[str, Any]:
+    # node, type, hours_surcharged, max_height_above_crown, min_depth_below_rim
+    return {
+        "node": tokens[0],
+        "type": tokens[1],
+        "hours_surcharged": float(tokens[2]),
+        "max_height_above_crown": float(tokens[3]),
+        "min_depth_below_rim": float(tokens[4]),
+    }
+
+
+def _parse_node_depth_row(tokens: list[str]) -> dict[str, Any]:
+    # node, type, avg_depth, max_depth, max_hgl, days, hh:mm, reported_max_depth
+    return {
+        "node": tokens[0],
+        "type": tokens[1],
+        "avg_depth": float(tokens[2]),
+        "max_depth": float(tokens[3]),
+        "max_hgl": float(tokens[4]),
+        "time_days": int(tokens[5]),
+        "time_hhmm": tokens[6],
+        "reported_max_depth": float(tokens[7]),
+    }
+
+
+def _parse_conduit_surcharge_row(tokens: list[str]) -> dict[str, Any]:
+    # conduit, hours full both ends, upstream, downstream, above full normal flow, capacity limited
+    return {
+        "conduit": tokens[0],
+        "hours_full_both_ends": float(tokens[1]),
+        "hours_full_upstream": float(tokens[2]),
+        "hours_full_downstream": float(tokens[3]),
+        "hours_above_full_normal_flow": float(tokens[4]),
+        "hours_capacity_limited": float(tokens[5]),
+    }
+
+
+def _parse_subcatchment_runoff_row(tokens: list[str]) -> dict[str, Any]:
+    # subcatchment, precip, runon, evap, infil, imperv runoff, perv runoff,
+    # total runoff (depth), total runoff (volume), peak runoff, runoff coeff
+    return {
+        "subcatchment": tokens[0],
+        "total_precip": float(tokens[1]),
+        "total_runon": float(tokens[2]),
+        "total_evap": float(tokens[3]),
+        "total_infil": float(tokens[4]),
+        "imperv_runoff": float(tokens[5]),
+        "perv_runoff": float(tokens[6]),
+        "total_runoff": float(tokens[7]),
+        "total_runoff_volume_10_6_ltr": float(tokens[8]),
+        "peak_runoff": float(tokens[9]),
+        "runoff_coeff": float(tokens[10]),
+    }
+
+
 SECTIONS: dict[str, SectionSchema] = {
     "Link Flow Summary": SectionSchema(
         title="Link Flow Summary",
@@ -190,6 +258,79 @@ SECTIONS: dict[str, SectionSchema] = {
             "lateral_inflow_volume_10_6_ltr",
             "total_inflow_volume_10_6_ltr",
             "flow_balance_error_pct",
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # Node / conduit performance sections (added 2026-09-02, live finding
+    # F-04: "which node flooded the most, and for how long?" had no typed
+    # answer, so the planner spent 33 grep calls and a repo patch on it).
+    # ------------------------------------------------------------------
+    "Node Flooding Summary": SectionSchema(
+        title="Node Flooding Summary",
+        raw_columns=7,
+        parse=_parse_node_flooding_row,
+        default_sort="total_flood_volume_10_6_ltr",
+        numeric_fields=(
+            "hours_flooded",
+            "max_flood_rate",
+            "time_days",
+            "total_flood_volume_10_6_ltr",
+            "max_ponded_depth",
+        ),
+    ),
+    "Node Surcharge Summary": SectionSchema(
+        title="Node Surcharge Summary",
+        raw_columns=5,
+        parse=_parse_node_surcharge_row,
+        default_sort="hours_surcharged",
+        numeric_fields=(
+            "hours_surcharged",
+            "max_height_above_crown",
+            "min_depth_below_rim",
+        ),
+    ),
+    "Node Depth Summary": SectionSchema(
+        title="Node Depth Summary",
+        raw_columns=8,
+        parse=_parse_node_depth_row,
+        default_sort="max_depth",
+        numeric_fields=(
+            "avg_depth",
+            "max_depth",
+            "max_hgl",
+            "time_days",
+            "reported_max_depth",
+        ),
+    ),
+    "Conduit Surcharge Summary": SectionSchema(
+        title="Conduit Surcharge Summary",
+        raw_columns=6,
+        parse=_parse_conduit_surcharge_row,
+        default_sort="hours_full_both_ends",
+        numeric_fields=(
+            "hours_full_both_ends",
+            "hours_full_upstream",
+            "hours_full_downstream",
+            "hours_above_full_normal_flow",
+            "hours_capacity_limited",
+        ),
+    ),
+    "Subcatchment Runoff Summary": SectionSchema(
+        title="Subcatchment Runoff Summary",
+        raw_columns=11,
+        parse=_parse_subcatchment_runoff_row,
+        default_sort="peak_runoff",
+        numeric_fields=(
+            "total_precip",
+            "total_runon",
+            "total_evap",
+            "total_infil",
+            "imperv_runoff",
+            "perv_runoff",
+            "total_runoff",
+            "total_runoff_volume_10_6_ltr",
+            "peak_runoff",
+            "runoff_coeff",
         ),
     ),
     # ------------------------------------------------------------------
@@ -256,23 +397,47 @@ def _locate_title(lines: list[str], title: str) -> int:
     return -1
 
 
+def _is_rule(line: str) -> bool:
+    """A full-width dashes row (a table rule), never a header that merely
+    contains dashes such as ``--------- Hours Full --------`` in the
+    Conduit Surcharge Summary block."""
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) == {"-"}
+
+
 def _skip_to_second_dash_row(lines: list[str], start: int) -> int:
     """Advance cursor past the column-header block.
 
-    From ``start``, skip to the first ``---`` row (top dashes), then to the
-    second ``---`` row (bottom dashes).  Return the cursor one line past the
-    bottom dash row — that is the first data row.
+    From ``start``, skip to the first ``---`` rule (top dashes), then to the
+    second rule (bottom dashes).  Return the cursor one line past the bottom
+    rule, which is the first data row.
+
+    A section that printed no table ("No nodes were flooded.") has no rules
+    of its own: the scan would otherwise walk into the NEXT section's
+    header and hand its rows to the wrong schema. Meeting a banner
+    (``*****``) before the top rule means "no table here", and the cursor
+    is parked past the end so the caller yields nothing.
     """
     cursor = start
-    # Advance to the first dash row.
-    while cursor < len(lines) and not lines[cursor].lstrip().startswith("---"):
+    # Callers hand over either the title line or the line after it, and
+    # the title box closes with an asterisk row of its own before the
+    # blank line that precedes the table. A banner met BEFORE any blank
+    # line is that closing row; a banner met after one is the next
+    # section beginning, which means this section printed no table.
+    seen_blank = False
+    while cursor < len(lines) and not _is_rule(lines[cursor]):
+        stripped = lines[cursor].strip()
+        if not stripped:
+            seen_blank = True
+        elif stripped.startswith("***") and seen_blank:
+            return len(lines)
         cursor += 1
-    cursor += 1  # past top dash row
+    cursor += 1  # past top rule
 
-    # Advance to the second dash row.
-    while cursor < len(lines) and not lines[cursor].lstrip().startswith("---"):
+    # Advance to the second rule.
+    while cursor < len(lines) and not _is_rule(lines[cursor]):
         cursor += 1
-    cursor += 1  # past bottom dash row
+    cursor += 1  # past bottom rule
     return cursor
 
 
@@ -474,7 +639,7 @@ def parse_section_with_stats(
         stripped = line.strip()
         if not stripped:
             break
-        if stripped.startswith("---") or stripped.startswith("***"):
+        if _is_rule(line) or stripped.startswith("***"):
             break
         tokens = stripped.split()
         n = len(tokens)
