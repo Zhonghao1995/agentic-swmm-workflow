@@ -32,6 +32,7 @@ only writer in the bundle — the others are read-only.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import subprocess
@@ -69,11 +70,51 @@ def _split_path_line(raw: str) -> tuple[str, int | None]:
     return match.group("path"), int(match.group("line"))
 
 
+#: Live finding F-54 (2026-09-02): asked how uncertain a peak was, the
+#: planner spent 32 of 34 tool calls (about 350k tokens) reading the
+#: product's own source (search_files over agentic_swmm/**, read_file on
+#: uncertainty_propagate.py, inp_patch.py, commands/uncertainty.py) to learn
+#: how a tool worked, then asked the user a questionnaire. Tool contracts
+#: come from select_skill and evidence from the run's artifacts; the
+#: implementation is not evidence for a modeling question. SKILL.md files,
+#: examples/*.json and every run artifact stay readable.
+SOURCE_READS_ENV = "AISWMM_ALLOW_SOURCE_READS"
+_SOURCE_DIRS = ("agentic_swmm", "src", "tests", "mcp")
+SOURCE_READ_HINT = (
+    "The product's source code is not evidence for a modeling question. "
+    "Tool contracts come from select_skill/read_skill; results come from the "
+    "run's artifacts (list_dir, read_rpt_summary, read_file on the run). "
+    f"Set {SOURCE_READS_ENV}=1 to read source during development."
+)
+
+
+def _source_reads_allowed() -> bool:
+    return os.environ.get(SOURCE_READS_ENV, "").strip() in ("1", "true", "yes")
+
+
+def is_product_source(path: Path) -> bool:
+    """True for a Python file that implements the product (never its docs or examples)."""
+    if path.suffix.lower() not in (".py", ".pyi"):
+        return False
+    try:
+        rel = path.resolve().relative_to(repo_root().resolve())
+    except ValueError:
+        return False
+    parts = rel.parts
+    if not parts:
+        return False
+    if parts[0] in _SOURCE_DIRS:
+        return True
+    return parts[0] == "skills" and len(parts) >= 3 and parts[2] == "scripts"
+
+
 def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     raw, line_hint = _split_path_line(str(call.args["path"]))
     path = _repo_path(raw)
     if path is None:
         return _failure(call, "refusing to read outside repository")
+    if is_product_source(path) and not _source_reads_allowed():
+        return _failure(call, f"refusing to read product source: {raw}", hint=SOURCE_READ_HINT)
     if not path.exists() or not path.is_file():
         err = file_resolution_error(
             f"file not found: {path}", requested=path, search_dir=path.parent
@@ -214,13 +255,18 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     stop_reason = ""
     started = time.monotonic()
     root = repo_root()
+    source_reads_allowed = _source_reads_allowed()
     try:
         paths = _search_candidates(root, pattern)
     except ValueError as exc:
         return _failure(call, f"invalid glob pattern: {exc}")
+    skipped_source = 0
     for path in paths:
         if len(results) >= max_results:
             break
+        if not source_reads_allowed and is_product_source(path):
+            skipped_source += 1
+            continue
         if scanned >= _MAX_SEARCH_SCANNED:
             truncated = True
             stop_reason = f"scanned {scanned} files"
@@ -250,7 +296,7 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         # Say it. A caller that reads "0 match(es)" after a capped scan would
         # conclude the file is absent when the search simply stopped early.
         summary += f"; stopped after {stop_reason}, results are incomplete"
-    return {
+    payload = {
         "tool": call.name,
         "args": call.args,
         "ok": True,
@@ -259,8 +305,13 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         "scanned": scanned,
         "truncated": truncated,
         "elapsed_seconds": elapsed,
+        "skipped_source_files": skipped_source,
         "summary": summary,
     }
+    if skipped_source and not results:
+        payload["hint"] = SOURCE_READ_HINT
+        payload["summary"] = f"{summary}; {skipped_source} product source file(s) skipped"
+    return payload
 
 
 def _normalize_search_glob(pattern: str) -> str:
