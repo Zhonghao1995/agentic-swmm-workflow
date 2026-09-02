@@ -231,6 +231,28 @@ class AgentToolRegistry:
             # the actionable hint + cause to self-correct a bad path.
             "hint",
             "cause",
+            # Live finding F-31 (2026-09-02): read_rpt_summary returned its
+            # ranked rows under top-level ``rows`` / ``section`` / ``sort_by``
+            # keys that this allowlist dropped, so the planner received only
+            # "section=... total=307 shown=3" and went looking for the rows in
+            # the trace file for 30 steps, session after session. Data keys
+            # a typed tool answers with are part of the answer.
+            "rows",
+            "section",
+            "total_rows",
+            "shown",
+            "sort_by",
+            "skipped_malformed_rows",
+            "wq_present",
+            "answer_ready",
+            "note",
+            # run_climate_scenarios answers under these; the model saw only
+            # "3/3 scenarios ran" (same defect class, found in the F-31 sweep).
+            "run_dir",
+            "node",
+            "summary_json",
+            "summary_md",
+            "scenarios",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
