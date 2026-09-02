@@ -28,6 +28,8 @@ helpers every family imports.
 from __future__ import annotations
 
 from pathlib import Path
+
+from agentic_swmm.utils.paths import repo_root
 from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure, _object
@@ -81,15 +83,32 @@ def _swmm_calibrate_common_schema() -> dict[str, Any]:
 _COMMON_REQUIRED = ["base_inp", "patch_map", "observed", "run_root", "summary_json"]
 
 
+def _absolute_repo_path(value: Any) -> str:
+    """Resolve a repo-relative file argument before it crosses the MCP boundary.
+
+    The Node server resolves relative paths against its own cwd
+    (``mcp/swmm-calibration/``), so ``examples/calibration/patch_map.json``
+    raised FileNotFoundError there and the planner had to read a Python
+    traceback to learn to retry with absolute paths (live finding F-37,
+    2026-09-02). Same seam the audit and plot mappers use. Absolute and
+    out-of-repo paths pass through untouched.
+    """
+    raw = str(value)
+    candidate = Path(raw).expanduser()
+    if candidate.is_absolute():
+        return raw
+    return str((repo_root() / candidate).resolve())
+
+
 def _map_common_args(call: ToolCall) -> dict[str, Any]:
     """Translate the common snake_case LLM args to server.js camelCase."""
 
     args: dict[str, Any] = {
-        "baseInp": str(call.args["base_inp"]),
-        "patchMap": str(call.args["patch_map"]),
-        "observed": str(call.args["observed"]),
-        "runRoot": str(call.args["run_root"]),
-        "summaryJson": str(call.args["summary_json"]),
+        "baseInp": _absolute_repo_path(call.args["base_inp"]),
+        "patchMap": _absolute_repo_path(call.args["patch_map"]),
+        "observed": _absolute_repo_path(call.args["observed"]),
+        "runRoot": _absolute_repo_path(call.args["run_root"]),
+        "summaryJson": _absolute_repo_path(call.args["summary_json"]),
     }
     _optstr = {
         "swmm_node": "swmmNode",
@@ -174,7 +193,7 @@ def _calibrate_search_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if not isinstance(search_space, str) or not search_space.strip():
         return _failure(call, "missing required argument: search_space")
     args = _map_common_args(call)
-    args["searchSpace"] = str(search_space)
+    args["searchSpace"] = _absolute_repo_path(search_space)
     _optstr = {
         "strategy": "strategy",
     }
@@ -217,7 +236,7 @@ def _calibrate_sceua_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     if not isinstance(search_space, str) or not search_space.strip():
         return _failure(call, "missing required argument: search_space")
     args = _map_common_args(call)
-    args["searchSpace"] = str(search_space)
+    args["searchSpace"] = _absolute_repo_path(search_space)
     _optint = {
         "iterations": "iterations",
         "seed": "seed",
@@ -246,7 +265,7 @@ def _calibrate_dream_zs_args(call: ToolCall, session_dir: Path) -> dict[str, Any
     if not isinstance(search_space, str) or not search_space.strip():
         return _failure(call, "missing required argument: search_space")
     args = _map_common_args(call)
-    args["searchSpace"] = str(search_space)
+    args["searchSpace"] = _absolute_repo_path(search_space)
     _optint = {
         "iterations": "iterations",
         "seed": "seed",
