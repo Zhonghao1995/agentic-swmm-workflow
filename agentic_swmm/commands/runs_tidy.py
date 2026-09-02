@@ -119,6 +119,10 @@ def _refresh_index(runs_root: Path) -> None:
         return
 
 
+#: How many affected runs the summary lists before folding the rest.
+_PREVIEW_LINES = 10
+
+
 def main(args: argparse.Namespace) -> int:
     runs_root = (
         args.runs_root.expanduser().resolve()
@@ -134,9 +138,16 @@ def main(args: argparse.Namespace) -> int:
         f"kept {len(report['kept_audited'])} audited, "
         f"{len(report['kept_recent'])} recent (cutoff {args.days}d)."
     )
-    for item in report["moved"]:
+    moved = report["moved"]
+    verbose = bool(getattr(args, "verbose", False))
+    shown = moved if verbose else moved[: _PREVIEW_LINES]
+    for item in shown:
         print(f"  {item['name']} -> {item['to']}")
-    if args.dry_run and report["moved"]:
+    if len(moved) > len(shown):
+        # 436 lines for a dry run is not a summary (live finding F-26,
+        # 2026-09-02); the full list is one flag away.
+        print(f"  ... and {len(moved) - len(shown)} more (pass --verbose to list every run)")
+    if args.dry_run and moved:
         print("dry run: nothing moved. Re-run without --dry-run to archive.")
     return 0
 
@@ -150,6 +161,11 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "action",
         choices=["tidy"],
         help="Housekeeping action. tidy: move stale unaudited runs/agent/* to runs/archive/agent/.",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="List every affected run instead of the first 10.",
     )
     parser.add_argument(
         "--days",

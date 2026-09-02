@@ -187,7 +187,7 @@ def _event_type(event: dict[str, Any]) -> str:
     Standardise on ``event``; older rows use ``event_type``. Falls
     back to ``?`` so the column always has SOMETHING to print.
     """
-    for key in ("event", "event_type"):
+    for key in ("event", "event_type", "decision_point", "kind"):
         value = event.get(key)
         if isinstance(value, str) and value:
             return value
@@ -355,6 +355,20 @@ def main(args: argparse.Namespace) -> int:
         return 1
 
     files = _trace_files_for(run_dir, args.source)
+    if (
+        args.source == "both"
+        and files
+        and not agent_file(run_dir, _AGENT_TRACE_NAME).is_file()
+        and not quiet
+    ):
+        # A CLI run (``aiswmm run``) never had a planner, so it has no
+        # agent trace; only the memory trace exists. Say so instead of
+        # printing one bare memory row (live finding F-25, 2026-09-02).
+        print(
+            f"note: no {_AGENT_TRACE_NAME} in {run_dir} (CLI runs record "
+            "command_trace.json instead); showing memory_trace.jsonl only.",
+            file=sys.stderr,
+        )
     if not files:
         if not quiet:
             print(
