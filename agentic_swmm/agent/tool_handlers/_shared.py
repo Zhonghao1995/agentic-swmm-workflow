@@ -308,7 +308,9 @@ def _make_mcp_routed_handler(
                 "tool": call.name,
                 "args": call.args,
                 "ok": False,
-                "summary": _augment_engine_failure(call, f"MCP transport failed: {exc}"),
+                "summary": _augment_engine_failure(
+                    call, f"MCP transport failed: {_trim_traceback(str(exc))}"
+                ),
             }
         return _wrap_mcp_result(call, server, tool, result)
 
@@ -319,6 +321,29 @@ def _make_mcp_routed_handler(
     # built via this factory and not a legacy subprocess shim.
     handler._mcp_routing = {"server": server, "tool": tool}  # type: ignore[attr-defined]
     return handler
+
+
+def _trim_traceback(message: str) -> str:
+    """Keep the error line of an embedded Python traceback, drop the frames.
+
+    A skill script that dies under the MCP server hands back its whole
+    stack (twelve lines of pathlib internals for one missing file, live
+    finding F-36, 2026-09-02). The planner and the person watching need
+    the exception line; the frames stay in the trace file for debugging.
+    """
+    marker = "Traceback (most recent call last):"
+    if marker not in message:
+        return message
+    head, _, tail = message.partition(marker)
+    lines = [line for line in tail.replace("\\n", "\n").splitlines() if line.strip()]
+    error_line = next(
+        (line.strip() for line in reversed(lines) if not line.startswith((" ", "\t")) and "File \"" not in line),
+        "",
+    )
+    head = head.rstrip()
+    if error_line:
+        return f"{head} {error_line} (traceback trimmed)".strip()
+    return f"{head} (traceback trimmed)".strip()
 
 
 def _augment_engine_failure(call: ToolCall, summary: str) -> str:

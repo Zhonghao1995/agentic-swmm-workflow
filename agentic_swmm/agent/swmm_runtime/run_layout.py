@@ -57,6 +57,16 @@ CANONICAL_ROOT_FILES: frozenset[str] = frozenset(
         "acceptance_report.md",
         "chat_note.md",
         "tool_results",
+        # What the audit -> memory pipeline leaves beside them: the per-run
+        # memory card the RAG library reads, the failure advice the CLI
+        # verb writes, and the command trace. The CLI path has always
+        # written these at the root; the agent path joined it on
+        # 2026-09-02 (finding F-35), which is when the fresh-run guard
+        # first met them.
+        "memory_summary.json",
+        "failure_advice.json",
+        "failure_advice.md",
+        "command_trace.json",
         # Audience directories.
         "_agent",
         "_obsidian",

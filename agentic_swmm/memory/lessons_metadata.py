@@ -325,6 +325,29 @@ def update_metadata_for_run(
     audit_stamp = _now_utc_iso()
     text = lessons_path.read_text(encoding="utf-8")
 
+    # Live finding F-34 (2026-09-02): the summariser adds sections for
+    # patterns it just learned (qa_failed, missing_manifest) without a
+    # metadata block, and the loop below used to skip them, so the health
+    # and decay machinery could never score what the product learned.
+    # Seed a block first; the loop then bumps it like any other.
+    created: list[str] = []
+    for name, start, end in reversed(list(_iter_pattern_spans(text))):
+        block = text[start:end]
+        if read_metadata(block) is not None:
+            continue
+        seed = {
+            "first_seen_utc": audit_stamp,
+            "last_seen_utc": audit_stamp,
+            "evidence_count": 0,
+            "evidence_runs": [],
+            "status": "active",
+            "confidence_score": 0.0,
+            "half_life_days": DEFAULT_HALF_LIFE_DAYS,
+        }
+        text = text[:start] + write_metadata(block, seed) + text[end:]
+        created.append(name)
+    summary["created_patterns"] = list(reversed(created))
+
     updated_text = text
     for name, start, end in list(_iter_pattern_spans(text)):
         block = text[start:end]

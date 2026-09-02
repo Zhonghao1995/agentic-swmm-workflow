@@ -197,12 +197,19 @@ def test_update_metadata_for_run_skips_patterns_without_metadata_block(
         run_dir, run_id="case-x", patterns=["new_pattern_no_metadata"]
     )
 
-    # Should not raise, should leave the file alone.
-    update_metadata_for_run(lessons_path=lessons, run_dir=run_dir)
+    # F-34 (2026-09-02): a section the summariser just added gets a seed
+    # block, and this run's evidence lands on it like on any other.
+    summary = update_metadata_for_run(lessons_path=lessons, run_dir=run_dir)
 
     parsed = read_all_patterns(lessons.read_text(encoding="utf-8"))
-    # The pattern still has no metadata; the hook simply skipped it.
-    assert parsed["new_pattern_no_metadata"] is None
+    meta = parsed["new_pattern_no_metadata"]
+    assert meta is not None
+    assert meta["evidence_count"] == 1
+    assert meta["evidence_runs"] == ["case-x"]
+    assert meta["status"] == "active"
+    assert meta["half_life_days"] == 90
+    assert summary["created_patterns"] == ["new_pattern_no_metadata"]
+    assert "new_pattern_no_metadata" in summary["matched_patterns"]
 
 
 def test_audit_command_calls_metadata_update_after_experiment_note(
