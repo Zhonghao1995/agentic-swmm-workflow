@@ -103,7 +103,15 @@ def render_case_card(memory_dir: Path | str, case: str) -> str:
                 }
             )
             node_s = " at " + ", ".join(nodes) if nodes else ""
-            out.append(f"  peak flow:          {_fmt_range(peaks, 'CMS')}{node_s}")
+            units = sorted(
+                {
+                    str((r.get("qa_metrics") or {}).get("peak_flow_unit"))
+                    for r in para
+                    if (r.get("qa_metrics") or {}).get("peak_flow_unit")
+                }
+            )
+            unit = units[0] if len(units) == 1 else ""
+            out.append(f"  peak flow:          {_fmt_range(peaks, unit)}{node_s}")
 
     # Run history (most recent first)
     if para:
@@ -115,7 +123,7 @@ def render_case_card(memory_dir: Path | str, case: str) -> str:
             if _num(qm.get("runoff_continuity_pct")) is not None:
                 bits.append(f"runoff {qm['runoff_continuity_pct']:g}%")
             if _num(qm.get("peak_flow_value")) is not None:
-                bits.append(f"peak {qm['peak_flow_value']:g} CMS")
+                bits.append(f"peak {qm['peak_flow_value']:g} {qm.get('peak_flow_unit') or ''}".rstrip())
             date = str(r.get("recorded_utc") or "")[:10]
             out.append(f"  {str(r.get('run_id') or '?'):<22} {'  '.join(bits)}   {date}".rstrip())
 

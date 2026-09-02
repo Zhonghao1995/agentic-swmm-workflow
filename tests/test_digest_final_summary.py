@@ -36,7 +36,7 @@ def _write_manifest(run_dir: Path, payload: dict) -> None:
 _MANIFEST_OK = {
     "return_code": 0,
     "metrics": {
-        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15"},
+        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15", "units": "CMS"},
         "continuity": {
             "runoff_quantity": {"Continuity Error (%)": -0.13},
             "flow_routing": {"Continuity Error (%)": -0.004},
@@ -94,6 +94,7 @@ class FinalSummaryTests(unittest.TestCase):
                             # what callers actually see.
                             "peak": 0.09,
                             "time_hhmm": "04:30",
+                            "units": "CMS",
                         },
                         "continuity": {
                             "runoff_quantity": {"Continuity Error (%)": 0.5},

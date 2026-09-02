@@ -269,10 +269,10 @@ def parametric_memory_block(context: "MemoryContext", *, limit: int = PARAMETRIC
         parts: list[str] = []
         peak = qa.get("peak_flow_value")
         if peak is not None:
-            unit = qa.get("peak_flow_unit") or "CMS"
+            unit = qa.get("peak_flow_unit") or ""
             node = qa.get("peak_flow_node")
             when = qa.get("peak_flow_time_hhmm")
-            text = f"peak {peak} {unit}"
+            text = f"peak {peak} {unit}".rstrip()
             if node:
                 text += f" at {node}"
             if when:

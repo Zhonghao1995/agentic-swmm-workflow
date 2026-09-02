@@ -46,7 +46,7 @@ _RUNNER_MANIFEST = {
     "inp": "05_builder/model.inp",
     "files": {"rpt": "06_runner/model.rpt", "out": "06_runner/model.out"},
     "metrics": {
-        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15"},
+        "peak": {"node": "OUT_0", "peak": 0.061, "time_hhmm": "03:15", "units": "CMS"},
         "continuity": {
             "runoff_quantity": {"Continuity Error (%)": -0.13},
             "flow_routing": {"Continuity Error (%)": -0.004},

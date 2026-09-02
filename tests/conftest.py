@@ -167,6 +167,7 @@ def seed_minimal_run_dir(
             "node": "OU2",
             "peak": 0.061,
             "time_hhmm": "03:15",
+            "units": "CMS",
             "source": "Node Inflow Summary",
         },
         "continuity": {
@@ -257,6 +258,7 @@ def seed_runner_manifest(
                 "node": "O1",
                 "peak": 1.25,
                 "time_hhmm": "12:47",
+                "units": "CMS",
                 "source": "Node Inflow Summary",
             }
         },
