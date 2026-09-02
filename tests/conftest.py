@@ -22,6 +22,45 @@ from unittest import mock
 import pytest
 
 
+_MEMORY_DIR_PRESET_AT_SESSION_START = bool(os.environ.get("AISWMM_MEMORY_DIR"))
+
+
+@pytest.fixture(scope="session")
+def _memory_store_copy(tmp_path_factory):
+    """One copy of the shipped memory stores for the whole session (F-14).
+
+    Finding F-14 (2026-09-02): every full-suite run appended four
+    ``aiswmm_run_cli / swmm_error "ERROR 205: invalid keyword"`` rows to
+    the project's ``memory/modeling-memory/run_failures.jsonl`` (the CLI
+    honesty tests run ``aiswmm run`` on a broken INP, and the recorder's
+    default path is the repo-relative store). Hundreds of test rows had
+    accumulated in the failure memory the product is meant to learn from.
+    """
+    import shutil
+
+    source = Path(__file__).resolve().parents[1] / "memory" / "modeling-memory"
+    target = tmp_path_factory.mktemp("modeling-memory")
+    if source.is_dir():
+        shutil.copytree(source, target, dirs_exist_ok=True)
+    return target
+
+
+@pytest.fixture(autouse=True)
+def _isolated_memory_store(monkeypatch, _memory_store_copy):
+    """Point every reader and writer at the session copy, test by test.
+
+    Per test (not per session) so a test that clears the variable cannot
+    leave the rest of the run writing into the real store; subprocesses
+    inherit the environment. A test that wants the default path still
+    ``monkeypatch.delenv``s it; an explicit ``AISWMM_MEMORY_DIR`` set by
+    the caller before the session is respected.
+    """
+    if _MEMORY_DIR_PRESET_AT_SESSION_START:
+        return
+    monkeypatch.setenv("AISWMM_MEMORY_DIR", str(_memory_store_copy))
+
+
+
 # The suite runs headless (non-TTY), where ``permissions.prompt_user`` now
 # fails closed (review P1-2). Tests intend for tool calls to execute, so opt
 # the whole suite into trusted auto-approval, exactly as CI/Docker automation
