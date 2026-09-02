@@ -482,10 +482,17 @@ def run_synth_from_bbox(
         t0 = time.time()
         from swmmanywhere import swmmanywhere as swmm_anywhere_mod
         ensure_overture_release_cache()
-        inp_path_str, _ = swmm_anywhere_mod.swmmanywhere(config)
+        inp_path_str, captured = run_pipeline_capturing_warnings(
+            swmm_anywhere_mod, config, synth_dir / PIPELINE_WARNINGS_LOG
+        )
         stage_durations["swmmanywhere_pipeline"] = round(time.time() - t0, 2)
     except Exception as exc:
         raise SynthRunError("swmmanywhere_pipeline", exc) from exc
+    if captured:
+        warnings.append(
+            f"swmmanywhere emitted {captured} library warning(s); captured in "
+            f"{run_layout.UPSTREAM_SWMMANYWHERE}/{PIPELINE_WARNINGS_LOG}"
+        )
 
     upstream_inp = Path(inp_path_str)
     if not upstream_inp.exists():
@@ -642,3 +649,37 @@ def ensure_overture_release_cache(
     except OSError:
         return None
     return repaired
+
+
+# ---------------------------------------------------------------------------
+# Library warnings stay in the run (live finding F-51, 2026-09-02)
+# ---------------------------------------------------------------------------
+# swmmanywhere runs in-process and its RuntimeWarnings ("invalid value
+# encountered in scalar power", design_graphfcns.py:129) printed raw onto
+# the interactive shell's spinner line. They are evidence about the
+# synthesis, so they go into the upstream box next to synth.inp, and the
+# result carries one line saying how many were captured.
+
+PIPELINE_WARNINGS_LOG = "pipeline_warnings.log"
+
+
+def run_pipeline_capturing_warnings(
+    swmm_anywhere_mod: Any, config: Any, log_path: Path
+) -> tuple[str, int]:
+    """Run ``swmm_anywhere_mod.swmmanywhere(config)``; return (inp path, warnings captured)."""
+    import warnings as _warnings
+
+    with _warnings.catch_warnings(record=True) as caught:
+        _warnings.simplefilter("always")
+        inp_path_str, _ = swmm_anywhere_mod.swmmanywhere(config)
+    if not caught:
+        return str(inp_path_str), 0
+    lines = [
+        f"{w.filename}:{w.lineno}: {w.category.__name__}: {w.message}" for w in caught
+    ]
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+    return str(inp_path_str), len(caught)
