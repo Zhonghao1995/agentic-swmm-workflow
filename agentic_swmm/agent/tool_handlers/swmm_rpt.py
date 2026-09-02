@@ -168,6 +168,7 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             "rows": rows,
             "wq_present": wq_present,
             "summary": summary,
+            "results": {"section": section_key, "sort_by": None, "total_rows": len(rows), "shown": len(rows), "rows": rows},
         }
 
     rows, skipped_rows = _parse_section_with_stats(rpt_text, schema)
@@ -206,6 +207,25 @@ def _read_rpt_summary_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         # could not parse (e.g. zero-volume "0.000 ltr" unit-suffix
         # rows). total_rows counts parsed rows only.
         result["skipped_malformed_rows"] = skipped_rows
+    if shown_rows:
+        # Live finding F-27 (2026-09-02): the planner received this exact
+        # ranking and then spent 20 more steps grepping the .rpt and the
+        # trace for the same numbers. Say what the rows are.
+        result["answer_ready"] = True
+        result["note"] = (
+            f"These rows ARE the {section_key} ranking by {sort_by} (parsed from the "
+            "SWMM report). Answer from them and cite this tool; do not re-derive "
+            "them with search_files or read_file."
+        )
+    # ``results`` is the key every model-facing allowlist has always kept
+    # (finding F-31); the flat keys above stay for existing callers.
+    result["results"] = {
+        "section": section_key,
+        "sort_by": sort_by,
+        "total_rows": total_rows,
+        "shown": len(shown_rows),
+        "rows": shown_rows,
+    }
     return result
 
 

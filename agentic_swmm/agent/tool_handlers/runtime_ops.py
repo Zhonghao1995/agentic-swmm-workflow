@@ -33,9 +33,10 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
 from agentic_swmm.agent.tool_handlers._shared import (
@@ -139,6 +140,38 @@ _MAX_SEARCH_FILE_BYTES = 2 * 1024 * 1024
 _MAX_SEARCH_SCANNED = 5000
 
 
+#: Files a text search never opens: reading and failing to decode a 4 MB
+#: upstream zip or a binary .out per call was the bulk of a 2-minute search
+#: (live finding F-28, 2026-09-02).
+_SEARCH_SKIP_SUFFIXES = frozenset(
+    {".out", ".zip", ".gz", ".png", ".pdf", ".docx", ".pyc", ".sqlite", ".db", ".jpg", ".jpeg", ".whl"}
+)
+#: Wall-clock budget for one search; the result says when it was hit.
+_MAX_SEARCH_SECONDS = 10.0
+
+
+def _search_candidates(root: Path, pattern: str) -> Iterable[Path]:
+    """Yield the paths a pattern names, anchored when the pattern is a path.
+
+    ``Path.rglob(pattern)`` prepends ``**/`` and walks the WHOLE repository
+    for every call, so a search scoped to one run directory
+    (``runs/<date>/<run>/**/*``) still visited every other run, every
+    node_modules tree and every archived session (live finding F-28: two
+    minutes per call). A pattern that contains a path separator is
+    anchored at the repository root; an absolute pattern inside the
+    repository is made relative first; a bare filename pattern
+    (``*.inp``) keeps the recursive walk it always had.
+    """
+    if pattern.startswith("/"):
+        try:
+            pattern = str(Path(pattern).resolve().relative_to(root.resolve()))
+        except ValueError:
+            return iter(())
+    if "/" in pattern:
+        return root.glob(pattern)
+    return root.rglob(pattern)
+
+
 def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     query = str(call.args.get("query") or "").strip()
     if not query:
@@ -148,8 +181,11 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     results: list[dict[str, Any]] = []
     scanned = 0
     truncated = False
+    stop_reason = ""
+    started = time.monotonic()
+    root = repo_root()
     try:
-        paths = repo_root().rglob(pattern)
+        paths = _search_candidates(root, pattern)
     except ValueError as exc:
         return _failure(call, f"invalid glob pattern: {exc}")
     for path in paths:
@@ -157,8 +193,15 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             break
         if scanned >= _MAX_SEARCH_SCANNED:
             truncated = True
+            stop_reason = f"scanned {scanned} files"
+            break
+        if time.monotonic() - started > _MAX_SEARCH_SECONDS:
+            truncated = True
+            stop_reason = f"{_MAX_SEARCH_SECONDS:.0f} s time budget after {scanned} files"
             break
         if any(part in _SEARCH_SKIP_DIRS for part in path.parts):
+            continue
+        if path.suffix.lower() in _SEARCH_SKIP_SUFFIXES:
             continue
         try:
             if not path.is_file() or path.stat().st_size > _MAX_SEARCH_FILE_BYTES:
@@ -169,13 +212,14 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         scanned += 1
         for lineno, line in enumerate(text.splitlines(), start=1):
             if query.lower() in line.lower():
-                results.append({"path": str(path.relative_to(repo_root())), "line": lineno, "text": line.strip()[:300]})
+                results.append({"path": str(path.relative_to(root)), "line": lineno, "text": line.strip()[:300]})
                 break
-    summary = f"{len(results)} match(es)"
+    elapsed = round(time.monotonic() - started, 2)
+    summary = f"{len(results)} match(es) in {elapsed}s"
     if truncated:
         # Say it. A caller that reads "0 match(es)" after a capped scan would
         # conclude the file is absent when the search simply stopped early.
-        summary += f"; stopped after scanning {scanned} files, results are incomplete"
+        summary += f"; stopped after {stop_reason}, results are incomplete"
     return {
         "tool": call.name,
         "args": call.args,
@@ -184,6 +228,7 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         "results": results,
         "scanned": scanned,
         "truncated": truncated,
+        "elapsed_seconds": elapsed,
         "summary": summary,
     }
 
