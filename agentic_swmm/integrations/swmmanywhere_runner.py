@@ -45,6 +45,7 @@ This module deliberately does **lazy** SWMManywhere imports — importing
 """
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import sys
@@ -52,6 +53,7 @@ import time
 import types
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from collections.abc import Callable
 from pathlib import Path
 
 from agentic_swmm.agent.swmm_runtime import run_layout
@@ -479,6 +481,7 @@ def run_synth_from_bbox(
     try:
         t0 = time.time()
         from swmmanywhere import swmmanywhere as swmm_anywhere_mod
+        ensure_overture_release_cache()
         inp_path_str, _ = swmm_anywhere_mod.swmmanywhere(config)
         stage_durations["swmmanywhere_pipeline"] = round(time.time() - t0, 2)
     except Exception as exc:
@@ -558,3 +561,84 @@ def run_synth_from_bbox(
         stage_durations=stage_durations,
         warnings=tuple(warnings),
     )
+
+
+# ---------------------------------------------------------------------------
+# Overture release cache shim (live finding F-46, 2026-09-02)
+# ---------------------------------------------------------------------------
+# swmmanywhere 0.2.2 ``prepare_data._get_latest_s3_url`` derives the Overture
+# release id as ``Path(href).parent`` of the newest child link in
+# https://stac.overturemaps.org/catalog.json. Those hrefs are absolute URLs
+# now, so the library writes ``https:/stac.overturemaps.org/2026-08-19.0``
+# into its cwd-relative ``.cache/overture_release.json`` and every global
+# (non-Canada) synthesis then asks S3 for a key that does not exist. The
+# cache is trusted for 72 hours, so one bad write poisons three days.
+# The shim runs before the pipeline: a well-formed cache is left alone; a
+# malformed one is repaired from the id embedded in its own string (no
+# network needed); a missing one is seeded from the catalog when reachable.
+
+_RELEASE_ID = re.compile(r"\d{4}-\d{2}-\d{2}\.\d+")
+OVERTURE_CACHE_PATH = Path(".cache/overture_release.json")
+OVERTURE_CATALOG_URL = "https://stac.overturemaps.org/catalog.json"
+
+
+def _fetch_overture_catalog(timeout: float = 10.0) -> dict:
+    import requests
+
+    response = requests.get(OVERTURE_CATALOG_URL, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def latest_overture_release(catalog: dict) -> str | None:
+    """Newest release id found in a STAC catalog's child links, or None."""
+    ids: list[str] = []
+    for link in catalog.get("links", []):
+        if link.get("rel") != "child":
+            continue
+        match = _RELEASE_ID.search(str(link.get("href", "")))
+        if match:
+            ids.append(match.group(0))
+    return max(ids) if ids else None
+
+
+def ensure_overture_release_cache(
+    cache_path: Path = OVERTURE_CACHE_PATH,
+    fetch_catalog: Callable[[], dict] | None = None,
+) -> str | None:
+    """Leave a well-formed cache alone; repair or seed a bad or missing one.
+
+    Returns the release id the cache holds afterwards (None when nothing
+    could be determined, in which case the library's own code runs).
+    """
+    existing: dict = {}
+    if cache_path.exists():
+        try:
+            existing = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            existing = {}
+    release = str(existing.get("release", ""))
+    if _RELEASE_ID.fullmatch(release):
+        return release
+
+    repaired = None
+    match = _RELEASE_ID.search(release)
+    if match:
+        repaired = match.group(0)
+    else:
+        try:
+            catalog = (fetch_catalog or _fetch_overture_catalog)()
+            repaired = latest_overture_release(catalog)
+        except Exception:
+            repaired = None
+    if repaired is None:
+        return None
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(
+            json.dumps({"release": repaired, "timestamp": datetime.now().isoformat()}),
+            encoding="utf-8",
+        )
+    except OSError:
+        return None
+    return repaired
