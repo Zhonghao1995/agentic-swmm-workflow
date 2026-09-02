@@ -296,6 +296,9 @@ class BootstrapSystemPromptTests(unittest.TestCase):
                 "os.environ",
                 {
                     "AISWMM_FACTS_DIR": str(facts_dir),
+                    # An empty failure store: the <recent-failures> block
+                    # (F-09) must not appear in a "no extras" assertion.
+                    "AISWMM_MEMORY_DIR": str(Path(tmp) / "memory"),
                     "AISWMM_SESSION_DB": str(db_dir / "sessions.sqlite"),
                 },
             ):
@@ -320,6 +323,9 @@ class BootstrapSystemPromptTests(unittest.TestCase):
                 "os.environ",
                 {
                     "AISWMM_FACTS_DIR": str(facts_dir),
+                    # An empty failure store: the <recent-failures> block
+                    # (F-09) must not appear in a "no extras" assertion.
+                    "AISWMM_MEMORY_DIR": str(Path(tmp) / "memory"),
                     "AISWMM_SESSION_DB": str(db_dir / "sessions.sqlite"),
                 },
             ):
@@ -366,6 +372,9 @@ class BootstrapSystemPromptTests(unittest.TestCase):
                 "os.environ",
                 {
                     "AISWMM_FACTS_DIR": str(facts_dir),
+                    # An empty failure store: the <recent-failures> block
+                    # (F-09) must not appear in a "no extras" assertion.
+                    "AISWMM_MEMORY_DIR": str(Path(tmp) / "memory"),
                     "AISWMM_SESSION_DB": str(db_path),
                 },
             ):
