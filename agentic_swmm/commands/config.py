@@ -10,7 +10,10 @@ from agentic_swmm.config import config_path, load_config, set_config_value
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser("config", help="View or update local aiswmm runtime config.")
     register_example_flag(parser, example_text="aiswmm config show")
-    child = parser.add_subparsers(dest="config_command", required=True)
+    # A bare ``aiswmm config`` used to be an argparse usage error (live
+    # finding F-43, 2026-09-02); it now shows the effective config.
+    child = parser.add_subparsers(dest="config_command", required=False)
+    parser.set_defaults(func=show_config)
 
     show = child.add_parser("show", help="Print the effective runtime config.")
     show.set_defaults(func=show_config)

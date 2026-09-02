@@ -19,6 +19,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     list_parser.add_argument("--json", action="store_true", help="Print machine-readable server records.")
     list_parser.add_argument("--registry", action="store_true", help="Read the user runtime MCP registry.")
     list_parser.set_defaults(func=list_servers)
+    # "status" is what people type first (live finding F-42, 2026-09-02);
+    # it is the same report.
+    status_parser = child.add_parser("status", help="Alias of list: OK / MISSING per MCP server.")
+    status_parser.add_argument("--json", action="store_true", help="Print machine-readable server records.")
+    status_parser.add_argument("--registry", action="store_true", help="Read the user runtime MCP registry.")
+    status_parser.set_defaults(func=list_servers)
     coverage_parser = child.add_parser(
         "coverage",
         help=(
