@@ -219,12 +219,14 @@ def _format_last_session_line(last_session: dict[str, Any] | None) -> str:
     """Render the ``Last session: ...`` line, or the empty-DB fallback."""
     if not last_session:
         return "Last session: No prior session."
-    case_name = last_session.get("case_name") or "unknown"
+    case_name = last_session.get("case_name") or ""
     end_utc = last_session.get("end_utc") or ""
     relative = format_relative_time(end_utc) if end_utc else ""
     if relative:
-        return f'Last session: {relative} -- case "{case_name}"'
-    return f'Last session: case "{case_name}"'
+        # A run without a case (a free-form place prompt) used to print
+        # `case "unknown"` (finding F-06, 2026-09-02); say nothing instead.
+        return f'Last session: {relative} -- case "{case_name}"' if case_name else f'Last session: {relative}'
+    return f'Last session: case "{case_name}"' if case_name else 'Last session: (no case recorded)'
 
 
 def _tip_line() -> str:

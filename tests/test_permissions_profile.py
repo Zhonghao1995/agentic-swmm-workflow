@@ -100,7 +100,8 @@ class QuickProfileSkipsPromptWiringTests(unittest.TestCase):
                     1,
                     "approval must be requested for write tools under QUICK",
                 )
-                ((tool_name,), _kwargs) = patched.call_args
+                # The question now carries a detail phrase as its second argument (F-03).
+                ((tool_name, *_detail), _kwargs) = patched.call_args
                 self.assertEqual(tool_name, "plot_run")
 
 

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from agentic_swmm.utils.paths import repo_root
 
@@ -81,7 +83,63 @@ class ApprovalDecision:
         return self.reason == "headless"
 
 
-def request_approval(tool_name: str) -> ApprovalDecision:
+def approval_detail(args: dict[str, Any] | None) -> str:
+    """One short phrase naming the decisive argument of a tool call.
+
+    Live finding F-03 (2026-09-02): "Run run_allowed_command? [Y/n]" asked
+    the person to approve a command they had not seen (it was then refused
+    as not allowlisted); "Run fetch_swmm_from_canada? [Y/n]" did not say
+    which area would leave the machine. The same phrase is what a
+    frontend would show beside an approve button.
+    """
+    if not isinstance(args, dict) or not args:
+        return ""
+    command = args.get("command")
+    if isinstance(command, list) and command:
+        return _clip(" ".join(str(part) for part in command))
+    patch = args.get("patch")
+    if isinstance(patch, str) and patch:
+        targets = re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", patch, re.M)
+        if targets:
+            return _clip("writes " + ", ".join(t.strip() for t in targets[:3]))
+    parts: list[str] = []
+    bbox = args.get("bbox")
+    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        parts.append("bbox [" + ", ".join(f"{float(v):.3f}" for v in bbox) + "]")
+    elif args.get("aoi_geojson"):
+        parts.append("polygon AOI")
+    for key in ("inp_path", "inp", "base_inp", "rpt_path", "path"):
+        value = args.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(_short_path(value))
+            break
+    if args.get("start_date") and args.get("end_date"):
+        parts.append(f"{args['start_date']}..{args['end_date']}")
+    for key in ("node", "section", "objective"):
+        value = args.get(key)
+        if isinstance(value, str) and value.strip() and value.strip().lower() != "auto":
+            parts.append(f"{key}={value.strip()}")
+    if not parts:
+        run_dir = args.get("run_dir")
+        if isinstance(run_dir, str) and run_dir.strip():
+            parts.append(_short_path(run_dir))
+    return _clip(", ".join(parts))
+
+
+def _short_path(value: str) -> str:
+    text = str(value).strip()
+    marker = "/runs/"
+    if marker in text:
+        text = "runs/" + text.split(marker, 1)[1]
+    return text if len(text) <= 60 else "..." + text[-57:]
+
+
+def _clip(text: str, limit: int = 90) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def request_approval(tool_name: str, detail: str | None = None) -> ApprovalDecision:
     """Decide whether ``tool_name`` may execute, and record why.
 
     This is the opt-in confirmation seam. Interactive shells get a
@@ -100,8 +158,9 @@ def request_approval(tool_name: str) -> ApprovalDecision:
     if not sys.stdin.isatty():
         return ApprovalDecision(approved=False, reason="headless")
     _prepare_prompt_line()
+    question = f"Run {tool_name} ({detail})? [Y/n] " if detail else f"Run {tool_name}? [Y/n] "
     try:
-        answer = input(f"Run {tool_name}? [Y/n] ").strip().lower()
+        answer = input(question).strip().lower()
     except EOFError:
         return ApprovalDecision(approved=False, reason="headless")
     finally:
