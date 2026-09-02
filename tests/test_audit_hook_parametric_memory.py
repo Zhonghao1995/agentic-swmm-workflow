@@ -37,7 +37,27 @@ _PROVENANCE = {
 }
 
 
-class AuditHookParametricMemoryTests(unittest.TestCase):
+class _ProjectRootMemory(unittest.TestCase):
+    """These tests pass ``project_root`` and read the stores under it.
+
+    The suite-wide ``AISWMM_MEMORY_DIR`` isolation (conftest, F-14) would
+    win over ``project_root`` by the documented env-override contract, so
+    it is cleared here for the duration of each test.
+    """
+
+    def setUp(self) -> None:
+        import os
+        from unittest import mock
+
+        self._env_patch = mock.patch.dict(os.environ)
+        self._env_patch.start()
+        os.environ.pop("AISWMM_MEMORY_DIR", None)
+
+    def tearDown(self) -> None:
+        self._env_patch.stop()
+
+
+class AuditHookParametricMemoryTests(_ProjectRootMemory):
     def test_parametric_record_appended_for_eligible_run(self) -> None:
         with TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "proj"
@@ -88,7 +108,7 @@ class AuditHookParametricMemoryTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-class AuditHookSchema2PassThroughTests(unittest.TestCase):
+class AuditHookSchema2PassThroughTests(_ProjectRootMemory):
     def _run_hook(self, run_dir: Path):
         with patched_audit_hook_subprocess():
             return trigger_memory_refresh(run_dir)
