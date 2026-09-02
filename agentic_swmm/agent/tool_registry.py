@@ -109,8 +109,16 @@ class AgentToolRegistry:
     def sorted_names(self) -> list[str]:
         return sorted(self._tools)
 
-    def schemas(self) -> list[dict[str, Any]]:
-        return [self._tools[name].schema() for name in sorted(self._tools)]
+    def schemas(self, names: "set[str] | None" = None) -> list[dict[str, Any]]:
+        """Tool schemas for the model, all of them or the named subset.
+
+        ``names`` is the goal-scoped subset the planner computes when
+        AISWMM_TOOL_SUBSET=1 (live finding F-44, 2026-09-02: all 57
+        schemas, 64k characters, are the bulk of every LLM call's input).
+        Unknown names are ignored so a stale subset cannot raise.
+        """
+        selected = sorted(self._tools) if names is None else sorted(n for n in self._tools if n in names)
+        return [self._tools[name].schema() for name in selected]
 
     def validate(self, call: ProviderToolCall) -> ToolCall:
         if call.name not in self._tools:
