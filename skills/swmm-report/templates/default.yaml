@@ -95,6 +95,37 @@ sections:
       project configuration; PASS/FAIL status is read from experiment_provenance.json and
       is not recomputed here.
 
+  - id: design_review
+    title: "Design Review"
+    columns:
+      - Rule
+      - Status
+      - Worst element
+      - Value
+      - Threshold
+    caption: "Design-review rules and the element that decided each verdict."
+    narrative: >
+      Statuses are read from 11_review/design_review.json as written by the design-review
+      tool; nothing is re-evaluated at report generation time.
+    verdict_text: >-
+      Overall result: {overall} ({passed} pass, {failed} fail, {warned} warn, {needs_data} needs-data)
+      against rulebook {rulebook} v{version}.
+    missing_text: "No design review recorded for this run."
+
+  - id: evidence_boundary
+    title: "Evidence Boundary"
+    uncalibrated_text: >-
+      This is an uncalibrated first-pass model. No observed flow data were used, so every value
+      in this report is a simulated result, not a validated prediction. Calibrate against
+      observed flow before design decisions.
+    calibrated_text: >-
+      Calibration status recorded for this run: {status}. Results are only as trustworthy as the
+      observed data and objective behind that status.
+    review_text: >-
+      The design review against rulebook {rulebook} returned {overall} ({failed} fail, {warned} warn).
+      The bundled rulebook is a template: it does not certify compliance with any adopted standard.
+    no_review_text: "No design review was run against this model."
+
   - id: hydraulic_results
     title: "Hydraulic Results"
 

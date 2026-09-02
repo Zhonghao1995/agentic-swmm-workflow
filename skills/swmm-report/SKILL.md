@@ -113,7 +113,7 @@ The generated `.docx` follows engineering-report conventions:
 
 Pass `--template <path>` (YAML or JSON) to control which sections appear
 and in what order.  The built-in template at
-`skills/swmm-report/templates/default.yaml` uses all nine sections:
+`skills/swmm-report/templates/default.yaml` uses all eleven sections:
 
 | Section ID | Content |
 |---|---|
@@ -121,6 +121,8 @@ and in what order.  The built-in template at
 | `run_summary` | Peak flow, time of peak, continuity error, return code |
 | `model_description` | Basin area, simulation window, impervious %, Green-Ampt params |
 | `qa_gates` | QA check table from `experiment_provenance.json` |
+| `design_review` | Rulebook verdict and per-rule table from `11_review/design_review.json` (says so when no review was run) |
+| `evidence_boundary` | Calibration status and review verdict stated in words: what these numbers are and are not |
 | `figures` | Embedded PNG figures from `00_raw/` (study-area map), `08_plot/` (canonical plots), `07_plots/` and `07_plot/` (legacy), plus root `network_layout.png` |
 | `diagnostics` | Model diagnostics from `model_diagnostics.json` |
 | `comparison` | Baseline comparison (skipped silently when unavailable) |
