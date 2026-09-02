@@ -771,8 +771,12 @@ def _route_default_to_agent(argv: list[str]) -> list[str]:
 
 
 def _agent_options_without_goal(argv: list[str]) -> bool:
-    options_with_values = {"--provider", "--model", "--session-id", "--session-dir", "--max-steps"}
-    flags = {"--dry-run", "--interactive", "--verbose"}
+    # ``--safe`` and ``--case-id`` were missing here, so ``aiswmm --safe`` (the
+    # spelling the welcome banner advertises) fell through to a one-shot
+    # session with an empty goal, which defaults to "run doctor" (live
+    # finding F-47, 2026-09-02).
+    options_with_values = {"--provider", "--model", "--session-id", "--session-dir", "--max-steps", "--case-id"}
+    flags = {"--dry-run", "--interactive", "--verbose", "--safe"}
     index = 0
     while index < len(argv):
         item = argv[index]
