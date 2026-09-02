@@ -18,6 +18,9 @@ from agentic_swmm.agent.ui import Spinner, SpinnerState, set_active_tool_spinner
 DENIED_SUMMARY = "tool not approved by user"
 
 
+#: Tools whose approval is never borrowed from the turn's chain grant.
+NEVER_CHAINED = frozenset({"apply_patch"})
+
 class AgentExecutor:
     def __init__(
         self,
@@ -67,7 +70,13 @@ class AgentExecutor:
         # QUICK auto-approves read-only tools; SAFE always defers to
         # ``permissions.request_approval`` (which fails closed in non-TTY
         # contexts rather than running unattended).
-        chain_eligible = getattr(self.profile, "name", "") == "QUICK"
+        # Finding F-11 (live 2026-09-02): the turn's one Y for a refused
+        # command went on to cover apply_patch adding a script to the
+        # repository. A repository write is its own consent class: it is
+        # never covered by the chain grant and never arms it.
+        chain_eligible = (
+            getattr(self.profile, "name", "") == "QUICK" and call.name not in NEVER_CHAINED
+        )
         if (
             not self.dry_run
             and not self.profile.auto_approve(call.name, self.registry)
@@ -80,7 +89,9 @@ class AgentExecutor:
             prompted = False
         elif not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
             prompted = True
-            decision = permissions.request_approval(call.name)
+            decision = permissions.request_approval(
+                call.name, permissions.approval_detail(call.args)
+            )
             if decision.approved and chain_eligible:
                 self._turn_chain_approved = True
             if not decision.approved:
