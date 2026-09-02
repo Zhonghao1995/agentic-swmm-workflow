@@ -273,7 +273,7 @@ def _registry_native_tools() -> list[ToolSpec]:
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool, is_read_only=True),
         ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server (names + one-line descriptions by default; pass full=true for complete schemas; select_skill already returns the chosen skill's full contracts).", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}, "full": {"type": "boolean"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
-        ToolSpec("run_allowed_command", "Run an allowlisted local command such as pytest, python -m agentic_swmm.cli, node scripts/*.mjs, or swmm5.", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
+        ToolSpec("run_allowed_command", f"Run ONE allowlisted local command. Allowed forms: {ALLOWED_COMMAND_FORMS}. {_NOT_A_SHELL_HINT}", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
         ToolSpec(
             "select_skill",
@@ -637,12 +637,40 @@ def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return _run_process_tool(call, session_dir, [sys.executable, "-m", "pytest", *test_paths], cwd=repo_root(), timeout=timeout)
 
 
+#: What ``run_allowed_command`` will run, stated once for the description,
+#: the denial and the docs. Live finding F-10 (2026-09-02): a denial that
+#: said only "not allowlisted" sent the planner through five variants of
+#: ``python -c`` and a "continue past failures?" prompt before it gave up.
+ALLOWED_COMMAND_FORMS = (
+    "pytest <repo test paths>; python -m pytest <repo test paths>; "
+    "python -m agentic_swmm.cli <verb ...>; node scripts/<name>.mjs; "
+    "swmm5 <inp> <rpt> <out>"
+)
+_NOT_A_SHELL_HINT = (
+    "run_allowed_command is not a shell: python -c, grep, cat, awk and ad-hoc "
+    "scripts are refused. For SWMM .rpt data use read_rpt_summary (Link Flow, "
+    "Outfall Loading, Node Inflow, Node Flooding, Node Surcharge, Node Depth, "
+    "Conduit Surcharge, Subcatchment Runoff); for file contents use read_file "
+    "or search_files."
+)
+
+
 def _run_allowed_command_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     command = call.args.get("command")
     if not isinstance(command, list) or not all(isinstance(item, str) and item for item in command):
         return _failure(call, "command must be a non-empty string array")
     if not _command_allowed(command):
-        return _failure(call, "command is not allowlisted")
+        return _failure(
+            call,
+            f"command is not allowlisted (allowed: {ALLOWED_COMMAND_FORMS})",
+            hint=_NOT_A_SHELL_HINT,
+        )
+    exe = Path(command[0]).name.lower()
+    if exe in {"python", "python.exe"} or exe.startswith("python3"):
+        # The interpreter running aiswmm is the one the allowlist means;
+        # a bare ``python`` is absent on many machines (macOS ships only
+        # python3) and raised FileNotFoundError after passing the check.
+        command = [sys.executable, *command[1:]]
     timeout = int(call.args.get("timeout_seconds") or 120)
     return _run_process_tool(call, session_dir, command, cwd=repo_root(), timeout=timeout)
 

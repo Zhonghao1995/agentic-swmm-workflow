@@ -223,6 +223,11 @@ def tool_specs() -> list[ToolSpec]:
                 "'Link Flow Summary' = every conduit's peak flow / time-of-peak / Max-Full ratio (use to find the busiest pipe); "
                 "'Outfall Loading Summary' = every outfall node's flow frequency / avg / max / total volume + pollutant loads when water quality is enabled; "
                 "'Node Inflow Summary' = every node's lateral and total inflow (use for upstream-network diagnostics); "
+                "'Node Flooding Summary' = every node that flooded: hours flooded, max flood rate, time of max, total flood volume, ponded depth (use for 'which node flooded the most / for how long'); "
+                "'Node Surcharge Summary' = hours surcharged and height above crown per node; "
+                "'Node Depth Summary' = average / max depth and max HGL per node; "
+                "'Conduit Surcharge Summary' = hours full and capacity-limited per conduit (use for 'which pipes are overloaded'); "
+                "'Subcatchment Runoff Summary' = precip, infiltration, runoff depth / volume, peak runoff and runoff coefficient per subcatchment; "
                 "'Runoff Quality Continuity' = pollutant mass balance at the land surface (one column per pollutant, kg); "
                 "'Quality Routing Continuity' = pollutant mass balance through the pipe network (one column per pollutant, kg); "
                 "'Subcatchment Washoff Summary' = total pollutant load washed off each subcatchment (kg per pollutant); "
@@ -237,6 +242,11 @@ def tool_specs() -> list[ToolSpec]:
                     "Link Flow Summary",
                     "Outfall Loading Summary",
                     "Node Inflow Summary",
+                    "Node Flooding Summary",
+                    "Node Surcharge Summary",
+                    "Node Depth Summary",
+                    "Conduit Surcharge Summary",
+                    "Subcatchment Runoff Summary",
                     "Runoff Quality Continuity",
                     "Quality Routing Continuity",
                     "Subcatchment Washoff Summary",
