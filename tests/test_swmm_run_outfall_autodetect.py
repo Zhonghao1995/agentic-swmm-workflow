@@ -104,3 +104,113 @@ def test_swmm_run_respects_explicit_node_override(tmp_path: Path) -> None:
 
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["metrics"]["peak"]["node"] == "J1"
+
+
+# ---------------------------------------------------------------------------
+# F-02 (2026-09-02): with node omitted, the manifest's peak targets the outfall
+# carrying the largest total volume AFTER the run, not the first [OUTFALLS]
+# entry. Two outfalls: the first is dry, the second drains the only
+# subcatchment.
+# ---------------------------------------------------------------------------
+
+TWO_OUTFALL_INP = """[TITLE]
+F-02 dominant outfall: first outfall dry, second wet
+
+[OPTIONS]
+FLOW_UNITS           CMS
+INFILTRATION         GREEN_AMPT
+FLOW_ROUTING         KINWAVE
+START_DATE           01/01/2024
+START_TIME           00:00:00
+END_DATE             01/01/2024
+END_TIME             02:00:00
+REPORT_STEP          00:05:00
+WET_STEP             00:05:00
+DRY_STEP             01:00:00
+ROUTING_STEP         00:00:30
+
+[RAINGAGES]
+;;Name  Format     Interval SCF  Source
+RG1     INTENSITY  0:05     1.0  TIMESERIES TS1
+
+[SUBCATCHMENTS]
+;;Name  Raingage  Outlet  Area  %Imperv  Width  %Slope  CurbLen
+S1      RG1       J2      2     80       100    1.0     0
+
+[SUBAREAS]
+;;Subcatchment  N-Imperv  N-Perv  S-Imperv  S-Perv  PctZero  RouteTo
+S1              0.012     0.1     1.0       2.5     25       OUTLET
+
+[INFILTRATION]
+;;Subcatchment  Suction  Ksat  IMD
+S1              3.5      0.5   0.26
+
+[JUNCTIONS]
+;;Name  Elevation  MaxDepth  InitDepth  SurDepth  Aponded
+J1      1.0        2.0       0          0         0
+J2      1.0        2.0       0          0         0
+
+[OUTFALLS]
+;;Name    Elevation  Type  Stage  Gated  RouteTo
+OUT_DRY   0.0        FREE         NO
+OUT_WET   0.0        FREE         NO
+
+[CONDUITS]
+;;Name  From  To       Length  Roughness  InOffset  OutOffset  InitFlow  MaxFlow
+C1      J1    OUT_DRY  100     0.013      0         0          0         0
+C2      J2    OUT_WET  100     0.013      0         0          0         0
+
+[XSECTIONS]
+;;Link  Shape     Geom1  Geom2  Geom3  Geom4  Barrels
+C1      CIRCULAR  0.5    0      0      0      1
+C2      CIRCULAR  0.5    0      0      0      1
+
+[TIMESERIES]
+;;Name  Time  Value
+TS1     0:00  20
+TS1     0:05  40
+TS1     0:10  60
+TS1     0:15  40
+TS1     0:20  20
+TS1     0:30  0
+
+[COORDINATES]
+;;Node   X-Coord  Y-Coord
+J1       0        0
+J2       0        50
+OUT_DRY  100      0
+OUT_WET  100      50
+
+[REPORT]
+INPUT      NO
+CONTROLS   NO
+SUBCATCHMENTS ALL
+NODES ALL
+LINKS ALL
+"""
+
+
+def test_swmm_run_picks_the_outfall_that_carries_the_flow(tmp_path: Path) -> None:
+    inp_path = tmp_path / "two_outfalls.inp"
+    inp_path.write_text(TWO_OUTFALL_INP, encoding="utf-8")
+    run_dir = tmp_path / "runner"
+    response = tmp_path / "response.json"
+
+    subprocess.run(
+        [
+            sys.executable, str(HARNESS),
+            "--server-dir", "mcp/swmm-runner",
+            "--tool", "swmm_run",
+            "--arguments-json", json.dumps({"inp": str(inp_path), "runDir": str(run_dir)}),
+            "--out-response", str(response),
+        ],
+        cwd=REPO_ROOT, check=True, capture_output=True, text=True,
+    )
+
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_ok"] is True
+    assert manifest["metrics"]["peak"]["node"] == "OUT_WET"
+    assert manifest["metrics"]["peak"]["peak"] > 0
+    assert manifest["node_selection"]["requested"] == "auto"
+    assert manifest["node_selection"]["resolved"] == "OUT_WET"
+    assert "largest total volume" in manifest["node_selection"]["rule"]

@@ -517,6 +517,29 @@ def parse_continuity(text: str) -> dict[str, float]:
     return out
 
 
+def dominant_outfall(rpt_text: str) -> str | None:
+    """Name the outfall carrying the largest total volume, or ``None``.
+
+    Ties break on max flow, then average flow. This is the node the
+    ``auto`` report default resolves to after a run (finding F-02,
+    2026-09-02): the INP's first outfall was dry on real multi-outfall
+    networks, and its flat hydrograph went into the client report.
+    """
+    rows = parse_section(rpt_text or "", SECTIONS["Outfall Loading Summary"])
+    if not rows:
+        return None
+    best = max(
+        rows,
+        key=lambda row: (
+            row.get("total_volume_10_6_ltr", 0.0),
+            row.get("max_flow", 0.0),
+            row.get("avg_flow", 0.0),
+        ),
+    )
+    node = best.get("node")
+    return str(node) if node else None
+
+
 def parse_section(rpt_text: str, schema: SectionSchema) -> list[dict[str, Any]]:
     """Locate ``schema.title`` and return its data rows (skip stats dropped)."""
     rows, _skipped = parse_section_with_stats(rpt_text, schema)
@@ -567,7 +590,10 @@ def parse_section_with_stats(
     lines = rpt_text.splitlines()
     title_line_idx = _locate_title(lines, schema.title)
     if title_line_idx < 0:
-        return []
+        # A report without this section (a dry run has no Outfall Loading
+        # Summary) is "no rows", not an error. A bare list here made every
+        # caller that unpacks ``(rows, skipped)`` raise ValueError.
+        return [], 0
 
     # ----------------------------------------------------------------
     # For Outfall Loading Summary (min_columns=True) we need to extract
@@ -871,6 +897,7 @@ def _parse_wq_entity_loads(lines: list[str], title_line_idx: int) -> list[dict[s
 __all__ = [
     "SectionSchema",
     "SECTIONS",
+    "dominant_outfall",
     "parse_continuity",
     "parse_section",
     "parse_variable_section",

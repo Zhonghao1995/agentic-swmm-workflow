@@ -147,6 +147,93 @@ def run_swmm(
     return p.returncode
 
 
+AUTO_NODE = "auto"
+
+
+def _outfall_loading_rows(rpt: Path) -> list[tuple[str, float, float, float, float]]:
+    """(node, flow_freq, avg_flow, max_flow, total_volume) per outfall row."""
+    try:
+        lines = rpt.read_text(errors="ignore").splitlines()
+    except OSError:
+        return []
+    start = next((i for i, line in enumerate(lines) if line.strip().startswith("Outfall Loading Summary")), None)
+    if start is None:
+        return []
+    body = lines[start + 1:]
+    if body and body[0].strip().startswith("***"):
+        body = body[1:]  # the title box's closing row
+    rows: list[tuple[str, float, float, float, float]] = []
+    rules = 0
+    for line in body:
+        s = line.strip()
+        if s.startswith("***"):
+            break  # next section: this one printed no table
+        if s and set(s) == {"-"}:
+            rules += 1
+            if rules >= 3:
+                break  # the rule before the System totals row
+            continue
+        if rules != 2 or not s or s.startswith("System"):
+            continue
+        tok = s.split()
+        if len(tok) < 5:
+            continue
+        try:
+            rows.append((tok[0], float(tok[1]), float(tok[2]), float(tok[3]), float(tok[4])))
+        except ValueError:
+            continue
+    return rows
+
+
+def dominant_outfall_from_rpt(rpt: Path) -> str | None:
+    """The outfall carrying the largest total volume (ties: max flow, then avg)."""
+    rows = _outfall_loading_rows(rpt)
+    if not rows:
+        return None
+    return max(rows, key=lambda r: (r[4], r[3], r[2]))[0]
+
+
+def first_outfall_from_inp(inp: Path) -> str | None:
+    try:
+        text = inp.read_text(errors="ignore")
+    except OSError:
+        return None
+    section = None
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith(";"):
+            continue
+        if s.startswith("[") and s.endswith("]"):
+            section = s.upper()
+            continue
+        if section == "[OUTFALLS]":
+            return s.split()[0]
+    return None
+
+
+def resolve_report_node(requested: str, rpt: Path, inp: Path | None) -> tuple[str, str]:
+    """Pick the node the peak metric reports on, and say why.
+
+    ``auto`` (the CLI, MCP and agent default since 2026-09-02) resolves
+    AFTER the run to the outfall carrying the largest total volume in the
+    Outfall Loading Summary. The previous default, the INP's first
+    outfall, picked a dry or trivial outfall on real multi-outfall
+    networks (live finding F-02: "Peak: 0.0 CMS at DOF007052" while
+    OUT_DMH002395 carried 2.7 ML), and that node also became the
+    hydrograph in the client report.
+    """
+    if requested and requested != AUTO_NODE:
+        return requested, "requested"
+    node = dominant_outfall_from_rpt(rpt)
+    if node:
+        return node, "outfall carrying the largest total volume (Outfall Loading Summary)"
+    if inp is not None:
+        node = first_outfall_from_inp(inp)
+        if node:
+            return node, "first [OUTFALLS] entry (no outfall loading rows in the report)"
+    return "O1", "fallback O1 (no outfalls found)"
+
+
 def parse_peak_from_rpt(rpt: Path, node: str) -> dict:
     text = rpt.read_text(errors='ignore')
     lines = text.splitlines()
@@ -323,8 +410,10 @@ def cmd_run(args):
     detected_version = get_swmm5_version()
     version_ok, version_warning = check_swmm_version(detected_version)
 
-    peak = parse_peak_from_rpt(rpt, args.node)
+    report_node, node_rule = resolve_report_node(args.node, rpt, inp)
+    peak = parse_peak_from_rpt(rpt, report_node)
     cont = parse_continuity_blocks(rpt.read_text(errors='ignore'))
+    node_selection = {"requested": args.node, "resolved": report_node, "rule": node_rule}
 
     # ``memories_applied`` records which modeling-memory entry ids were
     # programmatically applied to this run's inputs (e.g. calibrated priors
@@ -347,6 +436,7 @@ def cmd_run(args):
         "inp_sha256": sha256_file(inp),
         "files": {"rpt": str(rpt), "out": str(out), "stdout": str(stdout_path), "stderr": str(stderr_path)},
         "metrics": {"peak": peak, "continuity": cont},
+        "node_selection": node_selection,
         "return_code": rc,
         "run_ok": run_ok,
         "solver_errors": solver_errors,
@@ -376,7 +466,8 @@ def cmd_run(args):
 
 def cmd_peak(args):
     rpt = args.rpt.resolve()
-    print(json.dumps(parse_peak_from_rpt(rpt, args.node), indent=2))
+    node, _rule = resolve_report_node(args.node, rpt, None)
+    print(json.dumps(parse_peak_from_rpt(rpt, node), indent=2))
 
 
 def cmd_continuity(args):
@@ -403,7 +494,11 @@ def main():
     ap_run = sub.add_parser('run')
     ap_run.add_argument('--inp', type=Path, required=True)
     ap_run.add_argument('--run-dir', type=Path, required=True)
-    ap_run.add_argument('--node', default='O1')
+    ap_run.add_argument(
+        '--node', default=AUTO_NODE,
+        help="Node the peak metric reports on. Default 'auto': the outfall carrying "
+             "the largest total volume in the run (else the first [OUTFALLS] entry).",
+    )
     ap_run.add_argument('--rpt-name', default=None)
     ap_run.add_argument('--out-name', default=None)
     ap_run.add_argument(

@@ -89,6 +89,57 @@ def find_inp(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
     return None
 
 
+def find_rpt(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
+    """Locate the run's report: manifest-recorded first, then conventions."""
+    files = manifest.get("files")
+    if isinstance(files, dict):
+        recorded = resolve_recorded_path(files.get("rpt"), run_dir)
+        if recorded and recorded.exists():
+            return recorded
+    runner_dir = run_layout.find_stage(run_dir, run_layout.RUNNER)
+    if runner_dir is not None:
+        matches = sorted(runner_dir.glob("*.rpt"))
+        if matches:
+            return matches[0]
+    for pattern in ("*.rpt", "**/*.rpt"):
+        matches = sorted(run_dir.glob(pattern))
+        if matches:
+            return matches[0]
+    return None
+
+
+def preferred_report_node(
+    run_dir: Path, manifest: dict[str, Any], inp: Path | None
+) -> tuple[str | None, str]:
+    """Return ``(node, reason)`` for a plot or peak that was given no node.
+
+    Once the run's report exists, the outfall carrying the largest total
+    volume wins; before that, the INP's first outfall stands in. Finding
+    F-02 (2026-09-02): "first outfall in the INP" picked a dry outfall on
+    real multi-outfall networks and the flat hydrograph reached the
+    client's report. The reason travels with the choice so the planner
+    and the CLI can say why this node.
+    """
+    from agentic_swmm.agent.swmm_runtime.rpt_summary import dominant_outfall
+
+    rpt = find_rpt(run_dir, manifest)
+    if rpt is not None:
+        try:
+            text = rpt.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        node = dominant_outfall(text)
+        if node:
+            return node, "outfall carrying the largest total volume in this run (Outfall Loading Summary)"
+    if inp is not None:
+        from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
+
+        node = default_report_node(inp)
+        if node:
+            return node, "first outfall in the INP (no outfall loading rows yet)"
+    return None, ""
+
+
 def find_out(run_dir: Path, manifest: dict[str, Any]) -> Path | None:
     """Locate the run's binary OUT: manifest-recorded first, then conventions."""
     files = manifest.get("files")

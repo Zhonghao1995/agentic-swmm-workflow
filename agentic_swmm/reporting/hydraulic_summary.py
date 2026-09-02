@@ -117,6 +117,13 @@ def write_hydraulic_summary(
         payload = build_hydraulic_summary(rpt, top_n=top_n)
     except Exception:
         return None
+    if not any(payload["counts"].values()):
+        # Not a SWMM report at all (or one with no hydraulic tables): no
+        # artifact, so the report says nothing was extracted instead of
+        # printing an empty table that reads like "the model produced
+        # nothing". This used to be reached only through the parser
+        # raising on a missing section; the parser now returns no rows.
+        return None
     out_dir = run_dir / "09_audit"
     try:
         out_dir.mkdir(parents=True, exist_ok=True)
