@@ -142,6 +142,9 @@ def openai_planner_prompt(
         "When a typed read tool (read_rpt_summary, inspect_plot_options, recall_memory, recall_session_history) returns the rows or values the question asks for, that result IS the evidence: answer from it and name the tool; never re-derive the same numbers from raw files with search_files or read_file. "
         "For final user-facing answers, do not dump the tool trace. Use a compact result card: outcome, key metrics or checks, main artifacts, evidence boundary, and next recommended action. "
         "Answer in the language of the user's CURRENT message (English for an English message, Chinese for a Chinese one), even when earlier sessions, memory blocks or artifacts are in another language. "
+        "When a bounded analysis has sensible defaults (documented in the skill, in its examples, or in the run itself), "
+        "run the first pass with those defaults and state the assumed values; ask at most ONE question, and only when "
+        "a choice would change the result materially. Never answer a request with a questionnaire. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context(trace_path=trace_path)
