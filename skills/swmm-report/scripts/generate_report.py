@@ -66,6 +66,33 @@ def _default_template_path() -> str:
     return os.path.join(os.path.dirname(__file__), "..", "templates", "default.yaml")
 
 
+def _continuity_text(value) -> str:
+    """Render the continuity metric whatever shape the audit wrote.
+
+    The audit's provenance carries a structured metric
+    (``{"values": {"flow_routing": 0.402, "runoff_quantity": -0.09}, ...}``);
+    the report printed that dict verbatim in a client deliverable (live
+    finding F-17, 2026-09-02). A bare number and a missing value still
+    render as before.
+    """
+    if isinstance(value, dict):
+        values = value.get("values")
+        if isinstance(values, dict) and values:
+            parts = []
+            for key, label in (("flow_routing", "routing"), ("runoff_quantity", "runoff")):
+                if key in values and values[key] is not None:
+                    parts.append(f"{label} {values[key]}")
+            for key, number in values.items():
+                if key not in ("flow_routing", "runoff_quantity") and number is not None:
+                    parts.append(f"{key} {number}")
+            if parts:
+                return " / ".join(parts)
+        if value.get("value") is not None:
+            return _na(value.get("value"))
+        return "n/a"
+    return _na(value)
+
+
 def _na(value) -> str:
     """Return 'n/a' for None/missing values."""
     if value is None:
@@ -255,7 +282,7 @@ def _render_run_summary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) ->
     value_map = {
         "peak_flow": (_na(peak_flow_val), "CMS"),
         "time_of_peak": (_na(time_of_peak), "hh:mm"),
-        "continuity_error": (_na(continuity_error), "%"),
+        "continuity_error": (_continuity_text(continuity_error), "%"),
         "return_code": (_na(return_code), ""),
     }
 
@@ -388,6 +415,139 @@ def _render_qa_gates(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> No
         p = doc.add_paragraph("No QA checks recorded.")
         p.italic = True
 
+    doc.add_paragraph()
+
+
+def _render_design_review(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> None:
+    """The rulebook verdict, per rule, with the worst element.
+
+    Live finding F-18 (2026-09-02): the shell's final answer said "Design
+    review: FAIL (1 pass, 2 fail, 4 warn, 4 needs-data)" while the Word
+    deliverable carried no review at all. The client reads the deliverable.
+    """
+    review = artifacts.get("design_review", {}) or {}
+
+    ctx["section_number"] += 1
+    raw_title = cfg.get("title", "Design Review")
+    doc.add_heading(_numbered_heading(ctx["section_number"], raw_title), level=2)
+
+    results = review.get("results") if isinstance(review, dict) else None
+    if not review or not isinstance(results, list) or not results:
+        p = doc.add_paragraph(cfg.get("missing_text", "No design review recorded for this run."))
+        p.italic = True
+        doc.add_paragraph()
+        return
+
+    summary = review.get("summary", {}) if isinstance(review.get("summary"), dict) else {}
+    overall = str(review.get("overall_status", "n/a")).upper()
+    verdict = cfg.get(
+        "verdict_text",
+        "Overall result: {overall} ({passed} pass, {failed} fail, {warned} warn, "
+        "{needs_data} needs-data) against rulebook {rulebook} v{version}.",
+    ).format(
+        overall=overall,
+        passed=summary.get("pass", 0),
+        failed=summary.get("fail", 0),
+        warned=summary.get("warn", 0),
+        needs_data=summary.get("needs_data", 0),
+        rulebook=review.get("rulebook_id", "n/a"),
+        version=review.get("rulebook_version", "n/a"),
+    )
+    doc.add_paragraph(verdict)
+
+    order = {"fail": 0, "warn": 1, "pass": 2, "needs_data": 3}
+    rows = sorted(results, key=lambda r: order.get(str(r.get("status", "")).lower(), 9))
+    columns = cfg.get("columns", ["Rule", "Status", "Worst element", "Value", "Threshold"])
+    caption = cfg.get("caption", "Design-review rules and the element that decided each verdict.")
+    _add_table_caption(doc, caption, ctx["table_counter"])
+    table = doc.add_table(rows=1 + len(rows), cols=len(columns))
+    table.style = "Table Grid"
+    for i, col_name in enumerate(columns):
+        table.rows[0].cells[i].text = col_name
+    for i, rule in enumerate(rows):
+        worst = rule.get("worst_element") if isinstance(rule.get("worst_element"), dict) else {}
+        cells = table.rows[i + 1].cells
+        cells[0].text = _na(rule.get("title") or rule.get("rule_id"))
+        cells[1].text = str(rule.get("status", "n/a")).upper()
+        if len(columns) > 2:
+            cells[2].text = _na(worst.get("id")) if worst else (
+                _na(rule.get("needs_data_reason")) if rule.get("needs_data_reason") else "n/a"
+            )
+        if len(columns) > 3:
+            cells[3].text = _na(worst.get("value")) if worst else "n/a"
+        if len(columns) > 4:
+            cells[4].text = _na(worst.get("threshold")) if worst else "n/a"
+    narrative = cfg.get(
+        "narrative",
+        "Statuses are read from 11_review/design_review.json as written by the design-review "
+        "tool; nothing is re-evaluated at report generation time.",
+    )
+    _add_narrative(doc, narrative)
+    disclaimer = review.get("disclaimer")
+    if disclaimer:
+        p = doc.add_paragraph(str(disclaimer).replace("\n", " "))
+        p.italic = True
+    doc.add_paragraph()
+
+
+def _render_evidence_boundary(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> None:
+    """What these numbers are, and what they are not.
+
+    Live finding F-18 (2026-09-02): "uncalibrated" appeared zero times in a
+    client deliverable built from an uncalibrated first-pass model, while
+    the shell's answer led with that boundary. The deliverable now states
+    the calibration status and the review verdict in words.
+    """
+    prov = artifacts.get("provenance", {}) or {}
+    review = artifacts.get("design_review", {}) or {}
+
+    ctx["section_number"] += 1
+    raw_title = cfg.get("title", "Evidence Boundary")
+    doc.add_heading(_numbered_heading(ctx["section_number"], raw_title), level=2)
+
+    calibration = prov.get("calibration")
+    status = None
+    if isinstance(calibration, dict):
+        status = calibration.get("status") or calibration.get("calibration_status")
+    elif isinstance(calibration, str):
+        status = calibration
+    if status and str(status).lower() not in ("none", "uncalibrated", "not_calibrated", "n/a"):
+        doc.add_paragraph(
+            cfg.get(
+                "calibrated_text",
+                "Calibration status recorded for this run: {status}. Results are only as "
+                "trustworthy as the observed data and objective behind that status.",
+            ).format(status=status)
+        )
+    else:
+        doc.add_paragraph(
+            cfg.get(
+                "uncalibrated_text",
+                "This is an uncalibrated first-pass model. No observed flow data were used, "
+                "so every value in this report is a simulated result, not a validated "
+                "prediction. Calibrate against observed flow before design decisions.",
+            )
+        )
+
+    if isinstance(review, dict) and review.get("overall_status"):
+        summary = review.get("summary", {}) if isinstance(review.get("summary"), dict) else {}
+        doc.add_paragraph(
+            cfg.get(
+                "review_text",
+                "The design review against rulebook {rulebook} returned {overall} "
+                "({failed} fail, {warned} warn). The bundled rulebook is a template: it "
+                "does not certify compliance with any adopted standard.",
+            ).format(
+                rulebook=review.get("rulebook_id", "n/a"),
+                overall=str(review.get("overall_status", "n/a")).upper(),
+                failed=summary.get("fail", 0),
+                warned=summary.get("warn", 0),
+            )
+        )
+    else:
+        doc.add_paragraph(
+            cfg.get("no_review_text", "No design review was run against this model.")
+        )
     doc.add_paragraph()
 
 
@@ -750,6 +910,8 @@ SECTION_RENDERERS = {
     "run_summary": _render_run_summary,
     "model_description": _render_model_description,
     "qa_gates": _render_qa_gates,
+    "design_review": _render_design_review,
+    "evidence_boundary": _render_evidence_boundary,
     "hydraulic_results": _render_hydraulic_results,
     "figures": _render_figures,
     "diagnostics": _render_diagnostics,
@@ -917,6 +1079,9 @@ def _load_artifacts(run_dir: str) -> dict:
         # other artifact here. Absent for runs generated before that step
         # existed; the section then says so instead of inventing numbers.
         "hydraulics": _load_json(os.path.join(audit_dir, "hydraulic_summary.json")),
+        # Written by the design-review tool into the canonical 11_review
+        # stage; absent when no review was run, and the section says so.
+        "design_review": _load_json(os.path.join(run_dir, "11_review", "design_review.json")),
     }
 
 

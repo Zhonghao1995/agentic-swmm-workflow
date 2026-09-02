@@ -197,7 +197,10 @@ def _plot_run_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     link = str(link_raw).strip() if isinstance(link_raw, str) and link_raw.strip() else None
 
     if call.args.get("out_png"):
-        out_png = _repo_output_path(str(call.args["out_png"]))
+        # Resolve WITHOUT creating the parent: the planner's directory is
+        # remapped below, and creating it first left an empty ``07_plot/``
+        # beside the canonical stage (live finding F-19, 2026-09-02).
+        out_png = _repo_path(str(call.args["out_png"]))
         if out_png is None or out_png.suffix.lower() != ".png":
             return _failure(call, "out_png must be a repository-relative .png path")
         # Anchor the FILENAME into the run's canonical plot stage

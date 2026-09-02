@@ -308,16 +308,21 @@ class TestHeadingsPresent:
             "1 Run Summary",
             "2 Model Description",
             "3 QA Gates",
+            # Design Review and Evidence Boundary are numbered even when no
+            # review was run (F-18, 2026-09-02): each says so in words rather
+            # than vanishing, for the same reason as Hydraulic Results below.
+            "4 Design Review",
+            "5 Evidence Boundary",
             # Hydraulic Results is numbered even with no hydraulic_summary.json:
             # the run in this fixture has none, and the section says so rather
             # than vanishing. A reader must be able to tell "no results were
             # extracted" from "this deliverable never reports results".
-            "4 Hydraulic Results",
-            "5 Figures",
-            "6 Model Diagnostics",
+            "6 Hydraulic Results",
+            "7 Figures",
+            "8 Model Diagnostics",
             # comparison skipped because comparison_available=false
-            "7 Artifact Provenance",
-            "8 Appendix: Generation Environment",
+            "9 Artifact Provenance",
+            "10 Appendix: Generation Environment",
         ]
         for heading in expected:
             assert heading in headings, f"Heading {heading!r} not found in {headings}"

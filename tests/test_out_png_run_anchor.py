@@ -123,6 +123,11 @@ class PlotMapperAnchorTests(unittest.TestCase):
             out = Path(mapped["outPng"])
             self.assertEqual(out.parent.name, "08_plot")
             self.assertEqual(out.name, "fig.png")
+            # Finding F-19 (live 2026-09-02): the invented directory used to
+            # be created before the remap, leaving an empty legacy-named
+            # stage beside the canonical one in every such run.
+            self.assertFalse((run_dir / "08_plots").exists())
+            self.assertTrue((run_dir / "08_plot").is_dir())
         finally:
             import shutil
 
