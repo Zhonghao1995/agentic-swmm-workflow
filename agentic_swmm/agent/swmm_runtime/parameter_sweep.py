@@ -213,6 +213,16 @@ class SweepResult:
     stats: dict[str, Any] = field(default_factory=dict)
 
 
+def sweep_tag(ranges: Any) -> str:
+    """A short file-name tag from the swept parameter names (sorted, joined by +)."""
+    try:
+        names = sorted(str(k) for k in dict(ranges).keys())
+    except Exception:  # noqa: BLE001 - any odd shape gets a neutral tag
+        names = []
+    tag = "+".join(n.replace("/", "_") for n in names) or "all"
+    return tag[:60]
+
+
 def run_parameter_sweep(
     *,
     base_inp: Path,
@@ -239,7 +249,11 @@ def run_parameter_sweep(
     # then runs on that node.
     report_node = node or AUTO_NODE
     audit_dir = run_layout.stage_dir(Path(run_dir), run_layout.AUDIT, create=True)
-    sweep_dir = audit_dir / "parameter_sweep"
+    # Live finding F-108 (2026-09-03, S48): five sweeps in one session wrote
+    # the same parameter_sweep.{json,md} and the follow-up read the survivor.
+    # Each sweep keeps its own files, named after the parameters it varied.
+    tag = sweep_tag(ranges)
+    sweep_dir = audit_dir / f"parameter_sweep_{tag}"
     samples = sample_space(ranges, n_samples, seed=seed)
     runs: list[SweepSample] = []
 
@@ -290,8 +304,8 @@ def run_parameter_sweep(
             "not calibrated uncertainty. Values were set the same on every object of the section."
         ),
     }
-    summary_json = audit_dir / "parameter_sweep.json"
-    summary_md = audit_dir / "parameter_sweep.md"
+    summary_json = audit_dir / f"parameter_sweep_{tag}.json"
+    summary_md = audit_dir / f"parameter_sweep_{tag}.md"
     summary_json.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     summary_md.write_text(_render_md(report_node, units, baseline, runs, stats, ranges), encoding="utf-8")
     ok = baseline.run_ok and any(s.run_ok for s in runs)
