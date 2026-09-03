@@ -398,6 +398,24 @@ def turn_was_declined(outcome: Any) -> bool:
     return False
 
 
+
+def _reconcile_model_with_gateway(provider_name: str, model: str | None) -> str | None:
+    """Swap a pinned model the gateway no longer offers for an offered sibling."""
+    try:
+        from agentic_swmm.agent.provider_preflight import provider_key_value
+        from agentic_swmm.providers.model_check import offered_models, reconcile_model, route_spec
+
+        spec = route_spec(provider_name)
+        if spec is None or not spec.detect_url:
+            return model
+        offered = offered_models(spec, key=provider_key_value(provider_name))
+        chosen, note = reconcile_model(spec, model, offered)
+    except Exception:  # noqa: BLE001 - a probe must never break a session
+        return model
+    if note:
+        _agent_say(note)
+    return chosen
+
 def _exit_code_for(outcome: Any) -> int:
     if getattr(outcome, "ok", False):
         return 0
@@ -420,6 +438,12 @@ def run_openai_planner(
     provider_name, model = selection.route, selection.model
     if provider_name not in SUPPORTED_PROVIDERS:
         raise ValueError(f"unsupported planner provider: {provider_name}")
+    # A pinned model the gateway no longer offers used to fail every turn
+    # with a raw HTTP 404 (live test 2026-09-03, S38). Ask the gateway once
+    # per session, swap to an offered menu sibling and say so; an explicit
+    # --model is the user's call and is left alone.
+    if not (args.model or "").strip():
+        model = _reconcile_model_with_gateway(provider_name, model)
     # Both API-key providers require an explicit model; config supplies
     # per-provider defaults (openai.model=gpt-5.5,
     # anthropic.model=claude-sonnet-4-6) so this only trips when the user
