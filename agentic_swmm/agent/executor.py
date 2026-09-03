@@ -22,6 +22,11 @@ DENIED_SUMMARY = "tool not approved by user"
 
 #: Tools whose approval is never borrowed from the turn's chain grant.
 NEVER_CHAINED = frozenset({"apply_patch"})
+# Tools whose consent IS their argument: the area or query that leaves the
+# machine. The turn's chain grant covers a repeat with the same detail, not
+# a new area (live finding F-103, 2026-09-03, S45: the second city's fetch
+# ran under the first city's approval).
+OUTWARD_TOOLS = frozenset({"fetch_swmm_from_canada", "synth_swmm_from_bbox", "web_search"})
 
 
 def _snake_case(name: str) -> str:
@@ -73,6 +78,9 @@ class AgentExecutor:
         # A denial does not arm it, and the SAFE profile keeps per-tool
         # prompts unconditionally.
         self._turn_chain_approved = False
+        # The approval details (permissions.approval_detail) an outward-facing
+        # tool was granted this turn; a different detail asks again.
+        self._approved_details: set[str] = set()
 
     def _typed_redirect(self, call: ToolCall) -> dict[str, Any] | None:
         if call.name != "call_mcp_tool":
@@ -135,11 +143,15 @@ class AgentExecutor:
         chain_eligible = (
             getattr(self.profile, "name", "") == "QUICK" and call.name not in NEVER_CHAINED
         )
+        detail = permissions.approval_detail(call.args)
+        chain_covers = self._turn_chain_approved and (
+            call.name not in OUTWARD_TOOLS or detail in self._approved_details
+        )
         if (
             not self.dry_run
             and not self.profile.auto_approve(call.name, self.registry)
             and chain_eligible
-            and self._turn_chain_approved
+            and chain_covers
         ):
             # Approved with the turn's first confirmation; record it as
             # an unprompted approval so the digest shows the tool ran
@@ -147,11 +159,11 @@ class AgentExecutor:
             prompted = False
         elif not self.dry_run and not self.profile.auto_approve(call.name, self.registry):
             prompted = True
-            decision = permissions.request_approval(
-                call.name, permissions.approval_detail(call.args)
-            )
+            decision = permissions.request_approval(call.name, detail)
             if decision.approved and chain_eligible:
                 self._turn_chain_approved = True
+            if decision.approved and call.name in OUTWARD_TOOLS:
+                self._approved_details.add(detail)
             if not decision.approved:
                 approved = False
                 result = {
