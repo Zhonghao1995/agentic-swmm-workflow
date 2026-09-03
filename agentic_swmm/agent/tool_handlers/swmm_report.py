@@ -29,6 +29,22 @@ from agentic_swmm.utils.paths import repo_root, resource_path
 _REPORT_SCRIPT = ("skills", "swmm-report", "scripts", "generate_report.py")
 
 
+def house_style_title(text: str) -> str:
+    """Return ``text`` with em dashes (and spaced en dashes) turned into colons.
+
+    The planner composes cover titles such as "Downtown Victoria, BC \u2014
+    SWMM Simulation Report" (live test 2026-09-03, S34). A deliverable the
+    product writes on the user's behalf follows their house style: no em
+    dashes, phrases joined by a colon. Unspaced en dashes stay, they are
+    numeric ranges ("Nov 1\u20134").
+    """
+    out = text.replace(" \u2014 ", ": ").replace("\u2014", ": ")
+    out = out.replace(" \u2013 ", ": ")
+    while "  " in out:
+        out = out.replace("  ", " ")
+    return out.replace(" :", ":").strip()
+
+
 def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Assemble a client-deliverable Word report (.docx) from an audited run directory.
 
@@ -66,7 +82,7 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 
     title_raw = call.args.get("title")
     if isinstance(title_raw, str) and title_raw.strip():
-        cli_args.extend(["--title", title_raw])
+        cli_args.extend(["--title", house_style_title(title_raw)])
 
     # Extract the .rpt hydraulic tables first. The skill script is stdlib +
     # python-docx + PyYAML only and cannot parse a report file, so it reads
@@ -107,7 +123,10 @@ def tool_specs() -> list[ToolSpec]:
                     "run_dir": {"type": "string", "description": "Absolute path to the audited run directory."},
                     "out": {"type": "string", "description": "Output .docx path (default: <run_dir>/report.docx)."},
                     "template": {"type": "string", "description": "Path to a template YAML; omit to use the default template."},
-                    "title": {"type": "string", "description": "Override the cover title text."},
+                    "title": {
+                        "type": "string",
+                        "description": "Override the cover title text. House style: no em dashes; join phrases with a colon.",
+                    },
                 },
                 ["run_dir"],
             ),
