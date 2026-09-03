@@ -452,6 +452,8 @@ def looks_like_swmm_request(goal: str) -> bool:
 
 #: A pasted model source always means a fresh run folder.
 _MODEL_SOURCE = re.compile(r"\S+\.inp\b|\bbbox\b|\bgeojson\b|\bpolygon\b", re.IGNORECASE)
+#: A pasted WGS84 box such as ``[-123.425, 48.428, -123.413, 48.437]``.
+_BARE_BBOX = re.compile(r"\[\s*-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?){3}\s*\]")
 
 #: Words that point back at the work already in hand.
 _POINTS_BACK = re.compile(
@@ -493,7 +495,7 @@ def message_asks_for_input(text: str) -> bool:
     return bool(_ASKS_FOR_INPUT.search("\n".join(lines[-2:])))
 
 
-def looks_like_new_modeling_request(goal: str, *, answering_question: bool = False) -> bool:
+def looks_like_new_modeling_request(goal: str, *, answering_question: bool = False, in_chat: bool = False) -> bool:
     """True only when ``goal`` STARTS new modelling work.
 
     The interactive shell asks this once a turn or run is already in hand,
@@ -509,7 +511,9 @@ def looks_like_new_modeling_request(goal: str, *, answering_question: bool = Fal
 
     1. ``answering_question`` (the previous turn ended with a question):
        the input is the answer unless it plainly starts other work with a
-       new-work verb. A bare bbox or a pasted path is an answer.
+       new-work verb. A bare bbox or a pasted path is an answer. When the
+       question came from a chat turn (``in_chat``, no run in hand), a
+       new-work verb or a pasted model source starts the work instead.
     2. A pasted model source (``.inp``, ``bbox``, GeoJSON, polygon) is
        new work.
     3. A sentence that points back at the run in hand ("that run", "it",
@@ -523,6 +527,13 @@ def looks_like_new_modeling_request(goal: str, *, answering_question: bool = Fal
     starts_work = any(marker in lowered for marker in _STARTS_NEW_WORK)
     points_back = bool(_POINTS_BACK.search(goal))
     if answering_question:
+        if in_chat:
+            # Live finding F-75 (2026-09-03): the previous turn was a chat
+            # question ("where do I start?") with no run in hand, so there is
+            # nothing for "it" to point back to. A new-work verb ("get me a
+            # first model") or a pasted model source (a bare bbox, polygon,
+            # .inp) starts the work, and it must not nest under the chat folder.
+            return starts_work or bool(_MODEL_SOURCE.search(goal)) or bool(_BARE_BBOX.search(goal))
         return starts_work and not points_back
     if _MODEL_SOURCE.search(goal):
         return True

@@ -227,7 +227,9 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
                 str(pending.get("tail") or "")
             )
             new_request = looks_like_new_modeling_request(
-                prompt, answering_question=answering
+                prompt,
+                answering_question=answering,
+                in_chat=bool(pending.get("is_chat", False)) if pending is not None else False,
             )
         else:
             new_request = _looks_like_swmm_request(prompt)
@@ -255,6 +257,14 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
         elif new_request:
             session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="run")
+            if pending is not None and pending.get("is_chat", False):
+                # Live finding F-75: the work was asked for in answer to a
+                # chat question; keep the conversation, open a run folder.
+                goal = (
+                    f"{prompt}\n\n[Continuation of the previous turn in this "
+                    f"session. Your previous message ended with:]\n"
+                    f"{pending['tail']}"
+                )
         else:
             session_dir = _bootstrap_session_dir(date_dir_box[0], prompt, kind="chat")
             is_chat_turn = True
