@@ -48,12 +48,17 @@ def _repo_writes_allowed() -> bool:
     return os.environ.get(REPO_WRITES_ENV, "").strip() in ("1", "true", "yes")
 
 
-def is_agent_scratch_path(path: Path) -> bool:
-    """True under ``runs/<...>/_agent/scripts/``: the agent's own workspace.
+AGENT_SCRATCH_DIRS = frozenset({"scripts", "inputs"})
 
-    Helper code the planner writes for a run lives here; it is neither
-    product code nor run evidence, so apply_patch needs no evidence
-    override for it.
+
+def is_agent_scratch_path(path: Path) -> bool:
+    """True under ``runs/<...>/_agent/scripts/`` or ``_agent/inputs/``.
+
+    Helper code and hand-made inputs the planner writes for a run live
+    here; they are neither product code nor run evidence, so apply_patch
+    needs no evidence override for them. Live finding F-61 (2026-09-02):
+    the calibration search space landed at the run root, which the
+    canonical layout reserves for the product's own files.
     """
     try:
         relative = path.resolve().relative_to(repo_root().resolve())
@@ -63,9 +68,30 @@ def is_agent_scratch_path(path: Path) -> bool:
     if parts[:1] != ("runs",):
         return False
     for index in range(len(parts) - 2):
-        if parts[index] == "_agent" and parts[index + 1] == "scripts":
+        if parts[index] == "_agent" and parts[index + 1] in AGENT_SCRATCH_DIRS:
             return True
     return False
+
+
+RUN_ROOT_WRITE_HINT = (
+    "The run root is reserved for the product's own files. Put agent-authored "
+    "inputs under <run>/_agent/inputs/ (no evidence override needed) or in the "
+    "stage folder they feed."
+)
+
+
+def is_new_file_at_run_root(path: Path, session_dir: Path) -> bool:
+    """True for a non-canonical file written directly into the session's run root."""
+    from agentic_swmm.agent.swmm_runtime.run_layout import CANONICAL_ROOT_FILES
+
+    try:
+        resolved = path.resolve()
+        root = session_dir.resolve()
+    except OSError:
+        return False
+    if resolved.parent != root:
+        return False
+    return resolved.name not in CANONICAL_ROOT_FILES
 
 
 def is_code_write_into_product_tree(path: Path) -> bool:
