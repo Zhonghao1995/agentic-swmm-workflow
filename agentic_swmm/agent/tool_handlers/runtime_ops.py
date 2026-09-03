@@ -215,8 +215,21 @@ _MAX_SEARCH_SCANNED = 5000
 #: upstream zip or a binary .out per call was the bulk of a 2-minute search
 #: (live finding F-28, 2026-09-02).
 _SEARCH_SKIP_SUFFIXES = frozenset(
-    {".out", ".zip", ".gz", ".png", ".pdf", ".docx", ".pyc", ".sqlite", ".db", ".jpg", ".jpeg", ".whl"}
+    {".out", ".zip", ".gz", ".png", ".pdf", ".docx", ".pyc", ".sqlite", ".db", ".jpg", ".jpeg", ".whl", ".log", ".jsonl"}
 )
+
+
+def _is_operator_or_trace_path(path: Path) -> bool:
+    """True inside a directory whose name starts with an underscore.
+
+    ``_agent/`` holds the planner's own trace and reports and ``_harness/``
+    the operator's tooling and transcripts. Live finding F-59 (2026-09-02):
+    asked for a design storm, the planner searched the campaign's raw
+    transcripts and read the scenario file that had produced its own
+    prompt. None of that is evidence; read_file still opens any of it when
+    a path is named explicitly.
+    """
+    return any(part.startswith("_") and part != "__pycache__" for part in path.parts[:-1])
 #: Wall-clock budget for one search; the result says when it was hit.
 _MAX_SEARCH_SECONDS = 10.0
 
@@ -278,6 +291,8 @@ def _search_files_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         if any(part in _SEARCH_SKIP_DIRS for part in path.parts):
             continue
         if path.suffix.lower() in _SEARCH_SKIP_SUFFIXES:
+            continue
+        if _is_operator_or_trace_path(path):
             continue
         try:
             if not path.is_file() or path.stat().st_size > _MAX_SEARCH_FILE_BYTES:
