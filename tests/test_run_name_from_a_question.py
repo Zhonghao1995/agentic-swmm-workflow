@@ -44,3 +44,15 @@ def test_a_fetch_request_is_named_after_the_place_not_the_verb() -> None:
         "Fetch a SWMM model from the Canada service for downtown Regina, Saskatchewan, "
         "rainfall period June 10 to June 13 2023, then run it and audit it."
     ).startswith("downtown-regina")
+
+
+def test_a_chinese_request_is_named_after_its_first_chinese_words() -> None:
+    """S44 (2026-09-03): 帮我...多伦多市中心... was named 151655_2023-11-11_run."""
+    from agentic_swmm.agent.session_bootstrap import infer_case_slug
+
+    slug = infer_case_slug(
+        "帮我从 Canada 服务取一个多伦多市中心的 SWMM 模型，降雨时段 2023 年 11 月 1 日到 11 月 4 日，然后运行并审计。"
+    )
+    assert slug == "多伦多市中心"
+    # A real Latin word in a Chinese sentence still names the run.
+    assert infer_case_slug("帮我看看 swmmcanada 现在能不能连上") == "swmmcanada"
