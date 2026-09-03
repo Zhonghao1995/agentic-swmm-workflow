@@ -977,13 +977,16 @@ class Planner:
 
         Live finding F-44 (2026-09-02): the 57 tool schemas (64k
         characters) went out on every LLM call and were most of the 150k
-        to 210k input tokens of a Canada chain turn. Behind
-        AISWMM_TOOL_SUBSET=1 the schemas sent are the agent-internal
-        bucket plus the tools of the skills ``select_relevant_skills``
-        picks for the goal; unknown skills are skipped. Off by default
-        until the live measurement says the planner never misses a tool.
+        to 210k input tokens of a Canada chain turn. The schemas
+        sent are the agent-internal bucket plus the tools of the skills
+        ``select_relevant_skills`` picks for the goal; unknown skills are
+        skipped, and a skill the model names through select_skill is added
+        mid-turn (F-50). On by default since 2026-09-02: the live campaign
+        measured -23% to -30% input tokens per turn with the same tool
+        sequences across the Canada chain, calibration, climate, network QA
+        and uncertainty scenarios. AISWMM_TOOL_SUBSET=0 sends every schema.
         """
-        if os.environ.get(TOOL_SUBSET_ENV, "").strip() not in ("1", "true", "yes"):
+        if os.environ.get(TOOL_SUBSET_ENV, "1").strip().lower() in ("0", "false", "no", "off"):
             return None
         from agentic_swmm.agent.skill_router import AGENT_INTERNAL_SKILL, SkillRouter
 
