@@ -382,6 +382,24 @@ def derive_status(qa: dict[str, Any], runner_manifest: dict[str, Any], files_exi
     return "unknown"
 
 
+def builder_validation_ok(validation: dict[str, Any]) -> bool:
+    """Read the builder manifest's validation block honestly.
+
+    The block has two shapes. Builders that validate write error lists
+    (``{"errors": [], "warnings": []}``): any non-empty list is a failure.
+    The prepared-input workflow (``aiswmm run --inp``) writes a verdict
+    (``{"status": "pass", "notes": [...]}``). Treating every truthy value
+    as an error read that verdict as a failure, so every prepared-input
+    run was audited "fail" and memory stamped ``qa_failed`` on healthy
+    runs (live test 2026-09-03, S30). ``status`` decides when present;
+    ``notes`` are informational either way.
+    """
+    status = validation.get("status")
+    if isinstance(status, str) and status.strip():
+        return status.strip().lower() in {"pass", "passed", "ok", "success"}
+    return not any(bool(v) for k, v in validation.items() if k != "notes")
+
+
 def build_qa_checks(
     *,
     acceptance_report: dict[str, Any],
@@ -398,7 +416,7 @@ def build_qa_checks(
     checks: list[dict[str, Any]] = []
     validation = builder_manifest.get("validation")
     if isinstance(validation, dict):
-        validation_ok = not any(bool(v) for v in validation.values())
+        validation_ok = builder_validation_ok(validation)
         checks.append(
             {
                 "id": "builder_input_validation",
