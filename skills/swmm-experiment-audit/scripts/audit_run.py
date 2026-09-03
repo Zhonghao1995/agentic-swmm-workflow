@@ -1943,6 +1943,39 @@ def parse_args() -> argparse.Namespace:
     return ap.parse_args()
 
 
+def _utc_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def back_up_prior_outputs(paths: list[Path]) -> list[Path]:
+    """Rename each existing output to ``<stem>.<utc>.<ext>.bak`` beside it.
+
+    A re-audit used to overwrite the prior ``experiment_provenance.json``
+    (and note, comparison, diagnostics) silently whenever the script ran
+    outside ``aiswmm audit``: the typed ``audit_run`` tool calls this
+    script directly, and only the CLI command renamed the prior files
+    (live test 2026-09-03, S28). The naming mirrors
+    ``agentic_swmm.commands.audit._back_up_prior_audit`` by value so the
+    readers above (``experiment_provenance.*.json.bak``) keep matching.
+    Nothing to back up is the first-audit case and a no-op.
+    """
+    stamp = _utc_stamp()
+    backups: list[Path] = []
+    for src in paths:
+        if not src.exists():
+            continue
+        ext = src.suffix.lstrip(".")
+        stem = src.name[: -(len(ext) + 1)] if ext else src.name
+        target = src.with_name(f"{stem}.{stamp}.{ext}.bak")
+        counter = 2
+        while target.exists():
+            target = src.with_name(f"{stem}.{stamp}-{counter}.{ext}.bak")
+            counter += 1
+        src.rename(target)
+        backups.append(target)
+    return backups
+
+
 def _load_preserved_human_decisions(audit_dir: Path) -> list[Any]:
     """Return ``human_decisions`` carried over from a prior audit (PRD-Z).
 
@@ -2231,6 +2264,7 @@ def main() -> None:
         note_name = args.obsidian_note_name or f"{readable_note_name(provenance)}.md"
         obsidian_note = args.obsidian_dir / note_name
 
+    back_up_prior_outputs([out_provenance, out_comparison, out_note, out_model_diagnostics])
     write_json(out_model_diagnostics, provenance.get("model_diagnostics") or {})
     provenance["artifacts"]["model_diagnostics"] = artifact_record(
         artifact_id="model_diagnostics",
