@@ -21,6 +21,14 @@ def test_a_chat_answer_with_a_work_verb_starts_work():
     assert looks_like_new_modeling_request(ANSWER, answering_question=True, in_chat=True) is True
 
 
+def test_a_chat_turn_that_ended_with_a_statement_still_starts_work():
+    # S26 r2: the guidance ended with a statement, not a question, so the
+    # shell did not treat the reply as an answer; the chat rule must not
+    # depend on that flag.
+    assert looks_like_new_modeling_request(ANSWER, answering_question=False, in_chat=True) is True
+    assert looks_like_new_modeling_request(BBOX, answering_question=False, in_chat=True) is True
+
+
 def test_the_same_answer_with_a_run_in_hand_continues_that_run():
     # F-07 behaviour is unchanged: "it" points back at the run in hand.
     assert looks_like_new_modeling_request(ANSWER, answering_question=True, in_chat=False) is False

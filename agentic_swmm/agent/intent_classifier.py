@@ -526,14 +526,16 @@ def looks_like_new_modeling_request(goal: str, *, answering_question: bool = Fal
     lowered = goal.lower()
     starts_work = any(marker in lowered for marker in _STARTS_NEW_WORK)
     points_back = bool(_POINTS_BACK.search(goal))
+    if in_chat:
+        # Live finding F-75 (2026-09-03): the previous turn was a chat turn
+        # ("where do I start?") with no run in hand, so there is nothing for
+        # "it" to point back to, whether or not that turn ended with a
+        # question (the S26 r2 guidance ended with a statement). A new-work
+        # verb ("get me a first model") or a pasted model source (a bare
+        # bbox, polygon, .inp) starts the work, and it must not nest under
+        # the chat folder.
+        return starts_work or bool(_MODEL_SOURCE.search(goal)) or bool(_BARE_BBOX.search(goal))
     if answering_question:
-        if in_chat:
-            # Live finding F-75 (2026-09-03): the previous turn was a chat
-            # question ("where do I start?") with no run in hand, so there is
-            # nothing for "it" to point back to. A new-work verb ("get me a
-            # first model") or a pasted model source (a bare bbox, polygon,
-            # .inp) starts the work, and it must not nest under the chat folder.
-            return starts_work or bool(_MODEL_SOURCE.search(goal)) or bool(_BARE_BBOX.search(goal))
         return starts_work and not points_back
     if _MODEL_SOURCE.search(goal):
         return True
