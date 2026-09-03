@@ -726,6 +726,8 @@ class LLMProviderStatus:
     default_route_ready: bool = True
     default_key_env: str = ""
     fallback_provider: str = ""
+    configured_model: str = ""
+    offered_models: tuple[str, ...] | None = None
 
 
 def collect_llm_provider_status() -> LLMProviderStatus:
@@ -736,7 +738,7 @@ def collect_llm_provider_status() -> LLMProviderStatus:
     config falls back to :data:`DEFAULT_PROVIDER` so the row always
     renders.
     """
-    from agentic_swmm.agent.provider_preflight import provider_key_present
+    from agentic_swmm.agent.provider_preflight import provider_key_present, provider_key_value
     from agentic_swmm.providers.routes import ROUTES
     from agentic_swmm.providers.selection import resolve_selection
 
@@ -749,6 +751,15 @@ def collect_llm_provider_status() -> LLMProviderStatus:
     except Exception:  # pragma: no cover - defensive; config is shallow
         pass
     spec = ROUTES.get(default_provider)
+    configured_model = resolve_selection().model or ""
+    offered: tuple[str, ...] | None = None
+    if spec is not None and spec.detect_url:
+        try:
+            from agentic_swmm.providers.model_check import offered_models
+
+            offered = offered_models(spec, key=provider_key_value(default_provider))
+        except Exception:  # pragma: no cover - a probe must never break doctor
+            offered = None
     return LLMProviderStatus(
         default_provider=default_provider,
         openai_key_present=provider_key_present("openai"),
@@ -756,6 +767,8 @@ def collect_llm_provider_status() -> LLMProviderStatus:
         default_route_ready=provider_key_present(default_provider),
         default_key_env=spec.key_env if spec is not None else "",
         fallback_provider=fallback_provider,
+        configured_model=configured_model,
+        offered_models=offered,
     )
 
 
@@ -791,6 +804,7 @@ def render_llm_provider_section(status: LLMProviderStatus) -> str:
             else f"not ready (set it: aiswmm login {status.default_provider})"
         )
         lines.append(f"  {'Default route':21} {key_label:20} - {route_state}")
+        lines.append(render_configured_model_line(status))
     if status.fallback_provider:
         lines.append(f"  {'Fallback route':21} {status.fallback_provider:20} - configured")
     # Without this row the section reads as "OpenAI or Anthropic, pick one",
@@ -876,6 +890,25 @@ _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
         "let the agent read the product's own source files (default: refused)",
     ),
 )
+
+
+def render_configured_model_line(status: LLMProviderStatus) -> str:
+    """One line saying whether the gateway offers the configured model.
+
+    Live test 2026-09-03 (S38): the route read "ready" while its pinned
+    model had disappeared from the gateway and every turn failed with 404.
+    """
+    model = status.configured_model or "(none)"
+    label = f"{'Configured model':21} {model[:20]:20}"
+    offered = status.offered_models
+    if offered is None:
+        return f"  {label} - gateway not probed (no model listing for this route)"
+    if not offered:
+        return f"  {label} - gateway lists no models; run aiswmm setup"
+    if status.configured_model in offered:
+        return f"  {label} - offered by the gateway"
+    shown = ", ".join(offered[:5]) + (", ..." if len(offered) > 5 else "")
+    return f"  {label} - NOT offered by the gateway (offered: {shown}); run aiswmm setup"
 
 
 def collect_optout_status() -> list[OptOutFlagStatus]:

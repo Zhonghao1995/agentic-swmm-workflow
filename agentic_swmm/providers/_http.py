@@ -143,6 +143,9 @@ def post_json_with_retry(
             message = (
                 f"{provider_label} API request failed with HTTP {exc.code}: {detail}"
             )
+            from agentic_swmm.providers.model_check import model_not_found_hint
+
+            message += model_not_found_hint(exc.code, detail)
             if exc.code in AUTH_STATUSES:
                 if _GATEWAY_SAFE_MODE_MARKER in message:
                     message += _GATEWAY_SAFE_MODE_HINT
