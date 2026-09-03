@@ -148,6 +148,15 @@ _SLUG_STOPWORDS = frozenset(
 )
 
 
+# Function words and request verbs of a Chinese modelling request; what is
+# left of the longest CJK run after removing them is the place or the object
+# (服务取一个多伦多市中心的 -> 多伦多市中心).
+_CJK_SLUG_STOPWORDS: tuple[str, ...] = (
+    "请帮我", "帮我", "请", "服务", "取一个", "拿一个", "建一个", "一个", "一份", "然后", "运行", "并", "审计",
+    "模型", "降雨", "时段", "导出", "报告", "这次", "上次", "的", "了", "吧",
+)
+
+
 def _goal_slug(prompt: str) -> str:
     """A short, lower-case, stop-word-free name for a run started by a plain request.
 
@@ -160,9 +169,24 @@ def _goal_slug(prompt: str) -> str:
     """
     # Live finding F-76 (2026-09-03): "It's the downtown core" produced
     # `s-downtown-core`; a one-letter leftover of a contraction is not a word.
+    # Live finding F-101 (2026-09-03, S44): a Chinese request was named after
+    # its date digits (151655_2023-11-11_run) because only [a-z0-9] tokens
+    # counted. When the prompt carries CJK, its first CJK run names the run
+    # and bare digit tokens are dropped.
+    cjk_runs = re.findall(r"[\u4e00-\u9fff]{2,}", prompt)
     words = [w for w in re.findall(r"[a-z0-9]+", prompt.lower()) if w not in _SLUG_STOPWORDS and len(w) >= 2]
+    if cjk_runs:
+        # Dates and counts in a Chinese sentence are not its subject; a real
+        # Latin word (swmmcanada, victoria) still is.
+        words = [w for w in words if not w.isdigit()]
     if words:
         return "-".join(words[:3])[:32]
+    if cjk_runs:
+        longest = max(cjk_runs, key=len)
+        trimmed = longest
+        for word in _CJK_SLUG_STOPWORDS:
+            trimmed = trimmed.replace(word, "")
+        return (trimmed or longest)[:8]
     # No Latin words at all (a Chinese prompt with no place or file):
     # keep the old behaviour, shortened.
     return safe_name(prompt)[:16].strip("-") or "adhoc"
