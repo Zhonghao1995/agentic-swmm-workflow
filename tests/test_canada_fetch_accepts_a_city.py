@@ -90,3 +90,42 @@ def test_unknown_city_fails_with_the_offered_list() -> None:
             result = fetch_swmm_from_canada_tool(call, Path(tmp))
     assert result["ok"] is False
     assert "not a published city" in json.dumps(result)
+
+
+def test_a_placeholder_bbox_next_to_a_city_does_not_block_the_city() -> None:
+    """S40 r2: the planner sent bbox=[0,0,0,0] beside city="Regina"."""
+    seen: dict[str, object] = {}
+
+    def fake_fetch(aoi, start, end, **kwargs):
+        seen["aoi"] = aoi
+        return mock.Mock(
+            inp_path=Path("/tmp/run/05_builder/model.inp"), run_dir=Path("/tmp/run"),
+            zip_path=Path("/tmp/run/z.zip"), service_url="https://swmm.example", task_id="t2",
+            mode="real", validation={}, warnings=[],
+        )
+
+    with TemporaryDirectory() as tmp:
+        call = ToolCall(
+            name="fetch_swmm_from_canada",
+            args={
+                "aoi_geojson": "", "base_url": "", "bbox": [0, 0, 0, 0], "city": "Regina",
+                "start_date": "2023-06-10", "end_date": "2023-06-13", "run_dir": tmp,
+            },
+        )
+        with mock.patch("agentic_swmm.integrations.swmmcanada_runner.resolve_base_url", return_value="https://swmm.example"), mock.patch(
+            "agentic_swmm.integrations.swmmcanada_runner.fetch_coverage", return_value=COVERAGE
+        ), mock.patch("agentic_swmm.integrations.swmmcanada_runner.fetch_from_aoi", side_effect=fake_fetch):
+            result = fetch_swmm_from_canada_tool(call, Path(tmp))
+    assert result["ok"] is True, result
+    assert json.loads(seen["aoi"])["coordinates"][0][0] == [-104.63, 50.4465]
+
+
+def test_a_zero_area_bbox_without_a_city_is_refused_clearly() -> None:
+    with TemporaryDirectory() as tmp:
+        call = ToolCall(
+            name="fetch_swmm_from_canada",
+            args={"bbox": [0, 0, 0, 0], "start_date": "2023-06-10", "end_date": "2023-06-13", "run_dir": tmp},
+        )
+        result = fetch_swmm_from_canada_tool(call, Path(tmp))
+    assert result["ok"] is False
+    assert "zero area" in json.dumps(result)
