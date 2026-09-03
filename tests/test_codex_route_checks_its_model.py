@@ -115,6 +115,7 @@ def test_session_start_swaps_the_model_and_prints_the_note(monkeypatch) -> None:
 
     said: list[str] = []
     monkeypatch.setattr(runtime_loop, "_agent_say", lambda text: said.append(text))
+    monkeypatch.setattr(runtime_loop, "_SWAP_NOTES_SAID", set())
     monkeypatch.setattr(
         model_check, "offered_models", lambda spec, key=None, **kw: ("gpt-5.4", "gpt-5.6-luna")
     )
@@ -122,3 +123,18 @@ def test_session_start_swaps_the_model_and_prints_the_note(monkeypatch) -> None:
     assert runtime_loop._reconcile_model_with_gateway("codex", "gpt-5.6-sol") == "gpt-5.6-luna"
     assert said and "using gpt-5.6-luna" in said[0]
     assert runtime_loop._reconcile_model_with_gateway("openai", "gpt-5.5") == "gpt-5.5"
+
+
+def test_the_swap_note_is_said_once_per_process(monkeypatch) -> None:
+    """S40: the shell reconciles per turn; the note repeated on every turn."""
+    from agentic_swmm.agent import runtime_loop
+    from agentic_swmm.providers import model_check
+
+    said: list[str] = []
+    monkeypatch.setattr(runtime_loop, "_agent_say", lambda text: said.append(text))
+    monkeypatch.setattr(runtime_loop, "_SWAP_NOTES_SAID", set())
+    monkeypatch.setattr(model_check, "offered_models", lambda spec, key=None, **kw: ("gpt-5.6-terra",))
+    monkeypatch.setattr("agentic_swmm.agent.provider_preflight.provider_key_value", lambda name: "k")
+    for _ in range(3):
+        assert runtime_loop._reconcile_model_with_gateway("codex", "gpt-5.6-sol") == "gpt-5.6-terra"
+    assert len(said) == 1
