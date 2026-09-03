@@ -7,6 +7,7 @@ from typing import IO, Any
 from agentic_swmm.agent import permissions
 from agentic_swmm.agent.permissions_profile import Profile
 from agentic_swmm.agent.reporting import write_event
+from agentic_swmm.agent.mcp_coverage import typed_tool_for
 from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.agent.ui import Spinner, SpinnerState, set_active_tool_spinner
@@ -56,9 +57,41 @@ class AgentExecutor:
         # prompts unconditionally.
         self._turn_chain_approved = False
 
+    def _typed_redirect(self, call: ToolCall) -> dict[str, Any] | None:
+        if call.name != "call_mcp_tool":
+            return None
+        server = str(call.args.get("server") or "")
+        tool = str(call.args.get("tool") or "")
+        typed = typed_tool_for(server, tool)
+        if typed is None or typed not in getattr(self.registry, "names", ()):
+            return None
+        hint = (
+            f"{server}.{tool} has a typed tool in this runtime: call {typed} directly "
+            "with the same arguments in snake_case. It returns the typed result shape"
+            + (" and needs no approval." if self.registry.is_read_only(typed) else ".")
+        )
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": False,
+            "summary": f"use the typed tool {typed} instead of the bridge for {server}.{tool}",
+            "hint": hint,
+            "redirect_to": typed,
+            "permission": {"prompted": False, "approved": True},
+        }
+
     def execute(self, call: ToolCall, *, index: int | None = None) -> dict[str, Any]:
         event_index = index if index is not None else len(self.results) + 1
         write_event(self.trace_path, {"event": "tool_start", "index": event_index, "tool": call.name, "args": call.args})
+        redirect = self._typed_redirect(call)
+        if redirect is not None:
+            # Live finding F-56b (2026-09-02): a bridge call to a tool that
+            # has a typed ToolSpec is answered before any prompt: the typed
+            # tool carries the allowlisted output shape and the read-only
+            # approval class; the generic bridge carries neither.
+            self.results.append(redirect)
+            write_event(self.trace_path, {"event": "tool_result", "index": event_index, **redirect})
+            return redirect
         self._announce(call.name)
         # Issue #193 item 2: capture the permission decision once,
         # here, where it is actually made — and publish it on the

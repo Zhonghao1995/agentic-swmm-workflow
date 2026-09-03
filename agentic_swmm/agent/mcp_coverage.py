@@ -202,6 +202,21 @@ _SERVER_CTOR_RE = re.compile(
 )
 
 
+def typed_tool_for(server: str, tool: str) -> str | None:
+    """The ToolSpec name bound to ``server``.``tool``, or None.
+
+    Live finding F-56b (2026-09-02): asked for a network check, the planner
+    reached the QA through the generic bridge (call_mcp_tool
+    swmm-network.qa: one approval, ten tool calls) although the typed,
+    read-only network_qa was in its schema set. The executor uses this
+    table to send it to the typed tool instead.
+    """
+    for binding in EXPECTED_BINDINGS:
+        if binding.mcp_server == server and binding.mcp_tool_name == tool:
+            return binding.tool_spec_name
+    return None
+
+
 def parse_server_tools(server_js: Path) -> list[str]:
     """Return the list of tool names registered by a server.js file.
 
@@ -276,6 +291,7 @@ def format_coverage_table(rows: list[CoverageRow]) -> str:
 __all__ = [
     "CoverageRow",
     "EXPECTED_BINDINGS",
+    "typed_tool_for",
     "ExpectedBinding",
     "build_coverage_matrix",
     "format_coverage_table",
