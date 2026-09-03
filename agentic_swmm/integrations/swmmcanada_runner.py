@@ -218,6 +218,72 @@ def fetch_from_aoi(
     )
 
 
+CITY_WINDOW_DEG: tuple[float, float] = (0.010, 0.007)
+"""Default AOI window for a city named without a boundary: about 1 km, the
+size of the documented Victoria demo AOI. Centred on the service's published
+coverage extent, which is a documented default rather than a guess of the
+user's project boundary (live test 2026-09-03, S40)."""
+
+
+def fetch_coverage(
+    service_url: str,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """GET ``/api/v1/coverage``: the published real-network cities and extents."""
+    req = urllib.request.Request(f"{service_url}/api/v1/coverage", method="GET")
+    try:
+        payload = json.loads(_open_with_retry(req, timeout=30, opener=opener, sleep=sleep).decode())
+    except CanadaFetchError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - one stage-tagged error for the tool
+        raise CanadaFetchError("coverage", f"could not read the service's coverage listing: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise CanadaFetchError("coverage", "the coverage listing is not a JSON object")
+    return payload
+
+
+def city_window(
+    city: str,
+    coverage: dict[str, Any],
+    *,
+    window: tuple[float, float] = CITY_WINDOW_DEG,
+) -> tuple[list[float] | None, str | None, str | None]:
+    """Return ``(bbox, label, error)`` for a published city name.
+
+    The city matches a coverage entry by key or by label (case-insensitive,
+    substring on the label). The bbox is a ``window`` centred on the entry's
+    published coverage extent. An unknown city returns the offered labels.
+    """
+    cities = coverage.get("real_network_cities")
+    if not isinstance(cities, list) or not cities:
+        return None, None, "the service lists no real-network cities."
+    wanted = city.strip().lower()
+    if not wanted:
+        return None, None, "city is empty."
+    match = None
+    for entry in cities:
+        if not isinstance(entry, dict):
+            continue
+        key = str(entry.get("key") or "").lower()
+        label = str(entry.get("label") or "").lower()
+        if wanted == key or wanted == label or (wanted in label and len(wanted) >= 4):
+            match = entry
+            break
+    if match is None:
+        offered = ", ".join(str(e.get("label") or e.get("key")) for e in cities if isinstance(e, dict))
+        return None, None, f"'{city}' is not a published city. Offered: {offered}. Pass bbox for any other Canadian area."
+    extent = match.get("coverage_bbox")
+    if not (isinstance(extent, (list, tuple)) and len(extent) == 4):
+        return None, None, f"the service lists no extent for {match.get('label')}; pass bbox."
+    min_lon, min_lat, max_lon, max_lat = (float(v) for v in extent)
+    cx, cy = (min_lon + max_lon) / 2.0, (min_lat + max_lat) / 2.0
+    half_w, half_h = window[0] / 2.0, window[1] / 2.0
+    bbox = [round(cx - half_w, 4), round(cy - half_h, 4), round(cx + half_w, 4), round(cy + half_h, 4)]
+    return bbox, str(match.get("label") or match.get("key")), None
+
+
 def _announce_preview(
     service_url: str,
     aoi_geojson: str,
