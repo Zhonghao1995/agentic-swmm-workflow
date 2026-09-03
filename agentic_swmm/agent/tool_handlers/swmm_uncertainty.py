@@ -366,7 +366,9 @@ def tool_specs() -> list[ToolSpec]:
     return [
         ToolSpec(
             "swmm_sensitivity_oat",
-            "OAT sensitivity: perturb each parameter around a baseline and rank by RMSE+peak-error spread.",
+            "OAT sensitivity: perturb each parameter around a baseline and rank by RMSE+peak-error spread. "
+            "Answers 'which parameters matter most' or 'one-at-a-time scan' in ONE call for every parameter; "
+            "do not emulate it with repeated propagate_parameter_ranges sweeps.",
             _object(
                 {
                     **_swmm_uncertainty_common_schema(),
@@ -432,6 +434,8 @@ def tool_specs() -> list[ToolSpec]:
                 "Reference-free uncertainty: apply each named parameter GLOBALLY over a range "
                 "(the same value on every subcatchment or conduit), run SWMM once per sample, "
                 "and report the spread of the peak at the report node.\n"
+                "For 'which parameters matter most' or a one-at-a-time / Morris / Sobol scan call "
+                "swmm_sensitivity_oat (one call, every parameter) instead of repeating this tool.\n"
                 "USE WHEN: the user asks how uncertain the peak is, or to vary Manning's n, "
                 "imperviousness, depression storage or conduit roughness, and has NO observed "
                 "flow (the sensitivity tools need an observed series).\n"
