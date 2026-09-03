@@ -203,7 +203,47 @@ def _process_text(value: Any) -> str:
     return str(value or "")
 
 
+_DOCTOR_STATUS_TOKENS = ("OK", "WARN", "FAIL", "MISSING", "UNSET")
+
+
+def doctor_verdict(stdout: str) -> str:
+    """One line that says what doctor found, not the last line it printed.
+
+    Live finding F-64 (2026-09-02): with an unreachable SWMMCanada endpoint
+    the tool's summary was the tail of doctor's last line, "the service is
+    up", which read as a contradiction next to the failed fetch.
+    """
+    counts = {token: 0 for token in _DOCTOR_STATUS_TOKENS}
+    first_problem = ""
+    for raw in stdout.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        token = line.split(None, 1)[0]
+        if token not in counts:
+            continue
+        counts[token] += 1
+        if token in ("WARN", "FAIL", "MISSING") and not first_problem:
+            rest = line[len(token):].strip()
+            first_problem = rest.split(" - ", 1)[0].strip() or rest[:60]
+    checked = counts["OK"] + counts["WARN"] + counts["FAIL"] + counts["MISSING"]
+    if not checked:
+        stripped = stdout.strip().splitlines()
+        return stripped[-1] if stripped else "doctor completed"
+    parts = [f"{counts['OK']} OK"]
+    for token in ("WARN", "FAIL", "MISSING"):
+        if counts[token]:
+            parts.append(f"{counts[token]} {token}")
+    verdict = "doctor: " + ", ".join(parts)
+    if first_problem:
+        verdict += f"; first problem: {first_problem}"
+    return verdict
+
+
 def _summarize_cli_result(tool: str, stdout: str, return_code: int) -> str:
+    if tool == "doctor":
+        verdict = doctor_verdict(stdout)
+        return verdict if return_code == 0 else f"doctor failed (exit {return_code}); {verdict}"
     if return_code != 0:
         return f"{tool} failed"
     parsed = _try_json(stdout)
