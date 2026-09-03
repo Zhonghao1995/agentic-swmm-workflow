@@ -93,3 +93,44 @@ def test_a_failed_sample_is_carried_not_dropped(tmp_path):
     assert result.stats["samples_failed"] == 1 and result.stats["samples_ok"] == 3
     failed = [s for s in result.samples if not s.run_ok]
     assert failed and "exploded" in failed[0].error
+
+
+def _auto_runner_factory(seen: list[str]):
+    def runner(inp: Path, sample_dir: Path, node: str) -> dict:
+        seen.append(node)
+        resolved = "OUT_BIG" if node == "auto" else node
+        manifest = _fake_runner(inp, sample_dir, resolved)
+        manifest["node_selection"] = {"requested": node, "resolved": resolved, "rule": "outfall carrying the largest total volume"}
+        return manifest
+
+    return runner
+
+
+def test_without_a_node_the_sweep_reports_at_the_runners_dominant_outfall(tmp_path):
+    # Live finding F-72 (2026-09-02): the INP's first outfall is not the run's dominant one.
+    base = tmp_path / "model.inp"
+    base.write_text(INP)
+    seen: list[str] = []
+    result = ps.run_parameter_sweep(base_inp=base, run_dir=tmp_path / "run", ranges={"n_imperv": (0.01, 0.02)}, n_samples=3, runner=_auto_runner_factory(seen))
+    assert result.node == "OUT_BIG"
+    assert seen[0] == "auto" and set(seen[1:]) == {"OUT_BIG"}
+    assert json.loads(Path(result.summary_json).read_text())["node"] == "OUT_BIG"
+
+
+def test_an_explicit_node_is_used_as_given(tmp_path):
+    base = tmp_path / "model.inp"
+    base.write_text(INP)
+    seen: list[str] = []
+    result = ps.run_parameter_sweep(base_inp=base, run_dir=tmp_path / "run", ranges={"n_imperv": (0.01, 0.02)}, node="J9", n_samples=2, runner=_auto_runner_factory(seen))
+    assert result.node == "J9" and set(seen) == {"J9"}
+
+
+def test_the_climate_batch_locks_the_dominant_outfall_too(tmp_path):
+    from agentic_swmm.agent.swmm_runtime import climate_scenarios as cs
+
+    base = tmp_path / "model.inp"
+    base.write_text(INP)
+    seen: list[str] = []
+    result = cs.run_climate_batch(base_inp=base, run_dir=tmp_path / "run", scenarios=(cs.ScenarioSpec("baseline", 1.0), cs.ScenarioSpec("plus20", 1.2)), runner=_auto_runner_factory(seen))
+    assert result.node == "OUT_BIG"
+    assert seen == ["auto", "OUT_BIG"]

@@ -179,6 +179,25 @@ class SweepSample:
     peak: float | None = None
     flow_units: str | None = None
     error: str = ""
+    manifest: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
+
+
+AUTO_NODE = "auto"
+
+
+def resolved_report_node(base_inp: Path, manifest: dict[str, Any]) -> str:
+    """The node the runner actually reported on, else the INP's first outfall."""
+    from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
+
+    selection = manifest.get("node_selection") if isinstance(manifest, dict) else None
+    resolved = selection.get("resolved") if isinstance(selection, dict) else None
+    if isinstance(resolved, str) and resolved.strip() and resolved.strip().lower() != AUTO_NODE:
+        return resolved.strip()
+    peak = (manifest.get("metrics") or {}).get("peak") if isinstance(manifest, dict) else None
+    node = peak.get("node") if isinstance(peak, dict) else None
+    if isinstance(node, str) and node.strip() and node.strip().lower() != AUTO_NODE:
+        return node.strip()
+    return default_report_node(base_inp) or "O1"
 
 
 @dataclass(frozen=True)
@@ -212,10 +231,13 @@ def run_parameter_sweep(
         <run_dir>/09_audit/parameter_sweep/<sample>/model.inp (+ rain copies, rpt, out)
         <run_dir>/09_audit/parameter_sweep.json / parameter_sweep.md
     """
-    from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
-
     run = runner or _default_runner
-    report_node = node or default_report_node(base_inp)
+    # Live finding F-72 (2026-09-02): with no node given, the sweep reported
+    # the spread at the INP's first outfall (a negligible one) instead of
+    # the run's dominant outfall. The baseline now runs with the runner's
+    # "auto" node and locks the report node from its manifest; every sample
+    # then runs on that node.
+    report_node = node or AUTO_NODE
     audit_dir = run_layout.stage_dir(Path(run_dir), run_layout.AUDIT, create=True)
     sweep_dir = audit_dir / "parameter_sweep"
     samples = sample_space(ranges, n_samples, seed=seed)
@@ -229,6 +251,8 @@ def run_parameter_sweep(
         if progress:
             progress(f"parameter sweep: {name}")
         manifest = run(inp, sample_dir, report_node)
+        if not isinstance(manifest, dict):
+            manifest = {"run_ok": False, "error": "runner returned no manifest"}
         metrics = manifest.get("metrics") or {}
         peak = (metrics.get("peak") or {}).get("peak")
         units = (metrics.get("peak") or {}).get("units") or metrics.get("flow_units")
@@ -241,9 +265,12 @@ def run_parameter_sweep(
             peak=float(peak) if isinstance(peak, (int, float)) else None,
             flow_units=str(units) if units else None,
             error=str(manifest.get("error") or "") if not run_ok else "",
+            manifest=manifest,
         )
 
     baseline = _one("baseline", {})
+    if report_node == AUTO_NODE:
+        report_node = resolved_report_node(base_inp, baseline.manifest)
     for i, values in enumerate(samples, start=1):
         runs.append(_one(f"s{i:02d}", values))
 
@@ -353,6 +380,8 @@ def _render_md(node: str, units: str | None, baseline: SweepSample, runs: list[S
 
 __all__ = [
     "ALIASES",
+    "AUTO_NODE",
+    "resolved_report_node",
     "GLOBAL_PARAMETERS",
     "SweepResult",
     "SweepSample",
