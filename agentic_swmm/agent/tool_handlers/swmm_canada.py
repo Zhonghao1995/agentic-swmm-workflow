@@ -166,12 +166,33 @@ def _bbox_to_polygon(bbox: list[float]) -> str:
     return json.dumps({"type": "Polygon", "coordinates": [ring]})
 
 
+def _bbox_is_placeholder(bbox_raw: Any) -> bool:
+    """True for a bbox the planner filled in to satisfy the schema, not to say anything.
+
+    ``[0, 0, 0, 0]`` (live test 2026-09-03, S40 r2: sent next to
+    ``city="Regina"`` and rejected as an AOI in the Gulf of Guinea) or any
+    zero-area box. Such a bbox is treated as absent so ``city`` can act.
+    """
+    if not isinstance(bbox_raw, (list, tuple)) or len(bbox_raw) != 4:
+        return False
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(v) for v in bbox_raw)
+    except (TypeError, ValueError):
+        return False
+    return (min_lon == max_lon) or (min_lat == max_lat)
+
+
 def _resolve_aoi(call: ToolCall) -> tuple[str | None, str | None]:
     """Return ``(aoi_geojson, error)``. Accepts an explicit GeoJSON string or a bbox."""
     aoi_raw = call.args.get("aoi_geojson")
     if isinstance(aoi_raw, str) and aoi_raw.strip():
         return aoi_raw, None
     bbox_raw = call.args.get("bbox")
+    if _bbox_is_placeholder(bbox_raw):
+        city_raw = call.args.get("city")
+        if isinstance(city_raw, str) and city_raw.strip():
+            return None, "placeholder bbox; resolving the city instead."
+        return None, "bbox has zero area; pass a real bbox [min_lon, min_lat, max_lon, max_lat] or a published city."
     if bbox_raw is not None:
         if not isinstance(bbox_raw, (list, tuple)) or len(bbox_raw) != 4:
             return None, "bbox must be an array of 4 numbers [min_lon, min_lat, max_lon, max_lat]."
