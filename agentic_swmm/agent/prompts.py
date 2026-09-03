@@ -148,6 +148,8 @@ def openai_planner_prompt(
         "When the user asks what you remember or what lessons apply, answer from the memory blocks in this prompt "
         "(<parametric-memory>, <recent-failures>, <previous-session>) and cite the runs they name; call tools only to "
         "verify a fact those blocks do not contain. "
+        "When the user asks about a run that produced no results (a failed fetch, a run that never happened), say so; "
+        "never present another run's results as that run. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context(trace_path=trace_path)
