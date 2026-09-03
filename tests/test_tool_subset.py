@@ -34,8 +34,16 @@ class TestRegistrySchemas:
 
 
 class TestPlannerSubset:
-    def test_off_by_default_means_every_tool(self, monkeypatch):
+    def test_on_by_default_means_the_goal_skills_tools(self, monkeypatch):
         monkeypatch.delenv("AISWMM_TOOL_SUBSET", raising=False)
+        planner = _planner()
+        subset = planner._tool_subset_for("Fetch a model from the Canada service and run it.", trace_path=None)
+        assert subset is not None
+        assert "fetch_swmm_from_canada" in subset
+        assert len(subset) < len(planner.registry.names)
+
+    def test_zero_turns_the_subset_off(self, monkeypatch):
+        monkeypatch.setenv("AISWMM_TOOL_SUBSET", "0")
         assert _planner()._tool_subset_for(GOAL) is None
 
     def test_on_means_the_goal_skills_tools_plus_agent_internal(self, monkeypatch):

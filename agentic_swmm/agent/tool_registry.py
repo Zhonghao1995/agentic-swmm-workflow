@@ -113,7 +113,7 @@ class AgentToolRegistry:
         """Tool schemas for the model, all of them or the named subset.
 
         ``names`` is the goal-scoped subset the planner computes when
-        AISWMM_TOOL_SUBSET=1 (live finding F-44, 2026-09-02: all 57
+        the goal-scoped subset, on by default, AISWMM_TOOL_SUBSET=0 disables (live finding F-44, 2026-09-02: all 57
         schemas, 64k characters, are the bulk of every LLM call's input).
         Unknown names are ignored so a stale subset cannot raise.
         """
