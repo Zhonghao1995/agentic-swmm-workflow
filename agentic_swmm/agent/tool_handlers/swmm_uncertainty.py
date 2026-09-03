@@ -250,7 +250,86 @@ _swmm_rainfall_ensemble_tool = _build_rainfall_ensemble_handler()
 _swmm_uncertainty_source_decomposition_tool = _build_source_decomposition_handler()
 
 
+def propagate_parameter_ranges_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """In-process handler for ``propagate_parameter_ranges`` (user decision 2026-09-02, F-55).
+
+    Reference-free propagation: apply each named parameter globally over a
+    user-given range, run SWMM once per sample through the audited runner,
+    and report the spread of the peak at the report node. Pure in-process
+    orchestration like ``run_climate_scenarios``: no MCP routing and no new
+    EXPECTED_BINDINGS row.
+    """
+    from agentic_swmm.agent.swmm_runtime import parameter_sweep
+    from agentic_swmm.agent.tool_handlers._shared import _timestamped_run_dir
+    from agentic_swmm.agent.tool_registry import _resolve_existing_inp
+
+    inp_raw = call.args.get("inp_path")
+    if not isinstance(inp_raw, str) or not inp_raw.strip():
+        return _failure(call, "propagate_parameter_ranges requires inp_path")
+    inp = _resolve_existing_inp(inp_raw)
+    if inp is None:
+        return _failure(call, f"INP not found (in-repo paths only): {inp_raw}")
+    try:
+        ranges = parameter_sweep.parse_ranges(call.args.get("ranges"))
+    except ValueError as exc:
+        return _failure(
+            call,
+            f"bad ranges: {exc}",
+            hint='ranges is a mapping such as {"n_imperv": [0.010, 0.020], "pct_imperv": [60, 80]} '
+            "(aliases: manning_n, imperviousness, conduit_roughness, n_perv, s_imperv, s_perv, width, slope).",
+        )
+    explicit_run_dir = call.args.get("run_dir")
+    if isinstance(explicit_run_dir, str) and explicit_run_dir.strip():
+        run_dir = Path(explicit_run_dir)
+    else:
+        run_dir = _timestamped_run_dir(call, prefix="sweep")
+    node_raw = call.args.get("node")
+    node = node_raw.strip() if isinstance(node_raw, str) and node_raw.strip() else None
+    n_samples_raw = call.args.get("n_samples")
+    try:
+        n_samples = int(n_samples_raw) if n_samples_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        return _failure(call, "n_samples must be an integer")
+    try:
+        result = parameter_sweep.run_parameter_sweep(
+            base_inp=inp, run_dir=run_dir, ranges=ranges, node=node, n_samples=n_samples
+        )
+    except Exception as exc:  # noqa: BLE001 - the planner needs the message, not a traceback
+        return _failure(call, f"parameter sweep failed: {exc}")
+    stats = result.stats
+    spread = (
+        f"peak {stats['peak_min']:g}..{stats['peak_max']:g} {result.flow_units or ''}".strip()
+        + (f" ({stats['spread_percent_of_baseline']}% of baseline {result.baseline_peak:g})" if "spread_percent_of_baseline" in stats and result.baseline_peak else "")
+        if "peak_min" in stats
+        else "no successful sample"
+    )
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": result.ok,
+        "run_dir": result.run_dir,
+        "node": result.node,
+        "baseline_peak": result.baseline_peak,
+        "flow_units": result.flow_units,
+        "ranges": {k: list(v) for k, v in ranges.items()},
+        "stats": stats,
+        "samples": [
+            {"name": s.name, "values": s.values, "run_ok": s.run_ok, "peak": s.peak}
+            for s in result.samples
+        ],
+        "summary_json": result.summary_json,
+        "summary_md": result.summary_md,
+        "evidence_boundary": "Prior sensitivity of the peak to globally applied parameter ranges, not calibrated uncertainty.",
+        "summary": (
+            f"{stats.get('samples_ok', 0)}/{stats.get('samples_total', 0)} samples ran at {result.node}: {spread}"
+            + (f"; dominant parameter {stats['dominant_parameter']}" if "dominant_parameter" in stats else "")
+            + f"; summary at {result.summary_md}"
+        ),
+    }
+
+
 __all__ = [
+    "propagate_parameter_ranges_tool",
     "_swmm_uncertainty_common_schema",
     "_SENSITIVITY_REQUIRED",
     # args mappers (exported for tests)
@@ -336,6 +415,32 @@ def tool_specs() -> list[ToolSpec]:
                 ["method", "config", "run_root"],
             ),
             _swmm_rainfall_ensemble_tool,
+            is_read_only=False,
+        ),
+        ToolSpec(
+            "propagate_parameter_ranges",
+            (
+                "Reference-free uncertainty: apply each named parameter GLOBALLY over a range "
+                "(the same value on every subcatchment or conduit), run SWMM once per sample, "
+                "and report the spread of the peak at the report node.\n"
+                "USE WHEN: the user asks how uncertain the peak is, or to vary Manning's n, "
+                "imperviousness, depression storage or conduit roughness, and has NO observed "
+                "flow (the sensitivity tools need an observed series).\n"
+                'ranges example: {"n_imperv": [0.010, 0.020], "pct_imperv": [60, 80]}; aliases '
+                "manning_n, imperviousness, conduit_roughness. 25 samples by default (5x5 grid "
+                "for two parameters, Latin hypercube beyond 36). Results: 09_audit/parameter_sweep.json and .md."
+            ),
+            _object(
+                {
+                    "inp_path": {"type": "string", "description": "Existing SWMM .inp (in-repo path)."},
+                    "ranges": {"type": "object", "description": "Parameter name -> [low, high]."},
+                    "node": {"type": "string", "description": "Report node; default = the dominant outfall."},
+                    "n_samples": {"type": "integer", "description": "Override the sample count."},
+                    "run_dir": {"type": "string", "description": "Run directory; default = the current run."},
+                },
+                ["inp_path", "ranges"],
+            ),
+            propagate_parameter_ranges_tool,
             is_read_only=False,
         ),
         ToolSpec(

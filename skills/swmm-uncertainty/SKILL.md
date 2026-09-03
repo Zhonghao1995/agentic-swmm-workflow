@@ -1,11 +1,25 @@
 ---
 name: swmm-uncertainty
-description: Parameter and forcing uncertainty for EPA SWMM. Without observed flow, propagate prior ranges with scripts/uncertainty_propagate.py (see CLI Example); the Morris/OAT/Sobol tools need an observed series. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices, (4) generate a rainfall ensemble (observed-series perturbation or IDF-curve design storms) and aggregate the resulting hydrograph envelope, or (5) build the integrated paper-reviewer-facing uncertainty source decomposition (`uncertainty_source_summary.md` + `uncertainty_source_decomposition.json`) over the raw outputs of the prior steps.
+description: Parameter and forcing uncertainty for EPA SWMM. Without observed flow, call propagate_parameter_ranges (global ranges, one SWMM run per sample, peak spread); the Morris/OAT/Sobol tools need an observed series. Use when an agent needs to (1) propagate parameter uncertainty through SWMM (fuzzy alpha-cut or Monte Carlo), (2) quantify hydrograph envelopes or output entropy without treating the run as calibration, (3) screen which parameters matter using OAT / Morris elementary-effects / Sobol' indices, (4) generate a rainfall ensemble (observed-series perturbation or IDF-curve design storms) and aggregate the resulting hydrograph envelope, or (5) build the integrated paper-reviewer-facing uncertainty source decomposition (`uncertainty_source_summary.md` + `uncertainty_source_decomposition.json`) over the raw outputs of the prior steps.
 ---
 
 # SWMM Uncertainty
 
 Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) — install the project first for the executable toolchain (aiswmm CLI, SWMM solver, MCP servers).
+
+## Agent path without observed data
+
+`propagate_parameter_ranges` is the typed tool for "how uncertain is the peak if
+Manning's n and imperviousness vary". It applies each named parameter globally
+(the same value on every subcatchment or conduit), runs SWMM once per sample
+through the audited runner, and writes `09_audit/parameter_sweep.json` and
+`.md` with the baseline peak, the min/median/max over the samples, the spread
+as a percent of the baseline and the dominant parameter. Ranges are a mapping
+such as `{"n_imperv": [0.010, 0.020], "pct_imperv": [60, 80]}`; aliases
+`manning_n`, `imperviousness`, `conduit_roughness`, `n_perv`, `s_imperv`,
+`s_perv`, `width`, `slope`. It is prior sensitivity, not calibrated
+uncertainty; the per-object fuzzy and Monte Carlo workflows below remain the
+research path.
 
 ## What this skill provides
 

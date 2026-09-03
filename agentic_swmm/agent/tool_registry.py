@@ -261,6 +261,13 @@ class AgentToolRegistry:
             "summary_json",
             "summary_md",
             "scenarios",
+            # propagate_parameter_ranges (user decision 2026-09-02, F-55)
+            "baseline_peak",
+            "flow_units",
+            "stats",
+            "samples",
+            "ranges",
+            "evidence_boundary",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
