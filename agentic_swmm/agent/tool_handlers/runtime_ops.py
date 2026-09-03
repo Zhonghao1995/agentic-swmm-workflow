@@ -41,7 +41,9 @@ from typing import Any, Iterable
 
 from agentic_swmm.agent.permissions import (
     CODE_WRITE_HINT,
+    RUN_ROOT_WRITE_HINT,
     is_agent_scratch_path,
+    is_new_file_at_run_root,
     is_allowed_write_path,
     is_code_write_into_product_tree,
     is_evidence_path,
@@ -370,6 +372,10 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             return _failure(call, f"patch path is blocked by policy: {path}")
         if is_evidence_path(full) and not allow_evidence and not is_agent_scratch_path(full):
             return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
+        # Live finding F-61 (2026-09-02): even with the evidence override, a
+        # NEW file does not land at the run root; the layout reserves it.
+        if is_new_file_at_run_root(full, session_dir) and not full.exists():
+            return _failure(call, f"patch writes a new file at the run root: {path}", hint=RUN_ROOT_WRITE_HINT)
     patch_path = session_dir / "tool_results" / "apply_patch.diff"
     patch_path.parent.mkdir(parents=True, exist_ok=True)
     patch_path.write_text(patch, encoding="utf-8")
