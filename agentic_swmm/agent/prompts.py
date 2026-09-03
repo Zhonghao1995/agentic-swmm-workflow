@@ -145,6 +145,9 @@ def openai_planner_prompt(
         "When a bounded analysis has sensible defaults (documented in the skill, in its examples, or in the run itself), "
         "run the first pass with those defaults and state the assumed values; ask at most ONE question, and only when "
         "a choice would change the result materially. Never answer a request with a questionnaire. "
+        "When the user asks what you remember or what lessons apply, answer from the memory blocks in this prompt "
+        "(<parametric-memory>, <recent-failures>, <previous-session>) and cite the runs they name; call tools only to "
+        "verify a fact those blocks do not contain. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context(trace_path=trace_path)
