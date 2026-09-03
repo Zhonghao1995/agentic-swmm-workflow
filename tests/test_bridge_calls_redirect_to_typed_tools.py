@@ -39,7 +39,7 @@ def executor(tmp_path, monkeypatch):
 
 
 def test_a_bound_bridge_call_is_answered_with_the_typed_name(executor, tmp_path):
-    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"inpPath": "x.inp"}})
+    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"networkJson": "x.json"}})
     result = executor.execute(call)
     assert result["ok"] is False
     assert result["redirect_to"] == "network_qa"
@@ -47,6 +47,19 @@ def test_a_bound_bridge_call_is_answered_with_the_typed_name(executor, tmp_path)
     assert "typed result shape" in result["hint"]
     events = [json.loads(line) for line in (tmp_path / "t.jsonl").read_text().splitlines()]
     assert any(e.get("event") == "tool_result" and e.get("redirect_to") == "network_qa" for e in events)
+
+
+def test_arguments_the_typed_tool_cannot_take_keep_the_bridge(executor):
+    # The live S17/S18 call: the MCP qa validates an INP (inpPath); the typed
+    # network_qa validates a network JSON (network_json). No redirect.
+    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"inpPath": "runs/x/05_builder/model.inp"}})
+    assert executor._typed_redirect(call) is None
+
+
+def test_matching_arguments_are_redirected(executor):
+    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"networkJson": "runs/x/network.json", "reportJson": "runs/x/qa.json"}})
+    redirect = executor._typed_redirect(call)
+    assert redirect is not None and redirect["redirect_to"] == "network_qa"
 
 
 def test_an_unbound_bridge_call_is_not_touched(executor):
