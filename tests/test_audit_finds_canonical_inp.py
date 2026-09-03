@@ -101,3 +101,50 @@ def test_collect_run_prefers_the_qa_stage_network_qa_report(tmp_path: Path) -> N
     record, _ = audit.collect_run(run_dir, repo_root=tmp_path)
     network_qa = (record.get("artifacts") or {}).get("network_qa")
     assert str(network_qa.get("absolute_path", "")).endswith("07_qa/network_qa.json")
+
+
+def test_collect_run_takes_an_external_inp_from_the_runner_manifest(tmp_path: Path) -> None:
+    """A run of examples/<case>.inp has no builder stage; the runner manifest names the INP."""
+    audit = load_audit_module()
+    external = tmp_path / "examples" / "todcreek" / "model_chicago5min.inp"
+    external.parent.mkdir(parents=True)
+    external.write_text("[TITLE]\ntodcreek\n", encoding="utf-8")
+    run_dir = tmp_path / "034722_todcreek_run"
+    (run_dir / "06_runner").mkdir(parents=True)
+    (run_dir / "06_runner" / "model.rpt").write_text("  Flow Units ............... CMS\n", encoding="utf-8")
+    (run_dir / "06_runner" / "manifest.json").write_text(
+        json.dumps(
+            {
+                "return_code": 0,
+                "inp": str(external),
+                "inp_sha256": "c659f98e",
+                "files": {"rpt": str(run_dir / "06_runner" / "model.rpt")},
+            }
+        ),
+        encoding="utf-8",
+    )
+    record, _ = audit.collect_run(run_dir, repo_root=tmp_path)
+    model_inp = (record.get("artifacts") or {}).get("model_inp")
+    assert model_inp is not None
+    assert model_inp.get("exists") is True
+    assert str(model_inp.get("absolute_path", "")).endswith("examples/todcreek/model_chicago5min.inp")
+
+
+def test_collect_run_keeps_the_builder_manifest_inp_over_the_runner_one(tmp_path: Path) -> None:
+    audit = load_audit_module()
+    run_dir = tmp_path / "run"
+    (run_dir / "05_builder").mkdir(parents=True)
+    built = run_dir / "05_builder" / "built.inp"
+    built.write_text("[TITLE]\n", encoding="utf-8")
+    (run_dir / "05_builder" / "manifest.json").write_text(
+        json.dumps({"outputs": {"inp": str(built)}}), encoding="utf-8"
+    )
+    other = tmp_path / "other.inp"
+    other.write_text("[TITLE]\n", encoding="utf-8")
+    (run_dir / "06_runner").mkdir()
+    (run_dir / "06_runner" / "manifest.json").write_text(
+        json.dumps({"return_code": 0, "inp": str(other), "files": {}}), encoding="utf-8"
+    )
+    record, _ = audit.collect_run(run_dir, repo_root=tmp_path)
+    model_inp = (record.get("artifacts") or {}).get("model_inp")
+    assert str(model_inp.get("absolute_path", "")).endswith("05_builder/built.inp")

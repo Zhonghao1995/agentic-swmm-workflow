@@ -966,6 +966,13 @@ def collect_run(
     if inp_path is None:
         inp_path = resolve_recorded_path(minimal_files.get("inp"), repo_root)
     if inp_path is None:
+        # The typed runner records the INP it ran (``inp`` + ``inp_sha256``)
+        # even when the file lives outside the run, e.g. examples/. Without
+        # this the audit called an external INP "missing evidence" and
+        # summarize_memory turned that into a false ``missing_inp`` failure
+        # pattern on a passing run (live test 2026-09-03, S29).
+        inp_path = resolve_recorded_path(runner_manifest.get("inp"), repo_root)
+    if inp_path is None:
         inp_path = find_builder_inp(run_dir)
 
     rpt_path = resolve_recorded_path((top_outputs.get("runner_rpt") or {}).get("path") if isinstance(top_outputs.get("runner_rpt"), dict) else None, repo_root)
