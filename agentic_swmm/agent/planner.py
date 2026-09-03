@@ -1021,6 +1021,21 @@ class Planner:
         # the per-skill ``read_skill`` follow-ups (they only exist to
         # populate planner context that the prior turn already gathered).
         skip_skills, skip_mcp = should_introspect(prior_session_state or {}, goal)
+        # Live finding F-70 (2026-09-02): the shell builds a fresh registry
+        # every turn and an answer-continuation carries no prior state, so
+        # the catalogue prologue (list_skills, list_mcp_servers, one
+        # list_mcp_tools per relevant server: about ten tool calls) ran again
+        # on the second modeling turn of a session although nothing in the
+        # catalogue can change inside one process. Remember, per process,
+        # the catalogue fingerprint that was last listed.
+        fingerprint = _catalogue_fingerprint()
+        if not _always_introspect() and _CATALOGUE_LISTED.get("fingerprint") == fingerprint:
+            if not (skip_skills and skip_mcp):
+                _trace_event_best_effort(
+                    getattr(executor, "trace_path", None),
+                    {"event": "prologue_skipped", "reason": "catalogue already listed in this process"},
+                )
+            skip_skills = skip_mcp = True
         skill_names = _select_relevant_skills(goal)
         calls: list[ToolCall] = []
         if not skip_skills:
@@ -1044,6 +1059,8 @@ class Planner:
                 ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 3})
                 for name in _select_relevant_mcp_servers(skill_names)
             )
+        if calls and not _always_introspect():
+            _CATALOGUE_LISTED["fingerprint"] = fingerprint
         for call in calls:
             plan.append(call)
             result = executor.execute(call, index=len(plan))
@@ -1060,6 +1077,35 @@ class Planner:
 #: previous behaviour; any integer sets the cap.
 PRIME_SKILL_READS_ENV = "AISWMM_PRIME_SKILL_READS"
 #: Send only the goal's skills' tool schemas to the model (experiment, F-44).
+
+#: Live finding F-70 (2026-09-02): per-process memo of the catalogue the
+#: prologue last listed. Keyed on the registries' mtimes so an edited
+#: skills.json or mcp.json lists again; AISWMM_ALWAYS_INTROSPECT=1 disables
+#: the memo (the test suite sets it so every turn stays observable).
+ALWAYS_INTROSPECT_ENV = "AISWMM_ALWAYS_INTROSPECT"
+_CATALOGUE_LISTED: dict[str, Any] = {}
+
+
+def _always_introspect() -> bool:
+    return os.environ.get(ALWAYS_INTROSPECT_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
+def _catalogue_fingerprint() -> tuple[Any, ...]:
+    from agentic_swmm.config import config_dir
+
+    parts: list[Any] = [os.getpid()]
+    for name in ("skills.json", "mcp.json"):
+        try:
+            parts.append(round((config_dir() / name).stat().st_mtime, 3))
+        except OSError:
+            parts.append(None)
+    return tuple(parts)
+
+
+def reset_catalogue_memo() -> None:
+    """Forget the listed catalogue (tests, or after editing the registries)."""
+    _CATALOGUE_LISTED.clear()
+
 TOOL_SUBSET_ENV = "AISWMM_TOOL_SUBSET"
 DEFAULT_PRIME_SKILL_READS = 0
 

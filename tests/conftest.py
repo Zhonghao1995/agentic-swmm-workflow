@@ -386,3 +386,15 @@ def read_silent_fallback_events(jsonl_path):
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+@pytest.fixture(autouse=True)
+def _every_turn_introspects(monkeypatch):
+    """Keep the catalogue prologue observable on every planner turn.
+
+    Live finding F-70 (2026-09-02): the runtime remembers, per process, that
+    the catalogue was already listed. The suite runs hundreds of planner
+    turns in one process, so the memo is disabled here and exercised only by
+    tests that clear the variable on purpose.
+    """
+    monkeypatch.setenv("AISWMM_ALWAYS_INTROSPECT", "1")
