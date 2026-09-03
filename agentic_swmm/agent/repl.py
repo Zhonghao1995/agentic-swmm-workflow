@@ -22,6 +22,12 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 
 from agentic_swmm.agent.warm_intro import WarmIntroState, maybe_emit_warm_intro
+
+#: Live finding F-63 (2026-09-02): a declined tool call is not a failed
+#: turn. The runtime returns this code when the turn did not succeed and
+#: at least one prompted tool was declined, so the shell can say so and
+#: scripts can tell the two apart.
+DECLINED_EXIT_CODE = 3
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 __all__ = ["run_repl", "PlannerRunner"]
@@ -142,5 +148,7 @@ def run_repl(
             trace_path,
             None,
         )
-        if rc != 0:
+        if rc == DECLINED_EXIT_CODE:
+            output("Turn ended: you declined a tool call, so nothing ran. Ask again when ready, or type /exit.")
+        elif rc != 0:
             output(f"Turn failed with exit code {rc}. You can continue or type /exit.")

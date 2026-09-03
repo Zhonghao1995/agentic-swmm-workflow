@@ -81,7 +81,7 @@ from agentic_swmm.utils.paths import repo_root
 # PRD-02 — deep-module split. New modules with the carved-out behaviour;
 # names below are re-exported so legacy imports continue to resolve.
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
-from agentic_swmm.agent.repl import run_repl
+from agentic_swmm.agent.repl import DECLINED_EXIT_CODE, run_repl
 from agentic_swmm.agent.session_bootstrap import (
     bootstrap_prior_state as _bootstrap_prior_state,
     bootstrap_runs_root as _bootstrap_runs_root,
@@ -357,6 +357,28 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
     return note_path
 
 
+
+# Live finding F-63 (2026-09-02): a person who answers "n" to the first
+# approval is not a failed turn. DECLINED_EXIT_CODE lives in repl.py (this
+# module imports the shell, not the other way round).
+
+
+def turn_was_declined(outcome: Any) -> bool:
+    """True when the turn did not succeed and at least one prompted tool was declined."""
+    if getattr(outcome, "ok", False):
+        return False
+    for result in getattr(outcome, "results", None) or []:
+        permission = result.get("permission") if isinstance(result, dict) else None
+        if isinstance(permission, dict) and permission.get("prompted") and not permission.get("approved", True):
+            return True
+    return False
+
+
+def _exit_code_for(outcome: Any) -> int:
+    if getattr(outcome, "ok", False):
+        return 0
+    return DECLINED_EXIT_CODE if turn_was_declined(outcome) else 1
+
 def run_openai_planner(
     args: argparse.Namespace,
     goal: str,
@@ -515,7 +537,7 @@ def run_openai_planner(
             _agent_say(f"Chat note: {_display_path(chat_note)}")
         if outcome.final_text:
             _agent_say(outcome.final_text)
-        return 0 if outcome.ok else 1
+        return _exit_code_for(outcome)
 
     report = _write_report(
         session_dir,
@@ -563,7 +585,7 @@ def run_openai_planner(
         summary_block = render_final_summary([session_dir])
         if summary_block:
             print(summary_block)
-    return 0 if outcome.ok else 1
+    return _exit_code_for(outcome)
 
 
 def _looks_like_run_continuation(prompt: str) -> bool:
