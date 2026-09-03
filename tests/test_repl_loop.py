@@ -313,3 +313,42 @@ class NewSessionResetsWarmIntroStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _RaisingThenFinePlanner(_RecordingPlanner):
+    """Raises a provider error on the first turn, then behaves."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> int:
+        rc = super().__call__(*args, **kwargs)
+        if len(self.calls) == 1:
+            raise RuntimeError(
+                "Local gateway (ChatGPT subscription, Codex-compatible gateway) API request "
+                'failed with HTTP 404: {"error":{"code":"model_not_found"}}'
+            )
+        return rc
+
+
+class ProviderErrorKeepsTheShellAliveTests(unittest.TestCase):
+    """Live test 2026-09-03 (S38): a gateway 404 on the first planner call
+    used to escape the loop and the whole interactive session exited with 1.
+    The shell now reports the error, offers the remedy, and keeps the prompt."""
+
+    def test_error_turn_is_reported_and_the_next_turn_runs(self) -> None:
+        with TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            planner = _RaisingThenFinePlanner()
+            sink = _OutputSink()
+            rc = run_repl(
+                _stub_args(),
+                base_dir=base,
+                profile_name="quick",
+                input_source=_QueueInput(["Run the model at examples/todcreek/model.inp", "Run it again", "/exit"]),
+                planner_runner=planner,
+                output=sink,
+            )
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(planner.calls), 2)
+        joined = "\n".join(sink.lines)
+        self.assertIn("error: Local gateway", joined)
+        self.assertIn("model_not_found", joined)
+        self.assertIn("then ask again, or type /exit", joined)

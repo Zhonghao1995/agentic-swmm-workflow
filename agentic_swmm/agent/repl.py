@@ -141,13 +141,27 @@ def run_repl(
         # chosen per turn downstream. Resolve without creating, or the runs
         # base collects an empty _agent/ that nothing ever writes to.
         trace_path = agent_file(session_dir, "agent_trace.jsonl")
-        rc = planner_runner(
-            args,
-            prompt,
-            session_dir,
-            trace_path,
-            None,
-        )
+        try:
+            rc = planner_runner(
+                args,
+                prompt,
+                session_dir,
+                trace_path,
+                None,
+            )
+        except Exception as exc:  # noqa: BLE001 - the shell must outlive one bad turn
+            # A provider error (gateway 404 model_not_found, connection
+            # refused, missing credentials) used to escape the loop and
+            # the whole interactive session died with exit 1 (live test
+            # 2026-09-03, S38). One-shot mode keeps its top-level handler;
+            # inside the shell the user gets the prompt back to retry,
+            # change the route, or leave.
+            output(f"error: {exc}")
+            output(
+                "The turn did not run. Check the provider (aiswmm doctor, aiswmm setup), "
+                "then ask again, or type /exit."
+            )
+            continue
         if rc == DECLINED_EXIT_CODE:
             output("Turn ended: you declined a tool call, so nothing ran. Ask again when ready, or type /exit.")
         elif rc != 0:
