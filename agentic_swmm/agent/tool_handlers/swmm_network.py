@@ -32,6 +32,8 @@ helpers every family imports.
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 from typing import Any
 
@@ -113,11 +115,75 @@ def _build_handlers() -> tuple[Any, Any]:
     from agentic_swmm.agent.tool_handlers._shared import _make_mcp_routed_handler
 
     return (
-        _make_mcp_routed_handler("swmm-network", "qa", args_mapper=_network_qa_args),
+        _persist_qa_report(_make_mcp_routed_handler("swmm-network", "qa", args_mapper=_network_qa_args)),
         _make_mcp_routed_handler(
             "swmm-network", "export_inp", args_mapper=_network_to_inp_args
         ),
     )
+
+
+def _persist_qa_report(routed: Any) -> Any:
+    """Write the QA JSON the MCP tool returns to a real file and cite it.
+
+    Live finding F-68 (2026-09-02): the typed tool accepted ``report_json``
+    and ignored it, the QA JSON only came back inside the MCP content, and
+    the planner then cited the path it had asked for as an artifact that
+    did not exist. The report now lands at ``report_json`` when given,
+    else at ``<run>/09_audit/network_qa.json``.
+    """
+
+    def handler(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+        result = routed(call, session_dir)
+        if not isinstance(result, dict) or not result.get("ok"):
+            return result
+        payload = _qa_payload(result.get("results"))
+        if payload is None:
+            return result
+        target = _qa_report_target(call, session_dir)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError as exc:
+            result["report_note"] = f"QA report could not be written to {target}: {exc}"
+            return result
+        result["report_json"] = str(target)
+        if isinstance(payload.get("issue_count"), int):
+            result["issue_count"] = payload["issue_count"]
+        if "ok" in payload:
+            result["qa_ok"] = bool(payload["ok"])
+        result["summary"] = f"{result.get('summary') or 'network QA'}; report written to {target}"
+        return result
+
+    return handler
+
+
+def _qa_payload(results: Any) -> dict[str, Any] | None:
+    content = results.get("content") if isinstance(results, dict) else None
+    if not isinstance(content, list):
+        return None
+    for item in content:
+        text = item.get("text") if isinstance(item, dict) else None
+        if not isinstance(text, str):
+            continue
+        try:
+            parsed = json.loads(text)
+        except ValueError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _qa_report_target(call: ToolCall, session_dir: Path) -> Path:
+    from agentic_swmm.agent.swmm_runtime import run_layout
+    from agentic_swmm.agent.tool_registry import _repo_output_path
+
+    requested = call.args.get("report_json")
+    if requested:
+        resolved = _repo_output_path(str(requested))
+        if resolved is not None:
+            return resolved
+    return run_layout.stage_dir(Path(session_dir), run_layout.AUDIT) / "network_qa.json"
 
 
 _network_qa_tool, _network_to_inp_tool = _build_handlers()
