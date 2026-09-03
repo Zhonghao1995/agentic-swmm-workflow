@@ -113,3 +113,22 @@ class TestWelcomeLine:
         from agentic_swmm.agent.welcome import _format_last_session_line
 
         assert 'case "downtown-victoria-bc"' in _format_last_session_line({"case_name": "downtown-victoria-bc"})
+
+
+def test_a_city_beside_a_placeholder_bbox_shows_the_city() -> None:
+    """S44 (2026-09-03): the prompt read bbox [0.000, 0.000, 0.000, 0.000] for city=Toronto."""
+    from agentic_swmm.agent.permissions import approval_detail
+
+    detail = approval_detail(
+        {"city": "Toronto", "bbox": [0, 0, 0, 0], "aoi_geojson": "", "start_date": "2023-11-01", "end_date": "2023-11-04"}
+    )
+    assert "city=Toronto" in detail
+    assert "bbox [0.000" not in detail
+    assert "2023-11-01..2023-11-04" in detail
+
+
+def test_a_real_bbox_still_shows_the_box() -> None:
+    from agentic_swmm.agent.permissions import approval_detail
+
+    detail = approval_detail({"city": "Toronto", "bbox": [-79.38, 43.71, -79.37, 43.72]})
+    assert detail.startswith("bbox [-79.380")

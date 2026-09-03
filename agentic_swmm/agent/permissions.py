@@ -156,6 +156,17 @@ class ApprovalDecision:
         return self.reason == "headless"
 
 
+def _real_bbox(bbox: Any) -> bool:
+    """A 4-number bbox with area; ``[0, 0, 0, 0]`` and other zero-area boxes are placeholders."""
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return False
+    try:
+        min_lon, min_lat, max_lon, max_lat = (float(v) for v in bbox)
+    except (TypeError, ValueError):
+        return False
+    return min_lon != max_lon and min_lat != max_lat
+
+
 def approval_detail(args: dict[str, Any] | None) -> str:
     """One short phrase naming the decisive argument of a tool call.
 
@@ -177,7 +188,13 @@ def approval_detail(args: dict[str, Any] | None) -> str:
             return _clip("writes " + ", ".join(t.strip() for t in targets[:3]))
     parts: list[str] = []
     bbox = args.get("bbox")
-    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+    city = args.get("city")
+    # Live finding F-102 (2026-09-03, S44): the planner sends a placeholder
+    # bbox [0, 0, 0, 0] beside city=Toronto; the tool ignores the box, so
+    # the person approving must see the city, not a nonsense box.
+    if isinstance(city, str) and city.strip() and not _real_bbox(bbox):
+        parts.append(f"city={city.strip()}")
+    elif _real_bbox(bbox):
         parts.append("bbox [" + ", ".join(f"{float(v):.3f}" for v in bbox) + "]")
     elif args.get("aoi_geojson"):
         parts.append("polygon AOI")
