@@ -296,10 +296,11 @@ def run_climate_batch(
         <run_dir>/03_climate/scenarios/<name>/model.rpt / model.out ...
         <run_dir>/03_climate/climate_summary.json / climate_summary.md
     """
-    from agentic_swmm.agent.swmm_runtime.inp_parsing import default_report_node
-
     runner = runner or _default_runner
-    report_node = node or default_report_node(base_inp) or "O1"
+    # Live finding F-72 (2026-09-02): the INP's first outfall is not the
+    # run's dominant outfall. With no node given, the first scenario runs
+    # on the runner's "auto" node and the batch locks the node it resolved.
+    report_node = node or "auto"
     climate_root = run_layout.stage_dir(run_dir, run_layout.CLIMATE, create=True)
     scenarios_root = climate_root / "scenarios"
 
@@ -311,6 +312,10 @@ def run_climate_batch(
         inp = write_scenario_inp(base_inp, scenario, scenario_dir)
         try:
             manifest = runner(inp, scenario_dir, report_node)
+            if report_node == "auto":
+                from agentic_swmm.agent.swmm_runtime.parameter_sweep import resolved_report_node
+
+                report_node = resolved_report_node(base_inp, manifest if isinstance(manifest, dict) else {})
         except Exception as exc:  # noqa: BLE001 - one bad scenario must not sink the batch
             runs.append(
                 ScenarioRun(
