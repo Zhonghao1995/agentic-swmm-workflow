@@ -67,3 +67,37 @@ def test_collect_run_marks_the_canonical_inp_present_without_a_manifest(tmp_path
     assert model_inp is not None, list(record.keys())
     assert model_inp.get("exists") is True
     assert str(model_inp.get("absolute_path", "")).endswith("05_builder/model.inp")
+
+
+def test_collect_run_marks_the_network_qa_report_beside_the_inp_present(tmp_path: Path) -> None:
+    """The typed network_qa tool writes 05_builder/network_qa.json (#474)."""
+    audit = load_audit_module()
+    run_dir = tmp_path / "024635_downtown-victoria-bc_run"
+    (run_dir / "05_builder").mkdir(parents=True)
+    (run_dir / "05_builder" / "model.inp").write_text("[TITLE]\nvictoria\n", encoding="utf-8")
+    (run_dir / "05_builder" / "network_qa.json").write_text(
+        json.dumps({"status": "pass", "warnings": [], "summary": {"junctions": 304}}), encoding="utf-8"
+    )
+    (run_dir / "06_runner").mkdir()
+    (run_dir / "06_runner" / "model.rpt").write_text("  Flow Units ............... CMS\n", encoding="utf-8")
+    (run_dir / "06_runner" / "manifest.json").write_text(
+        json.dumps({"return_code": 0, "files": {"rpt": str(run_dir / "06_runner" / "model.rpt")}}),
+        encoding="utf-8",
+    )
+    record, _ = audit.collect_run(run_dir, repo_root=tmp_path)
+    network_qa = (record.get("artifacts") or {}).get("network_qa")
+    assert network_qa is not None
+    assert network_qa.get("exists") is True
+    assert str(network_qa.get("absolute_path", "")).endswith("05_builder/network_qa.json")
+
+
+def test_collect_run_prefers_the_qa_stage_network_qa_report(tmp_path: Path) -> None:
+    audit = load_audit_module()
+    run_dir = tmp_path / "run"
+    (run_dir / "05_builder").mkdir(parents=True)
+    (run_dir / "05_builder" / "network_qa.json").write_text("{}", encoding="utf-8")
+    (run_dir / "07_qa").mkdir()
+    (run_dir / "07_qa" / "network_qa.json").write_text("{}", encoding="utf-8")
+    record, _ = audit.collect_run(run_dir, repo_root=tmp_path)
+    network_qa = (record.get("artifacts") or {}).get("network_qa")
+    assert str(network_qa.get("absolute_path", "")).endswith("07_qa/network_qa.json")

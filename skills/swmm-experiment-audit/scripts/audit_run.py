@@ -935,7 +935,13 @@ def collect_run(
     acceptance_report_md_path = run_dir / "acceptance_report.md"
     builder_manifest_path = find_stage_manifest(run_dir, BUILDER_STAGE_NAMES)
     runner_manifest_path = find_stage_manifest(run_dir, RUNNER_STAGE_NAMES)
-    network_qa_path = find_qa_file(run_dir, "network_qa.json")
+    # The typed network_qa tool writes its report beside the INP it cites
+    # (05_builder/network_qa.json, #474); the CLI pipeline writes it to the
+    # QA stage. Look in both, QA stage first, or the audit calls a report
+    # that exists "missing evidence" (live test 2026-09-03, S27 re-audit).
+    network_qa_path = find_qa_file(run_dir, "network_qa.json") or first_existing(
+        [run_dir / name / "network_qa.json" for name in BUILDER_STAGE_NAMES]
+    )
     continuity_qa_path = find_qa_file(run_dir, "runner_continuity.json")
     peak_qa_path = find_qa_file(run_dir, "runner_peak.json")
     model_diagnostics_path = run_dir / "model_diagnostics.json"
