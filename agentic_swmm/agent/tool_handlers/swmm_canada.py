@@ -97,8 +97,11 @@ def _stage_hint(stage: str) -> str:
         )
     if stage == "timeout":
         return (
-            "the model did not finish in time; the live pipeline fetches external "
-            "open data and can be slow. Retry, or raise the timeout."
+            "the upstream build is still running after the 10-minute poll budget. "
+            "Do not repeat the same AOI: it times out again and leaves another build "
+            "running on the service (live test 2026-09-03, S40 r3). Pass city only for "
+            "the 1 km default window (about 2 minutes), or a smaller bbox, or tell the "
+            "user the requested area is too large for this budget."
         )
     if stage == "extract":
         return (
@@ -380,7 +383,9 @@ def tool_specs() -> list[ToolSpec]:
                 "reports which mode ran.\n"
                 "A published city name is enough (city=Regina): the AOI becomes a 1 km "
                 "window at the centre of the service's published coverage for that city, "
-                "the result says so, and bbox narrows it. Never guess a boundary yourself.\n"
+                "the result says so. bbox is for coordinates the USER gave; when the user "
+                "names a city without coordinates pass city only, never a bbox of your own. "
+                "Large areas exceed the 10-minute build budget.\n"
                 "USE WHEN: the user wants a model for a Canadian location. Chain it: "
                 "pass the returned run_dir and inp_path straight into run_swmm_inp, "
                 "then audit_run, so the whole flow lands in one run folder.\n"
@@ -409,7 +414,7 @@ def tool_specs() -> list[ToolSpec]:
                         "items": {"type": "number"},
                         "minItems": 4,
                         "maxItems": 4,
-                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat]; converted to a polygon. Provide this or aoi_geojson.",
+                        "description": "WGS84 bounding box [min_lon, min_lat, max_lon, max_lat] the user gave; converted to a polygon. Leave it out when the user only named a city.",
                     },
                     "start_date": {"type": "string", "description": "Rainfall window start, ISO YYYY-MM-DD."},
                     "end_date": {"type": "string", "description": "Rainfall window end, ISO YYYY-MM-DD."},
