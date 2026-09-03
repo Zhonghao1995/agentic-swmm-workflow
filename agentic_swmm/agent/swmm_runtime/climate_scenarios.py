@@ -377,9 +377,19 @@ def _summary_metrics(manifest: dict[str, Any]) -> dict[str, Any]:
         "flooding_loss_volume": _depth(routing, "Flooding Loss"),
         "external_outflow_volume": _depth(routing, "External Outflow"),
         "peak_flow": peak.get("peak"),
+        # Live finding F-62 (2026-09-02): the unit is the report's (F-52);
+        # older manifests carry none and the table says so.
+        "flow_units": peak.get("units") or metrics.get("flow_units"),
         "peak_time": peak.get("time_hhmm"),
         "continuity_error_percent": (continuity.get("continuity_error_percent") or {}),
     }
+
+
+def _peak_units_label(runs: list[ScenarioRun]) -> str:
+    units = {str((run.metrics or {}).get("flow_units")) for run in runs if (run.metrics or {}).get("flow_units")}
+    if len(units) == 1:
+        return units.pop()
+    return "flow units not recorded" if not units else "mixed units: " + ", ".join(sorted(units))
 
 
 def _render_summary_md(node: str, runs: list[ScenarioRun]) -> str:
@@ -389,7 +399,7 @@ def _render_summary_md(node: str, runs: list[ScenarioRun]) -> str:
         f"Report node: `{node}`. Depth/volume columns come straight from each",
         "scenario's SWMM continuity tables; a failed scenario keeps its row.",
         "",
-        "| scenario | precip factor | run ok | total precip | surface runoff | flooding loss | external outflow | peak flow |",
+        f"| scenario | precip factor | run ok | total precip | surface runoff | flooding loss | external outflow | peak flow ({_peak_units_label(runs)}) |",
         "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for run in runs:
