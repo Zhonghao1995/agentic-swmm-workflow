@@ -399,8 +399,16 @@ def turn_was_declined(outcome: Any) -> bool:
 
 
 
+_SWAP_NOTES_SAID: set[tuple[str, str]] = set()
+
+
 def _reconcile_model_with_gateway(provider_name: str, model: str | None) -> str | None:
-    """Swap a pinned model the gateway no longer offers for an offered sibling."""
+    """Swap a pinned model the gateway no longer offers for an offered sibling.
+
+    The note is said once per process: the shell runs this per turn, and
+    the same sentence on every turn of a session was noise (live test
+    2026-09-03, S40).
+    """
     try:
         from agentic_swmm.agent.provider_preflight import provider_key_value
         from agentic_swmm.providers.model_check import offered_models, reconcile_model, route_spec
@@ -413,7 +421,10 @@ def _reconcile_model_with_gateway(provider_name: str, model: str | None) -> str 
     except Exception:  # noqa: BLE001 - a probe must never break a session
         return model
     if note:
-        _agent_say(note)
+        key = (provider_name, str(model))
+        if key not in _SWAP_NOTES_SAID:
+            _SWAP_NOTES_SAID.add(key)
+            _agent_say(note)
     return chosen
 
 def _exit_code_for(outcome: Any) -> int:
