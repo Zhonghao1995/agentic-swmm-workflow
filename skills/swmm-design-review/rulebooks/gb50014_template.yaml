@@ -1,6 +1,6 @@
 rulebook_id: gb50014_template
 version: "0.1"
-standard: "GB 50014 Outdoor Drainage Standard (template — thresholds unverified)"
+standard: "GB 50014 Outdoor Drainage Standard (template, thresholds unverified)"
 disclaimer: |
   THIS RULEBOOK IS A TEMPLATE FOR ILLUSTRATIVE USE ONLY. Numeric thresholds
   are NOT authoritative. All values marked verify:true MUST be confirmed
@@ -11,7 +11,7 @@ disclaimer: |
   This file was generated as a template inspired by GB 50014-class drainage
   checks. The clause numbers cited are indicative; users must verify against
   their locally applicable edition of the standard and applicable local
-  regulations. Every threshold carries verify:true — the tool reports findings
+  regulations. Every threshold carries verify:true, the tool reports findings
   and never certifies compliance.
 created_at: "2026-06-09"
 units: SI
@@ -48,7 +48,7 @@ rules:
     verify: true
     remediation: |
       Increase slope or reduce pipe diameter to raise velocity. Check that the pipe
-      is receiving runoff — zero flow at the design storm may indicate upstream
+      is receiving runoff, zero flow at the design storm may indicate upstream
       drainage area assumptions need review.
 
   # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ rules:
     verify: true
     remediation: |
       Increase pipe diameter or reduce the contributing drainage area. Verify
-      that upstream routing is correct — a Q/Qfull > 1.0 may indicate
+      that upstream routing is correct, a Q/Qfull > 1.0 may indicate
       the pipe is undersized for the design storm.
 
   - id: PIPE_CAPACITY_MARGIN
@@ -87,7 +87,7 @@ rules:
       rainfall intensity variability or future impervious cover increases.
 
   # ---------------------------------------------------------------------------
-  # Slope checks (INP-derived — available in PR1)
+  # Slope checks (INP-derived, available in PR1)
   # ---------------------------------------------------------------------------
   - id: MIN_SLOPE_SMALL
     title: "Small pipes (diameter ≤ 0.5 m) must meet minimum slope for self-cleaning"

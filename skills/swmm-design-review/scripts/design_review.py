@@ -1001,7 +1001,7 @@ def _render_markdown(doc: dict[str, Any]) -> str:
         for r in group:
             rule_id = r["rule_id"]
             title = r["title"]
-            lines.append(f"#### {rule_id} — {title}")
+            lines.append(f"#### {rule_id}: {title}")
             lines.append("")
             if group_status == "needs-data":
                 reason = r.get("needs_data_reason") or "Metric data unavailable."

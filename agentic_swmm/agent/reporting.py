@@ -241,7 +241,7 @@ def _what_i_did(plan: list[Any], results: list[dict[str, Any]]) -> list[str]:
         head = f"- {index}. `{call.name}`"
         if args_text:
             head += f" {args_text}"
-        bullets.append(f"{head} — {status}{suffix}")
+        bullets.append(f"{head}: {status}{suffix}")
     return bullets
 
 

@@ -2,14 +2,14 @@ rulebook_id: synth_plausibility
 version: "0.1"
 standard: "Physical-plausibility heuristics for synthesized (ungauged) SWMM networks"
 disclaimer: |
-  PLAUSIBILITY HEURISTICS — NOT A DESIGN STANDARD. This rulebook screens a
+  PLAUSIBILITY HEURISTICS, NOT A DESIGN STANDARD. This rulebook screens a
   SWMManywhere-style synthesized network (inferred from OSM + DEM, never
   surveyed) for physically implausible hydraulics and geometry. It needs NO
   observed data. Every finding is a WARN: it flags a value for an engineer to
   inspect, it does NOT reject a design and does NOT certify one. A synthesized
   network is an approximate baseline, so out-of-band values usually point at an
   inference artifact (DEM noise, slope/topology error, pipe-sizing defect) to
-  investigate — not at a real infrastructure defect.
+  investigate, not at a real infrastructure defect.
 
   Continuity / mass-balance error is intentionally NOT checked here: that is the
   job of the runtime postflight QA gate
@@ -17,7 +17,7 @@ disclaimer: |
   against reference_benchmarks.yaml. This rulebook only covers the
   structural/hydraulic plausibility that postflight does not.
 
-  All thresholds are engineering rules-of-thumb carrying verify:true — confirm
+  All thresholds are engineering rules-of-thumb carrying verify:true, confirm
   them against your locally applicable design practice before relying on any
   finding. aiswmm makes NO representation of regulatory compliance.
 created_at: "2026-06-18"
@@ -25,7 +25,7 @@ units: SI
 
 rules:
   # ---------------------------------------------------------------------------
-  # Velocity plausibility (rpt Link Flow Summary — always available)
+  # Velocity plausibility (rpt Link Flow Summary, always available)
   # ---------------------------------------------------------------------------
   - id: VELOCITY_MAX_PLAUSIBLE
     title: "Peak conduit velocity is within a physically plausible ceiling"
@@ -39,7 +39,7 @@ rules:
     citation: "Scour/erosion plausibility ceiling for gravity sewers. Design limits are typically 3-4 m/s (concrete); a peak > 5 m/s in a synthesized network usually indicates an over-steep inferred slope (DEM artifact) rather than a real pipe. Confirm against pipe-material limits in local practice."
     verify: true
     remediation: |
-      Inspect the offending conduit's end inverts and length — an implausibly high
+      Inspect the offending conduit's end inverts and length, an implausibly high
       velocity is almost always a slope-inference artifact from DEM noise. Check the
       upstream/downstream node elevations the synthesizer assigned.
 
@@ -58,7 +58,7 @@ rules:
       Low or zero peak velocity is expected on some conduits in a synthesized
       baseline (oversized inferred pipe or small storm). Persistent zero velocity
       across many conduits can instead indicate that subcatchment runoff is not
-      reaching the network — check the synthesized subcatchment-to-node routing.
+      reaching the network, check the synthesized subcatchment-to-node routing.
 
   # ---------------------------------------------------------------------------
   # Capacity plausibility (rpt Link Flow Summary)
@@ -80,7 +80,7 @@ rules:
       overrides, or treat the conduit as a candidate for manual sizing review.
 
   # ---------------------------------------------------------------------------
-  # Slope plausibility (INP-derived — SI models only)
+  # Slope plausibility (INP-derived, SI models only)
   # ---------------------------------------------------------------------------
   - id: SLOPE_MIN_SELFCLEAN
     title: "Conduit gradient meets a minimum self-cleansing slope"
@@ -114,7 +114,7 @@ rules:
       re-synthesize with corrected starting elevations.
 
   # ---------------------------------------------------------------------------
-  # Geometry plausibility (INP-derived — SI models only)
+  # Geometry plausibility (INP-derived, SI models only)
   # ---------------------------------------------------------------------------
   - id: ROUGHNESS_PLAUSIBLE
     title: "Conduit Manning's n is within a plausible pipe-material band"

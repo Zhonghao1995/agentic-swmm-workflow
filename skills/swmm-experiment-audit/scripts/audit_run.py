@@ -725,7 +725,7 @@ def parse_rpt_warnings(rpt_path: Path | None) -> list[dict[str, Any]]:
             evidence={"warnings": warnings[:50], "count": len(warnings)},
             recommendation=(
                 "Review SWMM's own warnings (e.g. routing time-step reductions, "
-                "minimum slope/elevation enforced) — they often explain "
+                "minimum slope/elevation enforced), they often explain "
                 "continuity error or unexpected hydraulics."
             ),
         )
@@ -1482,8 +1482,8 @@ def render_run_results_section(runner_manifest: dict[str, Any] | None) -> str:
     rows: list[list[str]] = [
         ["Status", status_cell],
         ["Peak flow at outfall", _peak_cell(peak)],
-        ["Continuity error — runoff quantity", _continuity_cell(runoff)],
-        ["Continuity error — flow routing", _continuity_cell(flow_routing)],
+        ["Continuity error, runoff quantity", _continuity_cell(runoff)],
+        ["Continuity error, flow routing", _continuity_cell(flow_routing)],
         ["Total surface runoff", _surface_runoff_cell(runoff)],
     ]
     if isinstance(internal, dict) and internal:
@@ -1535,9 +1535,9 @@ def render_pollutant_loads_section(wq_loads: dict[str, Any] | None) -> str:
         headers = ["Section"] + list(pollutants)
         rows_cont: list[list[Any]] = []
         if runoff_errors:
-            rows_cont.append(["Runoff Quality"] + [runoff_errors.get(p, "—") for p in pollutants])
+            rows_cont.append(["Runoff Quality"] + [runoff_errors.get(p, "n/a") for p in pollutants])
         if routing_errors:
-            rows_cont.append(["Quality Routing"] + [routing_errors.get(p, "—") for p in pollutants])
+            rows_cont.append(["Quality Routing"] + [routing_errors.get(p, "n/a") for p in pollutants])
         lines.append(md_table(headers, rows_cont))
         lines.append("")
 
@@ -2113,7 +2113,7 @@ def render_human_decisions_section(decisions: list[Any]) -> str:
             continue
         def _cell(value: Any) -> str:
             if value in (None, ""):
-                return "—"
+                return "n/a"
             text = str(value).replace("|", "\\|").replace("\n", " ")
             if len(text) > 140:
                 text = text[:137] + "..."
