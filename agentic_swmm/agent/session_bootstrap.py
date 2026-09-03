@@ -140,7 +140,11 @@ def infer_case_slug(prompt: str) -> str:
 _SLUG_STOPWORDS = frozenset(
     "the a an and or of for to in on at by with from that this those these is are was were be do does did "
     "can could would should will me my our your it its as into about which what how why when where who whom "
-    "please run show tell give make".split()
+    "please run show tell give make "
+    # Words every modelling request carries; without them in the list the
+    # run was named after the verb and the product instead of the place
+    # (150906_fetch-swmm-model_run for Vancouver, live test 2026-09-03, S43).
+    "fetch swmm model models canada service rainfall period build create generate".split()
 )
 
 

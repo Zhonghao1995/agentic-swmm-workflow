@@ -30,3 +30,17 @@ def test_a_chinese_only_prompt_keeps_a_short_safe_name():
 def test_a_contraction_leaves_no_one_letter_token():
     # Live finding F-76 (2026-09-03): "It's the downtown core" -> s-downtown-core.
     assert infer_case_slug("It's the downtown core, a few blocks around Douglas Street.") == "downtown-core-few"
+
+
+def test_a_fetch_request_is_named_after_the_place_not_the_verb() -> None:
+    """S43 (2026-09-03): the Vancouver session was 150906_fetch-swmm-model_run."""
+    from agentic_swmm.agent.session_bootstrap import infer_case_slug
+
+    assert infer_case_slug(
+        "Fetch a SWMM model from the Canada service for Vancouver, British Columbia, "
+        "rainfall period November 1 to November 4 2023, then run it and audit it."
+    ) == "vancouver-british-columbia"
+    assert infer_case_slug(
+        "Fetch a SWMM model from the Canada service for downtown Regina, Saskatchewan, "
+        "rainfall period June 10 to June 13 2023, then run it and audit it."
+    ).startswith("downtown-regina")
