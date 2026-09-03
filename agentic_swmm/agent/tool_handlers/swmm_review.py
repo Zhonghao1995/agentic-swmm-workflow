@@ -26,6 +26,32 @@ from agentic_swmm.utils.paths import repo_root, resource_path
 _REVIEW_SCRIPT = ("skills", "swmm-design-review", "scripts", "design_review.py")
 
 
+BUNDLED_RULEBOOKS = {
+    "gb50014_template": "gb50014_template.yaml",
+    "gb50014": "gb50014_template.yaml",
+    "synth_plausibility": "synth_plausibility.yaml",
+    "plausibility": "synth_plausibility.yaml",
+}
+
+
+def resolve_rulebook(value: str) -> Path:
+    """A bundled rulebook name or a YAML path.
+
+    Live finding F-106 (2026-09-03, S47): asked for "the plausibility
+    rulebook", the planner had no way to name it and the review ran the
+    default GB 50014 template on a Canadian municipal network.
+    """
+    key = value.strip().lower()
+    if key in BUNDLED_RULEBOOKS:
+        # resource_path resolves the packaged data dir under a pip install
+        # too (the skills-resolution guard forbids repo_root()/skills).
+        return Path(resource_path("skills", "swmm-design-review", "rulebooks", BUNDLED_RULEBOOKS[key])).resolve()
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = (repo_root() / path).resolve()
+    return path
+
+
 def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Run the deterministic design-review rule checklist against a completed run.
 
@@ -47,10 +73,10 @@ def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     cli_args: list[str] = [str(script_path), "--run-dir", str(run_dir)]
 
     rules_raw = call.args.get("rules")
+    rulebook_label = "gb50014_template"
     if isinstance(rules_raw, str) and rules_raw.strip():
-        rules_path = Path(rules_raw).expanduser()
-        if not rules_path.is_absolute():
-            rules_path = (repo_root() / rules_path).resolve()
+        rules_path = resolve_rulebook(rules_raw.strip())
+        rulebook_label = rules_path.stem
         cli_args.extend(["--rules", str(rules_path)])
 
     out_dir_raw = call.args.get("out_dir")
@@ -89,6 +115,10 @@ def _review_run_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             result["ok"] = True
             result["verdict"] = "fail"
             result["summary"] = verdict_line
+    if result.get("ok"):
+        # The summary names the rulebook applied (F-106).
+        result = dict(result)
+        result["summary"] = f"{str(result.get('summary') or '').rstrip()} (rulebook={rulebook_label})".strip()
     return result
 
 
@@ -106,7 +136,15 @@ def tool_specs() -> list[ToolSpec]:
             _object(
                 {
                     "run_dir": {"type": "string", "description": "Absolute path to the run directory."},
-                    "rules": {"type": "string", "description": "Path to a custom YAML rulebook. Omit to use the bundled GB 50014 template."},
+                    "rules": {
+                        "type": "string",
+                        "description": (
+                            "A bundled rulebook name or a YAML path. Bundled: gb50014_template (the default, a "
+                            "standard template whose thresholds must be verified) and synth_plausibility "
+                            "(reference-free plausibility screening for synthesized or first-pass networks). "
+                            "Use the one the user names."
+                        ),
+                    },
                     "out_dir": {"type": "string", "description": "Output directory for review artifacts (default: <run_dir>/11_review/)."},
                 },
                 ["run_dir"],
