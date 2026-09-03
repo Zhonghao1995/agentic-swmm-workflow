@@ -208,6 +208,36 @@ def _resolve_run_dir(call: ToolCall) -> Path:
 def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Fetch a real-pipe SWMM model from SWMMCanada for an AOI + date range."""
     aoi, error = _resolve_aoi(call)
+    aoi_note: str | None = None
+    city_raw = call.args.get("city")
+    if error is not None and isinstance(city_raw, str) and city_raw.strip():
+        # A published city named without a boundary (live test 2026-09-03,
+        # S40: "downtown Regina" was a dead end). The service publishes each
+        # city's coverage extent; the AOI becomes a ~1 km window at its
+        # centre, said so in the result, and bbox narrows it.
+        from agentic_swmm.integrations.swmmcanada_runner import (
+            CanadaFetchError as _CoverageError,
+            city_window,
+            fetch_coverage,
+            resolve_base_url,
+        )
+
+        base_raw = call.args.get("base_url")
+        try:
+            service_url = resolve_base_url(base_raw if isinstance(base_raw, str) and base_raw.strip() else None)
+            coverage = fetch_coverage(service_url)
+        except _CoverageError as exc:
+            return _failure(call, str(exc), hint=_stage_hint(exc.stage))
+        bbox, label, city_error = city_window(city_raw, coverage)
+        if city_error is not None:
+            return _failure(call, city_error)
+        assert bbox is not None
+        aoi = _bbox_to_polygon(bbox)
+        aoi_note = (
+            f"AOI = a 1 km window at the centre of the service's published coverage for {label} "
+            f"(bbox {bbox}); pass bbox to choose the area."
+        )
+        error = None
     if error is not None:
         return _failure(call, error)
     assert aoi is not None
@@ -252,8 +282,10 @@ def fetch_swmm_from_canada_tool(call: ToolCall, session_dir: Path) -> dict[str, 
                 "mode": result.mode,
                 "validation": result.validation,
                 "warnings": list(result.warnings),
+                "aoi_note": aoi_note,
             },
-            f"canada_inp={result.inp_path} (task={result.task_id}, mode={result.mode})",
+            f"canada_inp={result.inp_path} (task={result.task_id}, mode={result.mode})"
+            + (f"; {aoi_note}" if aoi_note else ""),
         )
 
     def _progress(stage: str, pct: Any) -> None:
@@ -325,6 +357,9 @@ def tool_specs() -> list[ToolSpec]:
                 "(35 cities at last sync, e.g. Victoria, Ottawa, Toronto, Calgary, "
                 "Vancouver, Regina) and synthesizes elsewhere in Canada; the result "
                 "reports which mode ran.\n"
+                "A published city name is enough (city=Regina): the AOI becomes a 1 km "
+                "window at the centre of the service's published coverage for that city, "
+                "the result says so, and bbox narrows it. Never guess a boundary yourself.\n"
                 "USE WHEN: the user wants a model for a Canadian location. Chain it: "
                 "pass the returned run_dir and inp_path straight into run_swmm_inp, "
                 "then audit_run, so the whole flow lands in one run folder.\n"
@@ -338,7 +373,15 @@ def tool_specs() -> list[ToolSpec]:
                 {
                     "aoi_geojson": {
                         "type": "string",
-                        "description": "GeoJSON Polygon string for the area of interest. Provide this or bbox.",
+                        "description": "GeoJSON Polygon string for the area of interest. Provide this, bbox, or city.",
+                    },
+                    "city": {
+                        "type": "string",
+                        "description": (
+                            "A published real-network city (e.g. Regina, Victoria, Toronto) when the user "
+                            "names a city without a boundary; resolved via the service's coverage listing "
+                            "to a 1 km window at the centre of its extent."
+                        ),
                     },
                     "bbox": {
                         "type": "array",
