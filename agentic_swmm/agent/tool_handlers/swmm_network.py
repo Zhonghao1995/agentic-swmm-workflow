@@ -154,6 +154,12 @@ def _persist_qa_report(routed: Any) -> Any:
         result["summary"] = f"{result.get('summary') or 'network QA'}; report written to {target}"
         return result
 
+    # The routing contract (ADR-0006 ratchets) reads the handler's
+    # ``_mcp_routing``; the wrapper keeps the routed handler's.
+    for attr in ("_mcp_routing", "__name__", "__doc__"):
+        if hasattr(routed, attr):
+            setattr(handler, attr, getattr(routed, attr))
+    handler.__wrapped__ = routed
     return handler
 
 
