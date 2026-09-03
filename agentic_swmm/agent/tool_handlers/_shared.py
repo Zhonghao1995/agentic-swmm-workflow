@@ -658,8 +658,51 @@ def _required_repo_file(call: ToolCall, key: str, *, suffix: str | None = None) 
     if suffix and path.suffix.lower() != suffix:
         return _failure(call, f"{key} must end with {suffix}")
     if not path.exists() or not path.is_file():
-        return _failure(call, f"file not found: {path}")
+        return _missing_file_failure(call, path, suffix)
     return path
+
+
+def _missing_file_failure(call: ToolCall, path: Path, suffix: str | None) -> dict[str, Any]:
+    """A "file not found" that names the files that do exist.
+
+    The planner guessed a stage name (``06_run/model.rpt`` for
+    ``06_runner/model.rpt``, live test 2026-09-03, S40 r4) and lost a call
+    to a bare "file not found". When the requested directory does not
+    exist, the nearest existing ancestor is searched two levels deep for
+    files with the same suffix and they are listed in the hint.
+    """
+    from agentic_swmm.agent.error_remediation import file_resolution_error
+
+    summary = f"file not found: {path}"
+    if path.parent.is_dir():
+        err = file_resolution_error(
+            summary, requested=path, search_dir=path.parent, suffixes=(suffix,) if suffix else ()
+        )
+        return _failure(call, err.summary, hint=err.hint, cause=err.cause)
+    ancestor = path.parent
+    for _ in range(3):
+        ancestor = ancestor.parent
+        if ancestor.is_dir():
+            break
+    else:
+        return _failure(call, summary, cause=f"directory does not exist: {path.parent}")
+    pattern = f"*{suffix}" if suffix else "*"
+    found: list[str] = []
+    try:
+        for candidate in sorted(list(ancestor.glob(pattern)) + list(ancestor.glob(f"*/{pattern}")) + list(ancestor.glob(f"*/*/{pattern}"))):
+            if candidate.is_file():
+                found.append(str(candidate.relative_to(ancestor)))
+            if len(found) >= 8:
+                break
+    except OSError:
+        found = []
+    cause = f"directory does not exist: {path.parent}"
+    hint = (
+        f"under {ancestor} the {suffix or ''} files that exist are: {', '.join(found)}"
+        if found
+        else f"no {suffix or 'matching'} file under {ancestor}"
+    )
+    return _failure(call, summary, hint=hint, cause=cause)
 
 
 def _resolve_inp_for_run(call: ToolCall) -> Path | dict[str, Any]:
