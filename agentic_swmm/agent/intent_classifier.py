@@ -596,3 +596,54 @@ __all__ = [
     "intent_contracts",
     "select_relevant_mcp_servers",
 ]
+
+
+# Live finding F-71 (2026-09-02, scenario S21): "go back to the downtown run
+# and export a Word report" wrote the report into the right run but left the
+# session anchored on the later James Bay run. A follow-up that names
+# exactly one EARLIER run of this session, and not the current one, moves
+# the anchor there; an ambiguous mention keeps the current anchor.
+_RUN_SLUG_STOP = frozenset({"run", "chat", "area", "of", "the", "bc", "on", "ab", "qc", "sk", "mb", "ns", "nb", "nl", "pe", "yt", "nt", "nu"})
+
+
+def _run_slug_tokens(run_dir: "Path | str") -> set[str]:
+    from pathlib import Path as _Path
+
+    name = _Path(str(run_dir)).name.lower()
+    parts = name.split("_", 1)
+    body = parts[1] if len(parts) == 2 and parts[0].isdigit() else name
+    body = body.rsplit("_", 1)[0] if body.endswith(("_run", "_chat")) else body
+    return {tok for tok in body.replace("_", "-").split("-") if len(tok) >= 4 and tok not in _RUN_SLUG_STOP}
+
+
+def referenced_run_dir(prompt: str, run_dirs: "list[Path]", current: "Path | None") -> "Path | None":
+    """The one earlier run of this session the prompt refers to, or None.
+
+    Each run is known by the tokens of its slug that no other run of the
+    session shares (so "victoria" does not count when both the downtown and
+    the James Bay runs carry it). A prompt that names exactly one run other
+    than the current one returns it; naming two, none, or only the current
+    one returns None.
+    """
+    import re as _re
+
+    if not run_dirs:
+        return None
+    lowered = str(prompt or "").lower()
+    tokens_by_dir = {str(d): _run_slug_tokens(d) for d in run_dirs}
+    mentioned: list = []
+    for run_dir in run_dirs:
+        own = tokens_by_dir[str(run_dir)]
+        shared = set()
+        for other, toks in tokens_by_dir.items():
+            if other != str(run_dir):
+                shared |= toks
+        distinctive = own - shared
+        if any(_re.search(r"\b" + _re.escape(tok) + r"\b", lowered) for tok in distinctive):
+            mentioned.append(run_dir)
+    if len(mentioned) != 1:
+        return None
+    target = mentioned[0]
+    if current is not None and str(target) == str(current):
+        return None
+    return target

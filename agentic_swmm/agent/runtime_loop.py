@@ -58,6 +58,7 @@ from agentic_swmm.agent.mcp_pool import ensure_session_pool
 from agentic_swmm.agent.intent_classifier import (
     looks_like_new_modeling_request,
     message_asks_for_input,
+    referenced_run_dir,
 )
 from agentic_swmm.agent.planner import _looks_like_swmm_request
 from agentic_swmm.agent.prompts import WARM_INTRO_TEMPLATE
@@ -164,6 +165,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     # The closure captures ``date_dir`` (and the mutable ``active_run_dir``
     # box) so the REPL stays agnostic of these concerns.
     active_run_dir: list[Path | None] = [None]
+    session_run_dirs: list[Path] = []
     # Pending-turn state (BUG-1): after every successful turn we record
     # which session dir it used and how its final message ended, so the
     # NEXT input can be routed as the answer to that message instead of
@@ -180,6 +182,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         date_dir_box[0] = new_date_dir
         session_label_box[0] = new_label
         active_run_dir[0] = None
+        session_run_dirs.clear()
         pending_box[0] = None
         _agent_say(f"New session: {new_label}")
         _agent_say(f"Date folder: {_display_path(new_date_dir)}\n")
@@ -228,7 +231,16 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             )
         else:
             new_request = _looks_like_swmm_request(prompt)
-        if pending is not None and not new_request:
+        earlier = None
+        if not new_request:
+            earlier = referenced_run_dir(prompt, session_run_dirs, active_run_dir[0])
+        if earlier is not None:
+            # Live finding F-71 (2026-09-02): the follow-up names one earlier
+            # run of this session; re-anchor the turn there.
+            session_dir = earlier
+            active_run_dir[0] = earlier
+            goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
+        elif pending is not None and not new_request:
             session_dir = pending["session_dir"]
             is_chat_turn = bool(pending.get("is_chat", False))
             goal = (
@@ -282,6 +294,8 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
         finalize_session_header(session_dir, "completed" if rc == 0 else "failed")
         if rc == 0 and _is_swmm_run_dir(session_dir):
             active_run_dir[0] = session_dir
+            if session_dir not in session_run_dirs:
+                session_run_dirs.append(session_dir)
         if rc == 0:
             final_text = outcome_box[0] if outcome_box else ""
             pending_box[0] = {
