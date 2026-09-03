@@ -252,6 +252,8 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             )
             if pending.get("run_dir"):
                 goal += f"\nPrevious run directory: {pending['run_dir']}"
+            if pending.get("failed"):
+                goal += FAILED_RUN_NOTE
         elif active_run_dir[0] is not None and not new_request:
             session_dir = active_run_dir[0]
             goal = f"{prompt}\n\nPrevious run directory: {session_dir}"
@@ -314,8 +316,22 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
                 "tail": (final_text or "")[-400:],
                 "run_dir": str(active_run_dir[0]) if active_run_dir[0] else None,
             }
-        # On failure the previous pending state stays: the user can
-        # still answer the last question after a crashed turn.
+        elif not is_chat_turn and _is_swmm_run_dir(session_dir):
+            # Live finding F-97 (2026-09-03, S40 r3): a failed run turn left
+            # no anchor, the next question about "that run" opened a fresh
+            # chat and the model served another run's results as this one.
+            # The failed run stays the anchor and the continuation says it
+            # produced nothing.
+            final_text = outcome_box[0] if outcome_box else ""
+            pending_box[0] = {
+                "session_dir": session_dir,
+                "is_chat": False,
+                "tail": (final_text or "")[-400:],
+                "run_dir": str(session_dir),
+                "failed": True,
+            }
+        # On a failed chat turn the previous pending state stays: the user
+        # can still answer the last question after a crashed turn.
         print()
         return rc
 
@@ -426,6 +442,13 @@ def _reconcile_model_with_gateway(provider_name: str, model: str | None) -> str 
             _SWAP_NOTES_SAID.add(key)
             _agent_say(note)
     return chosen
+
+FAILED_RUN_NOTE = (
+    "\n[The previous turn's run in this directory FAILED and produced no results "
+    "(no model, no .rpt). If the user asks about that run, say so plainly. Never "
+    "present another run's results as this one.]"
+)
+
 
 def _exit_code_for(outcome: Any) -> int:
     if getattr(outcome, "ok", False):
