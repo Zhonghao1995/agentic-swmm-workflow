@@ -537,6 +537,13 @@ def run_openai_planner(
             _agent_say(f"Chat note: {_display_path(chat_note)}")
         if outcome.final_text:
             _agent_say(outcome.final_text)
+        # Live finding F-73 (2026-09-02): a chat turn printed no "LLM usage"
+        # line, so the cost of a question was invisible while a failed run
+        # turn showed it. The summary renders the usage line alone when the
+        # session produced no manifest.
+        summary_block = render_final_summary([session_dir])
+        if summary_block:
+            print(summary_block)
         return _exit_code_for(outcome)
 
     report = _write_report(
