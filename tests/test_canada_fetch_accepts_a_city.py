@@ -129,3 +129,19 @@ def test_a_zero_area_bbox_without_a_city_is_refused_clearly() -> None:
         result = fetch_swmm_from_canada_tool(call, Path(tmp))
     assert result["ok"] is False
     assert "zero area" in json.dumps(result)
+
+
+def test_timeout_hint_says_not_to_repeat_the_aoi_and_how_to_shrink_it() -> None:
+    from agentic_swmm.agent.tool_handlers.swmm_canada import _stage_hint
+
+    hint = _stage_hint("timeout")
+    assert "Do not repeat the same AOI" in hint
+    assert "city only" in hint
+
+
+def test_spec_reserves_bbox_for_user_coordinates() -> None:
+    from agentic_swmm.agent.tool_handlers.swmm_canada import tool_specs
+
+    spec = next(s for s in tool_specs() if s.name == "fetch_swmm_from_canada")
+    assert "pass city only" in spec.description
+    assert "the user gave" in spec.parameters["properties"]["bbox"]["description"]
