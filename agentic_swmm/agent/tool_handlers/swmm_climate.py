@@ -231,7 +231,16 @@ def run_climate_scenarios_tool(call: ToolCall, session_dir: Path) -> dict[str, A
         return _failure(call, "run_climate_scenarios requires inp_path")
     inp = _resolve_existing_inp(inp_raw)
     if inp is None:
-        return _failure(call, f"INP not found (in-repo paths only): {inp_raw}")
+        # Live finding F-105 (2026-09-03, S46): a guessed 06_runner/model.inp
+        # got a bare "not found"; name the INP files that do exist instead.
+        from agentic_swmm.agent.tool_handlers._shared import _missing_file_failure, _repo_path
+
+        candidate = _repo_path(inp_raw)
+        if candidate is None:
+            return _failure(call, f"INP not found (in-repo paths only): {inp_raw}")
+        failure = _missing_file_failure(call, candidate, ".inp")
+        failure["summary"] = f"INP not found (in-repo paths only): {inp_raw}"
+        return failure
 
     from agentic_swmm.agent.swmm_runtime.climate_scenarios import (
         DEFAULT_SCENARIOS,
