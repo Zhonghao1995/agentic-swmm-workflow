@@ -75,7 +75,10 @@ def test_the_sweep_writes_the_audit_artifacts_and_finds_the_dominant_parameter(t
     payload = json.loads(Path(result.summary_json).read_text())
     assert payload["node"] == "O1" and len(payload["samples"]) == 25 and "evidence_boundary" in payload
     assert Path(result.summary_md).read_text().startswith("# Parameter range propagation")
-    assert (tmp_path / "run" / "09_audit" / "parameter_sweep" / "s01" / "model.inp").exists()
+    sweep_dirs = [d for d in (tmp_path / "run" / "09_audit").glob("parameter_sweep_*") if d.is_dir()]
+    assert any((d / "s01" / "model.inp").exists() for d in sweep_dirs)
+    # F-108: the files are named after the swept parameters.
+    assert Path(result.summary_md).name == "parameter_sweep_n_imperv+pct_imperv.md"
 
 
 def test_a_failed_sample_is_carried_not_dropped(tmp_path):
@@ -134,3 +137,12 @@ def test_the_climate_batch_locks_the_dominant_outfall_too(tmp_path):
     result = cs.run_climate_batch(base_inp=base, run_dir=tmp_path / "run", scenarios=(cs.ScenarioSpec("baseline", 1.0), cs.ScenarioSpec("plus20", 1.2)), runner=_auto_runner_factory(seen))
     assert result.node == "OUT_BIG"
     assert seen == ["auto", "OUT_BIG"]
+
+
+def test_two_sweeps_in_one_run_keep_their_own_files() -> None:
+    """Live finding F-108 (2026-09-03, S48): five sweeps overwrote one summary."""
+    from agentic_swmm.agent.swmm_runtime.parameter_sweep import sweep_tag
+
+    assert sweep_tag({"pct_imperv": (50, 90)}) == "pct_imperv"
+    assert sweep_tag({"n_imperv": (0.01, 0.02), "pct_imperv": (60, 80)}) == "n_imperv+pct_imperv"
+    assert sweep_tag({}) == "all"
