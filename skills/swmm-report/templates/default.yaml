@@ -5,7 +5,7 @@
 # `title` overrides the heading text; other keys are section-specific config.
 #
 # Engineering-report fields (added in feat/report-engineering-format):
-#   caption   — table caption text rendered ABOVE each table as "Table N — <caption>".
+#   caption   — table caption text rendered ABOVE each table as "Table N: <caption>".
 #               The "Table N" prefix is bold; the rest is regular weight.
 #   narrative — explanatory paragraph rendered IMMEDIATELY BELOW each table.
 #               All prose must live in the template (i18n rule); never hardcode in Python.
@@ -139,7 +139,7 @@ sections:
       - "07_plot"
     include_root_png: "network_layout.png"
     no_figures_note: "No figures available for this run."
-    # Figure captions are placed BELOW each figure (engineering convention) as "Figure N — <stem>".
+    # Figure captions are placed BELOW each figure (engineering convention) as "Figure N: <stem>".
     # No `caption` / `narrative` fields for the figures section — captions attach per-figure.
 
   - id: diagnostics
@@ -179,7 +179,7 @@ sections:
     narrative: >
       SHA-256 digests are computed by swmm-experiment-audit at audit time and stored in
       experiment_provenance.json; only the first 16 hex characters are shown here for
-      readability — the full digest is available in the provenance JSON.
+      readability. The full digest is available in the provenance JSON.
 
   - id: appendix
     title: "Appendix: Generation Environment"
