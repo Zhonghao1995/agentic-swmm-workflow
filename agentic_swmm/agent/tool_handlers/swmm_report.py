@@ -45,6 +45,9 @@ def house_style_title(text: str) -> str:
     return out.replace(" :", ":").strip()
 
 
+BODY_LANGUAGE_NOTE = "body: English report template (only the cover title is free text)"
+
+
 def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     """Assemble a client-deliverable Word report (.docx) from an audited run directory.
 
@@ -101,6 +104,12 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     # contains the hint text already written by generate_report.py).
     if not result.get("ok") and "python-docx" in (result.get("stderr_tail") or ""):
         result["summary"] = "python-docx not installed; run: pip install 'aiswmm[report]'"
+    elif result.get("ok"):
+        # Asked for a Chinese Word report, the planner announced one while
+        # the body was the English template (live test 2026-09-03, S38).
+        # The result says what the body is so the final answer can too.
+        summary = str(result.get("summary") or "").rstrip()
+        result["summary"] = f"{summary} ({BODY_LANGUAGE_NOTE})" if summary else BODY_LANGUAGE_NOTE
 
     return result
 
@@ -117,7 +126,9 @@ def tool_specs() -> list[ToolSpec]:
             "generate_report",
             "Assemble a client-deliverable Word report (.docx) from an audited run directory. "
             "Reads manifest.json, experiment_provenance.json, model_diagnostics.json, comparison.json, "
-            "and any PNG figures — never re-runs SWMM. Output path defaults to <run_dir>/report.docx.",
+            "and any PNG figures — never re-runs SWMM. Output path defaults to <run_dir>/report.docx. "
+            "The body follows the English report template whatever language the request is in; "
+            "only the cover title is free text, so say so when a report in another language was asked for.",
             _object(
                 {
                     "run_dir": {"type": "string", "description": "Absolute path to the audited run directory."},
