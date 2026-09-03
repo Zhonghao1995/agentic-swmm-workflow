@@ -201,6 +201,20 @@ def _benchmarks_partial(data: dict) -> bool:
     )
 
 
+# Which failures feed which store (live test 2026-09-03, S32): the
+# negative-lessons store records MODELING failures (continuity or
+# threshold FAILs written by the audit hook); tool failures such as a
+# missing INP go to run_failures.jsonl. The old hint "lessons accumulate
+# as runs fail" read as a promise the failing runs of a whole test
+# campaign never kept.
+_NEGATIVE_LESSONS_HINT = (
+    "accumulates when a run's modeling QA fails (continuity or threshold); "
+    "tool failures go to run_failures.jsonl"
+)
+_RUN_FAILURES_ABSENT_HINT = "absent until the first failed tool call; no manual action"
+_RUN_FAILURES_EMPTY_HINT = "no failed tool call recorded yet; no manual action"
+
+
 def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
     """Return one :class:`MemoryStoreStatus` per known memory store.
 
@@ -213,6 +227,8 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
     * ``parametric_memory.jsonl``  — calibration provenance rows
     * ``calibration_memory.jsonl`` — accepted calibration rows
     * ``negative_lessons``         — md preferred, jsonl fallback
+    * ``run_failures.jsonl``       — tool failures (missing files, bad
+      arguments) as they happen; absent until the first one
     * ``reference_benchmarks.yaml`` — partial when any leaf null
     * ``citations.yaml``           — partial when any entry pending
     * ``storm_library.yaml``       — partial when chicago entries null
@@ -306,7 +322,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 severity="OK" if rc > 0 else "EMPTY",
                 remediation=None
                 if rc > 0
-                else "lessons accumulate as runs fail; no manual action",
+                else _NEGATIVE_LESSONS_HINT,
             )
         )
     elif jsonl_path.exists():
@@ -322,7 +338,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 severity="OK" if rc > 0 else "EMPTY",
                 remediation=None
                 if rc > 0
-                else "lessons accumulate as runs fail; no manual action",
+                else _NEGATIVE_LESSONS_HINT,
             )
         )
     else:
@@ -336,6 +352,38 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 last_modified_utc=None,
                 severity="MISSING",
                 remediation="run `aiswmm bootstrap memory`",
+            )
+        )
+
+    # ---- 3b. run_failures.jsonl: tool failures, the store the planner's
+    # <recent-failures> block reads. Absent on a fresh install until the
+    # first failed tool call, which is healthy, not MISSING.
+    rf_path = memory_dir / "run_failures.jsonl"
+    if rf_path.exists():
+        rc = _count_jsonl(rf_path)
+        statuses.append(
+            MemoryStoreStatus(
+                name="run_failures.jsonl",
+                path=rf_path,
+                exists=True,
+                row_count=rc,
+                verified_count=None,
+                last_modified_utc=_last_modified_utc(rf_path),
+                severity="OK" if rc > 0 else "EMPTY",
+                remediation=None if rc > 0 else _RUN_FAILURES_EMPTY_HINT,
+            )
+        )
+    else:
+        statuses.append(
+            MemoryStoreStatus(
+                name="run_failures.jsonl",
+                path=rf_path,
+                exists=False,
+                row_count=None,
+                verified_count=None,
+                last_modified_utc=None,
+                severity="OK",
+                remediation=_RUN_FAILURES_ABSENT_HINT,
             )
         )
 
@@ -808,6 +856,24 @@ _OPTOUT_FLAGS: tuple[tuple[str, str], ...] = (
     (
         "AISWMM_MEMORY_DIR",
         "redirect memory stores to a different directory (path override)",
+    ),
+    # Knobs added by the live test campaign 2026-09 (F-86: doctor is where
+    # a user discovers them).
+    (
+        "AISWMM_TOOL_SUBSET",
+        "goal-scoped tool schemas per turn (default on); 0 sends every tool schema",
+    ),
+    (
+        "AISWMM_ALWAYS_INTROSPECT",
+        "re-list skills and MCP tools every turn instead of once per process",
+    ),
+    (
+        "AISWMM_ALLOW_REPO_WRITES",
+        "let the agent write files outside the run directory (default: refused)",
+    ),
+    (
+        "AISWMM_ALLOW_SOURCE_READS",
+        "let the agent read the product's own source files (default: refused)",
     ),
 )
 

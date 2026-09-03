@@ -45,6 +45,10 @@ _OPTOUT_ENV_NAMES = (
     "AISWMM_DISABLE_HONESTY_LAYER",
     "AISWMM_DISABLE_WELCOME",
     "AISWMM_MEMORY_DIR",
+    "AISWMM_TOOL_SUBSET",
+    "AISWMM_ALWAYS_INTROSPECT",
+    "AISWMM_ALLOW_REPO_WRITES",
+    "AISWMM_ALLOW_SOURCE_READS",
 )
 
 
@@ -73,7 +77,7 @@ class CollectMemoryStoreStatusEmptyDirTests(unittest.TestCase):
         names = [s.name for s in statuses]
         # 7 known stores reported; the order is stable so callers can
         # rely on it for rendering.
-        self.assertEqual(len(statuses), 7)
+        self.assertEqual(len(statuses), 8)  # 7 stores + run_failures.jsonl (2026-09-03)
         # parametric_memory.jsonl, calibration_memory.jsonl,
         # negative_lessons.md (preferred), reference_benchmarks.yaml,
         # citations.yaml, storm_library.yaml, project_overrides.yaml
@@ -83,6 +87,7 @@ class CollectMemoryStoreStatusEmptyDirTests(unittest.TestCase):
                 "parametric_memory.jsonl",
                 "calibration_memory.jsonl",
                 "negative_lessons.md",
+                "run_failures.jsonl",
                 "reference_benchmarks.yaml",
                 "citations.yaml",
                 "storm_library.yaml",
@@ -92,7 +97,7 @@ class CollectMemoryStoreStatusEmptyDirTests(unittest.TestCase):
         # 6 are MISSING; project_overrides.yaml is OK when absent.
         severities = [s.severity for s in statuses]
         self.assertEqual(severities.count("MISSING"), 6)
-        self.assertEqual(severities.count("OK"), 1)
+        self.assertEqual(severities.count("OK"), 2)  # project_overrides + absent run_failures (healthy)
         # Every MISSING store has an actionable remediation.
         for s in statuses[:-1]:
             self.assertIsNotNone(s.remediation)
@@ -236,7 +241,7 @@ class CollectMemoryStoreStatusPopulatedTests(unittest.TestCase):
 class CollectOptOutStatusTests(_OptOutEnvCleaner):
     def test_unset_flags_report_none(self) -> None:
         statuses = collect_optout_status()
-        self.assertEqual(len(statuses), 6)
+        self.assertEqual(len(statuses), 10)  # 6 flags + 4 campaign knobs (2026-09-03)
         self.assertEqual(
             [s.env_name for s in statuses],
             [
@@ -246,6 +251,10 @@ class CollectOptOutStatusTests(_OptOutEnvCleaner):
                 "AISWMM_DISABLE_HONESTY_LAYER",
                 "AISWMM_DISABLE_WELCOME",
                 "AISWMM_MEMORY_DIR",
+                "AISWMM_TOOL_SUBSET",
+                "AISWMM_ALWAYS_INTROSPECT",
+                "AISWMM_ALLOW_REPO_WRITES",
+                "AISWMM_ALLOW_SOURCE_READS",
             ],
         )
         for s in statuses:
@@ -346,7 +355,7 @@ class RenderTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             statuses = collect_memory_store_status(Path(tmp))
         body = render_memory_stores_section(statuses)
-        self.assertIn("Memory stores (7 known", body)
+        self.assertIn("Memory stores (8 known", body)
         self.assertIn("parametric_memory.jsonl", body)
         self.assertIn("MISSING", body)
 
