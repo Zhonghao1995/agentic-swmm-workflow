@@ -154,7 +154,9 @@ def _goal_slug(prompt: str) -> str:
     enough to find the run again: ``which-node-flooded`` becomes
     ``node-flooded-most``, ``draw-network-map`` stays as it reads.
     """
-    words = [w for w in re.findall(r"[a-z0-9]+", prompt.lower()) if w not in _SLUG_STOPWORDS]
+    # Live finding F-76 (2026-09-03): "It's the downtown core" produced
+    # `s-downtown-core`; a one-letter leftover of a contraction is not a word.
+    words = [w for w in re.findall(r"[a-z0-9]+", prompt.lower()) if w not in _SLUG_STOPWORDS and len(w) >= 2]
     if words:
         return "-".join(words[:3])[:32]
     # No Latin words at all (a Chinese prompt with no place or file):
