@@ -25,3 +25,8 @@ def test_places_and_files_still_win():
 def test_a_chinese_only_prompt_keeps_a_short_safe_name():
     slug = infer_case_slug("这个模型哪个节点淹得最厉害？")
     assert slug and len(slug) <= 16 and "_" not in slug
+
+
+def test_a_contraction_leaves_no_one_letter_token():
+    # Live finding F-76 (2026-09-03): "It's the downtown core" -> s-downtown-core.
+    assert infer_case_slug("It's the downtown core, a few blocks around Douglas Street.") == "downtown-core-few"
