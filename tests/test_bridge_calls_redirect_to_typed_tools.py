@@ -50,10 +50,17 @@ def test_a_bound_bridge_call_is_answered_with_the_typed_name(executor, tmp_path)
 
 
 def test_arguments_the_typed_tool_cannot_take_keep_the_bridge(executor):
-    # The live S17/S18 call: the MCP qa validates an INP (inpPath); the typed
-    # network_qa validates a network JSON (network_json). No redirect.
-    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"inpPath": "runs/x/05_builder/model.inp"}})
+    # An argument the typed tool has no property for keeps the bridge.
+    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"strictMode": True}})
     assert executor._typed_redirect(call) is None
+
+
+def test_the_live_inp_check_now_redirects_to_the_typed_tool(executor):
+    # The S17/S18 call: since network_qa takes inp_path, the bridge call with
+    # inpPath lands on the typed tool instead of falling through.
+    call = ToolCall(name="call_mcp_tool", args={"server": "swmm-network", "tool": "qa", "arguments": {"inpPath": "runs/x/05_builder/model.inp"}})
+    redirect = executor._typed_redirect(call)
+    assert redirect is not None and redirect["redirect_to"] == "network_qa"
 
 
 def test_matching_arguments_are_redirected(executor):

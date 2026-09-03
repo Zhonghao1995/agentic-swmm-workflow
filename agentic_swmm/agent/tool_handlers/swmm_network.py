@@ -54,13 +54,25 @@ def _network_qa_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         _required_repo_file,
     )
 
-    network_json = _required_repo_file(call, "network_json", suffix=".json")
-    if isinstance(network_json, dict):
-        return network_json
+    # Live finding F-67 (2026-09-02): the MCP qa also validates an INP
+    # (inpPath); the typed surface only knew network_json, so an INP check
+    # through the typed tool failed with "network_json must end with .json".
+    has_json = bool(str(call.args.get("network_json") or "").strip())
+    has_inp = bool(str(call.args.get("inp_path") or "").strip())
+    if has_json == has_inp:
+        return _failure(call, "provide exactly one of network_json (a network JSON) or inp_path (a SWMM .inp)")
     if call.args.get("report_json"):
         report = _repo_output_path(str(call.args["report_json"]))
         if report is None or report.suffix.lower() != ".json":
             return _failure(call, "report_json must be a repository-relative .json path")
+    if has_inp:
+        inp = _required_repo_file(call, "inp_path", suffix=".inp")
+        if isinstance(inp, dict):
+            return inp
+        return {"inpPath": str(inp)}
+    network_json = _required_repo_file(call, "network_json", suffix=".json")
+    if isinstance(network_json, dict):
+        return network_json
     return {"networkJsonPath": str(network_json)}
 
 
@@ -125,8 +137,8 @@ def tool_specs() -> list[ToolSpec]:
     return [
         ToolSpec(
             "network_qa",
-            "Validate a SWMM network JSON using the swmm-network QA script.",
-            _object({"network_json": {"type": "string"}, "report_json": {"type": "string"}}, ["network_json"]),
+            "Network QA (disconnected nodes, missing outfalls, adverse or zero slopes) of a network JSON (network_json) or of an existing SWMM .inp (inp_path); provide exactly one.",
+            _object({"network_json": {"type": "string"}, "inp_path": {"type": "string"}, "report_json": {"type": "string"}}, []),
             _network_qa_tool,
         ),
         ToolSpec(
