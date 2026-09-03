@@ -188,6 +188,28 @@ def find_qa_file(run_dir: Path, filename: str) -> Path | None:
     return first_existing([run_dir / name / filename for name in QA_STAGE_NAMES])
 
 
+def find_builder_inp(run_dir: Path) -> Path | None:
+    """Locate the built INP by layout when no manifest records it.
+
+    The typed tools (the Canada route among them) write
+    ``05_builder/model.inp`` and no builder or top manifest. Without this
+    fallback the audit called that model "missing evidence" on every such
+    run, and the false flag flowed into memory_summary and failure_advice
+    (live test 2026-09-03, S27). Canonical stage first, then legacy names;
+    ``model.inp`` first, then a lone ``*.inp`` in the stage.
+    """
+    for name in BUILDER_STAGE_NAMES:
+        stage = run_dir / name
+        direct = stage / "model.inp"
+        if direct.exists():
+            return direct
+        if stage.is_dir():
+            inps = sorted(stage.glob("*.inp"))
+            if len(inps) == 1:
+                return inps[0]
+    return None
+
+
 def artifact_record(
     *,
     artifact_id: str,
@@ -937,6 +959,8 @@ def collect_run(
         inp_path = resolve_recorded_path((builder_manifest.get("outputs") or {}).get("inp"), repo_root)
     if inp_path is None:
         inp_path = resolve_recorded_path(minimal_files.get("inp"), repo_root)
+    if inp_path is None:
+        inp_path = find_builder_inp(run_dir)
 
     rpt_path = resolve_recorded_path((top_outputs.get("runner_rpt") or {}).get("path") if isinstance(top_outputs.get("runner_rpt"), dict) else None, repo_root)
     if rpt_path is None:
