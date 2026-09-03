@@ -51,6 +51,7 @@ def test_family_specs_come_from_the_family_modules():
         "swmm_sensitivity_morris",
         "swmm_sensitivity_sobol",
         "swmm_rainfall_ensemble",
+        "propagate_parameter_ranges",
         "swmm_uncertainty_source_decomposition",
         "web_fetch_url",
         "web_search",
