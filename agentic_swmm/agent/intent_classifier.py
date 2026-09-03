@@ -410,9 +410,42 @@ def keywords(name: str) -> list[str]:
     return [str(value) for value in values if str(value)]
 
 
+#: Live finding F-74 (2026-09-03, scenario S25): "Which node flooded the
+#: most in the downtown Victoria run I just made?" opened a run-kind folder
+#: that never received a model, because the SWMM vocabulary ("run",
+#: "flooded") reads as a modeling request. A question that does not start
+#: with a work verb and names no model source is a chat turn.
+_QUESTION_START = re.compile(
+    r"^\s*(?:which|what|where|when|why|how|who|is|are|was|were|does|did|do|has|have|had)\b"
+    r"|^\s*(?:哪|什么|为什么|怎么|如何|是不是|有没有|多少)",
+    re.IGNORECASE,
+)
+_LEADING_WORK_VERB = re.compile(
+    r"^\s*(?:please\s+|can you\s+|could you\s+|would you\s+|请\s*|帮我\s*|能不能\s*|能否\s*)?"
+    r"(?:run|rerun|re-run|simulate|calibrate|fetch|build|synthesi[sz]e|plot|draw|export|generate|make|create|audit|compare|check|propagate|transfer|map)\b",
+    re.IGNORECASE,
+)
+
+
+def is_question_about_existing_work(goal: str) -> bool:
+    """True for a question that asks about work already done, not for new work."""
+    text = str(goal or "").strip()
+    if not text:
+        return False
+    if _MODEL_SOURCE.search(text):
+        return False
+    if _LEADING_WORK_VERB.search(text):
+        return False
+    if not _QUESTION_START.search(text):
+        return False
+    return not any(marker in text.lower() for marker in _STARTS_NEW_WORK)
+
+
 def looks_like_swmm_request(goal: str) -> bool:
     lowered = goal.lower()
     if _contains_any_list(lowered, keywords("excluded_swmm_keywords")):
+        return False
+    if is_question_about_existing_work(goal):
         return False
     return _contains_any_list(lowered, keywords("swmm_request_keywords"))
 
