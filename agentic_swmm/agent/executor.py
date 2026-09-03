@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import IO, Any
@@ -21,6 +22,22 @@ DENIED_SUMMARY = "tool not approved by user"
 
 #: Tools whose approval is never borrowed from the turn's chain grant.
 NEVER_CHAINED = frozenset({"apply_patch"})
+
+
+def _snake_case(name: str) -> str:
+    return re.sub(r"(?<!^)(?=[A-Z])", "_", str(name)).lower()
+
+
+def _typed_tool_accepts(registry: Any, typed: str, arguments: dict[str, Any]) -> bool:
+    """True when every bridge argument names a property of the typed tool."""
+    try:
+        schemas = registry.schemas({typed})
+    except Exception:
+        return False
+    if not schemas:
+        return False
+    properties = set((schemas[0].get("parameters") or {}).get("properties") or {})
+    return all(_snake_case(key) in properties for key in arguments)
 
 class AgentExecutor:
     def __init__(
@@ -64,6 +81,14 @@ class AgentExecutor:
         tool = str(call.args.get("tool") or "")
         typed = typed_tool_for(server, tool)
         if typed is None or typed not in getattr(self.registry, "names", ()):
+            return None
+        # Live finding F-67 (2026-09-02, scenario S18): the typed network_qa
+        # validates a network JSON while the MCP qa validates an INP, so the
+        # redirect sent an INP check to a tool that could not take it.
+        # Redirect only when every bridge argument, read as snake_case, is a
+        # property of the typed tool's schema; otherwise the bridge stands.
+        arguments = call.args.get("arguments") if isinstance(call.args.get("arguments"), dict) else {}
+        if not _typed_tool_accepts(self.registry, typed, arguments):
             return None
         hint = (
             f"{server}.{tool} has a typed tool in this runtime: call {typed} directly "
