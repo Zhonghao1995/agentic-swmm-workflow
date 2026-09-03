@@ -120,8 +120,8 @@ def _add_table_caption(doc: Document, caption_text: str, table_counter: list) ->
     table_counter[0] += 1
     n = table_counter[0]
     cap_para = doc.add_paragraph()
-    # Bold "Table N —" prefix
-    bold_run = cap_para.add_run(f"Table {n} — ")
+    # Bold "Table N:" prefix (house style: no em dashes in deliverables)
+    bold_run = cap_para.add_run(f"Table {n}: ")
     bold_run.bold = True
     bold_run.font.color.rgb = RGBColor(0, 0, 0)
     # Regular caption text
@@ -140,12 +140,12 @@ def _add_narrative(doc: Document, narrative_text: str) -> None:
 def _add_figure_caption(doc: Document, caption_text: str, figure_counter: list) -> None:
     """Insert an engineering-convention figure caption BELOW the figure.
 
-    Format: ``Figure N — <text>``, centred, all black.
+    Format: ``Figure N: <text>``, centred, all black.
     ``figure_counter`` is a one-element list used as a mutable integer.
     """
     figure_counter[0] += 1
     n = figure_counter[0]
-    cap_para = doc.add_paragraph(f"Figure {n} — {caption_text}")
+    cap_para = doc.add_paragraph(f"Figure {n}: {caption_text}")
     cap_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in cap_para.runs:
         run.font.color.rgb = RGBColor(0, 0, 0)
@@ -589,7 +589,7 @@ def _render_figures(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> Non
             try:
                 doc.add_picture(png_path, width=Inches(5.5))
             except Exception:
-                doc.add_paragraph(f"[image {idx}: {stem} — could not be embedded]")
+                doc.add_paragraph(f"[image {idx}: {stem}, could not be embedded]")
             # Caption BELOW figure (engineering convention), numbered
             _add_figure_caption(doc, stem, ctx["figure_counter"])
             doc.add_paragraph()
@@ -827,7 +827,7 @@ def _render_provenance(doc: Document, cfg: dict, artifacts: dict, ctx: dict) -> 
         "narrative",
         "SHA-256 digests are computed by swmm-experiment-audit at audit time and stored in "
         "experiment_provenance.json; only the first 16 hex characters are shown here for "
-        "readability — the full digest is available in the provenance JSON.",
+        "readability. The full digest is available in the provenance JSON.",
     )
 
     existing = [(k, v) for k, v in art_dict.items() if v.get("exists")]

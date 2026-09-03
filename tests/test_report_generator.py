@@ -554,7 +554,7 @@ class TestStyleColors:
 
 
 class TestTableCaptionsAndNarratives:
-    """Every table is immediately preceded by a 'Table N — ' caption and followed by a narrative."""
+    """Every table is immediately preceded by a 'Table N: ' caption and followed by a narrative."""
 
     def _get_body_sequence(self, doc: Document):
         """Return list of ('para'|'table', text_or_None) tuples in body order."""
@@ -574,7 +574,7 @@ class TestTableCaptionsAndNarratives:
         doc = Document(out)
         seq = self._get_body_sequence(doc)
 
-        caption_re = re.compile(r"^Table \d+ — ")
+        caption_re = re.compile(r"^Table \d+: ")
         for i, (kind, text) in enumerate(seq):
             if kind == "table":
                 # Find the most recent non-empty paragraph before this table
@@ -586,7 +586,7 @@ class TestTableCaptionsAndNarratives:
                 assert prev_para is not None, f"Table at index {i} has no preceding paragraph"
                 assert caption_re.match(prev_para), (
                     f"Table at index {i} preceded by {prev_para!r}, "
-                    f"expected 'Table N — ...' caption"
+                    f"expected 'Table N: ...' caption"
                 )
 
     def test_every_table_followed_by_narrative(self, tmp_path):
@@ -617,7 +617,7 @@ class TestTableCaptionsAndNarratives:
         assert result.returncode == 0, result.stderr
         doc = Document(out)
 
-        caption_re = re.compile(r"^Table (\d+) — ")
+        caption_re = re.compile(r"^Table (\d+): ")
         numbers = []
         for para in doc.paragraphs:
             m = caption_re.match(para.text.strip())
@@ -631,7 +631,7 @@ class TestTableCaptionsAndNarratives:
 
 
 class TestFigureNumbering:
-    """Figure captions use sequential 'Figure N — ' format (separate counter from tables)."""
+    """Figure captions use sequential 'Figure N: ' format (separate counter from tables)."""
 
     def test_figure_captions_numbered(self, tmp_path):
         run_dir = _make_run_dir(tmp_path, with_figures=True)
@@ -640,7 +640,7 @@ class TestFigureNumbering:
         assert result.returncode == 0, result.stderr
         doc = Document(out)
 
-        fig_re = re.compile(r"^Figure (\d+) — ")
+        fig_re = re.compile(r"^Figure (\d+): ")
         numbers = []
         for para in doc.paragraphs:
             m = fig_re.match(para.text.strip())
@@ -660,8 +660,8 @@ class TestFigureNumbering:
         assert result.returncode == 0, result.stderr
         doc = Document(out)
 
-        tbl_re = re.compile(r"^Table (\d+) — ")
-        fig_re = re.compile(r"^Figure (\d+) — ")
+        tbl_re = re.compile(r"^Table (\d+): ")
+        fig_re = re.compile(r"^Figure (\d+): ")
         tbl_nums = [int(m.group(1)) for p in doc.paragraphs if (m := tbl_re.match(p.text.strip()))]
         fig_nums = [int(m.group(1)) for p in doc.paragraphs if (m := fig_re.match(p.text.strip()))]
 

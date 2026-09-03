@@ -53,7 +53,7 @@ def render_run_readme(run_dir: Path, *, goal: str = "", status: str = "") -> str
     present = [(name, blurb) for name, blurb in _DELIVERABLES if (run_dir / name).exists()]
     if present:
         lines += ["## Start here", ""]
-        lines += [f"- `{name}` — {blurb}" for name, blurb in present]
+        lines += [f"- `{name}`: {blurb}" for name, blurb in present]
         lines.append("")
 
     stages = [
@@ -63,18 +63,18 @@ def render_run_readme(run_dir: Path, *, goal: str = "", status: str = "") -> str
     ]
     if stages:
         lines += ["## Stages", ""]
-        lines += [f"- `{name}/` — {blurb}" for name, blurb in stages]
+        lines += [f"- `{name}/`: {blurb}" for name, blurb in stages]
         lines.append("")
 
     machine = []
     if (run_dir / AGENT_DIR).is_dir():
         machine.append(
-            f"- `{AGENT_DIR}/` — the agent's own record: the full trace, session state, "
+            f"- `{AGENT_DIR}/`: the agent's own record: the full trace, session state, "
             "and the environment snapshot. Kept for reproducibility and for rebuilding "
             "the session database; nothing here is a result."
         )
     if (run_dir / OBSIDIAN_DIR).is_dir():
-        machine.append(f"- `{OBSIDIAN_DIR}/` — what was exported to your notes vault.")
+        machine.append(f"- `{OBSIDIAN_DIR}/`: what was exported to your notes vault.")
     if machine:
         lines += ["## Not for reading", ""] + machine + [""]
 
