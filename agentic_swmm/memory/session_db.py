@@ -669,7 +669,22 @@ def _sanitize_fts_query(query: str) -> str:
     tokens = [token for token in re.split(r"\s+", cleaned) if token]
     if not tokens:
         return ""
-    return " ".join(f'"{token}"' for token in tokens)
+    # The index uses the trigram tokenizer: a token shorter than three
+    # characters can never match, and under AND it silently empties the
+    # whole query ("run it in BC"). Drop such tokens when longer ones exist.
+    long_enough = [token for token in tokens if len(token) >= 3]
+    if long_enough:
+        tokens = long_enough
+    quoted = [f'"{token}"' for token in tokens]
+    # Live finding F-65 (2026-09-02): FTS5 joins bare terms with AND, so a
+    # natural query ("downtown Victoria run earlier today compare run
+    # directories, current run and previous run") required all thirteen
+    # words in one message and matched none of the day's twenty sessions.
+    # Short queries stay precise; longer ones match any word and let bm25
+    # rank the sessions that share the most of them.
+    if len(quoted) <= 2:
+        return " ".join(quoted)
+    return " OR ".join(quoted)
 
 
 def chunked_messages_from_events(
