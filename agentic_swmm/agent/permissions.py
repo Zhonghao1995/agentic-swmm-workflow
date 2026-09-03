@@ -30,6 +30,51 @@ def repo_relative_path(value: str) -> Path | None:
     return candidate
 
 
+#: Live finding F-60 (2026-09-02): with no typed ensemble tool, the planner
+#: wrote scripts/run_peak_outflow_uncertainty.mjs into the repository and
+#: ran it. Agent-authored code belongs under the run it serves
+#: (``<run>/_agent/scripts/``); the product tree is not the agent's
+#: scratch space. Documents and data files elsewhere are unaffected.
+REPO_WRITES_ENV = "AISWMM_ALLOW_REPO_WRITES"
+CODE_SUFFIXES = frozenset({".py", ".pyi", ".mjs", ".cjs", ".js", ".ts", ".sh", ".bash", ".zsh", ".rb", ".pl"})
+CODE_WRITE_HINT = (
+    "Agent-authored code goes under the run directory (for example "
+    "<run>/_agent/scripts/), never into the product tree. "
+    f"Set {REPO_WRITES_ENV}=1 for development."
+)
+
+
+def _repo_writes_allowed() -> bool:
+    return os.environ.get(REPO_WRITES_ENV, "").strip() in ("1", "true", "yes")
+
+
+def is_agent_scratch_path(path: Path) -> bool:
+    """True under ``runs/<...>/_agent/scripts/``: the agent's own workspace.
+
+    Helper code the planner writes for a run lives here; it is neither
+    product code nor run evidence, so apply_patch needs no evidence
+    override for it.
+    """
+    try:
+        relative = path.resolve().relative_to(repo_root().resolve())
+    except ValueError:
+        return False
+    parts = relative.parts
+    if parts[:1] != ("runs",):
+        return False
+    for index in range(len(parts) - 2):
+        if parts[index] == "_agent" and parts[index + 1] == "scripts":
+            return True
+    return False
+
+
+def is_code_write_into_product_tree(path: Path) -> bool:
+    """True for a code file that is neither run evidence nor agent scratch."""
+    if path.suffix.lower() not in CODE_SUFFIXES:
+        return False
+    return not (is_evidence_path(path) or is_agent_scratch_path(path))
+
+
 def is_allowed_write_path(path: Path) -> bool:
     try:
         relative = path.resolve().relative_to(repo_root().resolve())
@@ -38,6 +83,8 @@ def is_allowed_write_path(path: Path) -> bool:
     if any(part in BLOCKED_PARTS for part in relative.parts):
         return False
     if path.name in BLOCKED_FILENAMES:
+        return False
+    if is_code_write_into_product_tree(path) and not _repo_writes_allowed():
         return False
     return True
 

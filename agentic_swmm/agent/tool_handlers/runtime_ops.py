@@ -39,7 +39,13 @@ import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
-from agentic_swmm.agent.permissions import is_allowed_write_path, is_evidence_path
+from agentic_swmm.agent.permissions import (
+    CODE_WRITE_HINT,
+    is_agent_scratch_path,
+    is_allowed_write_path,
+    is_code_write_into_product_tree,
+    is_evidence_path,
+)
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
     _repo_path,
@@ -359,8 +365,10 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         if full is None:
             return _failure(call, f"patch path must be inside repository: {path}")
         if not is_allowed_write_path(full):
+            if is_code_write_into_product_tree(full):
+                return _failure(call, f"patch writes code into the product tree: {path}", hint=CODE_WRITE_HINT)
             return _failure(call, f"patch path is blocked by policy: {path}")
-        if is_evidence_path(full) and not allow_evidence:
+        if is_evidence_path(full) and not allow_evidence and not is_agent_scratch_path(full):
             return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
     patch_path = session_dir / "tool_results" / "apply_patch.diff"
     patch_path.parent.mkdir(parents=True, exist_ok=True)
