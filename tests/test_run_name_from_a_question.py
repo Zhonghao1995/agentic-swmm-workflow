@@ -1,0 +1,27 @@
+"""A run started by a plain question gets a short, lower-case name (F-08).
+
+Live finding 2026-09-02: `Which-node-flooded-the-most-and-_run` and
+`Draw-the-network-map-for-that-ru_run` appeared under runs/ today.
+"""
+
+from __future__ import annotations
+
+from agentic_swmm.agent.session_bootstrap import infer_case_slug
+
+
+def test_a_question_becomes_three_content_words():
+    assert infer_case_slug("Which node flooded the most and by how much?") == "node-flooded-most"
+
+
+def test_an_imperative_reads_naturally():
+    assert infer_case_slug("Draw the network map for that run") == "draw-network-map"
+
+
+def test_places_and_files_still_win():
+    assert infer_case_slug("Fetch a SWMM model from the Canada service for downtown Victoria BC") == "downtown-victoria-bc"
+    assert infer_case_slug("Run examples/todcreek/model.inp") == "todcreek"
+
+
+def test_a_chinese_only_prompt_keeps_a_short_safe_name():
+    slug = infer_case_slug("这个模型哪个节点淹得最厉害？")
+    assert slug and len(slug) <= 16 and "_" not in slug

@@ -110,7 +110,7 @@ def infer_case_slug(prompt: str) -> str:
     3. PRD #118 case registry hit (``case_id`` / ``display_name``
        / ``aliases``),
     4. plot vocab in the prompt → ``"plot-selection"``,
-    5. fallback: ``safe_name(prompt)[:32]``.
+    5. fallback: ``_goal_slug(prompt)`` (three content words, F-08).
     """
     lowered = prompt.lower()
     # Note: the character class below includes CJK full-width
@@ -134,7 +134,32 @@ def infer_case_slug(prompt: str) -> str:
     path_slug = _slug_from_path_mention(prompt)
     if path_slug:
         return path_slug
-    return safe_name(prompt)[:32]
+    return _goal_slug(prompt)
+
+
+_SLUG_STOPWORDS = frozenset(
+    "the a an and or of for to in on at by with from that this those these is are was were be do does did "
+    "can could would should will me my our your it its as into about which what how why when where who whom "
+    "please run show tell give make".split()
+)
+
+
+def _goal_slug(prompt: str) -> str:
+    """A short, lower-case, stop-word-free name for a run started by a plain request.
+
+    Live finding F-08 (2026-09-02): the fallback ``safe_name(prompt)[:32]``
+    produced run folders such as ``Which-node-flooded-the-most-and-_run``
+    and ``Draw-the-network-map-for-that-ru_run``: case-preserving,
+    truncated mid-word, full of stop words. Three content words are
+    enough to find the run again: ``which-node-flooded`` becomes
+    ``node-flooded-most``, ``draw-network-map`` stays as it reads.
+    """
+    words = [w for w in re.findall(r"[a-z0-9]+", prompt.lower()) if w not in _SLUG_STOPWORDS]
+    if words:
+        return "-".join(words[:3])[:32]
+    # No Latin words at all (a Chinese prompt with no place or file):
+    # keep the old behaviour, shortened.
+    return safe_name(prompt)[:16].strip("-") or "adhoc"
 
 
 #: A path a user pasted: Windows drive form, UNC, or POSIX absolute.

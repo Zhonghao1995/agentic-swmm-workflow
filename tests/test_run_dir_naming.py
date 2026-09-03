@@ -60,7 +60,7 @@ class PastedPathTests(unittest.TestCase):
         )
 
     def test_a_prompt_with_no_path_is_unaffected(self) -> None:
-        self.assertEqual(infer_case_slug("give me a word report"), "give-me-a-word-report")
+        self.assertEqual(infer_case_slug("give me a word report"), "word-report")
 
 
 class LengthTests(unittest.TestCase):
