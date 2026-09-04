@@ -147,6 +147,42 @@ NO_DECISION_HINT = (
     "Nothing was recorded: the expert-review prompt takes y or n only. Ask "
     "the reviewer again, or continue without decision use."
 )
+DECISION_REPORT_HINT = (
+    "Report the decision as recorded: who decided, the decision id and the "
+    "provenance file. A recorded decision is never pending."
+)
+
+
+def _documented_patterns() -> dict[str, str]:
+    """Return ``{pattern: one-line message}`` from the thresholds doc.
+
+    Best-effort like the rationale check: an unreadable doc returns ``{}``
+    and the caller skips validation rather than blocking the prompt.
+    """
+    try:
+        thresholds = load_thresholds_from_md(_repo_root() / _THRESHOLDS_DOC_REL)
+    except Exception:  # pragma: no cover - depends on disk state
+        return {}
+    out: dict[str, str] = {}
+    for name, spec in thresholds.items():
+        if isinstance(spec, dict):
+            out[str(name)] = str(spec.get("message") or "")
+    return out
+
+
+def _pattern_hint(documented: dict[str, str]) -> str:
+    listing = "; ".join(f"{name} ({message})" if message else name for name, message in documented.items())
+    return (
+        f"Documented patterns: {listing}. Pick the one whose evidence you hold, "
+        "and say in message when the concern differs from the pattern's literal check."
+    )
+
+
+def _decision_summary(*, verdict: str, pattern: str, decision_id: str, record: Path, consequence: str) -> str:
+    return (
+        f"expert review {verdict} for pattern {pattern!r}: {consequence}; "
+        f"recorded as decision {decision_id} in {record}"
+    )
 
 
 def _failure(call: ToolCall, summary: str, *, hint: str | None = None) -> dict[str, Any]:
@@ -176,6 +212,18 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     run_dir = _resolve_run_dir(call.args.get("run_dir"))
     if run_dir is None:
         return _failure(call, "run_dir must be an existing directory")
+
+    # Live finding F-121 (2026-09-03, S54 r2): the planner labelled a
+    # peak-credibility review "continuity_error_over_threshold" after
+    # spending three calls on the thresholds doc. The documented list is
+    # the contract; an unknown pattern is refused with that list.
+    documented = _documented_patterns()
+    if documented and pattern not in documented:
+        return _failure(
+            call,
+            f"pattern {pattern!r} is not a documented HITL threshold",
+            hint=_pattern_hint(documented),
+        )
 
     evidence_path = _resolve_evidence(run_dir, evidence_ref)
     if evidence_path is None:
@@ -238,10 +286,14 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             "ok": True,
             "approved": True,
             "decision_id": decision_id,
-            "summary": (
-                f"expert review auto-approved via {_AUTO_APPROVE_ENV}=1 "
-                f"for pattern {pattern!r}"
+            "summary": _decision_summary(
+                verdict=f"auto-approved via {_AUTO_APPROVE_ENV}=1",
+                pattern=pattern,
+                decision_id=decision_id,
+                record=provenance_path,
+                consequence="configuration, not a reviewer, accepted this result for decision use",
             ),
+            "hint": DECISION_REPORT_HINT,
         }
 
     # Interactive TTY path. This is a recorded decision, not a tool
@@ -273,14 +325,25 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         decision_text=message,
     )
     append_decision(provenance_path, decision)
+    # Live finding F-120 (2026-09-03, S54 r2): the reviewer answered y and
+    # the answer still said "await the expert decision". The result says
+    # what was decided, what it means and where it is recorded.
     return {
         "tool": call.name,
         "args": dict(call.args),
         "ok": True,
         "approved": approved,
         "decision_id": decision_id,
-        "summary": (
-            f"expert review {'approved' if approved else 'denied'} for "
-            f"pattern {pattern!r}"
+        "summary": _decision_summary(
+            verdict="approved" if approved else "denied",
+            pattern=pattern,
+            decision_id=decision_id,
+            record=provenance_path,
+            consequence=(
+                "the reviewer accepted this result for decision use"
+                if approved
+                else "the reviewer rejected this result for decision use; revise before relying on it"
+            ),
         ),
+        "hint": DECISION_REPORT_HINT,
     }
