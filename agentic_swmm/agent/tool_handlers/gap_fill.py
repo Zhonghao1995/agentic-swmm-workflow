@@ -373,10 +373,16 @@ def tool_specs():
             ),
             _object(
                 {
-                    "run_dir": {"type": "string"},
-                    "pattern": {"type": "string"},
-                    "evidence_ref": {"type": "string"},
-                    "message": {"type": "string"},
+                    "run_dir": {"type": "string", "description": "The run directory whose result needs the decision."},
+                    "pattern": {"type": "string", "description": "One documented HITL threshold pattern, e.g. peak_flow_deviation_over_threshold."},
+                    "evidence_ref": {
+                        "type": "string",
+                        "description": (
+                            "ONE file path relative to run_dir that holds the evidence, e.g. 06_runner/model.rpt. "
+                            "Not a list and not a note: name report sections in message."
+                        ),
+                    },
+                    "message": {"type": "string", "description": "What the reviewer must decide, with the numbers and the files behind them."},
                 },
                 ["run_dir", "pattern", "evidence_ref", "message"],
             ),

@@ -345,3 +345,30 @@ def prompt_user(tool_name: str) -> bool:
     plainly without unpacking a decision object.
     """
     return request_approval(tool_name).approved
+
+
+def request_decision(question: str) -> bool | None:
+    """Ask a human for an explicit yes-or-no decision; ``None`` when there is none.
+
+    Unlike :func:`request_approval` (where Enter means "go ahead" and any
+    other key is a harmless decline), a decision is recorded into a run's
+    provenance, so only an explicit ``y``/``yes`` or ``n``/``no`` counts.
+    A stray key, an empty line, EOF or a headless stdin returns ``None``
+    and the caller records nothing. Live finding F-119 (2026-09-03): a
+    ``/exit`` typed at the expert-review prompt became a permanent
+    "expert denied" record in an archived run.
+    """
+    if not sys.stdin.isatty():
+        return None
+    _prepare_prompt_line()
+    try:
+        answer = input(question).strip().lower()
+    except EOFError:
+        return None
+    finally:
+        _restore_after_prompt()
+    if answer in {"y", "yes"}:
+        return True
+    if answer in {"n", "no"}:
+        return False
+    return None

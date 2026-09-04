@@ -6,7 +6,7 @@ the agent must call it with ``pattern``, ``evidence_ref``, and
 
 * refuses if ``evidence_ref`` is missing on disk;
 * prints a clearly visible block to stderr;
-* prompts the human via ``permissions.prompt_user`` (mocked in tests);
+* asks the human via ``permissions.request_decision`` (mocked in tests);
 * appends a ``human_decisions`` record (approved or denied);
 * returns ``{ok, approved, decision_id}``.
 
@@ -18,6 +18,8 @@ returns ``approved=True``.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import unittest
@@ -73,7 +75,7 @@ class HandlerTests(unittest.TestCase):
                 },
             )
             with mock.patch(
-                "agentic_swmm.hitl.request_expert_review.permissions.prompt_user",
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
                 return_value=True,
             ), mock.patch("sys.stdin.isatty", return_value=True):
                 result = REGISTRY.execute(call, tmp_path)
@@ -107,7 +109,7 @@ class HandlerTests(unittest.TestCase):
                 },
             )
             with mock.patch(
-                "agentic_swmm.hitl.request_expert_review.permissions.prompt_user",
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
                 return_value=False,
             ), mock.patch("sys.stdin.isatty", return_value=True):
                 result = REGISTRY.execute(call, tmp_path)
@@ -122,6 +124,88 @@ class HandlerTests(unittest.TestCase):
             prov["human_decisions"][0]["action"], "expert_review_denied"
         )
 
+    def test_a_stray_answer_records_no_decision(self) -> None:
+        """Live finding F-119 (2026-09-03): a "/exit" typed at the prompt used
+        to become a permanent "expert denied" record in an archived run."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "continuity_error_over_threshold",
+                    "evidence_ref": "06_qa/qa_summary.json",
+                    "message": "Continuity error 6.5% > 5%.",
+                },
+            )
+            with mock.patch(
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
+                return_value=None,
+            ), mock.patch("sys.stdin.isatty", return_value=True):
+                result = REGISTRY.execute(call, tmp_path)
+            prov_path = run_dir / "09_audit" / "experiment_provenance.json"
+            decisions = (
+                json.loads(prov_path.read_text(encoding="utf-8")).get("human_decisions", [])
+                if prov_path.exists()
+                else []
+            )
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["approved"])
+        self.assertEqual(decisions, [])
+        self.assertIn("neither y nor n", result["summary"])
+        self.assertIn("y or n only", result["hint"])
+
+    def test_the_prompt_says_what_the_decision_means(self) -> None:
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "continuity_error_over_threshold",
+                    "evidence_ref": "06_qa/qa_summary.json",
+                    "message": "Continuity error 6.5% > 5%.",
+                },
+            )
+            with mock.patch(
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
+                return_value=True,
+            ) as asked, mock.patch("sys.stdin.isatty", return_value=True), contextlib.redirect_stderr(io.StringIO()) as err:
+                REGISTRY.execute(call, tmp_path)
+        question = asked.call_args.args[0]
+        self.assertIn("Expert decision on continuity_error_over_threshold", question)
+        self.assertIn("approve this result for decision use? [y/n]", question)
+        self.assertIn("y = the expert approves", err.getvalue())
+        self.assertIn("anything else records nothing", err.getvalue())
+
+    def test_a_list_shaped_evidence_ref_fails_with_a_hint(self) -> None:
+        """Live finding F-117 (2026-09-03, S54): the planner passed three
+        paths with section notes and lost a call to the refusal."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "continuity_error_over_threshold",
+                    "evidence_ref": "06_qa/qa_summary.json (Outfall Loading Summary); 06_qa/other.json",
+                    "message": "Continuity error 6.5% > 5%.",
+                },
+            )
+            with mock.patch("sys.stdin.isatty", return_value=True):
+                result = REGISTRY.execute(call, tmp_path)
+        self.assertFalse(result["ok"])
+        self.assertIn("ONE file path", result["hint"])
+
+    def test_the_spec_documents_evidence_ref_as_one_relative_path(self) -> None:
+        from agentic_swmm.agent.tool_handlers import gap_fill
+
+        spec = next(s for s in gap_fill.tool_specs() if s.name == "request_expert_review")
+        self.assertIn("ONE file path", spec.parameters["properties"]["evidence_ref"]["description"])
+
     def test_missing_evidence_ref_returns_ok_false(self) -> None:
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -135,9 +219,9 @@ class HandlerTests(unittest.TestCase):
                     "message": "Continuity error 6.5% > 5%.",
                 },
             )
-            # prompt_user should not be reached; if it is, the test must fail.
+            # request_decision should not be reached; if it is, the test must fail.
             with mock.patch(
-                "agentic_swmm.hitl.request_expert_review.permissions.prompt_user",
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
                 side_effect=AssertionError("prompt should not be reached"),
             ):
                 result = REGISTRY.execute(call, tmp_path)
