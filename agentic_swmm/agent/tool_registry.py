@@ -308,7 +308,7 @@ def _registry_native_tools() -> list[ToolSpec]:
     return [
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
         ToolSpec("list_mcp_servers", "List configured local MCP servers.", _object({}), _list_mcp_servers_tool, is_read_only=True),
-        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server (names + one-line descriptions by default; pass full=true for complete schemas; select_skill already returns the chosen skill's full contracts).", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}, "full": {"type": "boolean"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
+        ToolSpec("list_mcp_tools", "List tools exposed by one configured MCP server (names + one-line descriptions by default; pass full=true for complete schemas; select_skill already returns the chosen skill's full contracts). timeout_seconds defaults to 10; a Node server needs several seconds to start on a busy machine, so do not ask for less.", _object({"server": {"type": "string"}, "timeout_seconds": {"type": "integer"}, "refresh": {"type": "boolean"}, "cache_ttl_seconds": {"type": "integer"}, "full": {"type": "boolean"}}, ["server"]), _list_mcp_tools_tool, is_read_only=True),
         ToolSpec("call_mcp_tool", "Call a tool exposed by a configured local MCP server.", _object({"server": {"type": "string"}, "tool": {"type": "string"}, "arguments": {"type": "object"}}, ["server", "tool"]), _call_mcp_tool_tool),
         ToolSpec("run_allowed_command", f"Run ONE allowlisted local command. Allowed forms: {ALLOWED_COMMAND_FORMS}. {_NOT_A_SHELL_HINT}", _object({"command": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}, ["command"]), _run_allowed_command_tool),
         ToolSpec("run_tests", "Run pytest on selected repository test paths.", _object({"paths": {"type": "array", "items": {"type": "string"}}, "timeout_seconds": {"type": "integer"}}), _run_tests_tool),
@@ -595,11 +595,19 @@ def _slim_mcp_tool_listing(tools: list, mapped: list, full: bool) -> tuple[list,
     return slim_tools, []
 
 
+# Live finding F-116 (2026-09-03, S48 r3 + S53): the introspection prologue
+# asked for 3 s listings; on a machine busy with SWMM sweeps a Node server
+# needs longer to start and the listing failed with "process ended before
+# sending a complete line". The default is ten seconds; an explicit request
+# is still honored (a caller that wants a quick probe keeps that contract).
+MCP_LISTING_DEFAULT_TIMEOUT = 10
+
+
 def _list_mcp_tools_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     server = _mcp_server(str(call.args["server"]))
     if server is None:
         return _mcp_failure(call, f"MCP server not found: {call.args['server']}")
-    timeout = int(call.args.get("timeout_seconds") or 5)
+    timeout = int(call.args.get("timeout_seconds") or MCP_LISTING_DEFAULT_TIMEOUT)
     refresh = bool(call.args.get("refresh"))
     ttl = int(call.args.get("cache_ttl_seconds") or mcp_cache.DEFAULT_TTL_SECONDS)
     if not refresh:

@@ -849,7 +849,9 @@ class AgenticSwmmCliTests(unittest.TestCase):
             slim = registry.execute(ToolCall("list_mcp_tools", {"server": "swmm-network"}), Path(tmp))
 
         self.assertTrue(result["ok"])
-        self.assertEqual(mocked.call_args.kwargs["timeout"], 5)
+        # Default budget is 10 s since live finding F-116 (2026-09-03): a Node
+        # server needs several seconds to start on a busy machine.
+        self.assertEqual(mocked.call_args.kwargs["timeout"], 10)
         self.assertEqual(result["mapped_tools"][0]["planner_tool"], "call_mcp_tool")
         # Default listing: names + short description, no schemas.
         self.assertTrue(slim["ok"])

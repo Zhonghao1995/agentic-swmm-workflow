@@ -1056,7 +1056,7 @@ class Planner:
         if not skip_mcp:
             calls.append(ToolCall("list_mcp_servers", {}))
             calls.extend(
-                ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 3})
+                ToolCall("list_mcp_tools", {"server": name, "timeout_seconds": 10})
                 for name in _select_relevant_mcp_servers(skill_names)
             )
         if calls and not _always_introspect():
