@@ -47,6 +47,12 @@ def call_mcp(command: str, args: list[str], method: str, params: dict[str, Any] 
         if "error" in response:
             raise McpClientError(json.dumps(response["error"], sort_keys=True))
         return response
+    except McpClientError as exc:
+        if _ENDED_EARLY in str(exc):
+            # The server died before answering: its stderr names the cause
+            # (live finding F-122: ERR_MODULE_NOT_FOUND hid behind this line).
+            raise McpClientError(_with_stderr_tail(str(exc), stderr_thread, stderr_chunks)) from None
+        raise
     finally:
         try:
             proc.terminate()
@@ -118,23 +124,51 @@ def _preflight(command: str, args: list[str]) -> None:
             "node is not on PATH; MCP servers require Node.js. "
             "Install Node 18+ (or run: aiswmm setup --install-mcp)."
         )
-    for arg in args:
+    for index, arg in enumerate(args):
         if not isinstance(arg, str):
             continue
-        if not arg.endswith("server.js"):
+        server_dir: Path | None = None
+        if arg.endswith("server.js"):
+            server_path = Path(arg)
+            if not server_path.is_absolute():
+                server_path = repo_root() / server_path
+            server_dir = server_path.parent
+        elif Path(arg).name == "run_mcp_server.mjs" and index + 1 < len(args) and isinstance(args[index + 1], str):
+            # Live finding F-122 (2026-09-03, S55): the registry launches every
+            # server through scripts/run_mcp_server.mjs <name>, so the server.js
+            # form above never matched and a missing node_modules surfaced as
+            # "MCP process ended before sending a complete line".
+            candidate = repo_root() / "mcp" / args[index + 1]
+            if (candidate / "package.json").exists():
+                server_dir = candidate
+        if server_dir is None:
             continue
-        server_path = Path(arg)
-        if not server_path.is_absolute():
-            server_path = repo_root() / server_path
-        server_dir = server_path.parent
         node_modules = server_dir / "node_modules"
         if node_modules.exists():
             continue
         server_name = server_dir.name or str(server_dir)
         raise McpClientError(
             f"MCP server {server_name} has no node_modules. "
-            "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)"
+            f"Run: bash scripts/install_mcp_deps.sh {server_name} (or aiswmm setup --install-mcp)"
         )
+
+
+_ENDED_EARLY = "MCP process ended before sending a complete line."
+_TELLING_MARKERS = ("Cannot find", "Error [", "Error:", "ERR_", "SyntaxError", "ReferenceError", "TypeError")
+
+
+def _with_stderr_tail(message: str, stderr_thread: threading.Thread, stderr_chunks: list[bytes]) -> str:
+    """Append the most telling stderr line of a server that died early."""
+    stderr_thread.join(timeout=1.0)
+    text = b"".join(stderr_chunks).decode("utf-8", "replace")
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return f"{message} The server wrote nothing to stderr."
+    telling = next(
+        (line for marker in _TELLING_MARKERS for line in lines if marker in line),
+        lines[-1],
+    )
+    return f"{message} Server stderr: {telling[:300]}"
 
 
 def _send(proc: subprocess.Popen[bytes], payload: dict[str, Any]) -> None:
@@ -160,7 +194,7 @@ def _readline(stream: Any, *, timeout: int) -> bytes:
         _wait_readable(stream, deadline)
         chunk = stream.read(1)
         if not chunk:
-            raise McpClientError("MCP process ended before sending a complete line.")
+            raise McpClientError(_ENDED_EARLY)
         data += chunk
         if len(data) > 5_000_000:
             raise McpClientError("MCP response line is too large.")
