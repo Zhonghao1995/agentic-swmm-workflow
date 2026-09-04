@@ -21,6 +21,9 @@ from agentic_swmm.agent.intent_classifier import is_question_about_existing_work
         "How uncertain is the peak outflow of that run? Vary Manning's n and imperviousness.",
         "Is the observed data real or synthetic?",
         "哪个节点淹水最严重？淹了多久？",
+        # Live finding F-124: "do" stays a question with a question subject, and any sentence ending with "?".
+        "Do you have the peak flow for that run?",
+        "Do the results of that run include node flooding?",
     ],
 )
 def test_questions_about_existing_work_are_chat_turns(prompt):
@@ -32,6 +35,10 @@ def test_questions_about_existing_work_are_chat_turns(prompt):
     "prompt",
     [
         "Fetch a SWMM model from the Canada service for downtown Victoria BC and run it.",
+        # Live finding F-124 (2026-09-03, S56): an imperative "Do ..." is not a question.
+        "Do the whole job for downtown Kelowna BC, rainfall period November 1 to November 4 2023: get the model, run it, audit it and write the report, in one go.",
+        "Get the model for downtown Kelowna from the Canada service and run it end to end.",
+        "帮我把基洛纳市中心的SWMM模型全流程跑一遍：取模、运行、审计、出报告。",
         "Run examples/tecnopolo/tecnopolo_r1_199401.inp and audit it.",
         "Which node flooded the most in runs/x/05_builder/model.inp?",
         "Can you fetch a SWMM model for the James Bay bbox [-123.383, 48.414, -123.371, 48.423]?",

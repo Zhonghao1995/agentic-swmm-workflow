@@ -415,11 +415,19 @@ def keywords(name: str) -> list[str]:
 #: that never received a model, because the SWMM vocabulary ("run",
 #: "flooded") reads as a modeling request. A question that does not start
 #: with a work verb and names no model source is a chat turn.
+# Live finding F-124 (2026-09-03, S56): "Do the whole job for downtown
+# Kelowna ...: get the model, run it, audit it and write the report" read as
+# a question ("do" was a question starter) and the whole job landed in a
+# chat-kind folder. A leading "do" is a question only with a question
+# subject ("do you", "do we", "do these ..."); a sentence that ends with a
+# question mark is a question whatever it starts with.
 _QUESTION_START = re.compile(
-    r"^\s*(?:which|what|where|when|why|how|who|is|are|was|were|does|did|do|has|have|had)\b"
+    r"^\s*(?:which|what|where|when|why|how|who|is|are|was|were|does|did|has|have|had)\b"
+    r"|^\s*do\s+(?:you|we|i|they|it|these|those|any|all|both)\b"
     r"|^\s*(?:哪|什么|为什么|怎么|如何|是不是|有没有|多少)",
     re.IGNORECASE,
 )
+_QUESTION_END = re.compile(r"[?？]\s*$")
 _LEADING_WORK_VERB = re.compile(
     r"^\s*(?:please\s+|can you\s+|could you\s+|would you\s+|请\s*|帮我\s*|能不能\s*|能否\s*)?"
     r"(?:run|rerun|re-run|simulate|calibrate|fetch|build|synthesi[sz]e|plot|draw|export|generate|make|create|audit|compare|check|propagate|transfer|map)\b",
@@ -436,7 +444,7 @@ def is_question_about_existing_work(goal: str) -> bool:
         return False
     if _LEADING_WORK_VERB.search(text):
         return False
-    if not _QUESTION_START.search(text):
+    if not (_QUESTION_START.search(text) or _QUESTION_END.search(text)):
         return False
     return not any(marker in text.lower() for marker in _STARTS_NEW_WORK)
 
@@ -469,7 +477,11 @@ _STARTS_NEW_WORK = (
     "fetch", "download", "get me", "build", "synthesize", "synthesise", "synth ",
     "create a model", "create a swmm", "generate a model", "generate a swmm",
     "make me a model", "model for downtown", "model of downtown",
+    # Live finding F-124 (2026-09-03, S56): the whole-job phrasings.
+    "the whole job", "whole job", "whole workflow", "end to end", "end-to-end", "in one go",
+    "get the model", "get a model",
     "给我", "帮我建", "建一个", "生成一个", "抓取", "下载", "自动建模", "合成一个",
+    "全流程", "一条龙", "从头到尾", "整套流程",
 )
 
 
