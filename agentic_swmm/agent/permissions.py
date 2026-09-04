@@ -115,6 +115,32 @@ def is_allowed_write_path(path: Path) -> bool:
     return True
 
 
+AUDITED_RUN_EDITS_ENV = "AISWMM_ALLOW_AUDITED_RUN_EDITS"
+
+
+def audited_run_root(path: Path, *, max_levels: int = 8) -> Path | None:
+    """The run directory that owns ``path`` when that run has been audited.
+
+    Live finding F-114 (2026-09-03, S50): the planner patched an archived,
+    audited run's model in place (it set allow_evidence_edits itself), so
+    the run's provenance hashes no longer matched the model on disk. A run
+    that carries 09_audit/experiment_provenance.json is evidence; its
+    files are copied, never edited.
+    """
+    current = path if path.is_dir() else path.parent
+    for _ in range(max_levels):
+        if (current / "09_audit" / "experiment_provenance.json").is_file():
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    return None
+
+
+def audited_run_edits_allowed() -> bool:
+    return os.environ.get(AUDITED_RUN_EDITS_ENV, "").strip() == "1"
+
+
 def is_evidence_path(path: Path) -> bool:
     try:
         relative = path.resolve().relative_to(repo_root().resolve())
@@ -185,7 +211,15 @@ def approval_detail(args: dict[str, Any] | None) -> str:
     if isinstance(patch, str) and patch:
         targets = re.findall(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", patch, re.M)
         if targets:
-            return _clip("writes " + ", ".join(t.strip() for t in targets[:3]))
+            prefix = ""
+            try:
+                from agentic_swmm.utils.paths import repo_root
+
+                if any(audited_run_root((repo_root() / t.strip()).resolve()) for t in targets):
+                    prefix = "EDITS AN AUDITED RUN: "
+            except Exception:  # noqa: BLE001 - the detail is advisory
+                prefix = ""
+            return _clip(prefix + "writes " + ", ".join(t.strip() for t in targets[:3]))
     parts: list[str] = []
     bbox = args.get("bbox")
     city = args.get("city")
