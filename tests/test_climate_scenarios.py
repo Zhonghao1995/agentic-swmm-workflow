@@ -133,8 +133,10 @@ class TestBatch:
         )
         assert result.ok is True
         assert result.node == "OF1"  # first outfall, not the O1 literal
-        assert (run_dir / "03_climate" / "scenarios" / "baseline" / "model.inp").is_file()
-        assert (run_dir / "03_climate" / "scenarios" / "plus20" / "model.inp").is_file()
+        scenarios_dirs = [d for d in (run_dir / "03_climate").glob("scenarios_*") if d.is_dir()]
+        assert len(scenarios_dirs) == 1 and scenarios_dirs[0].name == "scenarios_f1+1.2"
+        assert (scenarios_dirs[0] / "baseline" / "model.inp").is_file()
+        assert (scenarios_dirs[0] / "plus20" / "model.inp").is_file()
 
         payload = json.loads(Path(result.summary_json).read_text(encoding="utf-8"))
         assert [s["name"] for s in payload["scenarios"]] == ["baseline", "plus20"]
