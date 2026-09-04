@@ -70,6 +70,27 @@ def _prompt_continue_past_failures(prompt: str) -> bool:
     return answer in {"y", "yes"}
 
 
+def _is_user_denial(result: dict[str, Any]) -> bool:
+    """True for a tool result the user declined at the approval prompt."""
+    permission = result.get("permission") if isinstance(result, dict) else None
+    if isinstance(permission, dict) and permission.get("prompted") and not permission.get("approved", True):
+        return True
+    return str(result.get("summary") or "") == DENIED_SUMMARY
+
+
+def _declined_final_text(call: ToolCall) -> str:
+    """The one-line report for a turn the user ended by declining a tool call."""
+    parts = []
+    for key, value in list(call.args.items())[:3]:
+        text = str(value)
+        parts.append(f"{key}={text[:40]}{'...' if len(text) > 40 else ''}")
+    detail = f" ({', '.join(parts)})" if parts else ""
+    return (
+        f"You declined {call.name}{detail}, so nothing ran this turn. "
+        "Ask again when ready, or say what to change (area, dates, route)."
+    )
+
+
 def _format_failure_inventory(failures: list[tuple[str, str]]) -> str:
     """Collapse (tool, summary) pairs into ``tool ×N (first summary)`` parts."""
     order: list[str] = []
@@ -557,6 +578,7 @@ class Planner:
             outputs: list[dict[str, Any]] = []
             step_had_failure = False
             giveup_tool: str | None = None
+            declined_call: ToolCall | None = None
             for _call_index, provider_call in enumerate(response.tool_calls):
                 call = self.registry.validate(provider_call)
                 plan.append(call)
@@ -611,6 +633,8 @@ class Planner:
                     step_had_failure = True
                     unresolved_failure = True
                     failure_log.append((call.name, str(result.get("summary") or "")))
+                    if _is_user_denial(result):
+                        declined_call = call
                     failures_since_checkpoint += 1
                     # Track consecutive failures of the same tool name.
                     if last_failed_tool == call.name:
@@ -643,6 +667,20 @@ class Planner:
                 unresolved_failure = False
 
             input_items = outputs
+
+            if declined_call is not None:
+                # Live finding F-127 (2026-09-03, S58): after one "n" the
+                # planner asked for the same fetch twice more with other
+                # areas. A decline is the user's decision, not a failure to
+                # route around: the turn ends here, and the shell reports
+                # it as declined (exit code 3, F-63).
+                ok = False
+                final_text = _declined_final_text(declined_call)
+                write_event(
+                    trace_path,
+                    {"event": "planner_declined", "step": step, "tool": declined_call.name, "args": declined_call.args},
+                )
+                break
 
             if giveup_tool is not None:
                 ok = False
