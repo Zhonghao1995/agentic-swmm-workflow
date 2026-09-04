@@ -20,6 +20,20 @@ in one go.
 That is the whole input. No bounding box, no file paths, no flags, no follow-up
 questions from the runtime.
 
+## The study area
+
+<img src="study_area.png" alt="Downtown Kelowna study area: 411 subcatchments over the storm and sanitary networks on a hillshaded 1 m LiDAR surface" width="700" />
+
+The service returns this figure with the model bundle. The area is the block of
+downtown Kelowna inside the approved bounding box, drawn in UTM zone 11N
+(EPSG:32611) over the Canadian 1 m LiDAR surface the network was derived from.
+
+Read the annotation carefully, because it counts the whole bundle: 1465 conduits
+and 88 outfalls across both the storm and the sanitary system. The SWMM model
+that ran, and the one committed here, is the storm system alone: 832 conduits,
+889 nodes, 76 outfalls. The sanitary network travels with the bundle and is not
+part of this simulation.
+
 ## What the runtime did
 
 The planner selected four skills in sequence and called one tool from each. The
@@ -56,9 +70,8 @@ the SWMMCanada service (generator version 0.5.0). Provenance is in
 | | |
 |---|---|
 | Subcatchments | 411 |
-| Storm network | 889 nodes, 832 conduits |
-| Sanitary network | 640 nodes, 633 conduits |
-| Outfalls | 76 |
+| Storm network, simulated here | 889 nodes, 832 conduits, 76 outfalls |
+| Sanitary network, in the bundle only | 640 nodes, 633 conduits |
 | Terrain | Canadian HRDEM LiDAR, BC Okanagan 2018, 1 m |
 | Rainfall | Environment Canada station 1123996 (KELOWNA UBCO), hourly, 100 percent coverage, 6.1 mm over the window |
 | Coordinate system | UTM zone 11N. Node N1 sits at 49.890 N, 119.480 W, in downtown Kelowna |
@@ -84,6 +97,14 @@ is in [report_excerpt.txt](report_excerpt.txt).
 | Runoff continuity error | -0.078 percent |
 | Flow routing continuity error | -1.022 percent |
 | Audit status | pass, 3 checks, 0 failures |
+
+<img src="rainfall_runoff_hydrograph.png" alt="Rainfall and the outfall hydrograph at OUT_N467 for 1 to 4 November 2023" width="700" />
+
+The rain falls in short bursts before dawn on 2 November. The network answers
+about an hour later with a single sharp peak of 0.130 m3/s, then drains back to
+almost nothing within four hours and stays there for the remaining two days. A
+1 km downtown catchment on 5 mm of rain behaves exactly like this, which is the
+first thing to check before trusting any of the numbers above.
 
 The two precipitation figures answer different questions and both belong here.
 The station recorded 6.1 mm across the requested days. SWMM reports 5.200 mm as
@@ -132,7 +153,20 @@ aiswmm run --inp examples/kelowna-end-to-end/model.inp --run-dir runs/kelowna-ex
 ```
 
 The peak, the continuity errors and the outfall table match `report_excerpt.txt`
-exactly. That command was run against this committed model to check it. The upstream service is only needed to build a
+exactly. That command was run against this committed model to check it.
+
+The hydrograph above redraws from the same run:
+
+```bash
+aiswmm plot --run-dir runs/kelowna-example --node OUT_N467 \
+  --node-attr Total_inflow --rain-ts rain --rain-kind depth_mm_per_dt
+```
+
+## Try your own area
+
+Point the runtime at a SWMMCanada deployment and name any published city. The
+service covers 35 Canadian municipalities; this case used one sentence and one
+approval. The upstream service is only needed to build a
 model for an area that is not already committed here.
 
 ## Files
@@ -144,9 +178,22 @@ model for an area that is not already committed here.
 | `upstream_validation.json` | The upstream QA verdict, including the two warnings |
 | `report_excerpt.txt` | The SWMM report sections behind every number above |
 | `session_transcript.md` | The session as it ran, both turns |
+| `study_area.png` | The study area figure the service ships with the bundle |
+| `rainfall_runoff_hydrograph.png` | Rainfall and the outfall hydrograph, drawn by `aiswmm plot` |
+| `sample_report.docx` | The Word report exactly as the agent wrote it |
 
-The binary SWMM output and the Word report are not committed. Both regenerate
-from `model.inp` in under a minute.
+Both figures follow the specification the plotting skill applies to every chart
+it draws: 450 dpi raster preview, vector master, single-column width.
+
+The binary SWMM output is not committed. It regenerates from `model.inp` in
+under a minute.
+
+## The deliverable
+
+[sample_report.docx](sample_report.docx) is the Word report as the agent wrote
+it, nothing edited afterwards: cover, run summary, model description read from
+the INP, QA gates, the embedded study area figure, provenance hashes, numbered
+tables and captions.
 
 ## Data sources
 

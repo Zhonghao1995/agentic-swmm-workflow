@@ -41,6 +41,7 @@
 - **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, verification-first, with a full audit trail.
 - **Live demo, no install:** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
 - **One prompt to client deliverable:** one English sentence fetched the real downtown Victoria storm network, ran SWMM, audited it, and exported a Word report: [cases/downtown-victoria](cases/downtown-victoria/).
+- **The same sentence on a fifth city:** downtown Kelowna, one approval, with the figures, the numbers and the model committed so the run reproduces offline: [cases/kelowna](cases/kelowna/).
 - **A model that said not to trust it:** when the requested week turned out dry, the run named its own errors as disqualifying instead of handing over bad numbers: [cases/downtown-victoria-on-arm.md](cases/downtown-victoria-on-arm.md).
 - **Real networks upstream:** [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) covers 35 Canadian cities, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) synthesis covers the rest of the globe.
 - **Bring the LLM you already pay for:** ten provider routes behind one `aiswmm setup` wizard, with a local fallback chain.
@@ -148,7 +149,7 @@ The repository includes runnable benchmarks and research previews with different
 | [LLM-driven dispatch + data-scarce urban modeling (SWMManywhere)](docs/v0.7.1-swmmanywhere-nl-driven-evidence.md) | A single natural-language sentence referring only to a WGS84 bounding box drives the end-to-end SWMManywhere → SWMM → audit → network-map workflow on two independent regions (Greenwich Peninsula and NYC Midtown, ~1 km² each), with no shapefile, no DEM file, and no step-by-step tool instructions. Synthesis is the work of [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) (Imperial College London, BSD-3-Clause). | Agent-side plumbing for data-scarce baseline modeling; **not** a calibrated or validated network. Calibration is next-milestone scope. |
 | [Cross-session memory autonomous activation](docs/v0.7.1-cross-session-memory-evidence.md) | An 11-word user prompt drove a complete Tecnopolo run on 2026-05-28 during which the LLM autonomously queried `recall_session_history` and recovered two prior Tecnopolo sessions from 12 days earlier: the first user-observable activation of the memory layer on a real production run. | Memory layer fires correctly and shapes planner decisions; staleness weighting and negative-precedent handling are next-milestone scope. |
 
-Examples: [Kelowna end to end](examples/kelowna-end-to-end/README.md) (one English sentence to a real municipal network, a run, an audit and a report), [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
+Examples: [TUFLOW](examples/tuflow-swmm-module03/README.md) and [Tecnopolo](examples/tecnopolo/README.md).
 
 ## Audit and research memory
 
