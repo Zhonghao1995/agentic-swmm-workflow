@@ -9,15 +9,15 @@ Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) â€
 
 ## Agent path without observed data
 
-Two typed tools, two questions (live finding F-107, 2026-09-03: a "one-at-a-time
-sensitivity scan" was answered with five separate range sweeps):
-
-- "Which parameters matter most?", "rank the parameters", "one-at-a-time",
-  "Morris", "Sobol": call `swmm_sensitivity_oat` (or `swmm_sensitivity_morris`
-  / `swmm_sensitivity_sobol`) ONCE with every parameter; it perturbs each one
-  around the baseline and returns the ranking in a single call.
-- "How uncertain is the peak if these parameters vary?": call
-  `propagate_parameter_ranges` with the ranges; it reports the spread.
+The honest split (live findings F-107 and F-109, 2026-09-03): WITH observed
+flow, `swmm_sensitivity_oat` / `swmm_sensitivity_morris` / `swmm_sensitivity_sobol`
+rank parameters against the data (they need an observed series and a patch
+map). WITHOUT observed flow, `propagate_parameter_ranges` is the tool for both
+questions: `mode=one_at_a_time` varies each parameter alone in one call and
+returns a per-parameter spread and a ranking ("which parameters matter most");
+the default `joint` mode samples all ranges together and reports the spread
+("how uncertain is the peak"). Never emulate a ranking with one sweep per
+parameter.
 
 `propagate_parameter_ranges` is the typed tool for "how uncertain is the peak if
 Manning's n and imperviousness vary". It applies each named parameter globally
