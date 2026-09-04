@@ -417,7 +417,7 @@ def tool_specs() -> list[ToolSpec]:
         ),
         ToolSpec(
             "swmm_rainfall_ensemble",
-            "Generate a rainfall ensemble (perturbation of observed series or IDF design storms); optionally run swmm5 per realisation.",
+            "Rainfall-forcing ensemble from a PREPARED rainfall series file and JSON config (method perturbation or idf). Not for a plain scaled event: for 'scale the observed event by 0.8, 1.0 and 1.2' on a model whose rain is inline in the INP, call run_climate_scenarios with those factors. " "Generate a rainfall ensemble (perturbation of observed series or IDF design storms); optionally run swmm5 per realisation.",
             _object(
                 {
                     "method": {"type": "string", "enum": ["perturbation", "idf"], "description": "Ensemble generation method."},

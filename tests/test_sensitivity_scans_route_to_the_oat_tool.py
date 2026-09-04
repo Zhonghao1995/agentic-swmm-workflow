@@ -37,3 +37,16 @@ def test_the_skill_states_the_honest_split() -> None:
     assert "The honest split" in text
     assert "WITH observed" in text and "WITHOUT observed flow" in text
     assert "mode=one_at_a_time" in text
+
+
+def test_a_scaled_rain_event_routes_to_the_climate_tool() -> None:
+    """Live test 2026-09-03 (S49): 'scale the event by 0.8/1.0/1.2' ran nothing."""
+    from agentic_swmm.agent.tool_handlers.swmm_climate import tool_specs as climate_specs
+
+    ensemble = _spec("swmm_rainfall_ensemble").description
+    assert "PREPARED rainfall series file" in ensemble
+    assert "run_climate_scenarios" in ensemble
+    climate = next(s for s in climate_specs() if s.name == "run_climate_scenarios").description
+    assert "rainfall-ensemble" in climate and "0.8,1.0,1.2" in climate
+    text = (REPO_ROOT / "skills" / "swmm-uncertainty" / "SKILL.md").read_text(encoding="utf-8")
+    assert "run_climate_scenarios" in text and "prepared rainfall series file" in text

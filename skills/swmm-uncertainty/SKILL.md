@@ -17,7 +17,10 @@ questions: `mode=one_at_a_time` varies each parameter alone in one call and
 returns a per-parameter spread and a ranking ("which parameters matter most");
 the default `joint` mode samples all ranges together and reports the spread
 ("how uncertain is the peak"). Never emulate a ranking with one sweep per
-parameter.
+parameter. Rainfall: a request to scale the observed event by factors (0.8,
+1.0, 1.2) on a model with inline rain is `run_climate_scenarios` with those
+factors (live finding F-112, 2026-09-03); `swmm_rainfall_ensemble` needs a
+prepared rainfall series file and a JSON config (perturbation or IDF).
 
 `propagate_parameter_ranges` is the typed tool for "how uncertain is the peak if
 Manning's n and imperviousness vary". It applies each named parameter globally
