@@ -1,0 +1,297 @@
+{
+  "title": "SWMMCanada (kelowna real network)",
+  "flow_units": "CMS",
+  "infiltration": "CURVE_NUMBER",
+  "start_date": "2023-11-01",
+  "end_date": "2023-11-04",
+  "n_junctions": 1441,
+  "n_outfalls": 88,
+  "n_conduits": 1465,
+  "n_subcatchments": 411,
+  "has_evaporation": true,
+  "has_snowmelt": true,
+  "systems": {
+    "storm_minor": {
+      "nodes": 889,
+      "conduits": 832
+    },
+    "sanitary": {
+      "nodes": 640,
+      "conduits": 633
+    }
+  },
+  "sections": [
+    "CONDUITS",
+    "COORDINATES",
+    "DWF",
+    "EVAPORATION",
+    "INFILTRATION",
+    "JUNCTIONS",
+    "OPTIONS",
+    "OUTFALLS",
+    "PATTERNS",
+    "POLYGONS",
+    "RAINGAGES",
+    "SNOWPACKS",
+    "SUBAREAS",
+    "SUBCATCHMENTS",
+    "TEMPERATURE",
+    "TIMESERIES",
+    "XSECTIONS"
+  ],
+  "inp_sha256": "9ac52642867b78aaa417e4720a5403254f22c9825209639311adceac2abfdce8",
+  "generator": {
+    "name": "swmmcanada",
+    "version": "0.5.0",
+    "revision": "9b759693e8adad5368248a325fb1871e6a6e53d8"
+  },
+  "terrain": {
+    "dem": "dem_dtm.tif",
+    "source": "hrdem-lidar:BC-Okanagan_2018-1m",
+    "resolution_m": 1.0,
+    "coverage": "partial",
+    "landcover": "landcover.tif",
+    "note": "2D-overland raw materials: mesh the DEM, zone roughness from the land cover, couple at the network's manholes (rim/ground elevations included)."
+  },
+  "forcing": {
+    "rainfall_resolution": "hourly",
+    "station": "1123996",
+    "station_name": "KELOWNA UBCO",
+    "coverage_pct": 100.0,
+    "n_missing_hours": 0,
+    "max_gap_h": 0,
+    "n_duplicate_hours_dropped": 0,
+    "hourly_total_mm": 6.1,
+    "daily_total_mm": 6.1,
+    "mismatch_pct": 0.0,
+    "daily_station": "1123996",
+    "daily_coverage_pct": 100.0,
+    "daily_max_gap_d": 0,
+    "n_days_zero_filled": 0
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "members": {
+      "datastore/datastore.json": {
+        "sha256": "b5c10a13db750c8fb27331414aa6a7b696a01de17bb064cabe4c8f13980a8a0b",
+        "bytes": 5641
+      },
+      "datastore/forcing.nc": {
+        "sha256": "89a055aac1f6050ec1b296dccbcc1762305ce8e327c01d04938205dabce17438",
+        "bytes": 10781
+      },
+      "datastore/network.gpkg": {
+        "sha256": "878b7b99648aacee984c9e108100739d09a0eba30f13a7625f8fa4f02aacd9e5",
+        "bytes": 1466368
+      },
+      "dem_dtm.tif": {
+        "sha256": "a61c705d7d211385b14b123e81d4807839a320e0db3aedcb43b4253548abc0df",
+        "bytes": 22429847
+      },
+      "hecras/README.md": {
+        "sha256": "d27e5e83e7bbb469b3605f985b0d0b019319091ef62157a6c74eda471fb4b66c",
+        "bytes": 4628
+      },
+      "hecras/aoi_2d_area.cpg": {
+        "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824",
+        "bytes": 5
+      },
+      "hecras/aoi_2d_area.dbf": {
+        "sha256": "22ad623cb75d33e159337522af7ea6e50e14409ecf8f5504bff5670c78ccbad1",
+        "bytes": 147
+      },
+      "hecras/aoi_2d_area.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "hecras/aoi_2d_area.shp": {
+        "sha256": "4dd0a4d06ef6b1194a5dacec5c903cc9f10d3a307f5d092aa8073c18fb5b7f1d",
+        "bytes": 236
+      },
+      "hecras/aoi_2d_area.shx": {
+        "sha256": "c1ca60ffbf6857931bf3f2f27d7489e4629f0c97cfcb4ce327e3544de62d506f",
+        "bytes": 108
+      },
+      "hecras/boundary_conditions.csv": {
+        "sha256": "da5bc7210874f3aaadd89d3077739071163c4f818dbae2d9ff7896cb525e11d4",
+        "bytes": 8588
+      },
+      "hecras/field_mapping.md": {
+        "sha256": "fe850970a47bf2be0b6f31ff25fe3df7b529146622b9004fb4c0c285c2ce602b",
+        "bytes": 4592
+      },
+      "hecras/infiltration_green_ampt.csv": {
+        "sha256": "ebb09a3d735be98ec00ec8bf3f60b4edc6ca7835abd545edb8447cc51204d006",
+        "bytes": 1672
+      },
+      "hecras/infiltration_scs_cn.csv": {
+        "sha256": "c9892a536e3011fe1c947aa53e86311aa8b8faf78bc3534184be77a6f5590a08",
+        "bytes": 3651
+      },
+      "hecras/landcover_table.csv": {
+        "sha256": "1647e825a61189044207302c707f79d395b0fc2197bd71dbfba8c19d926284b1",
+        "bytes": 971
+      },
+      "hecras/model.inp": {
+        "sha256": "3e5798a432da9865b3530bb7ce3f74194941858d0067c74d468e52c66eb22ebb",
+        "bytes": 509697
+      },
+      "hecras/model_build_manifest.json": {
+        "sha256": "23f49a2469971404af0db022330c8db4d0261c27e46ad583ae054aa114a146eb",
+        "bytes": 892
+      },
+      "hecras/nodes_supplement.csv": {
+        "sha256": "87f307f6c3b0676975ebee641379e372b91c933b9a3715b250fb28164c549a59",
+        "bytes": 72094
+      },
+      "hecras/projection.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "hecras/rain.csv": {
+        "sha256": "5d926b6aaf812b81be4b800855151c85660332a3594334769f143092b34341ae",
+        "bytes": 2422
+      },
+      "hsg.tif": {
+        "sha256": "f784151de354b9496bab2cd3c9cd148c07b5af5a7b91f0d5de95fb7668c09e68",
+        "bytes": 450
+      },
+      "icm/README.md": {
+        "sha256": "50602e945a1a3b1e44191394ef976dc5b13c325add3b0d9923c7fde0755579cb",
+        "bytes": 3166
+      },
+      "icm/conduits.csv": {
+        "sha256": "662c26e3dd52b6a60cd93c62b1708c69dd2e2bfa8bb4697918cde9d732254323",
+        "bytes": 106983
+      },
+      "icm/field_mapping.md": {
+        "sha256": "8090a706349b36aa4b192809fe4f6e5a4b95540b49779734c856cfbf8d00f32d",
+        "bytes": 3884
+      },
+      "icm/nodes.csv": {
+        "sha256": "6490b58a11c474eba1b9c57b5a15ecddc837b35a9ca960f8d437c1fe18b776af",
+        "bytes": 110136
+      },
+      "icm/rain.csv": {
+        "sha256": "5d926b6aaf812b81be4b800855151c85660332a3594334769f143092b34341ae",
+        "bytes": 2422
+      },
+      "icm/rain_infoworks.csv": {
+        "sha256": "7e97ccb452dd0dcb633faace22f752fe024d7af84ed4a504dd8645b013ce83c4",
+        "bytes": 2250
+      },
+      "icm/subcatchments.cpg": {
+        "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824",
+        "bytes": 5
+      },
+      "icm/subcatchments.dbf": {
+        "sha256": "b23ab6e07643090ba3222cf4fef860aca8102fb7fcd8f8fd8fed41a14a4fa5c4",
+        "bytes": 217933
+      },
+      "icm/subcatchments.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "icm/subcatchments.shp": {
+        "sha256": "838c4a04b5244bc5c0e9749e614ae22697e4df8a35178c4ca2889d5b833cbfa3",
+        "bytes": 217212
+      },
+      "icm/subcatchments.shx": {
+        "sha256": "5e6504c662d84f8fc545443d1d501136d01e787cccfb32bd5a55292c2e271c66",
+        "bytes": 3388
+      },
+      "landcover.tif": {
+        "sha256": "646caea5851b5cf99a1d792ac7e4fc0d8e846b4779b1b9e4c85ab09396d86484",
+        "bytes": 6582
+      },
+      "mikeplus/README.md": {
+        "sha256": "e1fb7491b7a9588d9f250d4cd8e1ac2874bf0396c9231608c7d3f1d4f7d90179",
+        "bytes": 2400
+      },
+      "mikeplus/catchments.cpg": {
+        "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824",
+        "bytes": 5
+      },
+      "mikeplus/catchments.dbf": {
+        "sha256": "0e26c14e8fd34d125e4d22bbc871d2699d3fb1cfe280c198751d35821eb11c34",
+        "bytes": 217933
+      },
+      "mikeplus/catchments.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "mikeplus/catchments.shp": {
+        "sha256": "838c4a04b5244bc5c0e9749e614ae22697e4df8a35178c4ca2889d5b833cbfa3",
+        "bytes": 217212
+      },
+      "mikeplus/catchments.shx": {
+        "sha256": "5e6504c662d84f8fc545443d1d501136d01e787cccfb32bd5a55292c2e271c66",
+        "bytes": 3388
+      },
+      "mikeplus/field_mapping.md": {
+        "sha256": "86b9608364138cf6fe96571b37e6a34c0ac9f968662df02bab7ebcdacebbeb50",
+        "bytes": 3678
+      },
+      "mikeplus/links.cpg": {
+        "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824",
+        "bytes": 5
+      },
+      "mikeplus/links.dbf": {
+        "sha256": "51abfa290a5cdccba386ce6545a75b454117e3a5f97202f442d2c5d27d33a0e9",
+        "bytes": 458771
+      },
+      "mikeplus/links.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "mikeplus/links.shp": {
+        "sha256": "bd39dc97dabc013e6e2755d1fd97b6bf51a91edbcbd18ab3b7c29b87f171e510",
+        "bytes": 129020
+      },
+      "mikeplus/links.shx": {
+        "sha256": "09f88f421840dc3517fceabf67979a31c99c899ec61baa84d722c6f630707413",
+        "bytes": 11820
+      },
+      "mikeplus/nodes.cpg": {
+        "sha256": "3ad3031f5503a4404af825262ee8232cc04d4ea6683d42c5dd0a2f2a27ac9824",
+        "bytes": 5
+      },
+      "mikeplus/nodes.dbf": {
+        "sha256": "3872801e3aed931c322f661877c5333596b9a45bd672a981b4e430e437fc99fe",
+        "bytes": 356451
+      },
+      "mikeplus/nodes.prj": {
+        "sha256": "276f61fb9ac2378218991d323f40bcb1a12072d8bdeb93353cc5a8543196e695",
+        "bytes": 403
+      },
+      "mikeplus/nodes.shp": {
+        "sha256": "575253a5c4200e524d74094ff04ceb8dfea4414601b71098b8cd203d85fc19a4",
+        "bytes": 42912
+      },
+      "mikeplus/nodes.shx": {
+        "sha256": "48d18d5e434dc600b66dc503f059ba011d43ae9c43315b91c881a81e3d8f1932",
+        "bytes": 12332
+      },
+      "mikeplus/rain.csv": {
+        "sha256": "5d926b6aaf812b81be4b800855151c85660332a3594334769f143092b34341ae",
+        "bytes": 2422
+      },
+      "model.inp": {
+        "sha256": "9ac52642867b78aaa417e4720a5403254f22c9825209639311adceac2abfdce8",
+        "bytes": 618773
+      },
+      "preview/network.geojson": {
+        "sha256": "a6914ea759d9432e2e127da5115a1ae1b54d6650baa36cd25711378425b0ce94",
+        "bytes": 2250586
+      },
+      "soil_texture.tif": {
+        "sha256": "c27516f418681d4bb72e12af3962b685f27d64d9362b9288538bf79c8b2b4116",
+        "bytes": 450
+      },
+      "validation.json": {
+        "sha256": "25e3018bac118a49e0b79553fd1d63079075aef6f8fc06103caacb180e94440a",
+        "bytes": 6921
+      }
+    }
+  }
+}
