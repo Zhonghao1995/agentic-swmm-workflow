@@ -182,6 +182,26 @@ def _mcp_json_drift(root: Path) -> list[tuple[str, str]]:
     return drifted
 
 
+def _mcp_servers_without_deps(root: Path) -> list[str]:
+    """Names of bundled MCP servers whose ``node_modules`` is missing.
+
+    Live finding F-122 (2026-09-03, S55): two servers had never been
+    installed on the machine and every listing failed with "MCP process
+    ended before sending a complete line". This is a directory check, no
+    server is started.
+    """
+    mcp_root = root / "mcp"
+    if not mcp_root.is_dir():
+        return []
+    missing: list[str] = []
+    for server_dir in sorted(mcp_root.iterdir()):
+        if not (server_dir / "package.json").is_file():
+            continue
+        if not (server_dir / "node_modules").is_dir():
+            missing.append(server_dir.name)
+    return missing
+
+
 def _record_launcher(record: dict) -> Path | None:
     """Best-effort extraction of an MCP server's launcher path.
 
@@ -331,6 +351,16 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
     for server_name, drift_detail in _mcp_json_drift(root):
         checks.append(
             (f"mcp.json: {server_name}", False, drift_detail, False)
+        )
+    for server_name in _mcp_servers_without_deps(root):
+        checks.append(
+            (
+                f"mcp deps: {server_name}",
+                False,
+                f"no node_modules under mcp/{server_name}; its tools cannot start. "
+                f"Run: bash scripts/install_mcp_deps.sh {server_name} (or aiswmm setup --install-mcp)",
+                False,
+            )
         )
     # The detailed per-provider key rows live in the dedicated
     # "LLM provider" section (render_llm_provider_section). This compact
