@@ -126,6 +126,59 @@ def _format_did_you_mean(suggestions: list[str]) -> str | None:
 # builder is one concept.
 
 
+def anchored_run_for(path: str | Path) -> Path | None:
+    """The run a chat folder is about, from the folder's own name.
+
+    A chat session opened about an existing run is named
+    ``HHMMSS_<run id>_chat`` next to that run (``190946_150906_fetch-swmm-
+    model_run_chat`` beside ``150906_fetch-swmm-model_run``). Returns the
+    run directory when ``path`` lies inside such a chat folder and the run
+    exists, else ``None``.
+    """
+    current = Path(path)
+    for _ in range(8):
+        name = current.name
+        if name.endswith("_chat") and len(name) > 12 and name[:6].isdigit() and name[6] == "_":
+            run_id = name[7:-5]
+            if run_id.endswith("_run"):
+                run_dir = current.parent / run_id
+                if run_dir.is_dir():
+                    return run_dir
+            return None
+        if current.parent == current:
+            return None
+        current = current.parent
+    return None
+
+
+def chat_anchor_hint(requested: str | Path | None) -> str | None:
+    """Point a miss inside a chat folder at the run the chat is about.
+
+    Live finding F-128 (2026-09-03, S54 r3): asked what the expert review
+    recorded, the planner read <chat folder>/09_audit/experiment_provenance
+    .json, got "file not found", and told the user no decision file exists,
+    while the run's own 09_audit held the record.
+    """
+    if requested is None:
+        return None
+    path = Path(str(requested))
+    run_dir = anchored_run_for(path)
+    if run_dir is None:
+        return None
+    chat_dir = path
+    while not chat_dir.name.endswith("_chat"):
+        chat_dir = chat_dir.parent
+    try:
+        relative = path.relative_to(chat_dir)
+    except ValueError:
+        return None
+    target = run_dir / relative
+    lead = f"this chat folder holds no run artifacts; the run it is about is {run_dir}"
+    if target.exists():
+        return f"{lead}, and {target} exists: read that"
+    return f"{lead}; {relative} does not exist there either, list {run_dir} first"
+
+
 def file_resolution_error(
     summary: str,
     *,
@@ -143,12 +196,13 @@ def file_resolution_error(
     greps still match. Used by the SWMM tool handlers so the planner sees
     *which* file to pick instead of a dead-end "not found".
     """
+    anchor_hint = chat_anchor_hint(requested)
     if search_dir is None:
-        return RemediationError(summary=summary)
+        return RemediationError(summary=summary, hint=anchor_hint)
     directory = Path(search_dir)
     if not directory.is_dir():
         return RemediationError(
-            summary=summary, cause=f"directory does not exist: {directory}"
+            summary=summary, cause=f"directory does not exist: {directory}", hint=anchor_hint
         )
 
     try:
@@ -180,6 +234,8 @@ def file_resolution_error(
     elif not hint_parts:
         hint_parts.append(f"{directory} contains no files")
 
+    if anchor_hint:
+        hint_parts.insert(0, anchor_hint)
     hint = "; ".join(hint_parts) if hint_parts else None
     return RemediationError(summary=summary, cause=cause, hint=hint)
 
