@@ -146,3 +146,40 @@ def test_two_sweeps_in_one_run_keep_their_own_files() -> None:
     assert sweep_tag({"pct_imperv": (50, 90)}) == "pct_imperv"
     assert sweep_tag({"n_imperv": (0.01, 0.02), "pct_imperv": (60, 80)}) == "n_imperv+pct_imperv"
     assert sweep_tag({}) == "all"
+
+
+def test_one_at_a_time_mode_ranks_the_parameters_in_one_call(tmp_path: Path) -> None:
+    """Live finding F-109 (2026-09-03, S48 r2): a reference-free ranking needs each parameter varied alone."""
+    from agentic_swmm.agent.swmm_runtime import parameter_sweep as ps
+
+    base = tmp_path / "model.inp"
+    base.write_text(_MINI_INP if "_MINI_INP" in globals() else "[TITLE]\nmini\n[OUTFALLS]\nO1 0 FREE\n", encoding="utf-8")
+
+    def runner(inp, sample_dir, node):
+        text = inp.read_text(encoding="utf-8", errors="ignore")
+        peak = 0.05
+        # pct_imperv moves the peak; n_imperv does not (a stand-in for a real response surface).
+        for line in text.splitlines():
+            if line.strip().startswith("S") and "pct" in line.lower():
+                pass
+        # Read the sampled values back from the sample folder name via sample_dir; the sweep
+        # writes them into the INP, but for the test the response is keyed by the sample name.
+        name = sample_dir.name
+        if name.startswith("pct_imperv_s"):
+            idx = int(name.rsplit("s", 1)[1])
+            peak = 0.05 + 0.004 * idx
+        return {"run_ok": True, "metrics": {"peak": {"peak": peak, "units": "CMS", "node": node}}, "node_selection": {"resolved": "O1"}}
+
+    result = ps.run_parameter_sweep(
+        base_inp=base, run_dir=tmp_path / "run", ranges={"n_imperv": (0.01, 0.02), "pct_imperv": (60, 80)},
+        node="O1", n_samples=4, runner=runner, mode="one_at_a_time",
+    )
+    assert result.ok
+    assert result.stats["mode"] == "one_at_a_time"
+    assert result.stats["ranking"] == ["pct_imperv", "n_imperv"]
+    assert result.stats["dominant_parameter"] == "pct_imperv"
+    assert result.stats["per_parameter"]["n_imperv"]["peak_spread"] == 0
+    assert Path(result.summary_md).name == "parameter_sweep_oat_n_imperv+pct_imperv.md"
+    md = Path(result.summary_md).read_text(encoding="utf-8")
+    assert "One-at-a-time ranking" in md and "| 1 | pct_imperv |" in md
+    assert (tmp_path / "run" / "09_audit" / "parameter_sweep_oat_n_imperv+pct_imperv" / "pct_imperv_s01" / "model.inp").exists()

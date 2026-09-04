@@ -1,8 +1,9 @@
-"""A sensitivity scan routes to the OAT tool, a spread question to the sweep.
+"""Reference-free rankings go to the sweep tool's one-at-a-time mode; the
+observed-flow sensitivity tools keep their data requirement.
 
-Live test 2026-09-03 (S48): "do a one-at-a-time sensitivity scan" was
-answered with five separate propagate_parameter_ranges sweeps (25 SWMM runs)
-although swmm_sensitivity_oat exists for exactly that question.
+Live test 2026-09-03: S48 answered a scan with five separate sweeps (F-107);
+#509 then sent it to swmm_sensitivity_oat, which needs observed flow, and the
+planner honestly returned nothing (F-109).
 """
 
 from __future__ import annotations
@@ -18,20 +19,21 @@ def _spec(name: str):
     return next(s for s in tool_specs() if s.name == name)
 
 
-def test_the_oat_tool_says_it_answers_which_parameters_matter_in_one_call() -> None:
+def test_the_oat_tool_says_it_needs_observed_flow_and_names_the_alternative() -> None:
     description = _spec("swmm_sensitivity_oat").description
-    assert "which parameters matter most" in description
-    assert "ONE call" in description
-    assert "propagate_parameter_ranges" in description
+    assert "OBSERVED FLOW" in description
+    assert "mode=one_at_a_time" in description
 
 
-def test_the_sweep_tool_points_scans_at_the_oat_tool() -> None:
-    description = _spec("propagate_parameter_ranges").description
-    assert "swmm_sensitivity_oat" in description
-    assert "instead of repeating this tool" in description
+def test_the_sweep_tool_offers_the_one_at_a_time_mode() -> None:
+    spec = _spec("propagate_parameter_ranges")
+    assert spec.parameters["properties"]["mode"]["enum"] == ["joint", "one_at_a_time"]
+    assert "which parameters matter most" in spec.description
+    assert "Do not repeat this tool per parameter" in spec.description
 
 
-def test_the_skill_states_the_split() -> None:
+def test_the_skill_states_the_honest_split() -> None:
     text = (REPO_ROOT / "skills" / "swmm-uncertainty" / "SKILL.md").read_text(encoding="utf-8")
-    assert "Two typed tools, two questions" in text
-    assert "swmm_sensitivity_oat" in text and "propagate_parameter_ranges" in text
+    assert "The honest split" in text
+    assert "WITH observed" in text and "WITHOUT observed flow" in text
+    assert "mode=one_at_a_time" in text

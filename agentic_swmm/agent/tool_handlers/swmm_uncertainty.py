@@ -300,8 +300,12 @@ def propagate_parameter_ranges_tool(call: ToolCall, session_dir: Path) -> dict[s
     except (TypeError, ValueError):
         return _failure(call, "n_samples must be an integer")
     try:
+        mode_raw = call.args.get("mode")
+        mode = str(mode_raw).strip() if isinstance(mode_raw, str) and mode_raw.strip() else "joint"
+        if mode not in ("joint", "one_at_a_time"):
+            return _failure(call, "mode must be 'joint' or 'one_at_a_time'")
         result = parameter_sweep.run_parameter_sweep(
-            base_inp=inp, run_dir=run_dir, ranges=ranges, node=node, n_samples=n_samples
+            base_inp=inp, run_dir=run_dir, ranges=ranges, node=node, n_samples=n_samples, mode=mode
         )
     except Exception as exc:  # noqa: BLE001 - the planner needs the message, not a traceback
         return _failure(call, f"parameter sweep failed: {exc}")
@@ -321,6 +325,8 @@ def propagate_parameter_ranges_tool(call: ToolCall, session_dir: Path) -> dict[s
         "baseline_peak": result.baseline_peak,
         "flow_units": result.flow_units,
         "ranges": {k: list(v) for k, v in ranges.items()},
+        "mode": mode,
+        "ranking": list(result.stats.get("ranking") or []),
         "stats": stats,
         "samples": [
             {"name": s.name, "values": s.values, "run_ok": s.run_ok, "peak": s.peak}
@@ -366,9 +372,9 @@ def tool_specs() -> list[ToolSpec]:
     return [
         ToolSpec(
             "swmm_sensitivity_oat",
-            "OAT sensitivity: perturb each parameter around a baseline and rank by RMSE+peak-error spread. "
-            "Answers 'which parameters matter most' or 'one-at-a-time scan' in ONE call for every parameter; "
-            "do not emulate it with repeated propagate_parameter_ranges sweeps.",
+            "OAT sensitivity AGAINST OBSERVED FLOW: perturb each parameter around a baseline and rank by "
+            "RMSE+peak-error spread. Needs an observed series and a patch map. Without observed data, "
+            "use propagate_parameter_ranges with mode=one_at_a_time for a reference-free ranking.",
             _object(
                 {
                     **_swmm_uncertainty_common_schema(),
@@ -434,8 +440,10 @@ def tool_specs() -> list[ToolSpec]:
                 "Reference-free uncertainty: apply each named parameter GLOBALLY over a range "
                 "(the same value on every subcatchment or conduit), run SWMM once per sample, "
                 "and report the spread of the peak at the report node.\n"
-                "For 'which parameters matter most' or a one-at-a-time / Morris / Sobol scan call "
-                "swmm_sensitivity_oat (one call, every parameter) instead of repeating this tool.\n"
+                "mode=one_at_a_time varies each parameter alone (the others at baseline) in ONE call and "
+                "returns a per-parameter spread and a ranking: the reference-free answer to 'which "
+                "parameters matter most' or 'a one-at-a-time scan'. Do not repeat this tool per parameter. "
+                "With observed flow available, the swmm_sensitivity_* tools rank against the data instead.\n"
                 "USE WHEN: the user asks how uncertain the peak is, or to vary Manning's n, "
                 "imperviousness, depression storage or conduit roughness, and has NO observed "
                 "flow (the sensitivity tools need an observed series).\n"
@@ -445,6 +453,11 @@ def tool_specs() -> list[ToolSpec]:
             ),
             _object(
                 {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["joint", "one_at_a_time"],
+                        "description": "joint (default): sample all ranges together and report the spread; one_at_a_time: vary each parameter alone and rank them.",
+                    },
                     "inp_path": {"type": "string", "description": "Existing SWMM .inp (in-repo path)."},
                     "ranges": {"type": "object", "description": "Parameter name -> [low, high]."},
                     "node": {"type": "string", "description": "Report node; default = the dominant outfall."},

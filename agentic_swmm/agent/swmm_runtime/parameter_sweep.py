@@ -233,6 +233,7 @@ def run_parameter_sweep(
     seed: int = 42,
     runner: RunnerFn | None = None,
     progress: Callable[[str], None] | None = None,
+    mode: str = "joint",
 ) -> SweepResult:
     """Run the baseline plus one SWMM run per sample; write the spread.
 
@@ -252,9 +253,20 @@ def run_parameter_sweep(
     # Live finding F-108 (2026-09-03, S48): five sweeps in one session wrote
     # the same parameter_sweep.{json,md} and the follow-up read the survivor.
     # Each sweep keeps its own files, named after the parameters it varied.
-    tag = sweep_tag(ranges)
+    # Live finding F-109 (2026-09-03, S48 r2): a reference-free ranking of
+    # "which parameters matter most" needs each parameter varied alone; the
+    # observed-flow sensitivity tools cannot serve a model without data.
+    if mode not in ("joint", "one_at_a_time"):
+        raise ValueError(f"mode must be 'joint' or 'one_at_a_time', not {mode!r}")
+    tag = ("oat_" if mode == "one_at_a_time" else "") + sweep_tag(ranges)
     sweep_dir = audit_dir / f"parameter_sweep_{tag}"
-    samples = sample_space(ranges, n_samples, seed=seed)
+    if mode == "one_at_a_time":
+        plan: list[tuple[str, dict[str, float]]] = []
+        for name in ranges:
+            for i, values in enumerate(sample_space({name: ranges[name]}, n_samples, seed=seed), start=1):
+                plan.append((f"{name}_s{i:02d}", values))
+    else:
+        plan = [(f"s{i:02d}", values) for i, values in enumerate(sample_space(ranges, n_samples, seed=seed), start=1)]
     runs: list[SweepSample] = []
 
     def _one(name: str, values: dict[str, float]) -> SweepSample:
@@ -285,10 +297,12 @@ def run_parameter_sweep(
     baseline = _one("baseline", {})
     if report_node == AUTO_NODE:
         report_node = resolved_report_node(base_inp, baseline.manifest)
-    for i, values in enumerate(samples, start=1):
-        runs.append(_one(f"s{i:02d}", values))
+    for name, values in plan:
+        runs.append(_one(name, values))
 
     stats = _stats(baseline, runs, ranges)
+    if mode == "one_at_a_time":
+        stats.update(_one_at_a_time_stats(baseline, runs, ranges))
     units = baseline.flow_units or next((s.flow_units for s in runs if s.flow_units), None)
     payload = {
         "schema_version": "1.0",
@@ -353,14 +367,34 @@ def _stats(baseline: SweepSample, runs: list[SweepSample], ranges: dict[str, tup
     for name, (r_lo, r_hi) in ranges.items():
         if r_hi <= r_lo:
             continue
-        low = [s.peak for s in runs if s.run_ok and s.peak is not None and (s.values[name] - r_lo) / (r_hi - r_lo) <= 1 / 3]
-        high = [s.peak for s in runs if s.run_ok and s.peak is not None and (s.values[name] - r_lo) / (r_hi - r_lo) >= 2 / 3]
+        low = [s.peak for s in runs if s.run_ok and s.peak is not None and name in s.values and (s.values[name] - r_lo) / (r_hi - r_lo) <= 1 / 3]
+        high = [s.peak for s in runs if s.run_ok and s.peak is not None and name in s.values and (s.values[name] - r_lo) / (r_hi - r_lo) >= 2 / 3]
         if low and high:
             effects[name] = round(statistics.mean(high) - statistics.mean(low), 6)
     if effects:
         stats["marginal_effect_on_peak"] = effects
         stats["dominant_parameter"] = max(effects, key=lambda k: abs(effects[k]))
     return stats
+
+
+def _one_at_a_time_stats(baseline: SweepSample, runs: list[SweepSample], ranges: dict[str, tuple[float, float]]) -> dict[str, Any]:
+    """Per-parameter spread when each parameter was varied alone, plus a ranking."""
+    per: dict[str, dict[str, Any]] = {}
+    for name in ranges:
+        peaks = [s.peak for s in runs if s.run_ok and s.peak is not None and list(s.values) == [name]]
+        if not peaks:
+            per[name] = {"samples_ok": 0}
+            continue
+        lo, hi = min(peaks), max(peaks)
+        entry: dict[str, Any] = {"samples_ok": len(peaks), "peak_min": lo, "peak_max": hi, "peak_spread": round(hi - lo, 6)}
+        if baseline.peak:
+            entry["spread_percent_of_baseline"] = round(100.0 * (hi - lo) / baseline.peak, 2)
+        per[name] = entry
+    ranking = sorted((n for n in per if per[n].get("samples_ok")), key=lambda n: per[n]["peak_spread"], reverse=True)
+    out: dict[str, Any] = {"mode": "one_at_a_time", "per_parameter": per, "ranking": ranking}
+    if ranking:
+        out["dominant_parameter"] = ranking[0]
+    return out
 
 
 def _render_md(node: str, units: str | None, baseline: SweepSample, runs: list[SweepSample], stats: dict[str, Any], ranges: dict[str, tuple[float, float]]) -> str:
@@ -384,9 +418,16 @@ def _render_md(node: str, units: str | None, baseline: SweepSample, runs: list[S
             lines.append(f"Dominant parameter: {stats['dominant_parameter']} (marginal effects {stats['marginal_effect_on_peak']})")
     if stats.get("samples_failed"):
         lines.append(f"Failed samples: {stats['samples_failed']}")
+    if stats.get("mode") == "one_at_a_time" and stats.get("per_parameter"):
+        lines += ["", "One-at-a-time ranking (each parameter varied alone, the others at baseline):", "",
+                  "| rank | parameter | low | high | peak min | peak max | spread (% of baseline) |",
+                  "| --- | --- | --- | --- | --- | --- | --- |"]
+        for rank, name in enumerate(stats.get("ranking") or [], start=1):
+            e = stats["per_parameter"][name]; lo, hi = ranges[name]
+            lines.append(f"| {rank} | {name} | {lo:g} | {hi:g} | {e.get('peak_min', 'n/a')} | {e.get('peak_max', 'n/a')} | {e.get('spread_percent_of_baseline', 'n/a')} |")
     lines += ["", "| sample | " + " | ".join(ranges) + " | run ok | peak |", "| --- | " + " | ".join("---" for _ in ranges) + " | --- | --- |"]
     for s in runs:
-        vals = " | ".join(f"{s.values[name]:g}" for name in ranges)
+        vals = " | ".join(f"{s.values[name]:g}" if name in s.values else "base" for name in ranges)
         lines.append(f"| {s.name} | {vals} | {'yes' if s.run_ok else 'FAILED'} | {s.peak if s.peak is not None else 'n/a'} |")
     lines += ["", "Evidence boundary: prior sensitivity to globally applied ranges, not calibrated uncertainty.", ""]
     return "\n".join(lines)
