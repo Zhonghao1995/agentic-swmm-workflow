@@ -5,6 +5,7 @@ Real sessions, real networks, real deliverables. Each case records the exact nat
 | Case | Area | Upstream source | Chain | Deliverable |
 | --- | --- | --- | --- | --- |
 | [Downtown Victoria, BC](downtown-victoria/) | ~1 km2 municipal core | [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) real storm network | fetch, run, audit, design review, plot, map, Word report | [sample_report.docx](downtown-victoria/sample_report.docx) |
+| [Downtown Kelowna, BC](kelowna/) | ~1 km2 downtown core | [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) real storm network, sanitary in the bundle | fetch, run, audit, Word report, all from one sentence | [sample_report.docx](kelowna/sample_report.docx) |
 | [Downtown Victoria on ARM](downtown-victoria-on-arm.md) | same AOI, real municipal network | [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada), storm + sanitary, tidal outfalls | fetch, run, audit | the run's own refusal to interpret a 6.111% routing error |
 
 ## Ground rules for every case
