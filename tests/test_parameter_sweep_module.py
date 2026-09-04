@@ -183,3 +183,30 @@ def test_one_at_a_time_mode_ranks_the_parameters_in_one_call(tmp_path: Path) -> 
     md = Path(result.summary_md).read_text(encoding="utf-8")
     assert "One-at-a-time ranking" in md and "| 1 | pct_imperv |" in md
     assert (tmp_path / "run" / "09_audit" / "parameter_sweep_oat_n_imperv+pct_imperv" / "pct_imperv_s01" / "model.inp").exists()
+
+
+def test_one_at_a_time_levels_are_per_parameter_and_capped(tmp_path: Path) -> None:
+    """Live finding F-110 (2026-09-03, S48 r3): n_samples=25 per parameter cost 150 runs."""
+    from agentic_swmm.agent.swmm_runtime import parameter_sweep as ps
+
+    base = tmp_path / "model.inp"
+    base.write_text("[TITLE]\nmini\n[OUTFALLS]\nO1 0 FREE\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def runner(inp, sample_dir, node):
+        calls.append(sample_dir.name)
+        return {"run_ok": True, "metrics": {"peak": {"peak": 0.1, "units": "CMS", "node": node}}, "node_selection": {"resolved": "O1"}}
+
+    ps.run_parameter_sweep(
+        base_inp=base, run_dir=tmp_path / "run", ranges={"n_imperv": (0.01, 0.02), "pct_imperv": (60, 80)},
+        node="O1", n_samples=25, runner=runner, mode="one_at_a_time",
+    )
+    # baseline + 9 levels x 2 parameters, not 25 x 2
+    assert len(calls) == 1 + 2 * ps.OAT_MAX_LEVELS
+
+
+def test_swmm_depression_storage_names_are_aliases() -> None:
+    from agentic_swmm.agent.swmm_runtime import parameter_sweep as ps
+
+    parsed = ps.parse_ranges({"dstore_imperv": [1, 3], "dstore_perv": [2, 6]})
+    assert set(parsed) == {"s_imperv", "s_perv"}

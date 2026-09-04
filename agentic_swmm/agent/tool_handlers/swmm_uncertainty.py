@@ -456,7 +456,7 @@ def tool_specs() -> list[ToolSpec]:
                     "mode": {
                         "type": "string",
                         "enum": ["joint", "one_at_a_time"],
-                        "description": "joint (default): sample all ranges together and report the spread; one_at_a_time: vary each parameter alone and rank them.",
+                        "description": "joint (default): sample all ranges together and report the spread; one_at_a_time: vary each parameter alone and rank them (n_samples is then the levels PER parameter, default 5, capped at 9; each level is one SWMM run).",
                     },
                     "inp_path": {"type": "string", "description": "Existing SWMM .inp (in-repo path)."},
                     "ranges": {"type": "object", "description": "Parameter name -> [low, high]."},

@@ -62,6 +62,10 @@ ALIASES: dict[str, str] = {
     "roughness": "conduit_n",
     "pipe_n": "conduit_n",
     "conduit_roughness": "conduit_n",
+    "dstore_imperv": "s_imperv",
+    "dstore_perv": "s_perv",
+    "depression_storage_imperv": "s_imperv",
+    "depression_storage_perv": "s_perv",
 }
 
 MAX_FACTORIAL = 36
@@ -182,6 +186,9 @@ class SweepSample:
     manifest: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
 
+OAT_DEFAULT_LEVELS = 5
+OAT_MAX_LEVELS = 9
+
 AUTO_NODE = "auto"
 
 
@@ -261,9 +268,13 @@ def run_parameter_sweep(
     tag = ("oat_" if mode == "one_at_a_time" else "") + sweep_tag(ranges)
     sweep_dir = audit_dir / f"parameter_sweep_{tag}"
     if mode == "one_at_a_time":
+        # n_samples is PER PARAMETER here; the planner asked for 25 and paid
+        # 150 SWMM runs for six parameters (live finding F-110, 2026-09-03,
+        # S48 r3). Five levels answer the ranking; nine is the ceiling.
+        levels = min(n_samples, OAT_MAX_LEVELS) if n_samples else OAT_DEFAULT_LEVELS
         plan: list[tuple[str, dict[str, float]]] = []
         for name in ranges:
-            for i, values in enumerate(sample_space({name: ranges[name]}, n_samples, seed=seed), start=1):
+            for i, values in enumerate(sample_space({name: ranges[name]}, levels, seed=seed), start=1):
                 plan.append((f"{name}_s{i:02d}", values))
     else:
         plan = [(f"s{i:02d}", values) for i, values in enumerate(sample_space(ranges, n_samples, seed=seed), start=1)]
