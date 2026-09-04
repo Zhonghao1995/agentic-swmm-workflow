@@ -82,7 +82,7 @@ from agentic_swmm.utils.paths import repo_root
 # PRD-02 — deep-module split. New modules with the carved-out behaviour;
 # names below are re-exported so legacy imports continue to resolve.
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
-from agentic_swmm.agent.repl import DECLINED_EXIT_CODE, run_repl
+from agentic_swmm.agent.repl import DECLINED_EXIT_CODE, run_repl, ANSWERED_WITH_FAILURES_EXIT_CODE
 from agentic_swmm.agent.session_bootstrap import (
     bootstrap_prior_state as _bootstrap_prior_state,
     bootstrap_runs_root as _bootstrap_runs_root,
@@ -403,6 +403,27 @@ def _write_chat_note_for_session(session_dir: Path) -> Path | None:
 # module imports the shell, not the other way round).
 
 
+def turn_answered_with_failures(outcome: Any) -> bool:
+    """True when the turn did not succeed, nothing was declined, the planner
+    still gave a final answer, and at least one tool call failed.
+
+    The planner keeps ``ok=False`` when a closing text turn leaves a tool
+    failure unresolved (so prose cannot paper over a failure); the shell
+    must then say that, not "Turn failed" under a complete answer (live
+    finding F-123, 2026-09-03, S55).
+    """
+    if getattr(outcome, "ok", False):
+        return False
+    if turn_was_declined(outcome):
+        return False
+    if not str(getattr(outcome, "final_text", "") or "").strip():
+        return False
+    for result in getattr(outcome, "results", None) or []:
+        if isinstance(result, dict) and not result.get("ok", True):
+            return True
+    return False
+
+
 def turn_was_declined(outcome: Any) -> bool:
     """True when the turn did not succeed and at least one prompted tool was declined."""
     if getattr(outcome, "ok", False):
@@ -453,7 +474,11 @@ FAILED_RUN_NOTE = (
 def _exit_code_for(outcome: Any) -> int:
     if getattr(outcome, "ok", False):
         return 0
-    return DECLINED_EXIT_CODE if turn_was_declined(outcome) else 1
+    if turn_was_declined(outcome):
+        return DECLINED_EXIT_CODE
+    if turn_answered_with_failures(outcome):
+        return ANSWERED_WITH_FAILURES_EXIT_CODE
+    return 1
 
 def run_openai_planner(
     args: argparse.Namespace,

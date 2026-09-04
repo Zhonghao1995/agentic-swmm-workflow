@@ -28,6 +28,10 @@ from agentic_swmm.agent.warm_intro import WarmIntroState, maybe_emit_warm_intro
 #: at least one prompted tool was declined, so the shell can say so and
 #: scripts can tell the two apart.
 DECLINED_EXIT_CODE = 3
+# Live finding F-123 (2026-09-03, S55): the planner answered honestly after two
+# read-only calls failed, and the shell still printed "Turn failed with exit
+# code 1" under the answer. The turn did run; its failures are in the answer.
+ANSWERED_WITH_FAILURES_EXIT_CODE = 4
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 __all__ = ["run_repl", "PlannerRunner"]
@@ -164,5 +168,10 @@ def run_repl(
             continue
         if rc == DECLINED_EXIT_CODE:
             output("Turn ended: you declined a tool call, so nothing ran. Ask again when ready, or type /exit.")
+        elif rc == ANSWERED_WITH_FAILURES_EXIT_CODE:
+            output(
+                "Turn ended with unresolved tool failure(s): the answer above should name them "
+                "(the lines marked with a cross). You can continue or type /exit."
+            )
         elif rc != 0:
             output(f"Turn failed with exit code {rc}. You can continue or type /exit.")
