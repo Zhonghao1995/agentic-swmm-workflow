@@ -279,6 +279,11 @@ def _default_runner(inp: Path, scenario_dir: Path, node: str) -> dict[str, Any]:
     return manifest
 
 
+def batch_tag(scenarios: tuple[ScenarioSpec, ...]) -> str:
+    """A file-name tag from the batch's precipitation factors: f0.8+1+1.2."""
+    return "f" + "+".join(f"{s.precip_factor:g}" for s in scenarios)[:60]
+
+
 def run_climate_batch(
     *,
     base_inp: Path,
@@ -292,9 +297,12 @@ def run_climate_batch(
 
     Artifacts land in the canonical climate stage (ADR-0004)::
 
-        <run_dir>/03_climate/scenarios/<name>/model.inp (+ scaled .dat)
-        <run_dir>/03_climate/scenarios/<name>/model.rpt / model.out ...
-        <run_dir>/03_climate/climate_summary.json / climate_summary.md
+        <run_dir>/03_climate/scenarios_<factors>/<name>/model.inp (+ scaled .dat)
+        <run_dir>/03_climate/scenarios_<factors>/<name>/model.rpt / model.out ...
+        <run_dir>/03_climate/climate_summary_<factors>.json / .md
+
+    One batch, one set of files (live finding F-113, 2026-09-03): a second
+    batch with other factors used to overwrite the first.
     """
     runner = runner or _default_runner
     # Live finding F-72 (2026-09-02): the INP's first outfall is not the
@@ -302,7 +310,8 @@ def run_climate_batch(
     # on the runner's "auto" node and the batch locks the node it resolved.
     report_node = node or "auto"
     climate_root = run_layout.stage_dir(run_dir, run_layout.CLIMATE, create=True)
-    scenarios_root = climate_root / "scenarios"
+    tag = batch_tag(scenarios)
+    scenarios_root = climate_root / f"scenarios_{tag}"
 
     runs: list[ScenarioRun] = []
     for scenario in scenarios:
@@ -340,8 +349,8 @@ def run_climate_batch(
             )
         )
 
-    summary_json = climate_root / "climate_summary.json"
-    summary_md = climate_root / "climate_summary.md"
+    summary_json = climate_root / f"climate_summary_{tag}.json"
+    summary_md = climate_root / f"climate_summary_{tag}.md"
     payload = {
         "schema_version": "1.0",
         "base_inp": str(base_inp),
