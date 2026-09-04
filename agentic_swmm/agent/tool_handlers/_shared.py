@@ -671,9 +671,10 @@ def _missing_file_failure(call: ToolCall, path: Path, suffix: str | None) -> dic
     exist, the nearest existing ancestor is searched two levels deep for
     files with the same suffix and they are listed in the hint.
     """
-    from agentic_swmm.agent.error_remediation import file_resolution_error
+    from agentic_swmm.agent.error_remediation import chat_anchor_hint, file_resolution_error
 
     summary = f"file not found: {path}"
+    anchor_hint = chat_anchor_hint(path)
     if path.parent.is_dir():
         err = file_resolution_error(
             summary, requested=path, search_dir=path.parent, suffixes=(suffix,) if suffix else ()
@@ -685,7 +686,7 @@ def _missing_file_failure(call: ToolCall, path: Path, suffix: str | None) -> dic
         if ancestor.is_dir():
             break
     else:
-        return _failure(call, summary, cause=f"directory does not exist: {path.parent}")
+        return _failure(call, summary, hint=anchor_hint, cause=f"directory does not exist: {path.parent}")
     pattern = f"*{suffix}" if suffix else "*"
     found: list[str] = []
     try:
@@ -702,6 +703,8 @@ def _missing_file_failure(call: ToolCall, path: Path, suffix: str | None) -> dic
         if found
         else f"no {suffix or 'matching'} file under {ancestor}"
     )
+    if anchor_hint:
+        hint = f"{anchor_hint}; {hint}"
     return _failure(call, summary, hint=hint, cause=cause)
 
 
