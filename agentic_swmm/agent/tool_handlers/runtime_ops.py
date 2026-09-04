@@ -42,6 +42,8 @@ from typing import Any, Iterable
 from agentic_swmm.agent.permissions import (
     CODE_WRITE_HINT,
     RUN_ROOT_WRITE_HINT,
+    audited_run_edits_allowed,
+    audited_run_root,
     is_agent_scratch_path,
     is_new_file_at_run_root,
     is_allowed_write_path,
@@ -354,6 +356,13 @@ def _git_diff_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     return {"tool": call.name, "args": call.args, "ok": proc.returncode == 0, "return_code": proc.returncode, "excerpt": proc.stdout[:8000], "stderr_tail": _tail(proc.stderr), "summary": "git diff read" if proc.returncode == 0 else "git diff failed"}
 
 
+AUDITED_RUN_EDIT_HINT = (
+    "An audited run is evidence and is never edited in place. Copy the model into the current "
+    "session (for example <session>/05_builder/model.inp), patch the copy, and run that. "
+    "A human can lift this with AISWMM_ALLOW_AUDITED_RUN_EDITS=1."
+)
+
+
 def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     patch = str(call.args.get("patch") or "")
     if not patch.strip():
@@ -370,6 +379,13 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             if is_code_write_into_product_tree(full):
                 return _failure(call, f"patch writes code into the product tree: {path}", hint=CODE_WRITE_HINT)
             return _failure(call, f"patch path is blocked by policy: {path}")
+        audited = audited_run_root(full)
+        if audited is not None and not audited_run_edits_allowed():
+            return _failure(
+                call,
+                f"patch edits a file of the audited run {audited.name}: {path}",
+                hint=AUDITED_RUN_EDIT_HINT,
+            )
         if is_evidence_path(full) and not allow_evidence and not is_agent_scratch_path(full):
             return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
         # Live finding F-61 (2026-09-02): even with the evidence override, a
