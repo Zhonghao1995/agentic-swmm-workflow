@@ -367,14 +367,25 @@ def tool_specs():
                 "Pause the agent and request expert review.\n"
                 "USE WHEN: a QA threshold has been crossed and a "
                 "hydrologically consequential decision must be human-approved "
-                "before continuing. Pattern must match one of the documented "
-                "HITL thresholds (see docs/hitl-thresholds.md).\n"
+                "before continuing.\n"
+                "PATTERNS (the only accepted values; pick the closest documented "
+                "check and say in message when the concern differs): "
+                "continuity_error_over_threshold (flow-routing continuity error above 5%), "
+                "peak_flow_deviation_over_threshold (peak flow differs from the declared baseline by more than 25%), "
+                "pour_point_suspect (GIS QA flagged the pour point), "
+                "calibration_nse_low, calibration_kge_low (calibration score below 0.5), "
+                "calibration_pbias_high (|PBIAS| above 30%), "
+                "sobol_first_order_dominant (one parameter dominates the variance). "
+                "Do not read docs/hitl-thresholds.md to choose one.\n"
+                "THE RESULT IS THE DECISION: approved=true means the reviewer accepted the "
+                "result for decision use, approved=false means rejected; report it as "
+                "recorded (decision id, provenance file), never as pending.\n"
                 "DO NOT USE WHEN: low-stakes confirmation or routine reasoning."
             ),
             _object(
                 {
                     "run_dir": {"type": "string", "description": "The run directory whose result needs the decision."},
-                    "pattern": {"type": "string", "description": "One documented HITL threshold pattern, e.g. peak_flow_deviation_over_threshold."},
+                    "pattern": {"type": "string", "description": "One of the PATTERNS listed in the tool description, e.g. peak_flow_deviation_over_threshold."},
                     "evidence_ref": {
                         "type": "string",
                         "description": (

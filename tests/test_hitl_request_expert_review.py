@@ -206,6 +206,87 @@ class HandlerTests(unittest.TestCase):
         spec = next(s for s in gap_fill.tool_specs() if s.name == "request_expert_review")
         self.assertIn("ONE file path", spec.parameters["properties"]["evidence_ref"]["description"])
 
+    def test_the_result_says_what_was_decided_and_where(self) -> None:
+        """Live finding F-120 (2026-09-03, S54 r2): the reviewer answered y
+        and the answer still said "await the expert decision"."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "continuity_error_over_threshold",
+                    "evidence_ref": "06_qa/qa_summary.json",
+                    "message": "Continuity error 6.5% > 5%.",
+                },
+            )
+            with mock.patch(
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
+                return_value=True,
+            ), mock.patch("sys.stdin.isatty", return_value=True):
+                approved = REGISTRY.execute(call, tmp_path)
+            with mock.patch(
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
+                return_value=False,
+            ), mock.patch("sys.stdin.isatty", return_value=True):
+                denied = REGISTRY.execute(call, tmp_path)
+        self.assertIn("accepted this result for decision use", approved["summary"])
+        self.assertIn(approved["decision_id"], approved["summary"])
+        self.assertIn("09_audit/experiment_provenance.json", approved["summary"].replace("\\", "/"))
+        self.assertIn("never pending", approved["hint"])
+        self.assertIn("rejected this result for decision use", denied["summary"])
+        self.assertIn(denied["decision_id"], denied["summary"])
+
+    def test_an_undocumented_pattern_is_refused_with_the_list(self) -> None:
+        """Live finding F-121 (2026-09-03, S54 r2): a peak-credibility review
+        went out labelled continuity_error_over_threshold."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "peak_looks_odd",
+                    "evidence_ref": "06_qa/qa_summary.json",
+                    "message": "The peak looks high for the catchment.",
+                },
+            )
+            with mock.patch(
+                "agentic_swmm.hitl.request_expert_review._documented_patterns",
+                return_value={
+                    "continuity_error_over_threshold": "Flow routing continuity error exceeds 5%.",
+                    "peak_flow_deviation_over_threshold": "Peak flow deviation against baseline exceeds 25%.",
+                },
+            ), mock.patch(
+                "agentic_swmm.hitl.request_expert_review.permissions.request_decision",
+                return_value=True,
+            ) as asked, mock.patch("sys.stdin.isatty", return_value=True):
+                result = REGISTRY.execute(call, tmp_path)
+        self.assertFalse(result["ok"])
+        self.assertIn("not a documented HITL threshold", result["summary"])
+        self.assertIn("peak_flow_deviation_over_threshold", result["hint"])
+        asked.assert_not_called()
+
+    def test_the_spec_lists_every_documented_pattern(self) -> None:
+        from agentic_swmm.agent.tool_handlers import gap_fill
+        from agentic_swmm.hitl import request_expert_review as handler
+
+        documented = handler._documented_patterns()
+        if not documented:
+            self.skipTest("docs/hitl-thresholds.md is not readable here")
+        spec = next(s for s in gap_fill.tool_specs() if s.name == "request_expert_review")
+        for name in documented:
+            self.assertIn(name, spec.description)
+        self.assertIn("never as pending", spec.description)
+
+    def test_the_system_prompt_reports_a_recorded_decision(self) -> None:
+        from agentic_swmm.agent import prompts
+
+        text = Path(prompts.__file__).read_text(encoding="utf-8")
+        self.assertIn("a recorded decision is never pending", text)
+
     def test_missing_evidence_ref_returns_ok_false(self) -> None:
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

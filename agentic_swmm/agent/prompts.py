@@ -150,6 +150,9 @@ def openai_planner_prompt(
         "verify a fact those blocks do not contain. "
         "When the user asks about a run that produced no results (a failed fetch, a run that never happened), say so; "
         "never present another run's results as that run. "
+        "When request_expert_review returns approved=true, say the reviewer approved the result for decision use, "
+        "with the decision id and the provenance file; when approved=false, say it was denied; "
+        "a recorded decision is never pending. "
         "Put long paths, full tool arguments, and complete provenance details in saved artifacts instead of the chat answer."
     )
     memory = _startup_memory_context(trace_path=trace_path)
