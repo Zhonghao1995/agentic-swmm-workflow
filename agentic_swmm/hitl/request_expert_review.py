@@ -123,6 +123,9 @@ def _print_review_banner(
         f"  pattern        : {pattern}",
         f"  message        : {message}",
         f"  evidence       : {evidence_path}",
+        "  answer         : y = the expert approves this result for decision use;",
+        "                   n = the expert denies it. Either answer is recorded in",
+        "                   09_audit/experiment_provenance.json; anything else records nothing.",
     ]
     if placeholder_rationale:
         lines.extend(
@@ -135,14 +138,28 @@ def _print_review_banner(
     print("\n".join(lines), file=sys.stderr)
 
 
-def _failure(call: ToolCall, summary: str) -> dict[str, Any]:
-    return {
+EVIDENCE_REF_HINT = (
+    "evidence_ref is ONE file path relative to run_dir (for example "
+    "06_runner/model.rpt); a list of paths or a note in parentheses is not "
+    "a path. Name the report sections in message instead."
+)
+NO_DECISION_HINT = (
+    "Nothing was recorded: the expert-review prompt takes y or n only. Ask "
+    "the reviewer again, or continue without decision use."
+)
+
+
+def _failure(call: ToolCall, summary: str, *, hint: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "tool": call.name,
         "args": dict(call.args),
         "ok": False,
         "approved": False,
         "summary": summary,
     }
+    if hint:
+        result["hint"] = hint
+    return result
 
 
 def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
@@ -165,6 +182,7 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(
             call,
             f"evidence_ref does not resolve inside run_dir: {evidence_ref}",
+            hint=EVIDENCE_REF_HINT,
         )
 
     placeholder = _placeholder_rationale_for(pattern)
@@ -226,8 +244,25 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             ),
         }
 
-    # Interactive TTY path — use the same prompt seam as write tools.
-    approved = bool(permissions.prompt_user(f"expert_review:{pattern}"))
+    # Interactive TTY path. This is a recorded decision, not a tool
+    # approval: the question says what y and n mean, and anything else
+    # records nothing (live finding F-119, 2026-09-03).
+    approved = permissions.request_decision(
+        f"Expert decision on {pattern}: approve this result for decision use? [y/n] "
+    )
+    if approved is None:
+        return {
+            "tool": call.name,
+            "args": dict(call.args),
+            "ok": False,
+            "approved": False,
+            "decision_id": decision_id,
+            "summary": (
+                f"no expert decision recorded for pattern {pattern!r}: the "
+                "prompt got neither y nor n"
+            ),
+            "hint": NO_DECISION_HINT,
+        }
     decision = HumanDecision(
         id=decision_id,
         action="expert_review_approved" if approved else "expert_review_denied",
