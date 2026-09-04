@@ -2,6 +2,110 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## v0.9.4 - What two days of real use changed (2026-09-03)
+
+Every change here came from driving the interactive shell with natural language
+for two days across five Canadian cities, judging each answer as a user would,
+and fixing what the sessions exposed. 102 commits: 78 fixes, 10 new
+capabilities, 4 cost reductions. The test suite grew from 3,289 to 4,067.
+
+The theme is honesty. A product that quietly substitutes one run's numbers for
+another, or records a stray keypress as an expert decision, is worse than one
+that fails loudly, and several of these were only visible by using the thing.
+
+### Fixed, honesty
+
+- **A failed run no longer borrows another run's results.** After a fetch
+  failed, the next question ("what was the peak?") was answered from an earlier
+  successful run, with nothing in the wording to reveal the substitution. The
+  failed run now stays the anchor for the rest of the turn, and the answer says
+  plainly that nothing ran.
+- **A stray keypress is no longer recorded as an expert decision.** The
+  human-in-the-loop review prompt reused the tool-approval seam, where anything
+  other than `y` is a harmless decline. For a decision written into a run's
+  provenance that meant any keypress, including one meant as a command, became
+  a permanent "expert denied" record. Approvals and recorded decisions are now
+  separate seams: the decision prompt takes `y` or `n` and records nothing for
+  anything else.
+- **A recorded approval is no longer narrated as pending.** After the reviewer
+  approved a result, the answer still said the workflow was waiting for a
+  decision. The tool result now states the verdict, what it means, the decision
+  id and the file it was written to.
+- **An answered turn is no longer reported as a failed turn.** A complete,
+  honest answer over one failed read-only call printed "Turn failed with exit
+  code 1" beneath it. That case now has its own exit code and wording.
+- **A declined tool call ends the turn.** One "no" to a fetch used to produce
+  two more prompts for the same fetch with a different area, and the answer
+  then described the decline as a runtime block.
+- **An MCP server that cannot start says why.** Three separate sessions blamed
+  load and timeouts for "MCP process ended before sending a complete line". The
+  cause was two servers with no `node_modules`, dying in 0.1 s with a module
+  error the client read and discarded. The preflight now recognises the launcher
+  form the registry actually uses, the error carries the server's own stderr,
+  and `aiswmm doctor` lists bundled servers that were never installed.
+- **The audit no longer reports missing evidence that exists.** It finds the
+  built INP by canonical layout when no manifest records it, finds the network
+  QA report beside the INP, takes an external INP from the runner manifest,
+  reads the prepared-input validation verdict, and keeps the prior record as a
+  timestamped backup instead of overwriting it.
+- **`apply_patch` refuses to edit a run that has already been audited**, unless
+  explicitly allowed, so an archived result cannot change under its own
+  provenance record.
+
+### Fixed, the shell
+
+- Follow-up questions stay in the run they are about instead of opening an empty
+  folder named after the sentence, and a question about finished work is a chat
+  turn. An imperative "do the whole job for ..." is not a question and opens a
+  run folder.
+- Runs are named after the place rather than the request's verbs, in English and
+  in Chinese.
+- The approval line names what it approves, including the city behind a
+  placeholder bounding box, and an outward-facing tool asks again for a new area
+  within the same turn rather than reusing the first approval.
+- The shell survives a provider error instead of dying with the session, and the
+  model-swap note is said once per process.
+- A missing file names the files that exist, and a miss inside a chat folder
+  points at the run the chat is about.
+
+### Fixed, results and units
+
+- Every peak carries the flow unit from the report; nothing assumes cubic metres
+  per second any more.
+- Parameter sweeps and climate scenario batches each keep their own files
+  instead of overwriting the previous batch.
+- Word reports, captions, run READMEs and generated markdown follow the house
+  style, and the report tool states when its body is the English template.
+
+### Added
+
+- `fetch_swmm_from_canada` accepts a published city name, so "downtown Kelowna"
+  needs no bounding box.
+- `propagate_parameter_ranges`, a typed reference-free uncertainty propagation
+  tool, and a reference-free one-at-a-time sensitivity ranking with an honest
+  split between the two routes.
+- The typed `network_qa` checks an existing INP as well as a network JSON.
+- Typed flooding, surcharge, depth and runoff report sections.
+- The memory layer is read as well as written: failure memory at session start,
+  parametric hits as a prompt block, and the agent path feeding memory anchored
+  on the place the run is named after. Measured on one scenario, the failure
+  memory took a repeat task from one failed call and 27 seconds to zero failed
+  calls and 10 seconds.
+- The threshold gate reads real QA shapes and grades a breach low, medium or
+  high.
+- Every figure renders to the journal figure specification.
+
+### Performance
+
+- The catalogue prologue runs once per process, skill priming loads only the
+  skills actually chosen, and tool schemas are scoped to the goal by default.
+
+### Cases
+
+- [cases/kelowna](cases/kelowna/): the same one-sentence chain on a fifth city,
+  with the study area figure, the hydrograph, the Word report and the model
+  committed so the run reproduces offline.
+
 ## v0.9.3 - Installs where it said it did (2026-08-13)
 
 v0.9.2 fixed the Windows installer for x64 machines and shipped two platforms
