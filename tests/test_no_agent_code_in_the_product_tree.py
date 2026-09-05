@@ -70,6 +70,10 @@ def test_apply_patch_refuses_repo_code_with_the_hint(tmp_path):
 
 def test_apply_patch_accepts_agent_scratch_without_the_evidence_override(tmp_path):
     rel = "runs/f60_tmp_run/_agent/scripts/ensemble.mjs"
+    # The run folder exists before the patch: since F-142 (2026-09-04, S63) a
+    # patch never mints a run folder, it may only write scratch into one that
+    # a tool already opened.
+    (repo_root() / "runs" / "f60_tmp_run").mkdir(parents=True, exist_ok=True)
     target = repo_root() / rel
     try:
         registry = AgentToolRegistry()

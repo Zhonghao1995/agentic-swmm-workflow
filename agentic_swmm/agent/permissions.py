@@ -69,6 +69,42 @@ def is_agent_scratch_path(path: Path) -> bool:
     return False
 
 
+_DATE_DIR = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+NEW_RUN_FOLDER_HINT = (
+    "A patch never creates a run folder. Run folders are opened by the fetch, "
+    "run and build tools; write agent scripts and inputs under the CURRENT "
+    "run's _agent/scripts or _agent/inputs."
+)
+
+
+def is_write_into_a_new_run_folder(path: Path) -> bool:
+    """True when ``path`` sits under a run folder that does not exist yet.
+
+    Live finding F-142 (2026-09-04, S63): told "the pipes are in feet", the
+    planner wrote a converter under
+    ``runs/2026-09-05/victoria-pipe-units-corrected/_agent/scripts/`` and so
+    minted a run folder with a name of its own, outside the naming
+    convention and every layout guard. The run folder component is
+    ``runs/<name>`` or, under a date directory, ``runs/<date>/<name>``; it
+    must already be on disk before a patch may write beneath it.
+    """
+    resolved = path.expanduser().resolve()
+    parts = resolved.parts
+    if "runs" not in parts:
+        return False
+    idx = len(parts) - 1 - parts[::-1].index("runs")
+    tail = parts[idx + 1:]
+    if len(tail) < 2:
+        return False
+    run_folder = Path(*parts[: idx + 2])
+    if _DATE_DIR.match(tail[0]):
+        if len(tail) < 3:
+            return False
+        run_folder = Path(*parts[: idx + 3])
+    return not run_folder.is_dir()
+
+
 RUN_ROOT_WRITE_HINT = (
     "The run root is reserved for the product's own files. Put agent-authored "
     "inputs under <run>/_agent/inputs/ (no evidence override needed) or in the "

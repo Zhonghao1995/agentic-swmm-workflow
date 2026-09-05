@@ -679,16 +679,32 @@ def _capabilities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 # ``tool_handlers/workflow_mode.py``. Re-exported above.
 
 
+RUN_TESTS_HINT = (
+    "run_tests runs the repository's own suite under tests/; it does not execute "
+    "agent-written files. Scripts the planner writes belong under "
+    "<run>/_agent/scripts and are never executed by the runtime."
+)
+
+
 def _run_tests_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    # Live finding F-147 (2026-09-04, S63): the planner wrote
+    # runs/.../_agent/test_convert_pipe_units.py and ran it through this tool,
+    # which made the test runner a general code-execution channel around the
+    # command allowlist. Only the repository's tests/ tree may be named.
     paths = call.args.get("paths")
     test_paths = [str(path) for path in paths] if isinstance(paths, list) and paths else ["tests"]
+    tests_root = (repo_root() / "tests").resolve()
     for path in test_paths:
         resolved = _repo_path(path)
         if resolved is None:
             return _failure(call, f"test path must be inside repository: {path}")
+        try:
+            resolved.resolve().relative_to(tests_root)
+        except ValueError:
+            return _failure(call, f"test path is outside the repository's tests/ tree: {path}", hint=RUN_TESTS_HINT)
     timeout = int(call.args.get("timeout_seconds") or 120)
-    if importlib.util.find_spec("pytest") is None and len(test_paths) == 1 and test_paths[0].endswith(".py"):
-        return _run_process_tool(call, session_dir, [sys.executable, test_paths[0]], cwd=repo_root(), timeout=timeout)
+    if importlib.util.find_spec("pytest") is None:
+        return _failure(call, "pytest is not installed in this environment", hint="pip install pytest, or run the suite from a checkout")
     return _run_process_tool(call, session_dir, [sys.executable, "-m", "pytest", *test_paths], cwd=repo_root(), timeout=timeout)
 
 

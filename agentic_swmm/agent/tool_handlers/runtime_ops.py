@@ -41,14 +41,16 @@ from typing import Any, Iterable
 
 from agentic_swmm.agent.permissions import (
     CODE_WRITE_HINT,
+    NEW_RUN_FOLDER_HINT,
     RUN_ROOT_WRITE_HINT,
     audited_run_edits_allowed,
     audited_run_root,
     is_agent_scratch_path,
-    is_new_file_at_run_root,
     is_allowed_write_path,
     is_code_write_into_product_tree,
     is_evidence_path,
+    is_new_file_at_run_root,
+    is_write_into_a_new_run_folder,
 )
 from agentic_swmm.agent.tool_handlers._shared import (
     _failure,
@@ -386,6 +388,8 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
                 f"patch edits a file of the audited run {audited.name}: {path}",
                 hint=AUDITED_RUN_EDIT_HINT,
             )
+        if is_write_into_a_new_run_folder(full):
+            return _failure(call, f"patch creates a run folder: {path}", hint=NEW_RUN_FOLDER_HINT)
         if is_evidence_path(full) and not allow_evidence and not is_agent_scratch_path(full):
             return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
         # Live finding F-61 (2026-09-02): even with the evidence override, a
