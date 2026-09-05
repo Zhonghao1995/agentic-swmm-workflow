@@ -21,6 +21,10 @@ def _text() -> str:
 def test_an_unbounded_request_states_its_interpretation() -> None:
     assert "names no measurable target" in _text()
     assert "states what it was taken to mean" in _text()
+    # F-157 (S68, 2026-09-05): the figure was named but the headline read
+    # "Outcome: Improved" although no model result changed.
+    assert "never a verdict such as" in _text()
+    assert "when no model result changed" in _text()
 
 
 def test_a_units_claim_is_a_question_never_a_conversion() -> None:

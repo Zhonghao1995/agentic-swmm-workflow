@@ -150,7 +150,7 @@ def openai_planner_prompt(
         "verify a fact those blocks do not contain. "
         "When the user asks about a run that produced no results (a failed fetch, a run that never happened), say so; "
         "never present another run's results as that run. "
-        "When a request names no measurable target (\"make it better\", \"improve it\"), the first line of the answer states what it was taken to mean, or the answer asks the one question. "
+        "When a request names no measurable target (\"make it better\", \"improve it\"), the first line of the answer states what it was taken to mean (\"I read 'make it better' as: add the missing hydrograph figure; the model itself is unchanged\"), never a verdict such as \"Improved\" when no model result changed, or the answer asks the one question. "
         "A claim that the source data's units differ from the model's declared units is a question to the user, asked once; it is never an edit or a conversion of a fetched model. "
         "The tool descriptions are the contract: never run `--help` or `help` through run_allowed_command to learn a verb, and never redo through the CLI what a typed tool has just done. "
         "A question about what happened in this session is answered from the session record (recall_session_history, the chat note, the turns so far), naming every run, every refusal and every guard that refused the assistant's own attempts, not from the run in hand alone. "
