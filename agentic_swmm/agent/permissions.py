@@ -252,6 +252,68 @@ def _real_bbox(bbox: Any) -> bool:
     return min_lon != max_lon and min_lat != max_lat
 
 
+def _elapsed_seconds_from_rpt(rpt: Path) -> float | None:
+    """The 'Total elapsed time' a SWMM .rpt prints at its end (HH:MM:SS), in seconds."""
+    try:
+        tail = rpt.read_text(encoding="utf-8", errors="replace")[-4000:]
+    except OSError:
+        return None
+    match = re.search(r"Total elapsed time:\s*(\d+):(\d\d):(\d\d)", tail)
+    if not match:
+        return None
+    hours, minutes, seconds = (int(part) for part in match.groups())
+    return float(hours * 3600 + minutes * 60 + seconds)
+
+
+def _baseline_rpt_for(args: dict[str, Any]) -> Path | None:
+    """The .rpt of the run a sweep starts from: its run_dir, or the run above its INP."""
+    run_dir = args.get("run_dir")
+    if isinstance(run_dir, str) and run_dir.strip():
+        candidate = Path(run_dir).expanduser() / "06_runner" / "model.rpt"
+        if candidate.is_file():
+            return candidate
+    inp = args.get("inp_path")
+    if isinstance(inp, str) and inp.strip():
+        inp_path = Path(inp).expanduser()
+        for base in (inp_path.parent.parent, inp_path.parent):
+            candidate = base / "06_runner" / "model.rpt"
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def sweep_cost_phrase(args: dict[str, Any]) -> str:
+    """What a parameter sweep will cost, said before the approval.
+
+    Live finding F-160 (2026-09-05, S27 r3): 25 samples on a real 662-conduit
+    network ran 14 min 38 s with nothing but a spinner, and the approval
+    prompt had given no idea of the cost. The count follows the sweep's own
+    sampling rule (plus the baseline run); the time uses the baseline run's
+    recorded elapsed time when its .rpt is at hand.
+    """
+    ranges = args.get("ranges")
+    if not isinstance(ranges, dict) or not ranges:
+        return ""
+    try:
+        from agentic_swmm.agent.swmm_runtime.parameter_sweep import parse_ranges, planned_sample_count
+
+        raw_n = args.get("n_samples")
+        n_samples = int(raw_n) if raw_n not in (None, "") else None
+        runs = planned_sample_count(parse_ranges(ranges), n_samples) + 1
+    except Exception:  # noqa: BLE001 - the estimate is advisory
+        return ""
+    phrase = f"{runs} SWMM runs"
+    rpt = _baseline_rpt_for(args)
+    seconds = _elapsed_seconds_from_rpt(rpt) if rpt is not None else None
+    if seconds:
+        total = runs * seconds
+        if total >= 90:
+            phrase += f", about {total / 60:.0f} min (one run took {seconds:.0f} s)"
+        else:
+            phrase += f", about {total:.0f} s (one run took {seconds:.0f} s)"
+    return phrase
+
+
 def approval_detail(args: dict[str, Any] | None) -> str:
     """One short phrase naming the decisive argument of a tool call.
 
@@ -306,6 +368,11 @@ def approval_detail(args: dict[str, Any] | None) -> str:
         run_dir = args.get("run_dir")
         if isinstance(run_dir, str) and run_dir.strip():
             parts.append(_short_path(run_dir))
+    cost = sweep_cost_phrase(args)
+    if cost:
+        # F-160: the cost leads and the line gets room for it.
+        parts.insert(0, cost)
+        return _clip(", ".join(parts), limit=130)
     return _clip(", ".join(parts))
 
 

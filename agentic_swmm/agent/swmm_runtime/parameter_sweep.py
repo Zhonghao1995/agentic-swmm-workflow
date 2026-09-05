@@ -112,6 +112,17 @@ def parse_ranges(raw: Any) -> dict[str, tuple[float, float]]:
     return ranges
 
 
+def planned_sample_count(ranges: dict[str, Any], n_samples: int | None = None) -> int:
+    """How many samples :func:`sample_space` will draw (F-160: the cost before the approval)."""
+    names = list(ranges)
+    if n_samples is None:
+        levels = 5 if len(names) <= 2 else 3
+        if levels ** len(names) <= MAX_FACTORIAL:
+            return levels ** len(names)
+        return MAX_FACTORIAL
+    return max(2, int(n_samples))
+
+
 def sample_space(
     ranges: dict[str, tuple[float, float]], n_samples: int | None = None, *, seed: int = 42
 ) -> list[dict[str, float]]:
