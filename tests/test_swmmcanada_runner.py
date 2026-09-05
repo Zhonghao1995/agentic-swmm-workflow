@@ -211,6 +211,35 @@ class FailureTests(unittest.TestCase):
         self.assertEqual(ctx.exception.stage, "timeout")
 
 
+    def test_a_timed_out_fetch_leaves_its_task_id_in_the_run(self) -> None:
+        """Live finding F-134 (2026-09-04, S59): two fetches sat QUEUED for the
+        whole budget and the run kept nothing, so nothing could be inspected."""
+        import json as _json
+
+        from agentic_swmm.integrations.swmmcanada_runner import TASK_RECORD_REL, CanadaFetchError, fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(), status_script=[], default_state="QUEUED")
+        clock = iter([0.0, 100.0, 700.0])
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(
+                    AOI, START, END,
+                    run_dir=run_dir,
+                    base_url="http://svc",
+                    timeout=600.0,
+                    opener=opener,
+                    sleep=lambda *_: None,
+                    now=lambda: next(clock),
+                )
+            record = _json.loads((run_dir / TASK_RECORD_REL).read_text(encoding="utf-8"))
+        self.assertEqual(ctx.exception.stage, "timeout")
+        self.assertIn("task.json", str(ctx.exception))
+        self.assertEqual(record["task_id"], "t1")
+        self.assertEqual(record["status_url"], "http://svc/api/v1/tasks/t1")
+        self.assertEqual(record["start_date"], START.isoformat())
+
+
 class MalformedResponseTests(unittest.TestCase):
     """The handler promises fail-soft: every failure must surface as a
     stage-tagged CanadaFetchError, never a raw exception into the planner."""

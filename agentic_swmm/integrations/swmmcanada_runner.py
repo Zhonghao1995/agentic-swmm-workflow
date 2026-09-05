@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from agentic_swmm.agent.swmm_runtime import run_layout
@@ -193,6 +193,14 @@ def fetch_from_aoi(
     task_id, mode = _submit(
         service_url, aoi_geojson, start, end,
         infiltration=infiltration, opener=opener, sleep=sleep,
+    )
+    # Live finding F-134 (2026-09-04, S59): two fetches sat QUEUED on the
+    # service for the whole budget and the run kept nothing, so the builds
+    # could be neither inspected nor cancelled. The foreign key is written the
+    # moment the service issues it; a later timeout names this file.
+    task_record = _write_task_record(
+        run_dir, service_url=service_url, task_id=task_id, mode=mode,
+        start=start, end=end, aoi_geojson=aoi_geojson,
     )
     _poll_until_done(
         service_url, task_id,
@@ -355,6 +363,41 @@ def _submit(
     return task_id, mode
 
 
+TASK_RECORD_REL = Path("00_raw") / "swmmcanada" / "task.json"
+
+
+def _write_task_record(
+    run_dir: Path,
+    *,
+    service_url: str,
+    task_id: str,
+    mode: str,
+    start: date,
+    end: date,
+    aoi_geojson: str,
+) -> Path:
+    """Persist the service's task id the moment it is issued.
+
+    Written before the first poll so a fetch that times out, is declined
+    later, or is killed with the shell still leaves the foreign key a user
+    (or a resume) needs: ``GET {service_url}/api/v1/tasks/{task_id}``.
+    """
+    path = run_dir / TASK_RECORD_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "service_url": service_url,
+        "task_id": task_id,
+        "mode": mode,
+        "submitted_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+        "aoi_geojson": aoi_geojson,
+        "status_url": f"{service_url}/api/v1/tasks/{task_id}",
+    }
+    path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
 def _poll_until_done(
     service_url: str,
     task_id: str,
@@ -388,7 +431,10 @@ def _poll_until_done(
             raise CanadaFetchError("task_failed", message or "task FAILED")
         if now() >= deadline:
             raise CanadaFetchError(
-                "timeout", f"task {task_id} not done after {timeout:.0f}s (last state {state!r})"
+                "timeout",
+                f"task {task_id} not done after {timeout:.0f}s (last state {state!r}); "
+                f"the build keeps running on the service, its id is recorded in "
+                f"00_raw/swmmcanada/task.json",
             )
         sleep(poll_interval)
 
