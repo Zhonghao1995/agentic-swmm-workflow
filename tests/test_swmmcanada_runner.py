@@ -562,3 +562,74 @@ class InfiltrationPassthroughTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResumeTests(unittest.TestCase):
+    """F-136 (2026-09-05, S27 r2): the same request in the same run resumes its task."""
+
+    def _running(self, n: int) -> list[dict]:
+        return [{"state": "RUNNING", "progress_pct": 10, "stage": "BUILD", "mode": "real", "error": None} for _ in range(n)]
+
+    def test_a_timed_out_fetch_is_resumed_not_resubmitted(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import CanadaFetchError, fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(validation={"accepted": True}), status_script=self._running(3))
+        clock = [0.0]
+
+        def now() -> float:
+            clock[0] += 400.0
+            return clock[0]
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            with self.assertRaises(CanadaFetchError) as ctx:
+                fetch_from_aoi(AOI, START, END, run_dir=run_dir, base_url="http://svc", opener=opener, sleep=lambda *_: None, now=now)
+            self.assertEqual(ctx.exception.stage, "timeout")
+            submits_before = sum(1 for m, u in opener.calls if m == "POST" and u.endswith("/api/v1/tasks"))
+            result = fetch_from_aoi(AOI, START, END, run_dir=run_dir, base_url="http://svc", opener=opener, sleep=lambda *_: None)
+            submits_after = sum(1 for m, u in opener.calls if m == "POST" and u.endswith("/api/v1/tasks"))
+            self.assertEqual(submits_before, 1)
+            self.assertEqual(submits_after, 1, "the second ask must collect the first build, not start another")
+            self.assertEqual(result.task_id, "t1")
+            self.assertTrue(result.inp_path.is_file())
+
+    def test_a_different_request_in_the_same_run_submits_afresh(self) -> None:
+        from datetime import date
+
+        from agentic_swmm.integrations.swmmcanada_runner import TASK_RECORD_REL, _write_task_record, fetch_from_aoi
+
+        opener = _FakeOpener(zip_bytes=_make_zip(validation={"accepted": True}), status_script=[])
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            _write_task_record(run_dir, service_url="http://svc", task_id="t1", mode="real", start=date(2020, 1, 1), end=date(2020, 1, 2), aoi_geojson=AOI)
+            fetch_from_aoi(AOI, START, END, run_dir=run_dir, base_url="http://svc", opener=opener, sleep=lambda *_: None)
+            submits = sum(1 for m, u in opener.calls if m == "POST" and u.endswith("/api/v1/tasks"))
+            self.assertEqual(submits, 1)
+            record = json.loads((run_dir / TASK_RECORD_REL).read_text(encoding="utf-8"))
+            self.assertEqual(record["start_date"], START.isoformat())
+
+    def test_a_task_the_service_forgot_submits_afresh(self) -> None:
+        from agentic_swmm.integrations.swmmcanada_runner import _write_task_record, fetch_from_aoi
+
+        class _Forgetful(_FakeOpener):
+            resubmitted = False
+
+            def __call__(self, request, timeout=None):  # noqa: ANN001 - urlopen shape
+                method = request.get_method()
+                url = request.full_url
+                if method == "GET" and url.endswith("/api/v1/tasks/t1") and not self.resubmitted:
+                    self.calls.append((method, url))
+                    raise urllib.error.HTTPError(url, 404, "no such task", {}, io.BytesIO(b""))
+                if method == "POST" and url.endswith("/api/v1/tasks"):
+                    self.resubmitted = True
+                return super().__call__(request, timeout)
+
+        opener = _Forgetful(zip_bytes=_make_zip(validation={"accepted": True}), status_script=[])
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            _write_task_record(run_dir, service_url="http://svc", task_id="t1", mode="real", start=START, end=END, aoi_geojson=AOI)
+            result = fetch_from_aoi(AOI, START, END, run_dir=run_dir, base_url="http://svc", opener=opener, sleep=lambda *_: None)
+            submits = sum(1 for m, u in opener.calls if m == "POST" and u.endswith("/api/v1/tasks"))
+            self.assertEqual(submits, 1)
+            self.assertEqual(result.task_id, "t1")
+
