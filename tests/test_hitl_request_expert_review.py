@@ -309,6 +309,37 @@ class HandlerTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("evidence_ref", result.get("summary", ""))
 
+    def test_a_refused_headless_pause_records_nothing_and_says_so(self) -> None:
+        """Live finding F-140 (2026-09-04, S62): the refusal carried a decision
+        id although nothing was written, and the answer reported a denial."""
+        with TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = _seed_run(tmp_path)
+            call = ToolCall(
+                name="request_expert_review",
+                args={
+                    "run_dir": str(run_dir),
+                    "pattern": "continuity_error_over_threshold",
+                    "evidence_ref": "06_qa/qa_summary.json",
+                    "message": "Continuity error 6.5% > 5%.",
+                },
+            )
+            with mock.patch.dict(os.environ, {}, clear=False), mock.patch("sys.stdin.isatty", return_value=False):
+                os.environ.pop("AISWMM_HITL_AUTO_APPROVE", None)
+                result = REGISTRY.execute(call, tmp_path)
+            prov_path = run_dir / "09_audit" / "experiment_provenance.json"
+            decisions = (
+                json.loads(prov_path.read_text(encoding="utf-8")).get("human_decisions", [])
+                if prov_path.exists()
+                else []
+            )
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["approved"])
+        self.assertNotIn("decision_id", result)
+        self.assertEqual(decisions, [])
+        self.assertIn("no expert decision recorded", result["summary"])
+        self.assertIn("Do not report this as a denial", result["hint"])
+
     def test_non_interactive_without_flag_returns_ok_false(self) -> None:
         with TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

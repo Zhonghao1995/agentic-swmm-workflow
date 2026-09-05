@@ -245,16 +245,28 @@ def request_expert_review(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     auto_approve = auto_approve_env in {"1", "true", "True", "yes"}
 
     if not interactive and not auto_approve:
+        # Live finding F-140 (2026-09-04, S62 headless): this refusal carried
+        # a decision_id although nothing was written, and the answer then
+        # reported "expert approval was denied, record hd-...". A refused
+        # pause is neither an approval nor a denial: no reviewer was asked
+        # and no record exists.
         return {
             "tool": call.name,
             "args": dict(call.args),
             "ok": False,
             "approved": False,
-            "decision_id": decision_id,
             "summary": (
-                "non-interactive HITL pause refused; rerun with "
-                "--auto-approve-hitl (or AISWMM_HITL_AUTO_APPROVE=1) to "
-                "continue."
+                "no expert decision recorded: no terminal was attached, so the "
+                "review pause was refused rather than run unattended (nothing "
+                "written to 09_audit/experiment_provenance.json); rerun with "
+                "--auto-approve-hitl (or AISWMM_HITL_AUTO_APPROVE=1) for a "
+                "configuration approval"
+            ),
+            "hint": (
+                "Run the shell interactively so a reviewer can answer, or set "
+                "AISWMM_HITL_AUTO_APPROVE=1 for trusted automation, which records "
+                "a configuration approval, not a reviewer's. Do not report this "
+                "as a denial."
             ),
         }
 
