@@ -32,7 +32,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import compact_plan as _compact_plan
 from agentic_swmm.agent.ui import display_path as _display_path
-from agentic_swmm.utils.paths import repo_root, resource_root
+from agentic_swmm.utils.paths import register_workspace_root, repo_root, resolve_runs_dir, resource_root
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
@@ -102,7 +102,7 @@ def run_single_shot(args: argparse.Namespace) -> int:
 
         from agentic_swmm.agent.session_bootstrap import bootstrap_session_dir
 
-        date_dir = repo_root() / "runs" / datetime.now().strftime("%Y-%m-%d")
+        date_dir = register_workspace_root(resolve_runs_dir()) / datetime.now().strftime("%Y-%m-%d")
         session_dir = bootstrap_session_dir(date_dir, goal, kind="run")
     session_dir.mkdir(parents=True, exist_ok=True)
     trace_path = agent_file_for_write(session_dir, "agent_trace.jsonl")

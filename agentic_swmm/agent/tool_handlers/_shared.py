@@ -58,7 +58,7 @@ from typing import Any, Callable
 from agentic_swmm.agent import mcp_pool
 from agentic_swmm.agent.mcp_client import McpClientError
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root, resource_root
+from agentic_swmm.utils.paths import repo_root, resolve_workspace_path, resource_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
 
@@ -86,13 +86,10 @@ def _failure(
 
 
 def _repo_path(value: str) -> Path | None:
-    raw = Path(value).expanduser()
-    candidate = raw.resolve() if raw.is_absolute() else (repo_root() / raw).resolve()
-    try:
-        candidate.relative_to(repo_root().resolve())
-    except ValueError:
-        return None
-    return candidate
+    """A path inside the workspace (the checkout, the runs root, the packaged
+    resources, the session base dir), or ``None``. See
+    :func:`agentic_swmm.utils.paths.resolve_workspace_path` (F-135)."""
+    return resolve_workspace_path(value, root=repo_root())
 
 
 def _repo_output_path(value: str) -> Path | None:

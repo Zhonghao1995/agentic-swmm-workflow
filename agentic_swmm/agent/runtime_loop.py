@@ -77,7 +77,7 @@ from agentic_swmm.agent.session_header import (
 from agentic_swmm.config import DEFAULT_PROVIDER, load_config
 from agentic_swmm.memory.session_sync import sync_session_to_db
 from agentic_swmm.providers.factory import SUPPORTED_PROVIDERS, make_provider
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import register_workspace_root, repo_root, resolve_runs_dir
 
 # PRD-02 — deep-module split. New modules with the carved-out behaviour;
 # names below are re-exported so legacy imports continue to resolve.
@@ -122,7 +122,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
     if args.planner not in ("llm", "openai"):
         raise ValueError("interactive agent shell currently requires `--planner llm`.")
 
-    base_dir = args.session_dir.expanduser().resolve() if args.session_dir else repo_root() / "runs"
+    base_dir = register_workspace_root(args.session_dir.expanduser().resolve() if args.session_dir else resolve_runs_dir())
     base_dir.mkdir(parents=True, exist_ok=True)
 
     date_dir, session_label = _new_interactive_session(base_dir)

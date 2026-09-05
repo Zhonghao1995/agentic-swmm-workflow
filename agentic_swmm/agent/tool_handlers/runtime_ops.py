@@ -58,7 +58,7 @@ from agentic_swmm.agent.tool_handlers._shared import (
 from agentic_swmm.agent.error_remediation import file_resolution_error
 from agentic_swmm.agent.types import ToolCall
 from agentic_swmm.runtime.registry import discover_skills
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, workspace_relative
 
 
 _PATH_LINE_SUFFIX = re.compile(r"^(?P<path>.+?):(?P<line>\d+)(?::\d+)?$")
@@ -132,7 +132,7 @@ def _read_file_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(call, err.summary, hint=err.hint, cause=err.cause)
     text = path.read_text(encoding="utf-8", errors="replace")
     excerpt = text[:4000]
-    summary = f"read {path.relative_to(repo_root())}"
+    summary = f"read {workspace_relative(path, root=repo_root())}"
     if line_hint is not None:
         # Centre the bounded excerpt on the requested line instead of the
         # top of the file, so the reference the planner quoted is what it
@@ -189,7 +189,7 @@ def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             search_dir=path.parent if path is not None else None,
         )
         return _failure(call, err.summary, hint=err.hint, cause=err.cause)
-    entries = [{"name": item.name, "type": "dir" if item.is_dir() else "file", "path": str(item.relative_to(repo_root()))} for item in sorted(path.iterdir())[:200]]
+    entries = [{"name": item.name, "type": "dir" if item.is_dir() else "file", "path": workspace_relative(item, root=repo_root())} for item in sorted(path.iterdir())[:200]]
     return {"tool": call.name, "args": call.args, "ok": True, "results": entries, "summary": f"{len(entries)} entries"}
 
 
