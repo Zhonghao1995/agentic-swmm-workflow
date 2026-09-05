@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resolve_workspace_path
 
 
 BLOCKED_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache"}
@@ -21,13 +21,9 @@ ALLOWED_COMMANDS = {
 
 
 def repo_relative_path(value: str) -> Path | None:
-    raw = Path(value).expanduser()
-    candidate = raw.resolve() if raw.is_absolute() else (repo_root() / raw).resolve()
-    try:
-        candidate.relative_to(repo_root().resolve())
-    except ValueError:
-        return None
-    return candidate
+    """A path inside the workspace, or ``None`` (see
+    :func:`agentic_swmm.utils.paths.resolve_workspace_path`, F-135)."""
+    return resolve_workspace_path(value, root=repo_root())
 
 
 #: Live finding F-60 (2026-09-02): with no typed ensemble tool, the planner
