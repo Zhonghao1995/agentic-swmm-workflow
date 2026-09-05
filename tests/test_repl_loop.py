@@ -351,4 +351,8 @@ class ProviderErrorKeepsTheShellAliveTests(unittest.TestCase):
         joined = "\n".join(sink.lines)
         self.assertIn("error: Local gateway", joined)
         self.assertIn("model_not_found", joined)
-        self.assertIn("then ask again, or type /exit", joined)
+        # F-158 (2026-09-05): the hint no longer blames the provider for every
+        # crash; it says the turn stopped and how to go on.
+        self.assertIn("stopped before it finished", joined)
+        self.assertIn("or type /exit", joined)
+        self.assertNotIn("Check the provider", joined)

@@ -300,8 +300,15 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
                 prior_session_state=prior_state,
                 outcome_box=outcome_box,
             )
-        except BaseException:
+        except BaseException as exc:
             finalize_session_header(session_dir, "interrupted")
+            # Live finding F-159 (2026-09-05, S27 r2): a run turn that ended in
+            # an exception (an upstream build timeout, then a socket timeout)
+            # set no anchor at all, so "that run" in the next turn opened a
+            # fresh chat and the model borrowed another session's run from
+            # memory. The interrupted run stays the anchor like a failed one.
+            if not is_chat_turn and _is_swmm_run_dir(session_dir):
+                pending_box[0] = _failed_anchor(session_dir, f"error: {exc}")
             raise
         finalize_session_header(session_dir, "completed" if rc == 0 else "failed")
         if rc == 0 and _is_swmm_run_dir(session_dir):
@@ -323,13 +330,7 @@ def run_interactive_shell(args: argparse.Namespace) -> int:
             # The failed run stays the anchor and the continuation says it
             # produced nothing.
             final_text = outcome_box[0] if outcome_box else ""
-            pending_box[0] = {
-                "session_dir": session_dir,
-                "is_chat": False,
-                "tail": (final_text or "")[-400:],
-                "run_dir": str(session_dir),
-                "failed": True,
-            }
+            pending_box[0] = _failed_anchor(session_dir, final_text)
         # On a failed chat turn the previous pending state stays: the user
         # can still answer the last question after a crashed turn.
         print()
@@ -469,6 +470,22 @@ FAILED_RUN_NOTE = (
     "(no model, no .rpt). If the user asks about that run, say so plainly. Never "
     "present another run's results as this one.]"
 )
+
+
+def _failed_anchor(session_dir: Path, final_text: str) -> dict[str, Any]:
+    """Pending state for a run turn that produced nothing (F-97, F-159).
+
+    The failed or interrupted run stays the anchor of the next turn and the
+    continuation carries FAILED_RUN_NOTE, so "that run" is answered with the
+    truth instead of another run's results.
+    """
+    return {
+        "session_dir": session_dir,
+        "is_chat": False,
+        "tail": (final_text or "")[-400:],
+        "run_dir": str(session_dir),
+        "failed": True,
+    }
 
 
 def _exit_code_for(outcome: Any) -> int:

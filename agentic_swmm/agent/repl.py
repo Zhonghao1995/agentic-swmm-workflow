@@ -71,6 +71,13 @@ _HELP_TEXT = (
 )
 
 
+TURN_STOPPED_HINT = (
+    "The turn stopped before it finished, so nothing after the error ran and no "
+    "result was recorded. Ask again to retry (if the error names the provider, run "
+    "aiswmm doctor first), or type /exit."
+)
+
+
 def run_repl(
     args: argparse.Namespace,
     *,
@@ -160,11 +167,11 @@ def run_repl(
             # 2026-09-03, S38). One-shot mode keeps its top-level handler;
             # inside the shell the user gets the prompt back to retry,
             # change the route, or leave.
+            # Live finding F-158 (2026-09-05, S27 r2): the same wording blamed
+            # the provider for an upstream build timeout. The hint stays honest
+            # about what is known: the turn stopped, nothing after it ran.
             output(f"error: {exc}")
-            output(
-                "The turn did not run. Check the provider (aiswmm doctor, aiswmm setup), "
-                "then ask again, or type /exit."
-            )
+            output(TURN_STOPPED_HINT)
             continue
         if rc == DECLINED_EXIT_CODE:
             output("Turn ended: you declined a tool call, so nothing ran. Ask again when ready, or type /exit.")
