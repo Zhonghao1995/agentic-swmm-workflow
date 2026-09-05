@@ -53,3 +53,27 @@ def test_requests_for_new_work_are_still_modeling_requests(prompt):
 def test_a_leading_work_verb_behind_politeness_is_not_a_question():
     assert not is_question_about_existing_work("Can you run the tecnopolo demo?")
     assert not is_question_about_existing_work("请帮我 run examples/tecnopolo.inp")
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        # Live finding F-150 (2026-09-05, S66): "search space" is not repo tooling.
+        "Calibrate the Tod Creek model examples/todcreek/model_chicago5min.inp at outlet O1 against the observed flow in examples/calibration/observed_flow.csv, using the search space in examples/calibration/search_space.json with the NSE objective, and tell me how good the fit is.",
+        "Run the swmm model and compare the latest run's peak with the previous one.",
+    ],
+)
+def test_a_strong_modelling_marker_beats_an_excluded_word(prompt):
+    assert looks_like_swmm_request(prompt) is True
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "run the tests for the runtime",
+        "list the skills you have",
+        "what does the diff look like",
+    ],
+)
+def test_repo_tooling_requests_stay_out(prompt):
+    assert looks_like_swmm_request(prompt) is False

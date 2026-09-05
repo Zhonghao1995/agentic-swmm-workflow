@@ -449,13 +449,35 @@ def is_question_about_existing_work(goal: str) -> bool:
     return not any(marker in text.lower() for marker in _STARTS_NEW_WORK)
 
 
+#: Words that mark a modelling request beyond doubt; an excluded repo-tooling
+#: word cannot veto a sentence that carries one of these.
+_STRONG_MODELLING_MARKERS = ("swmm", "calibrat", "canada", "加拿大", "校准")
+
+
 def looks_like_swmm_request(goal: str) -> bool:
     lowered = goal.lower()
-    if _contains_any_list(lowered, keywords("excluded_swmm_keywords")):
+    # Live finding F-150 (2026-09-05, S66): "calibrate ... using the search
+    # space in examples/calibration/search_space.json" opened a CHAT session,
+    # because "search" is an excluded repo-tooling word and the exclusion won
+    # over a calibration request naming an .inp. An excluded word only vetoes
+    # a sentence with no strong modelling marker, and it must be a whole word
+    # ("latest" is not "test").
+    strong = bool(_MODEL_SOURCE.search(goal)) or any(m in lowered for m in _STRONG_MODELLING_MARKERS)
+    if not strong and _contains_any_word(lowered, keywords("excluded_swmm_keywords")):
         return False
     if is_question_about_existing_work(goal):
         return False
     return _contains_any_list(lowered, keywords("swmm_request_keywords"))
+
+
+def _contains_any_word(lowered: str, values: list[str]) -> bool:
+    for value in values:
+        v = str(value).lower().strip()
+        if not v:
+            continue
+        if re.search(rf"(?<![a-z0-9_]){re.escape(v)}(?![a-z0-9_])", lowered):
+            return True
+    return False
 
 
 #: A pasted model source always means a fresh run folder.
