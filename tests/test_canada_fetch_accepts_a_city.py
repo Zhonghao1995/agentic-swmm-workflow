@@ -135,7 +135,9 @@ def test_timeout_hint_says_not_to_repeat_the_aoi_and_how_to_shrink_it() -> None:
     from agentic_swmm.agent.tool_handlers.swmm_canada import _stage_hint
 
     hint = _stage_hint("timeout")
-    assert "Do not repeat the same AOI" in hint
+    # F-163 (2026-09-05): since #544 a repeat of the same request resumes the build.
+    assert "Ask again with the SAME area and dates in this run" in hint
+    assert "Do not repeat" not in hint
     assert "city only" in hint
 
 

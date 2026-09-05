@@ -494,7 +494,7 @@ def _poll_until_done(
                 "timeout",
                 f"task {task_id} not done after {timeout:.0f}s (last state {state!r}); "
                 f"the build keeps running on the service, its id is recorded in "
-                f"00_raw/swmmcanada/task.json",
+                f"00_raw/swmmcanada/task.json; the same request in this run resumes it",
             )
         sleep(poll_interval)
 
