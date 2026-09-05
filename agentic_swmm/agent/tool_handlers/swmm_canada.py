@@ -98,7 +98,7 @@ def _stage_hint(stage: str) -> str:
     if stage == "timeout":
         return (
             "the upstream build is still running after the 10-minute poll budget. "
-            "Do not repeat the same AOI: it times out again and leaves another build "
+            "The service build keeps running; its task id is in 00_raw/swmmcanada/task.json. Do not repeat the same AOI: it times out again and leaves another build "
             "running on the service (live test 2026-09-03, S40 r3). Pass city only for "
             "the 1 km default window (about 2 minutes), or a smaller bbox, or tell the "
             "user the requested area is too large for this budget."
