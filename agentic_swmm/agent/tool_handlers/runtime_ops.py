@@ -41,6 +41,7 @@ from typing import Any, Iterable
 
 from agentic_swmm.agent.permissions import (
     CODE_WRITE_HINT,
+    FIXTURE_WRITE_HINT,
     NEW_RUN_FOLDER_HINT,
     RUN_ROOT_WRITE_HINT,
     audited_run_edits_allowed,
@@ -50,6 +51,7 @@ from agentic_swmm.agent.permissions import (
     is_code_write_into_product_tree,
     is_evidence_path,
     is_new_file_at_run_root,
+    is_repository_fixture,
     is_write_into_a_new_run_folder,
 )
 from agentic_swmm.agent.tool_handlers._shared import (
@@ -185,8 +187,15 @@ def _read_skill_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 def _list_dir_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     path = _repo_path(str(call.args.get("path") or "."))
     if path is None or not path.exists() or not path.is_dir():
+        # Live finding F-153 (2026-09-05, S67): a folder that merely did not
+        # exist got the sandbox's words. Say which it is.
+        summary = (
+            "directory is outside the workspace" if path is None
+            else f"directory does not exist: {path}" if not path.exists()
+            else f"not a directory: {path}"
+        )
         err = file_resolution_error(
-            "directory must exist inside repository",
+            summary,
             requested=call.args.get("path"),
             search_dir=path.parent if path is not None else None,
         )
@@ -390,6 +399,8 @@ def _apply_patch_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             )
         if is_write_into_a_new_run_folder(full):
             return _failure(call, f"patch creates a run folder: {path}", hint=NEW_RUN_FOLDER_HINT)
+        if is_repository_fixture(full):
+            return _failure(call, f"patch edits a repository fixture: {path}", hint=FIXTURE_WRITE_HINT)
         if is_evidence_path(full) and not allow_evidence and not is_agent_scratch_path(full):
             return _failure(call, f"patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: {path}")
         # Live finding F-61 (2026-09-02): even with the evidence override, a
