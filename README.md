@@ -39,13 +39,10 @@
 ## Highlights
 
 - **Agentic SWMM for reproducible stormwater modeling:** the [**aiswmm**](https://pypi.org/project/aiswmm/) runtime + Skills + MCP + SWMM, verification-first, with a full audit trail.
-- **Live demo, no install:** try it in the browser at [aiswmm.com](https://aiswmm.com/demo/).
-- **One prompt to client deliverable:** one English sentence fetched the real downtown Victoria storm network, ran SWMM, audited it, and exported a Word report: [cases/downtown-victoria](cases/downtown-victoria/).
-- **The same sentence on a fifth city:** downtown Kelowna, one approval, with the figures, the numbers and the model committed so the run reproduces offline: [cases/kelowna](cases/kelowna/).
+- **Live replay demo, no install:** a recorded end-to-end session, replayed in the browser at [aiswmm.com](https://aiswmm.com/demo/).
+- **One sentence to a client deliverable:** one English sentence fetched the real downtown Victoria storm network, ran SWMM, audited it, and exported a Word report, then did the same on a fifth city, Kelowna, with the model committed so the run reproduces offline: [cases/downtown-victoria](cases/downtown-victoria/) · [cases/kelowna](cases/kelowna/).
 - **A model that said not to trust it:** when the requested week turned out dry, the run named its own errors as disqualifying instead of handing over bad numbers: [cases/downtown-victoria-on-arm.md](cases/downtown-victoria-on-arm.md).
-- **Real networks upstream:** [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) covers 35 Canadian cities, [SWMManywhere](https://github.com/ImperialCollegeLondon/SWMManywhere) synthesis covers the rest of the globe.
-- **Bring the LLM you already pay for:** ten provider routes behind one `aiswmm setup` wizard, with a local fallback chain.
-- **Published research:** published in *AI for Engineering* (MDPI, 2026): [read the paper](https://doi.org/10.3390/aieng1010005).
+- **Published method:** *AI for Engineering* (MDPI, 2026): [read the paper](https://doi.org/10.3390/aieng1010005).
 
 ## Project Overview
 
@@ -76,6 +73,7 @@ Agentic SWMM provides a middle path: natural-language orchestration with determi
 ## What makes it different
 
 - **Quick onboarding:** start from one-line macOS/Linux or Windows installers, with Docker and Python package paths documented separately.
+- **Bring the LLM you already pay for:** ten provider routes behind one `aiswmm setup` wizard, with a local fallback chain.
 - **Agent-guided, SWMM-grounded:** agents can coordinate tasks, while model execution stays deterministic, inspectable, and CLI-runnable.
 - **Modular skill layer:** GIS, climate, building, running, plotting, calibration, uncertainty, audit, and orchestration are separated into reusable modules with MCP interfaces where available.
 - **Verification-first provenance:** build, run, audit, and comparison stages emit traceable artifacts before outputs are treated as evidence.
@@ -129,10 +127,10 @@ The workflow has three connected layers: execution, modeling memory, and control
 
 <p align="center">
   <a href="docs/figs/aiswmm_demo_greenwich.png">
-    <img src="docs/figs/aiswmm_demo_greenwich.png" alt="Agentic SWMM live demo (Greenwich Peninsula): synthesised network on a map, agent chat, artifacts (model.inp, model.rpt, subcatchments.geojson, graph.parquet, network_map.png), and a deterministic audit record" width="900" />
+    <img src="docs/figs/aiswmm_demo_greenwich.png" alt="Agentic SWMM replay demo (Greenwich Peninsula): synthesised network on a map, agent chat, artifacts (model.inp, model.rpt, subcatchments.geojson, graph.parquet, network_map.png), and a deterministic audit record" width="900" />
   </a>
 </p>
-<p align="center"><sub><a href="https://aiswmm.com/demo/">▶ Try the live demo</a>: Greenwich Peninsula, <a href="https://github.com/ImperialCollegeLondon/SWMManywhere">SWMManywhere</a> synthesis → swmm5 run → audit → render, end to end in the browser.</sub></p>
+<p align="center"><sub><a href="https://aiswmm.com/demo/">▶ Watch the replay demo</a>: Greenwich Peninsula, <a href="https://github.com/ImperialCollegeLondon/SWMManywhere">SWMManywhere</a> synthesis → swmm5 run → audit → render, end to end in the browser.</sub></p>
 
 ## Validation snapshot
 
