@@ -52,6 +52,7 @@ from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure, _object
 from agentic_swmm.agent.types import ToolCall, ToolSpec
+from agentic_swmm.utils.paths import resolve_memory_dir
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +65,7 @@ def _resolve_memory_dir() -> Path:
     if override:
         return Path(override).expanduser().resolve()
     from agentic_swmm.utils.paths import repo_root
-    return repo_root() / "memory" / "modeling-memory"
+    return resolve_memory_dir()
 
 
 # ---------------------------------------------------------------------------

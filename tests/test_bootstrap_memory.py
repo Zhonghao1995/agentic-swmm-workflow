@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import io
 import tempfile
+from unittest import mock
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -36,7 +37,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             result = bootstrap_memory_dir(target)
             self.assertIsInstance(result, BootstrapResult)
             self.assertEqual(result.target_dir, target)
-            self.assertEqual(len(result.created), 5)
+            self.assertEqual(len(result.created), 8)
             self.assertEqual(len(result.skipped), 0)
 
             # Confirm all five files exist on disk.
@@ -91,12 +92,12 @@ class BootstrapMemoryDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "modeling-memory"
             first = bootstrap_memory_dir(target)
-            self.assertEqual(len(first.created), 5)
+            self.assertEqual(len(first.created), 8)
 
             # Run again — nothing should be created.
             second = bootstrap_memory_dir(target)
             self.assertEqual(len(second.created), 0)
-            self.assertEqual(len(second.skipped), 5)
+            self.assertEqual(len(second.skipped), 8)
 
     def test_idempotent_preserves_user_edits(self) -> None:
         # A user might edit ``project_overrides.yaml`` between
@@ -133,7 +134,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             (target / "README.md").write_text("# custom\n", encoding="utf-8")
 
             result = bootstrap_memory_dir(target)
-            self.assertEqual(len(result.created), 3)
+            self.assertEqual(len(result.created), 6)
             self.assertEqual(len(result.skipped), 2)
             # The pre-seeded README is preserved verbatim.
             self.assertEqual(
@@ -142,22 +143,24 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             )
 
     def test_default_target_dir(self) -> None:
-        # When no target_dir is supplied, the default is
-        # ./memory/modeling-memory relative to cwd. We test by
-        # running inside a tempdir as cwd so we don't pollute the
-        # real repo.
+        # When no target_dir is supplied, the skeleton lands where the
+        # runtime and doctor read (resolve_memory_dir), never in the current
+        # directory: live finding F-132 (2026-09-04), a pip user ran the
+        # command from /tmp and doctor kept asking for it.
         import os
 
         original_cwd = os.getcwd()
-        try:
-            with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as home:
+            try:
                 os.chdir(tmp)
-                result = bootstrap_memory_dir(None)
-                expected = Path("memory") / "modeling-memory"
-                self.assertEqual(result.target_dir, expected)
-                self.assertTrue(expected.is_dir())
-        finally:
-            os.chdir(original_cwd)
+                with mock.patch.dict(os.environ, {"AISWMM_MEMORY_DIR": str(Path(home) / "mm")}):
+                    result = bootstrap_memory_dir(None)
+                expected = (Path(home) / "mm").resolve()
+                self.assertEqual(result.target_dir.resolve(), expected)
+                self.assertTrue((expected / "parametric_memory.jsonl").exists())
+                self.assertFalse((Path(tmp) / "memory").exists())
+            finally:
+                os.chdir(original_cwd)
 
     def test_creates_parent_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -165,7 +168,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             self.assertFalse(target.exists())
             result = bootstrap_memory_dir(target)
             self.assertTrue(target.is_dir())
-            self.assertEqual(len(result.created), 5)
+            self.assertEqual(len(result.created), 8)
 
     def test_bootstrap_result_is_frozen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,7 +205,7 @@ class MemoryMainCliTests(unittest.TestCase):
                 memory_main(ns)
             output = buf.getvalue()
             self.assertIn("skipped", output)
-            self.assertIn("(5)", output)
+            self.assertIn("(8)", output)
 
     def test_register_attaches_subparser(self) -> None:
         # Smoke test that the registration plumbing works against a

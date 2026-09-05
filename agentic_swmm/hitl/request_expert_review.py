@@ -48,6 +48,7 @@ from agentic_swmm.hitl.decision_recorder import (
     now_utc_iso,
 )
 from agentic_swmm.hitl.threshold_evaluator import load_thresholds_from_md
+from agentic_swmm.utils.paths import resource_root
 
 
 _AUTO_APPROVE_ENV = "AISWMM_HITL_AUTO_APPROVE"
@@ -96,7 +97,7 @@ def _placeholder_rationale_for(pattern: str) -> bool:
     hydrologist has not yet filled in rationale prose.
     """
     try:
-        doc = _repo_root() / _THRESHOLDS_DOC_REL
+        doc = resource_root() / _THRESHOLDS_DOC_REL
         thresholds = load_thresholds_from_md(doc)
     except Exception:  # pragma: no cover - depends on disk state
         return False
@@ -160,7 +161,7 @@ def _documented_patterns() -> dict[str, str]:
     and the caller skips validation rather than blocking the prompt.
     """
     try:
-        thresholds = load_thresholds_from_md(_repo_root() / _THRESHOLDS_DOC_REL)
+        thresholds = load_thresholds_from_md(resource_root() / _THRESHOLDS_DOC_REL)
     except Exception:  # pragma: no cover - depends on disk state
         return {}
     out: dict[str, str] = {}

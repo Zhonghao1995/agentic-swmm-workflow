@@ -58,7 +58,7 @@ from typing import Any, Callable
 from agentic_swmm.agent import mcp_pool
 from agentic_swmm.agent.mcp_client import McpClientError
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
 
@@ -338,7 +338,7 @@ def _make_mcp_routed_handler(
                 "summary": (
                     f"MCP transport unavailable for {server}.{tool}: "
                     "no MCP server registry configured. "
-                    "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)."
+                    f"Run: bash {resource_root() / 'scripts' / 'install_mcp_deps.sh'}."
                 ),
             }
         try:
@@ -570,7 +570,7 @@ def _mcp_server(name: str) -> dict[str, Any] | None:
 def _find_repo_inp(value: str) -> Path | None:
     if not value or Path(value).is_absolute() or "/" in value:
         return None
-    root = repo_root() / "examples"
+    root = resource_root() / "examples"
     if not root.exists():
         return None
     matches = sorted(path for path in root.rglob(value) if path.is_file() and path.suffix.lower() == ".inp")

@@ -32,7 +32,7 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry
 from agentic_swmm.agent.ui import agent_say as _agent_say
 from agentic_swmm.agent.ui import compact_plan as _compact_plan
 from agentic_swmm.agent.ui import display_path as _display_path
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_root
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file, agent_file_for_write
 
 
@@ -48,7 +48,7 @@ def _find_repo_inp(value: str) -> Path | None:
     """Resolve a bare ``.inp`` filename to a path under ``examples/``."""
     if not value or Path(value).is_absolute() or "/" in value:
         return None
-    root = repo_root() / "examples"
+    root = resource_root() / "examples"
     if not root.exists():
         return None
     matches = sorted(

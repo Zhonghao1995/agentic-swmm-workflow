@@ -421,7 +421,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="ship from package or copy from repo",
+                remediation="run `aiswmm bootstrap memory`",
             )
         )
 
@@ -467,7 +467,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="ship from package or copy from repo",
+                remediation="run `aiswmm bootstrap memory`",
             )
         )
 
@@ -513,7 +513,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="ship from package or copy from repo",
+                remediation="run `aiswmm bootstrap memory`",
             )
         )
 

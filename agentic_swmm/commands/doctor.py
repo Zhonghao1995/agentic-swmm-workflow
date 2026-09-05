@@ -34,7 +34,7 @@ from agentic_swmm.diagnostics.fixes import (
     fix_action_to_dict,
 )
 from agentic_swmm.config import mcp_registry_path
-from agentic_swmm.utils.paths import repo_root, resource_path
+from agentic_swmm.utils.paths import repo_root, resolve_memory_dir, resource_path, resource_root
 
 
 _DOCTOR_EXAMPLE = "aiswmm doctor --fix --yes"
@@ -269,15 +269,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _memory_dir(root: Path) -> Path:
-    """Resolve the active memory directory.
+    """The modeling-memory directory doctor inspects.
 
-    Honours ``AISWMM_MEMORY_DIR`` so a user who redirected memory sees
-    the redirected location in the doctor report.
+    Honours ``AISWMM_MEMORY_DIR`` and, on a pip install, the packaged
+    resource root (live finding F-130, 2026-09-04: doctor read
+    site-packages/memory, which never exists, while ``aiswmm bootstrap
+    memory`` wrote under the packaged root).
     """
-    override = os.environ.get("AISWMM_MEMORY_DIR")
-    if override:
-        return Path(override)
-    return root / "memory" / "modeling-memory"
+    return resolve_memory_dir()
 
 
 def _runs_dir(root: Path) -> Path:
@@ -352,13 +351,13 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
         checks.append(
             (f"mcp.json: {server_name}", False, drift_detail, False)
         )
-    for server_name in _mcp_servers_without_deps(root):
+    for server_name in _mcp_servers_without_deps(resource_root()):
         checks.append(
             (
                 f"mcp deps: {server_name}",
                 False,
                 f"no node_modules under mcp/{server_name}; its tools cannot start. "
-                f"Run: bash scripts/install_mcp_deps.sh {server_name} (or aiswmm setup --install-mcp)",
+                f"Run: bash {resource_root() / 'scripts' / 'install_mcp_deps.sh'} {server_name}",
                 False,
             )
         )

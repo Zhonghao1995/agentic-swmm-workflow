@@ -9,6 +9,10 @@ from setuptools import setup
 
 PUBLIC_RESOURCE_DIRS = (
     "agent",
+    # Live finding F-131 (2026-09-04): the HITL thresholds document was not in
+    # the wheel, so pattern validation and the rationale check were silently
+    # off on every pip install. _include_public_resource narrows "docs" to it.
+    "docs",
     "examples",
     "integrations",
     "mcp",
@@ -169,6 +173,8 @@ def _include_public_resource(relative: Path) -> bool:
         return len(parts) == 2 or (len(parts) >= 2 and parts[1] == "acceptance")
     if parts[0] == "memory":
         return relative in PUBLIC_MEMORY_FILES
+    if parts[0] == "docs":
+        return relative == Path("docs/hitl-thresholds.md")
     if parts[0] == "data":
         return False
     return parts[0] in {"examples", "integrations", "mcp", "web"}
