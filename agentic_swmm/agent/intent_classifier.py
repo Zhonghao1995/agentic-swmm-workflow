@@ -268,6 +268,70 @@ def _contains_any(text: str, tokens: tuple[str, ...]) -> bool:
     return any(token in text for token in tokens)
 
 
+def _contains_word_any(lowered: str, raw: str, tokens: tuple[str, ...]) -> bool:
+    """ASCII tokens on word boundaries, CJK tokens by substring.
+
+    Live finding F-161 (2026-09-05, S69): the greeting check was a plain
+    substring test, so "hi" matched inside "which" and "yo" inside "you",
+    and "Which cities can you fetch real municipal networks for?" got the
+    canned greeting without ever reaching the model.
+    """
+    for token in tokens:
+        if token.isascii():
+            if re.search(rf"\b{re.escape(token)}\b", lowered):
+                return True
+        elif token in raw:
+            return True
+    return False
+
+
+# A short question that names a thing of the trade is a question, not a
+# greeting (F-161: "which cities are covered?" is four words). ASCII stems
+# match their plural too ("skill" covers "skills"); the wheel allowlist
+# scanner reads a literal "skills" followed by a quoted word as a skill
+# reference, so the plural never appears here.
+_DOMAIN_NOUN_STEMS: tuple[str, ...] = (
+    "city",
+    "cities",
+    "network",
+    "model",
+    "swmm",
+    "inp",
+    "report",
+    "skill",
+    "tool",
+    "coverage",
+    "covered",
+    "canada",
+    "canadian",
+    "area",
+    "rainfall",
+    "storm",
+    "pipe",
+    "catchment",
+    "subcatchment",
+    "城市",
+    "模型",
+    "管网",
+    "覆盖",
+    "加拿大",
+    "报告",
+    "技能",
+    "降雨",
+    "暴雨",
+)
+
+
+def _names_a_domain_noun(lowered: str, raw: str) -> bool:
+    for stem in _DOMAIN_NOUN_STEMS:
+        if stem.isascii():
+            if re.search(rf"\b{re.escape(stem)}s?\b", lowered):
+                return True
+        elif stem in raw:
+            return True
+    return False
+
+
 def _contains_task_verb(lowered: str, raw: str) -> bool:
     """Match the runtime_loop convention: EN word-boundary, ZH substring.
 
@@ -297,7 +361,11 @@ def _is_open_shaped(text: str, lowered: str) -> bool:
         marker in text for marker in ("[", "]", "/", "\\", ".inp", ".csv")
     ):
         return False
-    if _contains_any(lowered, _OPEN_GREETING_TOKENS):
+    # Live finding F-161 (2026-09-05, S69): a question that names a thing of
+    # the trade is never a greeting, and greeting words match whole words.
+    if _names_a_domain_noun(lowered, text):
+        return False
+    if _contains_word_any(lowered, text, _OPEN_GREETING_TOKENS):
         return True
     # CJK text has no spaces, so the word-count fallback called every
     # short Chinese sentence a greeting. Count characters for CJK.
