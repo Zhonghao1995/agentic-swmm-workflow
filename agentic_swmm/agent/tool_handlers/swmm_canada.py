@@ -364,6 +364,61 @@ __all__ = [
 ]
 
 
+def list_canada_cities_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """List the real-network cities the SWMMCanada service publishes (F-149).
+
+    Live test 2026-09-04 (S64): "which cities can you fetch?" had no answer
+    but the six examples baked into a tool description. This reads the
+    service's coverage listing (one GET, nothing leaves the machine but the
+    request) and returns every published city with its coverage extent.
+    """
+    from agentic_swmm.integrations.swmmcanada_runner import (
+        CanadaFetchError as _CoverageError,
+        fetch_coverage,
+        resolve_base_url,
+    )
+
+    base_raw = call.args.get("base_url")
+    try:
+        service_url = resolve_base_url(base_raw if isinstance(base_raw, str) and base_raw.strip() else None)
+        coverage = fetch_coverage(service_url)
+    except _CoverageError as exc:
+        return _failure(call, str(exc), hint=_stage_hint(exc.stage))
+    entries = coverage.get("real_network_cities")
+    cities: list[dict[str, Any]] = []
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        city: dict[str, Any] = {
+            "key": str(entry.get("key") or ""),
+            "label": str(entry.get("label") or entry.get("key") or ""),
+        }
+        extent = entry.get("coverage_bbox")
+        if isinstance(extent, (list, tuple)) and len(extent) == 4:
+            city["coverage_bbox"] = [float(v) for v in extent]
+        for extra in ("province", "systems", "system_types"):
+            if entry.get(extra) not in (None, "", []):
+                city[extra] = entry[extra]
+        cities.append(city)
+    cities.sort(key=lambda c: c["label"].lower())
+    labels = ", ".join(c["label"] for c in cities)
+    summary = (
+        f"{len(cities)} published real-network cities at {service_url}: {labels}. "
+        "Name one (city=...) to fetch its model; pass bbox for any other Canadian area (synthesized)."
+        if cities
+        else f"the service at {service_url} publishes no real-network cities."
+    )
+    return {
+        "tool": call.name,
+        "args": call.args,
+        "ok": True,
+        "service_url": service_url,
+        "count": len(cities),
+        "cities": cities,
+        "summary": summary,
+    }
+
+
 def tool_specs() -> list[ToolSpec]:
     """This family's planner tools (issue #358 PR B self-registration).
 
@@ -372,6 +427,27 @@ def tool_specs() -> list[ToolSpec]:
     only this module.
     """
     return [
+        ToolSpec(
+            "list_canada_cities",
+            (
+                "List the Canadian cities whose REAL published municipal storm networks the "
+                "SWMMCanada service can fetch, with each city's coverage extent. Read-only, one "
+                "GET of the service's coverage listing. USE WHEN: the user asks which cities, "
+                "areas or networks are available or covered; answer from the returned list, "
+                "never from the examples in another tool's description."
+            ),
+            _object(
+                {
+                    "base_url": {
+                        "type": "string",
+                        "description": "Override the SWMMCanada service base URL (else $AISWMM_SWMMCANADA_URL).",
+                    },
+                },
+                [],
+            ),
+            list_canada_cities_tool,
+            is_read_only=True,
+        ),
         ToolSpec(
             "fetch_swmm_from_canada",
             (

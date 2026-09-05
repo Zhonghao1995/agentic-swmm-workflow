@@ -26,6 +26,7 @@ EXPECTED_READ_ONLY: set[str] = {
     "inspect_plot_options",
     "list_dir",
     "list_mcp_servers",
+    "list_canada_cities",  # F-149: one GET of the coverage listing, nothing written
     "list_mcp_tools",
     "list_skills",
     "read_file",

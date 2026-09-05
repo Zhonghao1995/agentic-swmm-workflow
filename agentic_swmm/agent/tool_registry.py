@@ -268,6 +268,10 @@ class AgentToolRegistry:
             "samples",
             "ranges",
             "evidence_boundary",
+            # list_canada_cities (F-149): the list is the answer.
+            "cities",
+            "count",
+            "service_url",
         }
         return {key: value for key, value in result.items() if key in allowed_keys}
 
