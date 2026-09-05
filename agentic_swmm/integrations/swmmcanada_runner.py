@@ -187,21 +187,35 @@ def fetch_from_aoi(
             "or in ~/.aiswmm/env (run `aiswmm setup`)",
         )
 
-    _announce_preview(
-        service_url, aoi_geojson, opener=opener, sleep=sleep, progress=progress
+    # Live finding F-136 (2026-09-05, S27 r2): a build that outlived the
+    # poll budget kept running on the service, and asking again submitted a
+    # second build instead of collecting the first. The same request in the
+    # same run resumes the task its record names, if the service still
+    # knows it; anything else submits afresh.
+    resumed = _resumable_task(
+        run_dir, service_url=service_url, start=start, end=end,
+        aoi_geojson=aoi_geojson, opener=opener, sleep=sleep,
     )
-    task_id, mode = _submit(
-        service_url, aoi_geojson, start, end,
-        infiltration=infiltration, opener=opener, sleep=sleep,
-    )
-    # Live finding F-134 (2026-09-04, S59): two fetches sat QUEUED on the
-    # service for the whole budget and the run kept nothing, so the builds
-    # could be neither inspected nor cancelled. The foreign key is written the
-    # moment the service issues it; a later timeout names this file.
-    task_record = _write_task_record(
-        run_dir, service_url=service_url, task_id=task_id, mode=mode,
-        start=start, end=end, aoi_geojson=aoi_geojson,
-    )
+    if resumed is not None:
+        task_id, mode = resumed
+        task_record = run_dir / TASK_RECORD_REL
+        _report(progress, "RESUMING", None)
+    else:
+        _announce_preview(
+            service_url, aoi_geojson, opener=opener, sleep=sleep, progress=progress
+        )
+        task_id, mode = _submit(
+            service_url, aoi_geojson, start, end,
+            infiltration=infiltration, opener=opener, sleep=sleep,
+        )
+        # Live finding F-134 (2026-09-04, S59): two fetches sat QUEUED on the
+        # service for the whole budget and the run kept nothing, so the builds
+        # could be neither inspected nor cancelled. The foreign key is written
+        # the moment the service issues it; a later timeout names this file.
+        task_record = _write_task_record(
+            run_dir, service_url=service_url, task_id=task_id, mode=mode,
+            start=start, end=end, aoi_geojson=aoi_geojson,
+        )
     _poll_until_done(
         service_url, task_id,
         poll_interval=poll_interval, timeout=timeout,
@@ -364,6 +378,52 @@ def _submit(
 
 
 TASK_RECORD_REL = Path("00_raw") / "swmmcanada" / "task.json"
+
+
+def _resumable_task(
+    run_dir: Path,
+    *,
+    service_url: str,
+    start: date,
+    end: date,
+    aoi_geojson: str,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[str, str] | None:
+    """The task this run already submitted for the same request, still known upstream.
+
+    Live finding F-136 (2026-09-05): the record written at submission
+    (``00_raw/swmmcanada/task.json``) is the resume key. It counts only when
+    the service URL, the dates and the AOI match the new request and the
+    service still answers for the task with a state that can finish;
+    otherwise the caller submits afresh and overwrites the record.
+    """
+    path = run_dir / TASK_RECORD_REL
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict):
+        return None
+    if (
+        record.get("service_url") != service_url
+        or record.get("start_date") != start.isoformat()
+        or record.get("end_date") != end.isoformat()
+        or record.get("aoi_geojson") != aoi_geojson
+    ):
+        return None
+    task_id = record.get("task_id")
+    if not isinstance(task_id, str) or not task_id:
+        return None
+    req = urllib.request.Request(f"{service_url}/api/v1/tasks/{task_id}", method="GET")
+    try:
+        status = json.loads(_open_with_retry(req, timeout=60, opener=opener, sleep=sleep).decode())
+    except Exception:  # noqa: BLE001 - a task the service forgot is not resumable
+        return None
+    state = str(status.get("state") or "").upper() if isinstance(status, dict) else ""
+    if not state or state in ("FAILED", "CANCELLED", "CANCELED"):
+        return None
+    return task_id, str(record.get("mode") or "")
 
 
 def _write_task_record(
