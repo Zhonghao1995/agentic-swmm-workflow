@@ -449,13 +449,24 @@ def _reconcile_model_with_gateway(provider_name: str, model: str | None) -> str 
     """
     try:
         from agentic_swmm.agent.provider_preflight import provider_key_value
-        from agentic_swmm.providers.model_check import offered_models, reconcile_model, route_spec
+        from agentic_swmm.providers.model_check import (
+            model_answers,
+            offered_models,
+            reconcile_model,
+            route_spec,
+        )
 
         spec = route_spec(provider_name)
         if spec is None or not spec.detect_url:
             return model
-        offered = offered_models(spec, key=provider_key_value(provider_name))
-        chosen, note = reconcile_model(spec, model, offered)
+        key = provider_key_value(provider_name)
+        offered = offered_models(spec, key=key)
+        answers: bool | None = None
+        if offered and model and model not in offered:
+            # Live finding F-129: the listing fluctuates while the model stays
+            # callable; a one-token call decides, never the listing alone.
+            answers = model_answers(spec, model, key=key)
+        chosen, note = reconcile_model(spec, model, offered, answers=answers)
     except Exception:  # noqa: BLE001 - a probe must never break a session
         return model
     if note:
