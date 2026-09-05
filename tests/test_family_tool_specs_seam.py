@@ -30,6 +30,7 @@ def test_family_specs_come_from_the_family_modules():
     specs = {spec.name for spec in tool_registry._family_specs()}
     assert specs == {
         "fetch_swmm_from_canada",
+        "list_canada_cities",
         "run_climate_scenarios",
         "map_run",
         "inspect_plot_options",

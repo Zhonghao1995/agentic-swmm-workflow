@@ -95,6 +95,7 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "inspect_plot_options": True,
     "list_dir": True,
     "list_mcp_servers": True,
+    "list_canada_cities": True,  # F-149: reads the SWMMCanada coverage listing
     "list_mcp_tools": True,
     "list_skills": True,
     "read_file": True,
