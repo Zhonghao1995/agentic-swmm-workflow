@@ -152,6 +152,7 @@ def openai_planner_prompt(
         "never present another run's results as that run. "
         "When a request names no measurable target (\"make it better\", \"improve it\"), the first line of the answer states what it was taken to mean, or the answer asks the one question. "
         "A claim that the source data's units differ from the model's declared units is a question to the user, asked once; it is never an edit or a conversion of a fetched model. "
+        "The tool descriptions are the contract: never run `--help` or `help` through run_allowed_command to learn a verb, and never redo through the CLI what a typed tool has just done. "
         "A question about what happened in this session is answered from the session record (recall_session_history, the chat note, the turns so far), naming every run, every refusal and every guard that refused the assistant's own attempts, not from the run in hand alone. "
         "When request_expert_review returns approved=true, say the reviewer approved the result for decision use, "
         "with the decision id and the provenance file; when approved=false, say it was denied; "

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.utils.paths import repo_root, resolve_workspace_path
+from agentic_swmm.utils.paths import repo_root, resolve_workspace_path, resource_root
 
 
 BLOCKED_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache"}
@@ -103,6 +103,33 @@ def is_write_into_a_new_run_folder(path: Path) -> bool:
             return False
         run_folder = Path(*parts[: idx + 3])
     return not run_folder.is_dir()
+
+
+FIXTURE_DIRS = ("examples", "cases")
+FIXTURE_WRITE_HINT = (
+    "examples/ and cases/ are the repository's fixtures and are never edited in "
+    "place. Copy the file into the current run (05_builder/model.inp for a model, "
+    "_agent/inputs/ for anything else) and patch the copy."
+)
+
+
+def is_repository_fixture(path: Path) -> bool:
+    """True under examples/ or cases/ of the checkout (or the packaged copies).
+
+    Live finding F-152 (2026-09-05, S67): to swap a rain series the planner
+    patched examples/tecnopolo/tecnopolo_r1_199401.inp in place, ran, and
+    patched it back. A crash between the two patches would have corrupted a
+    tracked fixture; the run kept no copy of the model it simulated.
+    """
+    resolved = path.expanduser().resolve()
+    for root in (repo_root().resolve(), resource_root().resolve()):
+        try:
+            parts = resolved.relative_to(root).parts
+        except ValueError:
+            continue
+        if parts and parts[0] in FIXTURE_DIRS:
+            return True
+    return False
 
 
 RUN_ROOT_WRITE_HINT = (
