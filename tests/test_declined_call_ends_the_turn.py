@@ -95,3 +95,44 @@ class DeclinedCallEndsTheTurnTests(unittest.TestCase):
         self.assertTrue(planner_module._is_user_denial({"ok": False, "summary": "x", "permission": {"prompted": True, "approved": False}}))
         self.assertFalse(planner_module._is_user_denial({"ok": False, "summary": "missing file", "permission": {"prompted": True, "approved": True}}))
         self.assertFalse(planner_module._is_user_denial({"ok": False, "summary": "missing file"}))
+
+
+class _HeadlessDenyingExecutor(_DenyingExecutor):
+    def execute(self, call: ToolCall, *, index: int) -> dict[str, Any]:
+        from agentic_swmm.agent import permissions
+
+        result = super().execute(call, index=index)
+        result["hint"] = permissions.HEADLESS_DENIAL_HINT
+        return result
+
+
+class HeadlessDenialWordingTests(unittest.TestCase):
+    """F-138 (2026-09-04, S62): with no terminal the fail-closed refusal was
+    narrated as "You declined", which nobody did."""
+
+    def setUp(self) -> None:
+        patcher = mock.patch.object(planner_module, "_stdin_is_interactive", return_value=False)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_headless_refusal_names_the_cause_not_a_person(self) -> None:
+        provider = _ScriptedProvider(
+            [_tool_response([_tool_call("fetch_swmm_from_canada", {"aoi_geojson": "", "city": "Victoria", "bbox": [-123.37, 48.42, -123.36, 48.43]}, call_id="c1")], response_id="r1")]
+        )
+        executor = _HeadlessDenyingExecutor()
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp)
+            outcome = Planner(
+                provider=provider,  # type: ignore[arg-type]
+                registry=AgentToolRegistry(),
+                max_steps=8,
+                verbose=False,
+                emit=lambda text: None,
+                progress_stream=io.StringIO(),
+            ).run(goal=NON_SWMM_GOAL, session_dir=session_dir, trace_path=session_dir / "agent_trace.jsonl", executor=executor)
+        self.assertFalse(outcome.ok)
+        self.assertIn("No terminal was attached", outcome.final_text)
+        self.assertIn("AISWMM_AUTO_APPROVE=1", outcome.final_text)
+        self.assertNotIn("You declined", outcome.final_text)
+        self.assertNotIn("aoi_geojson=", outcome.final_text)
+        self.assertIn("city=Victoria", outcome.final_text)

@@ -78,13 +78,30 @@ def _is_user_denial(result: dict[str, Any]) -> bool:
     return str(result.get("summary") or "") == DENIED_SUMMARY
 
 
-def _declined_final_text(call: ToolCall) -> str:
-    """The one-line report for a turn the user ended by declining a tool call."""
+def _declined_final_text(call: ToolCall, result: dict[str, Any] | None = None) -> str:
+    """The one-line report for a turn that ended at the approval prompt.
+
+    A human said no, or nobody was there to say yes: live finding F-138
+    (2026-09-04, S62 headless) showed the fail-closed refusal narrated as
+    "You declined", which nobody did. The headless case names the cause
+    and the opt-in instead.
+    """
     parts = []
-    for key, value in list(call.args.items())[:3]:
+    for key, value in list(call.args.items()):
         text = str(value)
+        if not text.strip() or text in ("[]", "{}", "None"):
+            continue
         parts.append(f"{key}={text[:40]}{'...' if len(text) > 40 else ''}")
+        if len(parts) == 3:
+            break
     detail = f" ({', '.join(parts)})" if parts else ""
+    hint = str((result or {}).get("hint") or "")
+    if "No terminal was attached" in hint:
+        return (
+            f"No terminal was attached, so {call.name}{detail} was refused rather than run "
+            "unattended; nothing ran this turn. Set AISWMM_AUTO_APPROVE=1 for trusted "
+            "automation, or run the shell interactively."
+        )
     return (
         f"You declined {call.name}{detail}, so nothing ran this turn. "
         "Ask again when ready, or say what to change (area, dates, route)."
@@ -579,6 +596,7 @@ class Planner:
             step_had_failure = False
             giveup_tool: str | None = None
             declined_call: ToolCall | None = None
+            declined_result: dict[str, Any] | None = None
             for _call_index, provider_call in enumerate(response.tool_calls):
                 call = self.registry.validate(provider_call)
                 plan.append(call)
@@ -635,6 +653,7 @@ class Planner:
                     failure_log.append((call.name, str(result.get("summary") or "")))
                     if _is_user_denial(result):
                         declined_call = call
+                        declined_result = result
                     failures_since_checkpoint += 1
                     # Track consecutive failures of the same tool name.
                     if last_failed_tool == call.name:
@@ -675,7 +694,7 @@ class Planner:
                 # route around: the turn ends here, and the shell reports
                 # it as declined (exit code 3, F-63).
                 ok = False
-                final_text = _declined_final_text(declined_call)
+                final_text = _declined_final_text(declined_call, declined_result)
                 write_event(
                     trace_path,
                     {"event": "planner_declined", "step": step, "tool": declined_call.name, "args": declined_call.args},
