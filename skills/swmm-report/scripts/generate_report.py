@@ -28,7 +28,10 @@ try:
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
 except ImportError:
-    print("python-docx is required: pip install 'aiswmm[report]'", file=sys.stderr)
+    print(
+        "python-docx is required: it ships with aiswmm; reinstall with: pip install --force-reinstall aiswmm",
+        file=sys.stderr,
+    )
     sys.exit(1)
 
 try:

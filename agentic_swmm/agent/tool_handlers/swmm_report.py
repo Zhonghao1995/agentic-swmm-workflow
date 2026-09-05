@@ -10,7 +10,7 @@ that builds subprocess args and calls ``_run_script_tool``.
 
 The handler catches the script's missing-python-docx non-zero exit and
 returns a failure dict whose ``summary`` carries the install hint
-(``pip install 'aiswmm[report]'``).
+(python-docx ships with aiswmm; the remedy is a reinstall).
 """
 
 from __future__ import annotations
@@ -103,7 +103,10 @@ def _generate_report_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     # Surface the install hint when python-docx is missing (exit 1, stderr
     # contains the hint text already written by generate_report.py).
     if not result.get("ok") and "python-docx" in (result.get("stderr_tail") or ""):
-        result["summary"] = "python-docx not installed; run: pip install 'aiswmm[report]'"
+        result["summary"] = (
+            "python-docx not importable although it ships with aiswmm; reinstall with: "
+            "pip install --force-reinstall aiswmm"
+        )
     elif result.get("ok"):
         # Asked for a Chinese Word report, the planner announced one while
         # the body was the English template (live test 2026-09-03, S38).

@@ -437,21 +437,20 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
         )
     )
     # The Word deliverable is a headline capability (see the case study in
-    # cases/), but python-docx is an optional extra, so a plain
-    # `pip install aiswmm` cannot write a report until the user knows to ask
-    # for it. Report it the same way the anywhere extra is reported: not a
-    # required check, but never silent (issue #347, extras coverage).
+    # cases/). python-docx ships with aiswmm since F-155 (2026-09-05; a plain
+    # `pip install aiswmm` on 0.9.4 could not write the advertised report).
+    # Still reported, never silent, not a required check (issue #347).
     report_installed = _module_available("docx")
     checks.append(
         (
-            "swmm-report extra",
+            "swmm-report (python-docx)",
             report_installed,
             "installed (Word deliverables available)"
             if report_installed
             else (
-                "not installed; install with: pip install aiswmm[report] "
-                "(needed for Word report export; the rest of the workflow "
-                "runs without it)"
+                "python-docx missing although it ships with aiswmm; reinstall with: "
+                "pip install --force-reinstall aiswmm (needed for Word report export; "
+                "the rest of the workflow runs without it)"
             ),
             False,
         )
