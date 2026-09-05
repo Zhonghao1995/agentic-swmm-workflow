@@ -728,6 +728,7 @@ class LLMProviderStatus:
     fallback_provider: str = ""
     configured_model: str = ""
     offered_models: tuple[str, ...] | None = None
+    model_answers: bool | None = None
 
 
 def collect_llm_provider_status() -> LLMProviderStatus:
@@ -753,11 +754,16 @@ def collect_llm_provider_status() -> LLMProviderStatus:
     spec = ROUTES.get(default_provider)
     configured_model = resolve_selection().model or ""
     offered: tuple[str, ...] | None = None
+    answers: bool | None = None
     if spec is not None and spec.detect_url:
         try:
-            from agentic_swmm.providers.model_check import offered_models
+            from agentic_swmm.providers.model_check import model_answers, offered_models
 
-            offered = offered_models(spec, key=provider_key_value(default_provider))
+            key = provider_key_value(default_provider)
+            offered = offered_models(spec, key=key)
+            if offered and configured_model and configured_model not in offered:
+                # F-129: the listing fluctuates; a one-token call decides.
+                answers = model_answers(spec, configured_model, key=key)
         except Exception:  # pragma: no cover - a probe must never break doctor
             offered = None
     return LLMProviderStatus(
@@ -769,6 +775,7 @@ def collect_llm_provider_status() -> LLMProviderStatus:
         fallback_provider=fallback_provider,
         configured_model=configured_model,
         offered_models=offered,
+        model_answers=answers,
     )
 
 
@@ -908,7 +915,12 @@ def render_configured_model_line(status: LLMProviderStatus) -> str:
     if status.configured_model in offered:
         return f"  {label} - offered by the gateway"
     shown = ", ".join(offered[:5]) + (", ..." if len(offered) > 5 else "")
-    return f"  {label} - NOT offered by the gateway (offered: {shown}); run aiswmm setup"
+    if status.model_answers is True:
+        # F-129: the listing fluctuates; the model answered a call.
+        return f"  {label} - not in the gateway listing but answers a call; kept (offered: {shown})"
+    if status.model_answers is False:
+        return f"  {label} - NOT offered by the gateway (a call returned model_not_found; offered: {shown}); run aiswmm setup"
+    return f"  {label} - NOT offered by the gateway listing (offered: {shown}); the listing fluctuates, a call decides; run aiswmm setup to pin another"
 
 
 def collect_optout_status() -> list[OptOutFlagStatus]:
