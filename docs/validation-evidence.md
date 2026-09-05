@@ -8,7 +8,7 @@ Agentic SWMM includes benchmark paths that test different parts of the workflow,
 
 ## Information-loss-guided subcatchment partition
 
-The information-loss-guided subcatchment partition validates the GIS preprocessing concept that maps an entropy- and fuzzy-similarity-based decision rule onto SWMM-ready subcatchment polygons. It is the structured-raw upstream of the GeoPackage-to-INP path: starting from DEM, boundary, land-use, and soil rasters, it picks the partition variant that minimises information loss relative to the underlying paper rule from Zhang & Valeo's [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447).
+The information-loss-guided subcatchment partition validates the GIS preprocessing concept that maps an entropy- and fuzzy-similarity-based decision rule onto SWMM-ready subcatchment polygons. It is the structured-raw upstream of the GeoPackage-to-INP path: starting from DEM, boundary, land-use, and soil rasters, it picks the partition variant that minimises information loss relative to the rule from Zhang & Valeo's [Environmental Modelling & Software paper](https://doi.org/10.1016/j.envsoft.2026.107155). The entropy and fuzzy-similarity concepts come from their [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447).
 
 <p align="center">
   <img src="figs/information_entropy_subcatchment_partition_readme.png" alt="Information-loss-guided subcatchment partition over a watershed, showing the entropy-selected partition variant in colour against the raw GIS layers" width="760" />
