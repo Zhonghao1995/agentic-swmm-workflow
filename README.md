@@ -138,7 +138,7 @@ The repository includes runnable benchmarks and research previews with different
 
 | Path | What it shows | Evidence boundary |
 | --- | --- | --- |
-| [Information-loss-guided subcatchment partition](docs/validation-evidence.md#information-loss-guided-subcatchment-partition) | QGIS-to-Agentic SWMM preprocessing using entropy and fuzzy-similarity concepts from Zhang & Valeo's [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447) | GIS preprocessing concept, not a calibrated SWMM performance claim |
+| [Information-loss-guided subcatchment partition](docs/validation-evidence.md#information-loss-guided-subcatchment-partition) | QGIS-to-Agentic SWMM preprocessing driven by the information-loss rule from Zhang & Valeo's [Environmental Modelling & Software paper](https://doi.org/10.1016/j.envsoft.2026.107155), with the entropy and fuzzy-similarity concepts from their [Journal of Hydrology paper](https://doi.org/10.1016/j.jhydrol.2025.134447) | GIS preprocessing concept, not a calibrated SWMM performance claim |
 | [Raw GeoPackage-to-INP benchmark](docs/validation-evidence.md#raw-geopackage-to-inp-benchmark) | Public TUFLOW GeoPackage layers converted into SWMM-ready artifacts, QA, and audit | Structured raw GIS path, not arbitrary CAD/GIS recognition |
 | [Prepared-input SWMM benchmark](docs/validation-evidence.md#prepared-input-swmm-benchmark) | External 40-subcatchment Tecnopolo model execution, plotting, and direct `swmm5` comparison | Prepared INP validation path |
 | [Prior Monte Carlo uncertainty smoke](docs/validation-evidence.md#prior-monte-carlo-uncertainty-smoke) | Tecnopolo HORTON parameter perturbation and hydrograph envelope preview | Prior uncertainty smoke, not calibration |
@@ -168,7 +168,7 @@ Agentic SWMM is the **SWMM engine** within a larger effort toward a *trustworthy
 | Project | Role in the ecosystem | Status |
 | --- | --- | --- |
 | [agentic-hydrology-platform](https://github.com/Zhonghao1995/agentic-hydrology-platform) | **Orchestration layer:** top-level agentic runtime that governs data, model selection, runs, and audit across the engine branches | LSTM catchment-modelling pipeline live; cross-engine (SWMM / MIKE+) orchestration in progress |
-| [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer:** ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal pipes for 8 Canadian cities) | SWMM today; extending to MIKE+ and InfoWorks ICM |
+| [SWMMCanada](https://github.com/Zhonghao1995/SWMMCanada) | **Data & model-building layer:** ingests and cleans GIS / open data and synthesises reliable model files; the shared front end for the engines. Agentic SWMM consumes it as an upstream INP source via `fetch_swmm_from_canada` (real municipal storm pipes for 35 cities, sanitary where the city publishes it) | Exports SWMM, MIKE+, InfoWorks ICM and HEC-RAS 2D packages |
 | **Agentic SWMM** *(this repository)* | **SWMM engine:** verification-first EPA SWMM automation (Skills + MCP + deterministic runs + audit) | Stable v0.9.4 |
 | [Agentic-MIKE-Plus](https://github.com/Zhonghao1995/Agentic-MIKE-Plus) | **MIKE+ engine:** headless DHI MIKE+ automation (Skills + MCP), built on the Agentic SWMM design and the same [method paper](https://doi.org/10.3390/aieng1010005) | Active development |
 
