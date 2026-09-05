@@ -24,7 +24,7 @@ from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resolve_memory_dir, resource_root
 
 
 _RECALL_PATTERN_TOKEN_BUDGET = 500
@@ -56,14 +56,14 @@ def _lessons_path() -> Path:
     override = os.environ.get("AISWMM_LESSONS_PATH")
     if override:
         return Path(override)
-    return repo_root() / "memory" / "modeling-memory" / "lessons_learned.md"
+    return resolve_memory_dir() / "lessons_learned.md"
 
 
 def _rag_index_dir() -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override)
-    return repo_root() / "memory" / "rag-memory"
+    return resource_root() / "memory" / "rag-memory"
 
 
 def _recall_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

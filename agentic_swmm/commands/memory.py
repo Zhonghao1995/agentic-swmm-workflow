@@ -10,14 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.utils.paths import (
-    repo_root,
-    resource_root,
-    require_dir,
-    resolve_memory_dir,
-    resolve_runs_dir,
-    script_path,
-)
+from agentic_swmm.utils.paths import repo_root, require_dir, resolve_memory_dir, resolve_runs_dir, resource_root, script_path
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
 
@@ -187,7 +180,7 @@ def show_main(args: argparse.Namespace) -> int:
     memory_dir = (
         args.memory_dir.expanduser().resolve()
         if getattr(args, "memory_dir", None)
-        else repo_root() / "memory" / "modeling-memory"
+        else resolve_memory_dir()
     )
     print(render_case_card(memory_dir, args.case))
     return 0
@@ -195,7 +188,7 @@ def show_main(args: argparse.Namespace) -> int:
 
 def main(args: argparse.Namespace) -> int:
     runs_dir = require_dir(args.runs_dir, "runs directory")
-    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else repo_root() / "memory" / "modeling-memory"
+    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else resolve_memory_dir()
     script = script_path("skills", "swmm-modeling-memory", "scripts", "summarize_memory.py")
     command = python_command(script, "--runs-dir", str(runs_dir), "--out-dir", str(out_dir))
     if args.obsidian_dir:
@@ -239,7 +232,7 @@ def _resolve_rag_dir() -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    return repo_root() / "memory" / "rag-memory"
+    return resource_root() / "memory" / "rag-memory"
 
 
 def _resolve_evolution_config() -> Path:

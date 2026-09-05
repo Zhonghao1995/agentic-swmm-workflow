@@ -21,7 +21,7 @@ def resolve_memory_dir(explicit: Path | None = None) -> Path:
     override = os.environ.get("AISWMM_MEMORY_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    return repo_root() / "memory" / "modeling-memory"
+    return resource_root() / "memory" / "modeling-memory"
 
 
 def resolve_runs_dir(explicit: Path | None = None) -> Path:

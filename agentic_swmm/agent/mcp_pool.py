@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.mcp_client import McpClientError, _read, _send
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
 
@@ -361,7 +361,7 @@ def _preflight(spec: ServerSpec) -> None:
     if spec.command == "node" and shutil.which("node") is None:
         raise McpClientError(
             "node is not on PATH; MCP servers require Node.js. "
-            "Install Node 18+ (or run: aiswmm setup --install-mcp)."
+            "Install Node 18+ and rerun."
         )
     for arg in spec.args:
         if not isinstance(arg, str) or not arg.endswith("server.js"):
@@ -375,7 +375,7 @@ def _preflight(spec: ServerSpec) -> None:
         server_name = server_path.parent.name or str(server_path.parent)
         raise McpClientError(
             f"MCP server {server_name} has no node_modules. "
-            "Run: bash scripts/install_mcp_deps.sh (or aiswmm setup --install-mcp)"
+            f"Run: bash {resource_root() / 'scripts' / 'install_mcp_deps.sh'}"
         )
 
 

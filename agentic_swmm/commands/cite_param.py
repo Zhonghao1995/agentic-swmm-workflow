@@ -40,7 +40,7 @@ from agentic_swmm.memory.citations import cite_parameter_choice
 from agentic_swmm.memory.reference_benchmarks import (
     load_reference_benchmarks,
 )
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resolve_memory_dir
 
 
 _CITE_PARAM_EXAMPLE = (
@@ -101,11 +101,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _default_benchmarks_path() -> Path:
-    return repo_root() / "memory" / "modeling-memory" / "reference_benchmarks.yaml"
+    return resolve_memory_dir() / "reference_benchmarks.yaml"
 
 
 def _default_citations_path() -> Path:
-    return repo_root() / "memory" / "modeling-memory" / "citations.yaml"
+    return resolve_memory_dir() / "citations.yaml"
 
 
 def _collect_dotted_keys(node: Any, prefix: str = "") -> list[str]:

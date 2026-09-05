@@ -9,7 +9,7 @@ from pathlib import Path
 from agentic_swmm.agent.flag_naming import register_example_flag
 from agentic_swmm.agent.swmm_runtime import run_layout
 from agentic_swmm.audit.moc_generator import generate_moc
-from agentic_swmm.utils.paths import require_dir, script_path
+from agentic_swmm.utils.paths import require_dir, resource_root, script_path
 from agentic_swmm.utils.hashing import sha256_of_file
 from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
 
@@ -154,7 +154,7 @@ def _write_threshold_hits(run_dir: Path) -> Path | None:
         return None
     if not isinstance(qa, dict):
         return None
-    thresholds_doc = repo_root() / "docs" / "hitl-thresholds.md"
+    thresholds_doc = resource_root() / "docs" / "hitl-thresholds.md"
     try:
         thresholds = load_thresholds_from_md(thresholds_doc)
     except (OSError, ValueError, FileNotFoundError):

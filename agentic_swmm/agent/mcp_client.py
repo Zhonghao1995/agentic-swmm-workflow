@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resource_root
 from agentic_swmm.utils.subprocess_runner import runtime_env
 
 
@@ -122,7 +122,7 @@ def _preflight(command: str, args: list[str]) -> None:
     if command == "node" and shutil.which("node") is None:
         raise McpClientError(
             "node is not on PATH; MCP servers require Node.js. "
-            "Install Node 18+ (or run: aiswmm setup --install-mcp)."
+            "Install Node 18+ and rerun."
         )
     for index, arg in enumerate(args):
         if not isinstance(arg, str):
@@ -138,7 +138,7 @@ def _preflight(command: str, args: list[str]) -> None:
             # server through scripts/run_mcp_server.mjs <name>, so the server.js
             # form above never matched and a missing node_modules surfaced as
             # "MCP process ended before sending a complete line".
-            candidate = repo_root() / "mcp" / args[index + 1]
+            candidate = resource_root() / "mcp" / args[index + 1]
             if (candidate / "package.json").exists():
                 server_dir = candidate
         if server_dir is None:
@@ -149,7 +149,7 @@ def _preflight(command: str, args: list[str]) -> None:
         server_name = server_dir.name or str(server_dir)
         raise McpClientError(
             f"MCP server {server_name} has no node_modules. "
-            f"Run: bash scripts/install_mcp_deps.sh {server_name} (or aiswmm setup --install-mcp)"
+            f"Run: bash {resource_root() / 'scripts' / 'install_mcp_deps.sh'} {server_name}"
         )
 
 

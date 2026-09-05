@@ -76,6 +76,7 @@ def test_launcher_form_reports_missing_node_modules(tmp_path: Path, monkeypatch:
     launcher.parent.mkdir()
     launcher.write_text("// noop\n", encoding="utf-8")
     monkeypatch.setattr(mcp_client, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(mcp_client, "resource_root", lambda: tmp_path)
     with pytest.raises(mcp_client.McpClientError) as excinfo:
         mcp_client.call_mcp("/usr/bin/env", ["node", str(launcher), "swmm-uncertainty"], "initialize", {}, timeout=1)
     message = str(excinfo.value)
@@ -91,11 +92,13 @@ def test_launcher_form_passes_when_node_modules_exist(tmp_path: Path, monkeypatc
     launcher.parent.mkdir()
     launcher.write_text("// noop\n", encoding="utf-8")
     monkeypatch.setattr(mcp_client, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(mcp_client, "resource_root", lambda: tmp_path)
     mcp_client._preflight("/opt/homebrew/bin/node", [str(launcher), "swmm-uncertainty"])  # no exception
 
 
 def test_a_server_that_dies_early_reports_its_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mcp_client, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(mcp_client, "resource_root", lambda: tmp_path)
     script = "import sys; sys.stderr.write('node:internal/x\\n  throw new ERR_MODULE_NOT_FOUND\\nError [ERR_MODULE_NOT_FOUND]: Cannot find package zod imported from server.js\\n'); sys.exit(1)"
     with pytest.raises(mcp_client.McpClientError) as excinfo:
         mcp_client.call_mcp(sys.executable, ["-c", script], "initialize", {}, timeout=10)
@@ -106,6 +109,7 @@ def test_a_server_that_dies_early_reports_its_stderr(tmp_path: Path, monkeypatch
 
 def test_a_silent_early_death_says_so(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mcp_client, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(mcp_client, "resource_root", lambda: tmp_path)
     with pytest.raises(mcp_client.McpClientError) as excinfo:
         mcp_client.call_mcp(sys.executable, ["-c", "import sys; sys.exit(1)"], "initialize", {}, timeout=10)
     assert "wrote nothing to stderr" in str(excinfo.value)

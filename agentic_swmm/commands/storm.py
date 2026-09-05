@@ -43,7 +43,7 @@ from agentic_swmm.agent.swmm_runtime.design_storm import (
     to_swmm_dat,
 )
 from agentic_swmm.memory.storm_library import recall_chicago_spec
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import repo_root, resolve_memory_dir
 
 
 _STORM_EXAMPLE = (
@@ -210,7 +210,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _default_library_path() -> Path:
-    return repo_root() / "memory" / "modeling-memory" / "storm_library.yaml"
+    return resolve_memory_dir() / "storm_library.yaml"
 
 
 def _parse_idf(text: str) -> dict[str, float]:
