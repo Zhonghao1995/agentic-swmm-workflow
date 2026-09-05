@@ -29,6 +29,10 @@ dependencies = [
   "matplotlib",
   "numpy",
   "PyYAML",
+  # The Word deliverable is the headline capability (one sentence to a client
+  # report). python-docx is pure Python and small, so it ships by default
+  # (F-155, 2026-09-05); the `report` extra below stays as an alias.
+  "python-docx>=1.1",
   "SALib",
   "spotpy",
   "swmmtoolbox",
@@ -47,7 +51,8 @@ anywhere = ["swmmanywhere>=0.2.2,<0.3"]
 
 # `swmm-report` skill: generate a Word deliverable from an audited run.
 # Pure-Python; no system binary required.
-# Install with: pip install aiswmm[report]
+# Since 2026-09-05 python-docx is a core dependency; `report` stays as an
+# alias so `pip install aiswmm[report]` keeps working.
 report = ["python-docx>=1.1"]
 
 # `swmm-gis` skill: shapefile/raster preprocessing into SWMM subcatchments.

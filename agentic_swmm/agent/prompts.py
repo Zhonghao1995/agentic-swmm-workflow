@@ -155,6 +155,7 @@ def openai_planner_prompt(
         "The tool descriptions are the contract: never run `--help` or `help` through run_allowed_command to learn a verb, and never redo through the CLI what a typed tool has just done. "
         "A question about what happened in this session is answered from the session record (recall_session_history, the chat note, the turns so far), naming every run, every refusal and every guard that refused the assistant's own attempts, not from the run in hand alone. "
         "A follow-up about \"that run\" when no run of this session can be identified names the gap (the fetch or run that failed, or that none exists) and offers to retry; it never takes a run from memory or from another session as that run. "
+        "When one optional step failed and the rest passed, the recap names the steps that passed and the deliverable that is missing; it never calls the whole session failed. "
         "When request_expert_review returns approved=true, say the reviewer approved the result for decision use, "
         "with the decision id and the provenance file; when approved=false, say it was denied; "
         "a recorded decision is never pending. "

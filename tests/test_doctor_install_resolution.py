@@ -66,7 +66,7 @@ class RequiredScriptsUseRuntimeResolutionTests(unittest.TestCase):
 
 class ReportExtraIsReportedTests(unittest.TestCase):
     def _report_row(self, checks):
-        rows = [c for c in checks if c[0] == "swmm-report extra"]
+        rows = [c for c in checks if c[0] == "swmm-report (python-docx)"]
         self.assertEqual(len(rows), 1, f"expected one report-extra row, got {rows!r}")
         return rows[0]
 
@@ -78,7 +78,8 @@ class ReportExtraIsReportedTests(unittest.TestCase):
                 checks = doctor._build_install_checks(Path(tmp))
         name, passed, detail, required = self._report_row(checks)
         self.assertFalse(passed)
-        self.assertIn("pip install aiswmm[report]", detail)
+        # F-155 (2026-09-05): python-docx ships by default; the remedy is a reinstall.
+        self.assertIn("pip install --force-reinstall aiswmm", detail)
         self.assertFalse(required, "a missing optional extra must not fail the install")
 
     def test_present_report_extra_passes(self) -> None:

@@ -25,6 +25,10 @@ def test_an_unbounded_request_states_its_interpretation() -> None:
     # "Outcome: Improved" although no model result changed.
     assert "never a verdict such as" in _text()
     assert "when no model result changed" in _text()
+    # F-154 (S59 r2, 2026-09-05): the report step failed on the wheel and the
+    # recap called the whole session FAILED although fetch, run and audit passed.
+    assert "names the steps that passed and the deliverable that is missing" in _text()
+    assert "never calls the whole session failed" in _text()
 
 
 def test_a_units_claim_is_a_question_never_a_conversion() -> None:
