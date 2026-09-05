@@ -4,6 +4,8 @@ never covered by the turn's chain grant (F-03, F-11, F-06; 2026-09-02).
 
 from __future__ import annotations
 
+import unittest
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import mock
@@ -132,3 +134,56 @@ def test_a_real_bbox_still_shows_the_box() -> None:
 
     detail = approval_detail({"city": "Toronto", "bbox": [-79.38, 43.71, -79.37, 43.72]})
     assert detail.startswith("bbox [-79.380")
+
+
+class SweepCostTests(unittest.TestCase):
+    """F-160 (2026-09-05, S27 r3): a sweep says its cost before the approval."""
+
+    RANGES = {"n_imperv": [0.010, 0.020], "pct_imperv": [60, 80]}
+
+    def test_planned_sample_count_follows_the_sampling_rule(self) -> None:
+        from agentic_swmm.agent.swmm_runtime.parameter_sweep import planned_sample_count
+
+        one, two, three, four = ({"a": (0, 1)}, {"a": (0, 1), "b": (0, 1)}, {"a": (0, 1), "b": (0, 1), "c": (0, 1)}, {"a": (0, 1), "b": (0, 1), "c": (0, 1), "d": (0, 1)})
+        self.assertEqual(planned_sample_count(one), 5)
+        self.assertEqual(planned_sample_count(two), 25)
+        self.assertEqual(planned_sample_count(three), 27)
+        self.assertEqual(planned_sample_count(four), 36)
+        self.assertEqual(planned_sample_count(two, 10), 10)
+        self.assertEqual(planned_sample_count(two, 1), 2)
+
+    def test_the_cost_uses_the_baseline_runs_elapsed_time(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        from agentic_swmm.agent.permissions import approval_detail, sweep_cost_phrase
+
+        with TemporaryDirectory() as tmp:
+            run = Path(tmp) / "runs" / "2026-09-05" / "x_run"
+            (run / "06_runner").mkdir(parents=True)
+            (run / "05_builder").mkdir()
+            (run / "06_runner" / "model.rpt").write_text("...\n  Total elapsed time: 00:00:33\n", encoding="utf-8")
+            args = {"inp_path": str(run / "05_builder" / "model.inp"), "node": "OUT_0", "ranges": self.RANGES}
+            self.assertEqual(sweep_cost_phrase(args), "26 SWMM runs, about 14 min (one run took 33 s)")
+            detail = approval_detail(args)
+            self.assertTrue(detail.startswith("26 SWMM runs, about 14 min"), detail)
+            self.assertIn("node=OUT_0", detail)
+            self.assertEqual(sweep_cost_phrase({**args, "n_samples": 5}), "6 SWMM runs, about 3 min (one run took 33 s)")
+
+    def test_without_a_baseline_rpt_only_the_count_is_said(self) -> None:
+        from agentic_swmm.agent.permissions import sweep_cost_phrase
+
+        self.assertEqual(sweep_cost_phrase({"inp_path": "/nowhere/model.inp", "ranges": self.RANGES}), "26 SWMM runs")
+        self.assertEqual(sweep_cost_phrase({"inp_path": "/nowhere/model.inp"}), "")
+
+    def test_a_sub_second_run_gives_no_time_estimate(self) -> None:
+        from tempfile import TemporaryDirectory
+
+        from agentic_swmm.agent.permissions import _elapsed_seconds_from_rpt, sweep_cost_phrase
+
+        with TemporaryDirectory() as tmp:
+            rpt = Path(tmp) / "06_runner" / "model.rpt"
+            rpt.parent.mkdir()
+            rpt.write_text("  Total elapsed time: < 1 sec\n", encoding="utf-8")
+            self.assertIsNone(_elapsed_seconds_from_rpt(rpt))
+            self.assertEqual(sweep_cost_phrase({"run_dir": tmp, "ranges": self.RANGES}), "26 SWMM runs")
+
