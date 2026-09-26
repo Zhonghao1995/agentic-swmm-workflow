@@ -55,7 +55,6 @@ def _run_audit_main(run_dir: Path) -> tuple[int, str]:
         objective=None,
         obsidian=False,
         no_memory=True,
-        no_rag=True,
         rebuild=False,
     )
     fake_result = CommandResult(

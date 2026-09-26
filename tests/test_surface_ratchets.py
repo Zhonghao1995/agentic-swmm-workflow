@@ -27,13 +27,14 @@ PINNED_CLI_VERBS = [
     "trace", "transfer", "uncertainty",
 ]
 
-# ADR-0006 D1: style (a) MCP-routed is FROZEN at these 21 tools. New
+# ADR-0006 D1: style (a) MCP-routed is FROZEN at these 20 tools (21 until the
+# memory retirement of 2026-09-26 removed summarize_memory with its server). New
 # capability takes the golden path (in-process typed tool) or the
 # sanctioned dark-server path; growing THIS list requires an ADR.
 PINNED_MCP_ROUTED_TOOLS = [
     "audit_run", "build_inp", "build_raingage_section", "format_rainfall",
     "generate_design_storm", "network_qa", "network_to_inp", "plot_run",
-    "run_swmm_inp", "summarize_memory", "swmm_calibrate",
+    "run_swmm_inp", "swmm_calibrate",
     "swmm_calibrate_dream_zs", "swmm_calibrate_sceua",
     "swmm_calibrate_search", "swmm_rainfall_ensemble",
     "swmm_sensitivity_morris", "swmm_sensitivity_oat",

@@ -23,9 +23,9 @@ def _bundle(root: Path, name: str, *, installed: bool) -> None:
 def test_servers_without_node_modules_are_named(tmp_path: Path) -> None:
     _bundle(tmp_path, "swmm-plot", installed=True)
     _bundle(tmp_path, "swmm-uncertainty", installed=False)
-    _bundle(tmp_path, "swmm-modeling-memory", installed=False)
+    _bundle(tmp_path, "swmm-network", installed=False)
     (tmp_path / "mcp" / "README.md").write_text("not a server\n", encoding="utf-8")
-    assert doctor._mcp_servers_without_deps(tmp_path) == ["swmm-modeling-memory", "swmm-uncertainty"]
+    assert doctor._mcp_servers_without_deps(tmp_path) == ["swmm-network", "swmm-uncertainty"]
 
 
 def test_no_mcp_directory_means_nothing_to_report(tmp_path: Path) -> None:

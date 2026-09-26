@@ -213,14 +213,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--no-memory",
         action="store_true",
-        help="Skip the audit -> memory auto-trigger (M2). lessons_learned.md "
-        "and the RAG corpus are left untouched. Default: trigger.",
-    )
-    parser.add_argument(
-        "--no-rag",
-        action="store_true",
-        help="Skip only the RAG corpus rebuild but still refresh "
-        "lessons_learned.md. Useful when the RAG step is the slow part.",
+        help="Skip the audit -> memory auto-trigger: no parametric, runs, "
+        "calibration, negative-lesson or outcome rows are written. Default: trigger.",
     )
     parser.add_argument(
         "--refresh-moc",
@@ -336,7 +330,6 @@ def main(args: argparse.Namespace) -> int:
         memory_hook = trigger_memory_refresh(
             run_dir,
             no_memory=bool(getattr(args, "no_memory", False)),
-            no_rag=bool(getattr(args, "no_rag", False)),
         )
 
     try:

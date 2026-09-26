@@ -1,7 +1,7 @@
 """Parametric memory: per-run quantitative records (PRD-06 Phase A.1).
 
 A modeler thinks in *parameters and metrics*, not in text patterns.
-``lessons_learned.md`` catalogs prose lessons; this module catalogs the
+The failure and negative-lesson ledgers hold prose; this module catalogs the
 quantitative facts about each SWMM run so the agent can answer "what
 Manning's *n* did I use last project" or "what continuity did the LID
 intervention produce" without grepping prose.

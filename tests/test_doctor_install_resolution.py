@@ -42,7 +42,7 @@ class RequiredScriptsUseRuntimeResolutionTests(unittest.TestCase):
                 checks = doctor._build_install_checks(empty_root)
 
         script_checks = self._script_checks(checks)
-        self.assertEqual(len(script_checks), 4, "expected the four core scripts")
+        self.assertEqual(len(script_checks), 3, "expected the three core scripts")
         for name, passed, detail, required in script_checks:
             self.assertTrue(
                 passed,

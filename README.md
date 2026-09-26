@@ -157,7 +157,7 @@ The audit layer consolidates artifacts, QA checks, and metric provenance into an
   <img src="docs/figs/audit_comparison_example_readme.png" alt="Experiment audit comparison showing a peak-flow provenance mismatch" width="900" />
 </p>
 
-The downstream modelling-memory layer can summarize audited run histories into recurring failure patterns, assumptions, missing evidence, QA issues, lessons learned, and controlled proposals for updating existing skills or creating new skills. Because skills drive the workflow, these proposals stay coupled to the current Agentic SWMM framework and still require human review and benchmark verification before acceptance.
+The memory layer keeps what audited runs taught the project in one store: parameter fingerprints, calibration results, parameter regions known to be bad, and every tool failure together with the fix that worked, which the agent is told about the next time the same failure happens. Proposals to change a skill or the shipped memory are evidence-gated and always require human review before acceptance.
 
 More details: [Experiment audit framework](docs/experiment-audit-framework.md) and [Modeling memory and skill evolution](docs/modeling-memory-and-skill-evolution.md).
 

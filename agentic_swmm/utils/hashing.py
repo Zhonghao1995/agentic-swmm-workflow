@@ -2,7 +2,7 @@
 
 Four in-process modules (``run_manifests.sha256_of``,
 ``session_header._sha256_file``, ``raw_snapshot._sha256_of``,
-``memory_reflect._sha256``) and several ``scripts/`` entry points each
+several ``scripts/`` entry points) each
 hand-rolled the same hashlib loop. Converged here per ADR-0006 D5; the
 in-process copies now delegate to this function under their historical
 names so existing callers/tests are unaffected.

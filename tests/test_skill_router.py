@@ -39,7 +39,6 @@ def test_list_skills_includes_agent_internal_and_each_mcp_skill(router: SkillRou
         "swmm-calibration",
         "swmm-climate",
         "swmm-experiment-audit",
-        "swmm-modeling-memory",
         "swmm-network",
         "swmm-plot",
         "swmm-runner",
@@ -73,7 +72,6 @@ def test_agent_internal_skill_includes_memory_and_introspection(
     # operation. The legacy ``select_workflow_mode`` gate is gone.
     for tool in (
         "recall_memory",
-        "recall_memory_search",
         "recall_session_history",
         "record_fact",
         "inspect_plot_options",
@@ -115,10 +113,7 @@ def test_agent_internal_does_not_contain_deterministic_swmm_tools(
         "network_qa",
         "network_to_inp",
         "plot_run",
-        # C5 (issue #246): retrieve_memory → swmm-rag-memory
-        "retrieve_memory",
         "run_swmm_inp",
-        "summarize_memory",
         # calibration tools (PR 1, issue #246)
         "swmm_calibrate",
         "swmm_calibrate_dream_zs",
@@ -178,14 +173,6 @@ def test_tools_for_swmm_climate_contains_both_tools(router: SkillRouter) -> None
     assert "format_rainfall" in names
     assert "build_raingage_section" in names, (
         "build_raingage_section must be bound to swmm-climate in _DETERMINISTIC_BINDINGS"
-    )
-
-
-def test_tools_for_swmm_rag_memory_contains_retrieve_memory(router: SkillRouter) -> None:
-    """C5 (issue #246): retrieve_memory must be bound to swmm-rag-memory."""
-    bundle = router.tools_for("swmm-rag-memory")
-    assert "retrieve_memory" in bundle.tool_names(), (
-        "retrieve_memory must be bound to swmm-rag-memory in _DETERMINISTIC_BINDINGS"
     )
 
 

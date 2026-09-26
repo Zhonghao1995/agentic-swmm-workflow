@@ -464,7 +464,6 @@ class AgenticSwmmCliTests(unittest.TestCase):
         self.assertIn("swmm-climate", _select_relevant_skills("format rainfall raingage timeseries"))
         self.assertIn("swmm-network", _select_relevant_skills("check junction conduit outfall network"))
         self.assertIn("swmm-builder", _select_relevant_skills("build INP from network_json and subcatchments_csv"))
-        self.assertIn("swmm-modeling-memory", _select_relevant_skills("summarize modeling memory lessons"))
 
     def test_relevant_mcp_selection_follows_mcp_enabled_skills(self) -> None:
         # Issue #124 Part D: ``mcp_enabled_skills`` now covers all 11 shipped
@@ -758,7 +757,7 @@ class AgenticSwmmCliTests(unittest.TestCase):
             env["AISWMM_CONFIG_DIR"] = tmp
             env["AISWMM_MEMORY_DIR"] = tmp
             env["AISWMM_OPENAI_MOCK_TOOL_CALLS"] = json.dumps(
-                [{"name": "run_tests", "arguments": {"paths": ["tests/test_swmm_modeling_memory.py"], "timeout_seconds": 60}}]
+                [{"name": "run_tests", "arguments": {"paths": ["tests/test_memory_recall.py"], "timeout_seconds": 60}}]
             )
             env["AISWMM_OPENAI_MOCK_RESPONSE"] = "tests checked"
             proc = subprocess.run(

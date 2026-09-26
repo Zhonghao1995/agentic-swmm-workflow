@@ -302,12 +302,11 @@ def _registry_native_tools() -> list[ToolSpec]:
     """The tools that genuinely belong to the registry itself.
 
     Everything else self-registers through the family seam
-    (``_FAMILY_SPEC_MODULES``). These eight stay because their handlers
+    (``_FAMILY_SPEC_MODULES``). These seven stay because their handlers
     reference registry/runtime state by design: ``capabilities`` and
     ``select_skill`` introspect the registry, the MCP bridge trio proxies
-    the local MCP registry, ``run_tests`` / ``run_allowed_command`` wrap
-    the shared allowlist, and ``summarize_memory``'s args mapper is a
-    registry-resident seam with external importers (issue #358 C5).
+    the local MCP registry, and ``run_tests`` / ``run_allowed_command``
+    wrap the shared allowlist.
     """
     return [
         ToolSpec("capabilities", "Describe what this runtime can and cannot access.", _object({}), _capabilities_tool, is_read_only=True),
@@ -332,7 +331,6 @@ def _registry_native_tools() -> list[ToolSpec]:
             _select_skill_tool,
             is_read_only=True,
         ),
-        ToolSpec("summarize_memory", "Summarize audited runs into the modeling-memory directory.", _object({"runs_dir": {"type": "string"}, "out_dir": {"type": "string"}, "obsidian_dir": {"type": "string", "description": "Optional path to an Obsidian vault directory; when present, the skill writes a Markdown summary there in addition to the standard output."}}, ["runs_dir"]), _summarize_memory_tool),
     ]
 
 
@@ -402,9 +400,9 @@ def _build_tools() -> dict[str, ToolSpec]:
     return tools
 
 
-# PRD #128 Phase 2 Group C: ``_doctor_tool`` and ``_retrieve_memory_tool``
-# moved to ``tool_handlers/introspection.py``. Re-exported here so import
-# paths stay stable.
+# PRD #128 Phase 2 Group C: ``_doctor_tool`` moved to
+# ``tool_handlers/introspection.py``. Re-exported here so import paths
+# stay stable.
 
 
 # PRD #128 Phase 2 Group C: HITL / L5 gap-fill governance handlers moved
@@ -450,43 +448,11 @@ def _build_tools() -> dict[str, ToolSpec]:
 # paths stay stable for ``_build_tools`` and downstream code.
 
 
-def _summarize_memory_args(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Map ``summarize_memory`` args to ``swmm-modeling-memory`` MCP schema.
-
-    The MCP server requires both ``runsDir`` and ``outDir``; if the caller
-    omits ``out_dir`` we default to ``memory/modeling-memory`` (the same
-    default the CLI used).
-
-    C2 (issue #246): ``obsidian_dir`` is now forwarded as ``obsidianDir``
-    when present so the Obsidian vault export path reaches the skill.
-    """
-
-    runs_dir = call.args.get("runs_dir")
-    if not isinstance(runs_dir, str) or not runs_dir.strip():
-        return _failure(call, "missing required argument: runs_dir")
-    out_dir = call.args.get("out_dir") or "memory/modeling-memory"
-    args: dict[str, Any] = {"runsDir": str(runs_dir), "outDir": str(out_dir)}
-    if call.args.get("obsidian_dir"):
-        args["obsidianDir"] = str(call.args["obsidian_dir"])
-    return args
-
-
-_summarize_memory_tool = _make_mcp_routed_handler(
-    "swmm-modeling-memory", "summarize_memory", args_mapper=_summarize_memory_args
-)
-
-
-# PRD #128 Phase 2 Group C: ``_retrieve_memory_tool`` (the swmm-rag-memory
-# retriever shim from Issue #124 Part A) moved to
-# ``tool_handlers/introspection.py`` along with the ``_RAG_SKILL_DIR_RELATIVE``
-# private constant. Re-exported above via the introspection module.
-
-
 # -- Memory recall tools (PRD M1, M6, M7.1) -----------------------------------
 #
-# PRD #128: the four memory-family handlers (`_recall_memory_tool`,
-# `_recall_memory_search_tool`, `_recall_session_history_tool`,
-# `_record_fact_tool`) moved to ``tool_handlers/swmm_memory.py`` along
+# PRD #128: the memory-family handlers (`_recall_memory_tool`,
+# `_recall_session_history_tool`, `_record_fact_tool`) moved to
+# ``tool_handlers/swmm_memory.py`` along
 # with their token-budget / lessons-path helpers. Re-exported here so
 # import paths stay stable for ``_build_tools`` and downstream code.
 

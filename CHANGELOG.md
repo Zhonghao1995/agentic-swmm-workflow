@@ -4,6 +4,26 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: retirement of the generated layer (2026-09-26)
+
+- Removed the lessons summariser (`swmm-modeling-memory` skill and its
+  MCP server, `summarize_memory` tool, `aiswmm memory --runs-dir`), the
+  lessons lifecycle (decay pass, `aiswmm memory compact`), the memory
+  MOC, the markdown mirror of negative lessons
+  (`aiswmm memory migrate-negative-lessons-md`), the RAG corpus and its
+  retrieval (`swmm-rag-memory` skill, `retrieve_memory` and
+  `recall_memory_search` tools, `aiswmm audit --no-rag`) and the LLM
+  reflection verb (`aiswmm expert memory-reflect`). None of it was read
+  by the runtime in 131 measured live sessions; the store and its
+  database now carry the memory.
+- `recall_memory` takes a natural-language `query` (plus optional
+  `case_name` and `limit`) and returns matching rows from the store's
+  failures (with their fixes) and negative lessons.
+- The audit hook writes only the store: parametric, runs, calibration,
+  negative lessons (JSONL) and the outcome ledger.
+- The frozen MCP-routed tool set is 20 (was 21); ten module MCP servers
+  ship (were eleven).
+
 ### Memory: the failure loop (2026-09-26)
 
 - A tool failure now remembers what fixed it. When the call right after a

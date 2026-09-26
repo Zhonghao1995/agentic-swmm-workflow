@@ -16,7 +16,6 @@ root only, or in the wrong order:
    glob that surfaces ``05_builder`` before ``06_runner`` — either way
    the ``inp`` / ``files`` fast-path in ``find_inp``/``find_out`` was
    dead and every lookup fell through to convention globs.
-3. ``summarize_memory.detect_failure_patterns``: "has a manifest"
    checked the root only, stamping ``missing_manifest`` (escalating to
    ``partial_run``) on every healthy agent-driven run.
 
@@ -141,68 +140,6 @@ class ReadManifestOrderTests(unittest.TestCase):
             )
             manifest = read_manifest(run_dir)
         self.assertIn("metrics", manifest)
-
-
-class SummarizeMemoryManifestPresenceTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        script = (
-            Path(__file__).resolve().parents[1]
-            / "skills/swmm-modeling-memory/scripts/summarize_memory.py"
-        )
-        spec = importlib.util.spec_from_file_location(
-            "_summarize_memory_manifest_test", script
-        )
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
-        cls.mod = module
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        sys.modules.pop("_summarize_memory_manifest_test", None)
-
-    def _detect(self, run_dir: Path) -> list[str]:
-        return self.mod.detect_failure_patterns(
-            run_dir=run_dir,
-            provenance={
-                "status": "pass",
-                "qa": {"status": "pass", "fail_count": 0},
-                "metrics": {
-                    "swmm_return_code": 0,
-                    "peak_flow": {"value": 1.0},
-                    "continuity_error": -0.1,
-                },
-                "artifacts": {},
-            },
-            comparison={},
-            model_diagnostics={},
-            artifacts_missing=[],
-            audit_files_found=[
-                "experiment_provenance.json",
-                "comparison.json",
-                "experiment_note.md",
-                "model_diagnostics.json",
-            ],
-        )
-
-    def test_agent_run_with_stage_manifest_is_not_missing_manifest(self) -> None:
-        """Pre-fix: every healthy agent run got missing_manifest+partial_run."""
-        with TemporaryDirectory() as tmp:
-            run_dir = _make_canonical_run(Path(tmp), with_top=False)
-            patterns = self._detect(run_dir)
-        self.assertNotIn("missing_manifest", patterns)
-        self.assertNotIn("partial_run", patterns)
-
-    def test_run_with_no_manifest_anywhere_still_flags(self) -> None:
-        with TemporaryDirectory() as tmp:
-            run_dir = Path(tmp) / "bare"
-            (run_dir / "05_builder").mkdir(parents=True)
-            (run_dir / "05_builder" / "model.inp").write_text(
-                "[TITLE]\nx\n", encoding="utf-8"
-            )
-            patterns = self._detect(run_dir)
-        self.assertIn("missing_manifest", patterns)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -495,16 +495,6 @@ def main() -> None:
             "TUFLOW SWMM Module 03 full multi-raingage raw GeoPackage adapter benchmark",
         ]
     )
-    run_cmd(
-        [
-            "python3",
-            "skills/swmm-modeling-memory/scripts/summarize_memory.py",
-            "--runs-dir",
-            "runs",
-            "--out-dir",
-            "memory/store",
-        ]
-    )
     print(json.dumps(summary, indent=2))
 
 

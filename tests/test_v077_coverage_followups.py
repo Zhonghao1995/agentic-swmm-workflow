@@ -34,12 +34,6 @@ def test_review_handler_surfaces_missing_script(monkeypatch, tmp_path) -> None:
     assert result["ok"] is False
 
 
-def test_retrieve_memory_surfaces_missing_script(monkeypatch, tmp_path) -> None:
-    monkeypatch.setattr(introspection, "resource_path", _raise_missing)
-    result = introspection._retrieve_memory_tool(ToolCall("retrieve_memory", {"query": "flooding"}), tmp_path)
-    assert result["ok"] is False
-
-
 def test_assert_public_host_rejects_missing_host() -> None:
     with pytest.raises(ValueError):
         web._assert_public_host("http:///only-a-path")

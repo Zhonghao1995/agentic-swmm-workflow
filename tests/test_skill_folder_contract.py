@@ -29,8 +29,28 @@ def _load_validator():
 
 _validate = _load_validator().validate
 
+_IGNORED_ARTIFACTS = {"__pycache__", "node_modules", ".DS_Store"}
+
+
+def _is_leftover(folder: Path) -> bool:
+    """True for a folder that only holds ignored build artifacts.
+
+    A retired skill leaves its ``__pycache__`` behind in every checkout
+    that had imported it (git removes tracked files only), so a folder
+    with nothing but ignored artifacts is not a skill and not a
+    contract violation. A folder with any real file still is.
+    """
+    return all(
+        set(path.relative_to(folder).parts) & _IGNORED_ARTIFACTS
+        for path in folder.rglob("*")
+        if path.is_file()
+    )
+
+
 _ALL_SKILLS = sorted(
-    p.name for p in _SKILLS_DIR.iterdir() if p.is_dir() and not p.name.startswith(".")
+    p.name
+    for p in _SKILLS_DIR.iterdir()
+    if p.is_dir() and not p.name.startswith(".") and not _is_leftover(p)
 )
 
 

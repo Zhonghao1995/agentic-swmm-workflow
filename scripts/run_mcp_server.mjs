@@ -13,7 +13,6 @@ const servers = {
   "swmm-climate": "mcp/swmm-climate",
   "swmm-experiment-audit": "mcp/swmm-experiment-audit",
   "swmm-gis": "mcp/swmm-gis",
-  "swmm-modeling-memory": "mcp/swmm-modeling-memory",
   "swmm-network": "mcp/swmm-network",
   "swmm-params": "mcp/swmm-params",
   "swmm-plot": "mcp/swmm-plot",

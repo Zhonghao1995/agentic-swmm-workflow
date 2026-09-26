@@ -1,5 +1,14 @@
 # Modeling Memory and Controlled Skill Evolution
 
+> **Status (2026-09-26).** The summariser this page describes
+> (`swmm-modeling-memory`, `memory_summary.json`, `lessons_learned.md`,
+> the index files and the RAG corpus) was retired in the memory
+> simplification: the store under `memory/store/` (JSONL ledgers plus
+> `memory.sqlite`) now holds what audited runs taught the project, tool
+> failures remember their fix, and skill proposals return as an
+> evidence-gated, human-approved mechanism in the next step. The design
+> intent below still holds; the mechanics are being rewritten.
+
 Agentic SWMM is not only an automation workflow. It is a memory-informed, verification-first modeling system that can learn from audited modeling history through controlled skill refinement.
 
 ## Problem

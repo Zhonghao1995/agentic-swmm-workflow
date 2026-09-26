@@ -135,7 +135,7 @@ def _last_successful_stage(workflow_state: dict[str, Any]) -> str | None:
 
 
 def _available_next_actions(workflow_state: dict[str, Any]) -> list[str]:
-    actions = ["audit", "plot", "summarize_memory"]
+    actions = ["audit", "plot"]
     if workflow_state.get("pending_user_choice"):
         actions.insert(0, "answer_clarification")
     return actions

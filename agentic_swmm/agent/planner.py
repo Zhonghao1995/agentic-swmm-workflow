@@ -157,7 +157,6 @@ def rule_plan(goal: str) -> list[ToolCall]:
         calls.append(ToolCall("run_swmm_inp", {"inp_path": inp_path}))
     wants_acceptance = "acceptance" in text or "demo" in text
     wants_audit = "audit" in text
-    wants_memory = "memory" in text or "summarize" in text
     wants_report = "report" in text or "summarize" in text
     if "capabilities" in text or "能力" in text:
         calls.append(ToolCall("capabilities", {}))
@@ -165,8 +164,6 @@ def rule_plan(goal: str) -> list[ToolCall]:
         calls.append(ToolCall("demo_acceptance", {"run_id": "agent-latest", "keep_existing": False}))
         if wants_audit or "and audit" in text:
             calls.append(ToolCall("audit_run", {"run_dir": "runs/acceptance/agent-latest", "workflow_mode": "acceptance", "objective": goal}))
-        if wants_memory:
-            calls.append(ToolCall("summarize_memory", {"runs_dir": "runs/acceptance", "out_dir": "memory/modeling-memory"}))
         if wants_report or wants_audit:
             calls.append(ToolCall("read_file", {"path": "runs/acceptance/agent-latest/acceptance_report.md"}))
     if not calls:

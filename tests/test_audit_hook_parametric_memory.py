@@ -68,7 +68,7 @@ class AuditHookParametricMemoryTests(_ProjectRootMemory):
                 result = trigger_memory_refresh(run_dir)
 
             self.assertFalse(result["skipped"], msg=str(result))
-            # The parametric store lives next to lessons_learned.md.
+            # The parametric store lives in the memory store directory.
             # ``project_root`` may be under ``/var`` which macOS resolves
             # through ``/private``, so trust the path the hook reports.
             self.assertIn("parametric_memory", result, msg=str(result))

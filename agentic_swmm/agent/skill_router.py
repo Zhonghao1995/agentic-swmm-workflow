@@ -33,8 +33,6 @@ from agentic_swmm.agent.tool_registry import AgentToolRegistry, ToolSpec
 from agentic_swmm.agent.mcp_coverage import EXPECTED_BINDINGS as _EXPECTED_BINDINGS
 
 _DIRECT_SUBPROCESS_BINDINGS: dict[str, str] = {
-    # C5 (issue #246): retrieve_memory is direct-subprocess (no MCP row).
-    "retrieve_memory": "swmm-rag-memory",
     # PRD_water_quality PR3 / PRD_design_review PR2 / PRD_report_export PR2:
     # all direct-subprocess handlers.
     "read_wq_loads": "swmm-water-quality",

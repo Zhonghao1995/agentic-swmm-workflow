@@ -62,9 +62,9 @@ def _feed_memory_after_audit(call: ToolCall, session_dir: Path, result: dict[str
     Live finding F-35 (2026-09-02): ``trigger_memory_refresh`` was called
     only by ``aiswmm audit``; the agent's audit_run went to the skill
     script and returned, so four real interactive runs left zero
-    parametric rows and no lessons refresh. The golden path did not feed
-    the memory it was meant to learn from. Fail-soft: a memory failure
-    never turns a finished audit into a failed tool call.
+    parametric rows. The golden path did not feed the memory it was
+    meant to learn from. Fail-soft: a memory failure never turns a
+    finished audit into a failed tool call.
     """
     if not result.get("ok"):
         return result
@@ -79,7 +79,9 @@ def _feed_memory_after_audit(call: ToolCall, session_dir: Path, result: dict[str
         hook = {"skipped": True, "reason": f"memory refresh failed: {exc}"}
     if isinstance(hook, dict):
         result["memory_hook"] = {
-            key: hook.get(key) for key in ("skipped", "reason", "lessons", "errors") if key in hook
+            key: hook.get(key)
+            for key in ("skipped", "reason", "parametric_memory", "runs_row", "errors")
+            if key in hook
         }
     return result
 

@@ -10,7 +10,7 @@ two artefacts under ``<run_dir>/09_audit/``:
 - one full prompt dump at ``llm_prompts/<call_id>.txt``
 
 The observer is a *deep* module — callers funnel here regardless of
-caller name (``planner``, ``gap_fill.proposer``, ``memory_reflect``,
+caller name (``planner``, ``gap_fill.proposer``,
 …). The schema and atomic-append behaviour live in one place so future
 callers do not reinvent their own logging.
 

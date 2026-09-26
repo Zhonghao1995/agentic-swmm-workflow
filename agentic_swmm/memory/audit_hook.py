@@ -1,13 +1,13 @@
 """Audit-end auto-trigger hook (PRD M2 + M6 + M7.4).
 
-After a successful audit pipeline run, this module:
-
-1. Decides whether the run is eligible for memory summarisation
-   (:func:`is_skip_memory_run`).
-2. When eligible, refreshes ``memory/modeling-memory/lessons_learned.md``
-   via the existing summarise-memory CLI.
-3. When ``--no-rag`` is not set, rebuilds the RAG corpus via
-   ``skills/swmm-rag-memory/scripts/refresh_after_run.py``.
+After a successful audit pipeline run, this module decides whether the
+run is eligible for memory (:func:`is_skip_memory_run`) and, when it is,
+runs the ``_REFRESH_PHASES`` pipeline: a parametric row, a ``runs`` row,
+a calibration row when provenance has one, a negative lesson on a
+continuity FAIL, and the outcome ledger. Every phase writes a ledger or
+a table in the store; nothing regenerates a document (the lessons file,
+its decay pass, the memory MOC and the RAG corpus were retired in the
+memory simplification, 2026-09-26).
 
 Pure-function callable so the audit command and the planner can reuse
 the same trigger logic in tests without spawning the real audit
@@ -19,8 +19,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from agentic_swmm.memory.jsonl_store import append_row
@@ -108,17 +106,6 @@ def _resolve_memory_dir(project_root: Path | None = None) -> Path:
     return resolve_memory_dir()
 
 
-def _resolve_rag_dir(project_root: Path | None = None) -> Path:
-    override = os.environ.get("AISWMM_RAG_DIR")
-    if override:
-        return Path(override)
-    if project_root is not None:
-        return project_root / "memory" / "store" / "rag"
-    from agentic_swmm.utils.paths import resolve_memory_dir
-
-    return resolve_memory_dir() / "rag"
-
-
 def _project_root_for(runs_dir: Path) -> Path:
     """Return the project root that owns ``runs_dir``.
 
@@ -145,179 +132,6 @@ def _resolve_runs_dir(run_dir: Path) -> Path:
         if parent.name == "runs":
             return parent
     return run_dir.parent
-
-
-def _bump_lessons_mtime(memory_dir: Path) -> Path:
-    """Touch lessons_learned.md to record that a refresh happened.
-
-    The real summariser writes new content; we always at least bump
-    the mtime so callers can detect the refresh deterministically.
-    """
-    memory_dir.mkdir(parents=True, exist_ok=True)
-    lessons_env = os.environ.get("AISWMM_LESSONS_PATH")
-    lessons = Path(lessons_env) if lessons_env else (memory_dir / "lessons_learned.md")
-    lessons.parent.mkdir(parents=True, exist_ok=True)
-    if not lessons.exists():
-        lessons.write_text("<!-- schema_version: 1.1 -->\n# Lessons\n", encoding="utf-8")
-    else:
-        # rewrite verbatim so mtime advances even in fast tmpfs.
-        lessons.write_text(lessons.read_text(encoding="utf-8"), encoding="utf-8")
-    return lessons
-
-
-def _summarize_memory_cli(runs_dir: Path, memory_dir: Path) -> tuple[int, str]:
-    """Invoke the existing summarise-memory CLI as a subprocess.
-
-    Failure to summarise is downgraded to a warning written into
-    ``.last_refresh_error.json`` so a buggy summariser cannot block
-    the audit pipeline (per PRD M2 RAG refresh detail).
-    """
-    cmd = [
-        sys.executable,
-        "-m",
-        "agentic_swmm.cli",
-        "memory",
-        "--runs-dir",
-        str(runs_dir),
-        "--out-dir",
-        str(memory_dir),
-    ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        return proc.returncode, (proc.stderr or proc.stdout or "")
-    except (OSError, subprocess.SubprocessError) as exc:
-        return 1, str(exc)
-
-
-def _refresh_rag_corpus(
-    memory_dir: Path, rag_dir: Path, runs_dir: Path, run_dir: Path | None = None
-) -> tuple[int, str]:
-    repo_root = Path(__file__).resolve().parents[2]
-    script = repo_root / "skills" / "swmm-rag-memory" / "scripts" / "refresh_after_run.py"
-    if script.is_file() and run_dir is not None:
-        # The refresh entry point takes the audited run (--run-dir) plus
-        # the store locations, with the corpus destination spelled
-        # --rag-dir. Before 2026-08-08 this call reused the fallback
-        # script's flags (--out-dir, no --run-dir), so every audit's RAG
-        # refresh exited with an argparse usage error that the
-        # best-effort contract then swallowed.
-        cmd = [
-            sys.executable,
-            str(script),
-            "--run-dir",
-            str(run_dir),
-            "--memory-dir",
-            str(memory_dir),
-            "--runs-dir",
-            str(runs_dir),
-            "--rag-dir",
-            str(rag_dir),
-            "--repo-root",
-            str(repo_root),
-        ]
-    else:
-        # Fallback: run build_memory_corpus.py directly so the corpus is at
-        # least rebuilt. Tests that do not install the refresh entry point
-        # still get a deterministic mtime bump.
-        script = repo_root / "skills" / "swmm-rag-memory" / "scripts" / "build_memory_corpus.py"
-        cmd = [
-            sys.executable,
-            str(script),
-            "--memory-dir",
-            str(memory_dir),
-            "--runs-dir",
-            str(runs_dir),
-            "--out-dir",
-            str(rag_dir),
-            "--repo-root",
-            str(repo_root),
-        ]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        return proc.returncode, (proc.stderr or proc.stdout or "")
-    except (OSError, subprocess.SubprocessError) as exc:
-        return 1, str(exc)
-
-
-def _resolve_config_path(project_root: Path | None) -> Path:
-    """Resolve the path to ``memory_evolution_config.md``.
-
-    Honours ``AISWMM_MEMORY_EVOLUTION_CONFIG`` so tests can swap in a
-    fixture; otherwise lives at ``<project_root>/agent/memory/curated/
-    memory_evolution_config.md``.
-    """
-    override = os.environ.get("AISWMM_MEMORY_EVOLUTION_CONFIG")
-    if override:
-        return Path(override)
-    if project_root is not None:
-        return project_root / "agent" / "memory" / "curated" / "memory_evolution_config.md"
-    return Path("agent/memory/curated/memory_evolution_config.md")
-
-
-def _stage_archive_change(memory_dir: Path, archive_path: Path) -> None:
-    """Best-effort ``git add`` of the archive so the move is tracked.
-
-    Failures (no git binary, not a repo, permission denied) are silently
-    swallowed — the filesystem write is already complete, and we never
-    want to crash the audit pipeline because git wasn't happy.
-    """
-    if not archive_path.is_file():
-        return
-    try:
-        subprocess.run(
-            ["git", "add", "--", str(archive_path), str(memory_dir / "lessons_learned.md")],
-            cwd=str(memory_dir.parent.parent),
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return
-
-
-def _run_decay_pass(
-    *,
-    lessons_path: Path,
-    memory_dir: Path,
-    run_dir: Path,
-    project_root: Path | None,
-) -> dict[str, Any]:
-    """Run :func:`apply_decay` and write ``09_audit/decay_report.json``.
-
-    Returns the report-as-dict so the caller can attach it to its own
-    summary. Failure modes degrade gracefully: a missing lessons file
-    yields ``{"skipped": True, "reason": ...}`` rather than raising.
-    """
-    from agentic_swmm.memory.lessons_lifecycle import apply_decay, load_config
-
-    if not lessons_path.is_file():
-        return {"skipped": True, "reason": "lessons_learned.md not found"}
-
-    archive_path = memory_dir / "lessons_archived.md"
-    config = load_config(_resolve_config_path(project_root))
-
-    report = apply_decay(lessons_path, archive_path, config)
-    payload: dict[str, Any] = report.to_dict()
-    payload["generated_at_utc"] = datetime.now(timezone.utc).isoformat(
-        timespec="seconds"
-    )
-    payload["config"] = {
-        "half_life_days": config.get("half_life_days"),
-        "active_threshold": config.get("active_threshold"),
-        "dormant_threshold": config.get("dormant_threshold"),
-    }
-
-    audit_dir = run_dir / "09_audit"
-    audit_dir.mkdir(parents=True, exist_ok=True)
-    out_path = audit_dir / "decay_report.json"
-    out_path.write_text(
-        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
-    )
-
-    if report.retired:
-        _stage_archive_change(memory_dir, archive_path)
-    payload["report_path"] = str(out_path)
-    return payload
 
 
 def _record_parametric_from_provenance(
@@ -553,33 +367,7 @@ def _record_negative_lesson_for_continuity_fail(
         note=f"postflight FAIL on {', '.join(sorted(fail_codes))}",
     )
 
-    # Round 7: prefer the markdown store when it exists so the curator
-    # gets one file to grep instead of two formats. The JSONL store
-    # stays as the back-compat fallback for projects that have not yet
-    # run the one-shot migration.
-    md_path = memory_dir / "negative_lessons.md"
     jsonl_path = memory_dir / "negative_lessons.jsonl"
-    if md_path.is_file():
-        try:
-            from agentic_swmm.memory.negative_lessons_markdown import (
-                NegativeLessonMd,
-                _section_name,
-                add_negative_lesson,
-            )
-
-            md_record = NegativeLessonMd(
-                name=_section_name("continuity_fail", case_name),
-                case=case_name,
-                lesson_type="continuity_fail",
-                parameters_tried=dict(parameters_tried),
-                note=f"postflight FAIL on {', '.join(sorted(fail_codes))}",
-                evidence_runs=[run_id],
-            )
-            add_negative_lesson(md_path, md_record)
-        except (ValueError, OSError):
-            return None
-        return str(md_path)
-
     try:
         record_negative_lesson(jsonl_path, lesson)
     except (ValueError, OSError):
@@ -733,16 +521,6 @@ def _emit_audit_memory_trace(
     )
 
 
-def _bump_corpus_mtime(rag_dir: Path) -> Path:
-    rag_dir.mkdir(parents=True, exist_ok=True)
-    corpus = rag_dir / "corpus.jsonl"
-    if corpus.exists():
-        corpus.write_text(corpus.read_text(encoding="utf-8"), encoding="utf-8")
-    else:
-        corpus.write_text("", encoding="utf-8")
-    return corpus
-
-
 @dataclass
 class _RefreshContext:
     """Shared state for the refresh phases.
@@ -761,47 +539,7 @@ class _RefreshContext:
     runs_dir: Path
     project_root: Path
     memory_dir: Path
-    lessons_path: Path
     result: dict[str, Any]
-
-
-def _phase_compaction_marker(ctx: _RefreshContext) -> None:
-    # PRD M3 / M7-derived: tag the file for compaction if it has grown
-    # past the threshold. No automatic compaction in this PRD.
-    try:
-        from agentic_swmm.memory.proposal_skeleton import maybe_prepend_compaction_marker
-
-        if maybe_prepend_compaction_marker(ctx.lessons_path):
-            ctx.result["compaction_marker_added"] = True
-    except Exception as exc:
-        ctx.result["errors"].append(f"compaction marker failed: {exc}")
-
-
-def _phase_memory_moc(ctx: _RefreshContext) -> None:
-    # PRD M4: regenerate the memory MOC alongside lessons.
-    try:
-        from agentic_swmm.memory.moc_generator import write_memory_moc
-
-        moc_path = write_memory_moc(ctx.memory_dir, ctx.runs_dir)
-        ctx.result["memory_moc"] = str(moc_path)
-    except Exception as exc:
-        ctx.result["errors"].append(f"memory MOC write failed: {exc}")
-
-
-def _phase_lifecycle_metadata(ctx: _RefreshContext) -> None:
-    # ME-1 (issue #61): bump lifecycle metadata for the patterns that
-    # this run matched and recompute confidence_score for all patterns.
-    # This runs AFTER the summariser regenerates lessons_learned.md so
-    # the bump is the last write to disk.
-    try:
-        from agentic_swmm.memory.lessons_metadata import update_metadata_for_run
-
-        meta_summary = update_metadata_for_run(
-            lessons_path=ctx.lessons_path, run_dir=ctx.run_dir
-        )
-        ctx.result["lifecycle_metadata"] = meta_summary
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        ctx.result["errors"].append(f"lifecycle metadata update failed: {exc}")
 
 
 def _phase_parametric_bridge(ctx: _RefreshContext) -> None:
@@ -878,24 +616,6 @@ def _phase_negative_lessons(ctx: _RefreshContext) -> None:
         ctx.result["errors"].append(f"negative lesson write failed: {exc}")
 
 
-def _phase_decay_pass(ctx: _RefreshContext) -> None:
-    # ME-2 (issue #62): apply confidence decay + status transitions
-    # AFTER the metadata bump. Retired patterns are moved into
-    # ``lessons_archived.md`` and a structured summary is written to
-    # ``09_audit/decay_report.json`` so downstream tooling can surface
-    # what changed.
-    try:
-        decay_summary = _run_decay_pass(
-            lessons_path=ctx.lessons_path,
-            memory_dir=ctx.memory_dir,
-            run_dir=ctx.run_dir,
-            project_root=ctx.project_root,
-        )
-        ctx.result["decay"] = decay_summary
-    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
-        ctx.result["errors"].append(f"lessons decay pass failed: {exc}")
-
-
 def _phase_outcome_ledger(ctx: _RefreshContext) -> None:
     # PR-3 Phase 1: append outcome events to the application outcome ledger.
     # Fires after the parametric/calibration bridges so provenance is complete.
@@ -927,20 +647,15 @@ def _phase_outcome_ledger(ctx: _RefreshContext) -> None:
         ctx.result["errors"].append(f"outcome log write failed: {exc}")
 
 
-# Ordered pipeline. Order is behaviour: the lifecycle bump precedes the
-# decay pass (ME-2 reads the bumped metadata), the parametric bridge
-# precedes negative-lessons (eligibility marker) and the outcome ledger
-# (complete provenance). Each phase is fail-soft in isolation — one
-# phase's exception never blocks the next.
+# Ordered pipeline. Order is behaviour: the parametric bridge precedes
+# negative-lessons (eligibility marker) and the outcome ledger (complete
+# provenance). Each phase is fail-soft in isolation — one phase's
+# exception never blocks the next.
 _REFRESH_PHASES: tuple[Callable[[_RefreshContext], None], ...] = (
-    _phase_compaction_marker,
-    _phase_memory_moc,
-    _phase_lifecycle_metadata,
     _phase_parametric_bridge,
     _phase_runs_row,
     _phase_calibration_bridge,
     _phase_negative_lessons,
-    _phase_decay_pass,
     _phase_outcome_ledger,
 )
 
@@ -949,21 +664,19 @@ def trigger_memory_refresh(
     run_dir: Path,
     *,
     no_memory: bool = False,
-    no_rag: bool = False,
 ) -> dict[str, Any]:
     """Run the audit -> memory hook for ``run_dir``.
 
     Gating and context construction happen here; the memory-bridge work
     itself runs as the ordered ``_REFRESH_PHASES`` pipeline, each phase
     independently fail-soft. Returns a dict describing what happened:
-    ``{"skipped": bool, "reason": str, "lessons": Path|None,
-    "corpus": Path|None, "errors": list[str]}`` plus per-phase keys.
+    ``{"skipped": bool, "reason": str, "errors": list[str]}`` plus the
+    per-phase keys (``parametric_memory``, ``runs_row``,
+    ``calibration_memory``, ``negative_lessons``, ``outcome_events``).
     """
     result: dict[str, Any] = {
         "skipped": False,
         "reason": "",
-        "lessons": None,
-        "corpus": None,
         "errors": [],
     }
     if no_memory:
@@ -981,48 +694,14 @@ def trigger_memory_refresh(
         result["reason"] = reason
         return result
 
-    rag_dir = _resolve_rag_dir(project_root)
-
-    rc, stderr = _summarize_memory_cli(runs_dir, memory_dir)
-    if rc != 0:
-        result["errors"].append(f"summarize_memory failed: {stderr[:200]}")
-    # Always bump lessons mtime so the audit hook is observable even
-    # if the summariser is mocked in tests.
-    lessons_path = _bump_lessons_mtime(memory_dir)
-    result["lessons"] = str(lessons_path)
-
+    memory_dir.mkdir(parents=True, exist_ok=True)
     ctx = _RefreshContext(
         run_dir=run_dir,
         runs_dir=runs_dir,
         project_root=project_root,
         memory_dir=memory_dir,
-        lessons_path=Path(lessons_path),
         result=result,
     )
     for phase in _REFRESH_PHASES:
         phase(ctx)
-
-    if no_rag:
-        return result
-
-    rc, stderr = _refresh_rag_corpus(memory_dir, rag_dir, runs_dir, run_dir)
-    if rc != 0:
-        # Per PRD M2: corrupt RAG rebuild must not block audit. Log and
-        # carry on. We still bump corpus mtime so the success-path
-        # contract holds.
-        error_path = rag_dir / ".last_refresh_error.json"
-        rag_dir.mkdir(parents=True, exist_ok=True)
-        error_path.write_text(
-            json.dumps(
-                {
-                    "at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                    "stderr_tail": stderr[-400:],
-                    "rc": rc,
-                },
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        result["errors"].append(f"refresh_rag_corpus failed: {stderr[:200]}")
-    result["corpus"] = str(_bump_corpus_mtime(rag_dir))
     return result

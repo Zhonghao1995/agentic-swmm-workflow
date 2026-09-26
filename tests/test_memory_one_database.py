@@ -104,7 +104,7 @@ def test_the_audit_hook_records_a_runs_row(tmp_path: Path) -> None:
     run_dir = _write_run(tmp_path / "runs", "120000_tod_run", "tod")
     store_dir = tmp_path / "memory" / "store"
     store_dir.mkdir(parents=True)
-    ctx = audit_hook._RefreshContext(run_dir=run_dir, runs_dir=tmp_path / "runs", project_root=tmp_path, memory_dir=store_dir, lessons_path=store_dir / "lessons_learned.md", result={"errors": []})
+    ctx = audit_hook._RefreshContext(run_dir=run_dir, runs_dir=tmp_path / "runs", project_root=tmp_path, memory_dir=store_dir, result={"errors": []})
     audit_hook._phase_runs_row(ctx)
     assert ctx.result["runs_row"] == "120000_tod_run"
     rows = store.runs_for_case(store.db_path_for(store_dir), "tod")

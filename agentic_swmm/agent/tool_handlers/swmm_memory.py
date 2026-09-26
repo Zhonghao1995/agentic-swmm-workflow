@@ -1,14 +1,14 @@
 """Memory-recall and fact-recording handlers (PRD #128).
 
-Family: ``swmm-modeling-memory`` + ``swmm-rag-memory``.
+Family: agent-internal memory (the store under ``memory/store``).
 
-The four memory tools share token-budget helpers and the lessons /
-RAG-index path resolvers. They are grouped here because:
+The three memory tools share token-budget helpers. They are grouped
+here because:
 
 - they all sit behind ``<memory-context>`` fences (audit / prompt-injection
   defence),
-- they all consume the same lessons / rag-memory / session-DB storage
-  triad,
+- they all read or write the one store (ledgers, their tables, the
+  session database),
 - they share token-budget bookkeeping.
 
 ``_failure`` comes from ``tool_handlers/_shared`` — the cross-cutting
@@ -18,17 +18,15 @@ helpers every family imports.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 from agentic_swmm.agent.tool_handlers._shared import _failure
 from agentic_swmm.agent.types import ToolCall
-from agentic_swmm.utils.paths import repo_root, resolve_memory_dir, resource_root
+from agentic_swmm.utils.paths import resolve_memory_dir
 
 
-_RECALL_PATTERN_TOKEN_BUDGET = 500
-_RECALL_SEARCH_TOKEN_BUDGET = 1000
+_RECALL_TOKEN_BUDGET = 1000
 _RECALL_SESSION_HISTORY_TOKEN_BUDGET = 1000
 
 
@@ -46,115 +44,52 @@ def _truncate_to_token_budget(text: str, budget: int) -> str:
     return " ".join(words[: max(1, budget)]) + "\n...[truncated]"
 
 
-def _lessons_path() -> Path:
-    """Resolve the curated lessons file path.
-
-    Reads from ``AISWMM_LESSONS_PATH`` when set (tests use this); otherwise
-    falls back to the runtime memory registry record so that Memory and
-    Runtime share one source of truth.
-    """
-    override = os.environ.get("AISWMM_LESSONS_PATH")
-    if override:
-        return Path(override)
-    return resolve_memory_dir() / "lessons_learned.md"
-
-
-def _rag_index_dir() -> Path:
-    override = os.environ.get("AISWMM_RAG_DIR")
-    if override:
-        return Path(override)
-    return resolve_memory_dir() / "rag"
-
-
 def _recall_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
+    """Keyword recall over the store's failures and negative lessons.
+
+    Memory simplification PR 3b: the pattern lookup in a generated
+    ``lessons_learned.md`` and the RAG search are gone; this reads the
+    two ledgers through their tables (``memory.recall``). The payload is
+    wrapped in a ``<memory-context>`` fence (source ``"store"``).
+    """
     from agentic_swmm.memory import recall_memory as _recall
-    from agentic_swmm.memory.context_fence import wrap as _wrap_fence
-
-    pattern = str(call.args.get("pattern") or "").strip()
-    if not pattern:
-        return _failure(call, "pattern is required")
-
-    section = _recall(pattern, _lessons_path())
-    if not section:
-        wrapped = _wrap_fence("", source="lessons", stale=False)
-        return {
-            "tool": call.name,
-            "args": call.args,
-            "ok": True,
-            "results": {"pattern": pattern, "layer": "curated", "found": False},
-            "excerpt": wrapped,
-            "chars": len(wrapped),
-            "summary": f"recall_memory: no match for pattern '{pattern}'",
-        }
-
-    truncated = _truncate_to_token_budget(section, _RECALL_PATTERN_TOKEN_BUDGET)
-    wrapped = _wrap_fence(truncated, source="lessons", stale=False)
-    return {
-        "tool": call.name,
-        "args": call.args,
-        "ok": True,
-        "results": {"pattern": pattern, "layer": "curated", "found": True},
-        "excerpt": wrapped,
-        "chars": len(wrapped),
-        "summary": f"recall_memory: matched '{pattern}' ({_estimated_tokens(truncated)} est. tokens)",
-    }
-
-
-def _recall_memory_search_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     from agentic_swmm.memory.context_fence import wrap as _wrap_fence
 
     query = str(call.args.get("query") or "").strip()
     if not query:
         return _failure(call, "query is required")
-    top_k = int(call.args.get("top_k") or 3)
+    case_name = call.args.get("case_name")
+    case_name = str(case_name).strip() if isinstance(case_name, str) and case_name.strip() else None
+    limit = int(call.args.get("limit") or 5)
 
     try:
-        from agentic_swmm.memory import recall_memory_search as _recall_search
+        hits = _recall(query, resolve_memory_dir(), case_name=case_name, limit=limit)
     except Exception as exc:
-        # TODO(#207): boundary-migrate — default depends on ``call`` and
-        # the per-site message, so a constant default does not fit.
-        # Migration would need a refactor to extract the recall into a
-        # helper that the decorator wraps and the caller maps to
-        # ``_failure(call, ...)`` on None.
-        return _failure(call, f"recall_memory_search backend unavailable: {exc}")
+        return _failure(call, f"recall_memory failed: {exc}")
 
-    index_dir = _rag_index_dir()
-    corpus_path = index_dir / "corpus.jsonl"
-    lessons_path = _lessons_path()
+    if not hits:
+        wrapped = _wrap_fence("", source="store", stale=False)
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": True,
+            "results": [],
+            "excerpt": wrapped,
+            "chars": len(wrapped),
+            "summary": f"recall_memory: no match for '{query}'",
+        }
 
-    # Read the optional recency weighting from config.  Default 0 = disabled.
-    try:
-        from agentic_swmm.config import load_config as _load_config
-
-        _cfg = _load_config()
-        _half_life = float(_cfg.get("memory.recall_half_life_days", 0) or 0)
-    except Exception:
-        _half_life = 0.0
-
-    try:
-        results = _recall_search(
-            query,
-            top_k=top_k,
-            index_dir=index_dir,
-            corpus_path=corpus_path,
-            lessons_path=lessons_path,
-            half_life_days=_half_life,
-        )
-    except Exception as exc:
-        return _failure(call, f"recall_memory_search failed: {exc}")
-
-    stale = any(bool(result.get("warning")) for result in results)
-    rendered = json.dumps(results, ensure_ascii=False, indent=2)
-    truncated = _truncate_to_token_budget(rendered, _RECALL_SEARCH_TOKEN_BUDGET)
-    wrapped = _wrap_fence(truncated, source="rag", stale=stale)
+    rendered = json.dumps(hits, ensure_ascii=False, indent=2)
+    truncated = _truncate_to_token_budget(rendered, _RECALL_TOKEN_BUDGET)
+    wrapped = _wrap_fence(truncated, source="store", stale=False)
     return {
         "tool": call.name,
         "args": call.args,
         "ok": True,
-        "results": results,
+        "results": hits,
         "excerpt": wrapped,
         "chars": len(wrapped),
-        "summary": f"recall_memory_search: {len(results)} hit(s) for query (stale={stale})",
+        "summary": f"recall_memory: {len(hits)} hit(s) for '{query}' ({_estimated_tokens(truncated)} est. tokens)",
     }
 
 
@@ -241,7 +176,6 @@ def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
 
 __all__ = [
     "_recall_memory_tool",
-    "_recall_memory_search_tool",
     "_recall_session_history_tool",
     "_record_fact_tool",
     "tool_specs",
@@ -257,33 +191,24 @@ def tool_specs():
         ToolSpec(
             "recall_memory",
             (
-                "Look up the lesson section for an exact failure_pattern name "
-                "from memory/modeling-memory/lessons_learned.md.\n"
-                "USE WHEN: you know the exact failure_pattern name (e.g. "
-                "'peak_flow_parse_missing') and want a precise lookup.\n"
-                "DO NOT USE WHEN: user is chatting, or the question is general "
-                "(prefer recall_memory_search)."
-            ),
-            _object({"pattern": {"type": "string"}}, ["pattern"]),
-            _recall_memory_tool,
-            is_read_only=True,
-        ),
-        ToolSpec(
-            "recall_memory_search",
-            (
-                "Retrieve the top-k most similar historical entries from the "
-                "RAG corpus (memory/rag-memory/) for a natural-language query.\n"
-                "USE WHEN: you have a natural-language question or do not know "
-                "the failure_pattern name. Returns up to top-k entries with "
-                "run_id, source_path, case_name, score, and matched_terms.\n"
-                "DO NOT USE WHEN: you have an exact pattern name (prefer "
-                "recall_memory) or the question is unrelated to past runs."
+                "Recall what this project's memory store holds about a question: "
+                "tool calls that failed before, with the fix that worked when one was "
+                "recorded, and parameter regions known to be bad (negative lessons). "
+                "Returns up to `limit` rows with kind, run_id, case_name, score and text.\n"
+                "USE WHEN: the user asks what went wrong before, what was learned, or "
+                "whether a failure or parameter set was seen before.\n"
+                "DO NOT USE WHEN: the question is about a previous chat conversation "
+                "(prefer recall_session_history) or unrelated to past runs."
             ),
             _object(
-                {"query": {"type": "string"}, "top_k": {"type": "integer"}},
+                {
+                    "query": {"type": "string"},
+                    "case_name": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
                 ["query"],
             ),
-            _recall_memory_search_tool,
+            _recall_memory_tool,
             is_read_only=True,
         ),
         ToolSpec(

@@ -54,7 +54,6 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "run_allowed_command": False,
     "run_swmm_inp": False,
     "run_tests": False,
-    "summarize_memory": False,
     # LLM-driven dispatch refactor: in-process wrapper around
     # ImperialCollegeLondon/SWMManywhere — writes a synthesised INP +
     # raw-data snapshot, so not read-only.
@@ -104,10 +103,7 @@ EXPECTED_INVENTORY: dict[str, bool] = {
     "read_rpt_summary": True,
     "read_skill": True,
     "recall_memory": True,
-    "recall_memory_search": True,
     "recall_session_history": True,
-    # Issue #124 Part A: hybrid retrieval over audited-run memory.
-    "retrieve_memory": True,
     "search_files": True,
     "select_skill": True,
     # web_fetch_url is NOT read-only: fetching a model-chosen URL is network

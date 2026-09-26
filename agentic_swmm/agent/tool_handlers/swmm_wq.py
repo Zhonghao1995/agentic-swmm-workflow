@@ -6,7 +6,7 @@ Provides the ``read_wq_loads`` direct-subprocess handler that shells out
 to ``skills/swmm-water-quality/scripts/extract_wq_loads.py --rpt <path>``
 and returns its JSON.
 
-Pattern: identical to ``_retrieve_memory_tool`` in ``introspection.py`` —
+Pattern: identical to ``_review_run_tool`` in ``swmm_review.py`` —
 resolve the script path, build CLI args, call ``_run_script_tool``.
 """
 

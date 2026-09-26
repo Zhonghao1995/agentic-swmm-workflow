@@ -48,7 +48,6 @@ def _run_audit_main(run_dir: Path) -> int:
         objective=None,
         obsidian=False,
         no_memory=True,
-        no_rag=True,
         rebuild=False,
     )
     # Mock the audit subprocess so the existing CommandResult path runs

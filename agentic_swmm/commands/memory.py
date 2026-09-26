@@ -2,43 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from agentic_swmm.agent.flag_naming import register_example_flag
-from agentic_swmm.utils.paths import repo_root, require_dir, resolve_memory_dir, resolve_runs_dir, resource_root, script_path
-from agentic_swmm.utils.subprocess_runner import append_trace, python_command, run_command
+from agentic_swmm.utils.paths import resolve_memory_dir, resolve_runs_dir
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "memory",
-        help="Summarize audited runs into modeling-memory outputs, or manage curated project facts.",
+        help="What aiswmm remembers: show a case, rebuild the database, promote facts, health and archive.",
     )
-    # Backwards-compatible: ``aiswmm memory --runs-dir ...`` still runs the
-    # summarise-memory pipeline.
-    parser.add_argument(
-        "--runs-dir",
-        type=Path,
-        help="Directory containing audited run folders (summarise-memory mode).",
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        help="Output directory. Defaults to the memory store (memory/store).",
-    )
-    parser.add_argument(
-        "--obsidian-dir",
-        type=Path,
-        help="Optional Obsidian export directory.",
-    )
-    register_example_flag(
-        parser, example_text="aiswmm memory --runs-dir runs"
-    )
+    register_example_flag(parser, example_text="aiswmm memory show <case>")
     parser.set_defaults(func=_dispatch)
 
     sub = parser.add_subparsers(dest="memory_command")
@@ -71,25 +47,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     show.set_defaults(func=show_main)
 
-    compact = sub.add_parser(
-        "compact",
-        help=(
-            "Force a full decay pass over lessons_learned.md and rebuild the "
-            "RAG corpus. Retired patterns are moved to lessons_archived.md."
-        ),
-    )
-    compact.add_argument(
-        "--json",
-        action="store_true",
-        help="Emit a machine-readable JSON DecayReport on stdout.",
-    )
-    compact.add_argument(
-        "--no-rag",
-        action="store_true",
-        help="Skip the RAG corpus rebuild; only refresh lifecycle metadata.",
-    )
-    compact.set_defaults(func=compact_main)
-
     rebuild = sub.add_parser(
         "rebuild",
         help=(
@@ -112,29 +69,6 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Emit the rebuild summary as JSON.",
     )
     rebuild.set_defaults(func=rebuild_main)
-
-    # Expert-only: LLM-driven reflection (ME-3). Registered as a memory
-    # subcommand so it lives under ``aiswmm memory reflect``; it is
-    # NOT a ToolSpec and NOT an MCP tool — see PRD
-    # memory-evolution-with-forgetting governance.
-    from agentic_swmm.commands.expert import memory_reflect as expert_memory_reflect
-
-    expert_memory_reflect.add_subparser(sub)
-
-    # Round 7: one-shot migration of negative_lessons.jsonl -> .md.
-    migrate_neg = sub.add_parser(
-        "migrate-negative-lessons-md",
-        help=(
-            "Convert negative_lessons.jsonl into negative_lessons.md (idempotent). "
-            "After migration the audit hook writes new sections to the markdown store."
-        ),
-    )
-    migrate_neg.add_argument(
-        "--archive",
-        action="store_true",
-        help="Run apply_decay + archive_retired on the markdown after migration.",
-    )
-    migrate_neg.set_defaults(func=migrate_negative_lessons_md_main)
 
     # PR-3 Phase 1: application outcome log viewer.
     from agentic_swmm.commands.memory_health import add_subparser as _add_health
@@ -185,15 +119,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _dispatch(args: argparse.Namespace) -> int:
-    """Route between the legacy summarise-memory mode and new subcommands."""
+    """Route to the subcommand; the summarise-memory mode is gone (2026-09-26)."""
     if getattr(args, "memory_command", None):
         return int(args.func(args) or 0)
-    if args.runs_dir is None:
-        raise SystemExit(
-            "Either --runs-dir (summarise-memory mode) or a subcommand like "
-            "`promote-facts` is required."
-        )
-    return main(args)
+    raise SystemExit(
+        "aiswmm memory needs a subcommand: show <case>, rebuild, promote-facts, "
+        "health, archive, restore or repair-sessions."
+    )
 
 
 def show_main(args: argparse.Namespace) -> int:
@@ -207,19 +139,6 @@ def show_main(args: argparse.Namespace) -> int:
     )
     print(render_case_card(memory_dir, args.case))
     return 0
-
-
-def main(args: argparse.Namespace) -> int:
-    runs_dir = require_dir(args.runs_dir, "runs directory")
-    out_dir = args.out_dir.expanduser().resolve() if args.out_dir else resolve_memory_dir()
-    script = script_path("skills", "swmm-modeling-memory", "scripts", "summarize_memory.py")
-    command = python_command(script, "--runs-dir", str(runs_dir), "--out-dir", str(out_dir))
-    if args.obsidian_dir:
-        command.extend(["--obsidian-dir", str(args.obsidian_dir.expanduser().resolve())])
-    result = run_command(command)
-    append_trace(out_dir / "command_trace.json", result, stage="memory")
-    print(result.stdout.strip())
-    return result.return_code
 
 
 def promote_facts_main(args: argparse.Namespace) -> int:
@@ -251,42 +170,6 @@ def promote_facts_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_rag_dir() -> Path:
-    override = os.environ.get("AISWMM_RAG_DIR")
-    if override:
-        return Path(override).expanduser().resolve()
-    # Program-generated, so inside the store (gitignored), never the
-    # resource root.
-    return resolve_memory_dir() / "rag"
-
-
-def _resolve_evolution_config() -> Path:
-    override = os.environ.get("AISWMM_MEMORY_EVOLUTION_CONFIG")
-    if override:
-        return Path(override).expanduser().resolve()
-    return repo_root() / "agent" / "memory" / "curated" / "memory_evolution_config.md"
-
-
-def _print_report_table(report_dict: dict) -> None:
-    """Pretty-print a DecayReport-as-dict for humans."""
-    print("\nDecay report")
-    print("-" * 40)
-    rows = (
-        ("promoted (-> active)", report_dict.get("promoted", [])),
-        ("demoted  (-> dormant)", report_dict.get("demoted", [])),
-        ("retired  (-> archive)", report_dict.get("retired", [])),
-        ("unchanged", report_dict.get("unchanged", [])),
-    )
-    for label, names in rows:
-        names_list = list(names) if names else []
-        if names_list:
-            joined = ", ".join(names_list)
-        else:
-            joined = "(none)"
-        print(f"  {label:24s} {len(names_list):3d}  {joined}")
-    print("-" * 40)
-
-
 def rebuild_main(args: argparse.Namespace) -> int:
     """``aiswmm memory rebuild``: the database is a projection; rebuild it."""
     from agentic_swmm.memory.store import rebuild, table_counts
@@ -306,148 +189,6 @@ def rebuild_main(args: argparse.Namespace) -> int:
     sessions = result.get("sessions") or {}
     if sessions:
         print(f"sessions rebuilt from runs/: {sessions.get('rebuilt', 0)} ({sessions.get('failures', 0)} failure(s))")
-    return 0
-
-
-def compact_main(args: argparse.Namespace) -> int:
-    """Force a full decay pass + RAG rebuild.
-
-    Returns 0 with a printed (or JSON) ``DecayReport`` table on
-    success.
-    """
-    from agentic_swmm.memory.lessons_lifecycle import apply_decay, load_config
-
-    memory_dir = resolve_memory_dir()
-    rag_dir = _resolve_rag_dir()
-    runs_dir = resolve_runs_dir()
-    config_path = _resolve_evolution_config()
-    lessons_path = memory_dir / "lessons_learned.md"
-    archive_path = memory_dir / "lessons_archived.md"
-
-    if not lessons_path.is_file():
-        print(
-            json.dumps(
-                {
-                    "ok": False,
-                    "reason": "lessons_learned.md not found",
-                    "lessons_path": str(lessons_path),
-                }
-            )
-        )
-        return 1
-
-    config = load_config(config_path)
-    report = apply_decay(lessons_path, archive_path, config)
-    report_dict = report.to_dict()
-
-    rag_rebuild: dict | None = None
-    if not getattr(args, "no_rag", False):
-        rag_rebuild = _rebuild_rag_corpus(memory_dir, rag_dir, runs_dir)
-
-    summary = {
-        **report_dict,
-        "config": {
-            "half_life_days": config.get("half_life_days"),
-            "active_threshold": config.get("active_threshold"),
-            "dormant_threshold": config.get("dormant_threshold"),
-        },
-        "lessons_path": str(lessons_path),
-        "archive_path": str(archive_path),
-    }
-    if rag_rebuild is not None:
-        summary["rag_rebuild"] = rag_rebuild
-
-    if getattr(args, "json", False):
-        print(json.dumps(summary, indent=2, sort_keys=True))
-    else:
-        _print_report_table(report_dict)
-        if rag_rebuild is not None:
-            status = "ok" if rag_rebuild.get("returncode") == 0 else "failed"
-            print(f"RAG corpus rebuild: {status}")
-        print(f"\nlessons: {lessons_path}")
-        print(f"archive: {archive_path}")
-    return 0
-
-
-def _rebuild_rag_corpus(memory_dir: Path, rag_dir: Path, runs_dir: Path) -> dict:
-    """Invoke ``build_memory_corpus.py`` and capture its outcome.
-
-    Returns a small status dict ``{returncode, stderr_tail}`` so the
-    CLI can surface failure without raising — corrupt RAG rebuilds
-    should not nuke a successful decay pass.
-    """
-    script = (
-        resource_root() / "skills" / "swmm-rag-memory" / "scripts" / "build_memory_corpus.py"
-    )
-    if not script.is_file():
-        return {"returncode": 0, "skipped": True, "reason": "build script missing"}
-    try:
-        proc = subprocess.run(
-            [
-                sys.executable,
-                str(script),
-                "--memory-dir",
-                str(memory_dir),
-                "--runs-dir",
-                str(runs_dir),
-                "--out-dir",
-                str(rag_dir),
-                "--repo-root",
-                str(repo_root()),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        return {"returncode": proc.returncode, "stderr_tail": (proc.stderr or "")[-400:]}
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {"returncode": 1, "stderr_tail": str(exc)}
-
-
-def migrate_negative_lessons_md_main(args: argparse.Namespace) -> int:
-    """Drive ``aiswmm memory migrate-negative-lessons-md``.
-
-    Migrates the existing JSONL store to the markdown lifecycle file and
-    optionally runs the decay/archive pass when ``--archive`` is set.
-    """
-    from agentic_swmm.memory.negative_lessons_markdown import (
-        apply_decay,
-        archive_retired,
-        migrate_jsonl_to_md,
-    )
-
-    memory_dir = resolve_memory_dir()
-    jsonl_path = memory_dir / "negative_lessons.jsonl"
-    md_path = memory_dir / "negative_lessons.md"
-    archive_path = memory_dir / "negative_lessons_archived.md"
-
-    if not jsonl_path.is_file():
-        print(
-            json.dumps(
-                {
-                    "ok": True,
-                    "migrated": 0,
-                    "reason": "no negative_lessons.jsonl to migrate",
-                    "jsonl_path": str(jsonl_path),
-                }
-            )
-        )
-        return 0
-
-    migrated = migrate_jsonl_to_md(jsonl_path, md_path)
-    summary: dict = {
-        "ok": True,
-        "migrated": migrated,
-        "jsonl_path": str(jsonl_path),
-        "md_path": str(md_path),
-    }
-    if getattr(args, "archive", False):
-        counts = apply_decay(md_path)
-        archived = archive_retired(md_path, archive_path)
-        summary["decay_counts"] = counts
-        summary["archived"] = archived
-        summary["archive_path"] = str(archive_path)
-    print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
 

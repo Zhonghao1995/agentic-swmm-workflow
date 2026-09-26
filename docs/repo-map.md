@@ -1,6 +1,6 @@
 # Repository Map
 
-This repository is the Agentic SWMM workflow layer: the `aiswmm` runtime, twenty workflow-stage skills, eleven MCP servers, and the test suite that keeps their contracts honest. The public repository is:
+This repository is the Agentic SWMM workflow layer: the `aiswmm` runtime, seventeen skills, ten MCP servers, and the test suite that keeps their contracts honest. The public repository is:
 
 ```text
 Zhonghao1995/agentic-swmm-workflow
@@ -12,7 +12,7 @@ Zhonghao1995/agentic-swmm-workflow
 |---|---|---|
 | Runtime | `agentic_swmm/` | The pip-installable package (`pip install aiswmm`). Registers the CLI verbs, runs the LLM planner loop, enforces permissions and HITL gates, and manages memory and providers. |
 | Skills | `skills/` | Twenty skills, each a `SKILL.md` contract plus `scripts/`. The domain logic lives in these scripts; both CLI verbs and agent tools execute them. |
-| MCP servers | `mcp/` | Eleven Node stdio servers that wrap the same skill scripts for external agent runtimes (Codex, Claude, OpenClaw, Hermes). |
+| MCP servers | `mcp/` | Ten Node stdio servers that wrap the same skill scripts for external agent runtimes (Codex, Claude, OpenClaw, Hermes). |
 | Tests | `tests/` | The largest layer by volume. Contract, drift-guard, and integration tests over the other three. |
 
 One table binds the layers: `EXPECTED_BINDINGS` in `agentic_swmm/agent/mcp_coverage.py` maps each typed agent tool to its skill script and its MCP server/tool, so the same fact is never maintained twice.
@@ -73,8 +73,6 @@ Skills are grouped by workflow stage, not by algorithm. New methods should becom
 | `swmm-design-review` | Does a run comply with a design rulebook? |
 | `swmm-report` | How does an audited run become a client Word deliverable? |
 | `swmm-experiment-audit` | What happened in one run, and what evidence supports it? |
-| `swmm-modeling-memory` | What keeps happening across audited runs? |
-| `swmm-rag-memory` | How is past modeling memory retrieved for a new question? |
 | `swmm-canada` | How is a ready-to-run model fetched for a Canadian area from the SWMMCanada upstream? |
 | `swmm-anywhere` | How is a plausible network synthesized from OSM and DEM data where no pipe data exists? |
 | `swmm-end-to-end` | Which module should run next in an agent-orchestrated workflow? |
@@ -82,7 +80,7 @@ Skills are grouped by workflow stage, not by algorithm. New methods should becom
 
 ## MCP servers
 
-Eleven stdio servers: `swmm-builder`, `swmm-calibration`, `swmm-climate`, `swmm-experiment-audit`, `swmm-gis`, `swmm-modeling-memory`, `swmm-network`, `swmm-params`, `swmm-plot`, `swmm-runner`, `swmm-uncertainty`. Each is a thin wrapper that spawns the corresponding skill script and returns its output. Generate runtime configs with `node scripts/generate_mcp_configs.mjs` and smoke-test discovery with `node scripts/smoke_mcp_servers.mjs`; see `integrations/` for per-runtime guidance.
+Ten stdio servers: `swmm-builder`, `swmm-calibration`, `swmm-climate`, `swmm-experiment-audit`, `swmm-gis`, `swmm-network`, `swmm-params`, `swmm-plot`, `swmm-runner`, `swmm-uncertainty`. Each is a thin wrapper that spawns the corresponding skill script and returns its output. Generate runtime configs with `node scripts/generate_mcp_configs.mjs` and smoke-test discovery with `node scripts/smoke_mcp_servers.mjs`; see `integrations/` for per-runtime guidance.
 
 ## Run layout
 
@@ -99,10 +97,10 @@ New sessions land under `runs/<YYYY-MM-DD>/<HHMMSS>_<case>_run/` (a goal that ex
 The audit layer feeds modeling memory:
 
 ```text
-SWMM run -> swmm-experiment-audit -> 09_audit/ -> swmm-modeling-memory
+SWMM run -> swmm-experiment-audit -> 09_audit/ -> memory/store (ledgers + memory.sqlite)
 ```
 
-Modeling memory can propose skill updates, but proposals are evidence-gated (a pattern must recur across at least three runs) and always human-approved. Audit records are evidence for a run; modeling memory is a summary of repeated patterns; neither proves a scientific claim by itself.
+The audit hook writes one row per audited run into the store (parametric, runs, calibration, negative lessons, outcome ledger); tool failures and their fixes are recorded at session end. Proposals to change a skill are evidence-gated and always human-approved. Audit records are evidence for a run; the store is a record of repeated patterns; neither proves a scientific claim by itself.
 
 ## Documentation entry points
 
@@ -128,6 +126,6 @@ The repository is strongest as a reproducible, auditable workflow for:
 - prepared-input SWMM execution;
 - real storm networks fetched from the SWMMCanada upstream inside Canada, and SWMManywhere synthesis elsewhere;
 - calibration, validation, and uncertainty propagation;
-- audit records and modeling-memory summaries.
+- audit records and the memory store.
 
 Do not overstate it as fully automatic greenfield watershed and pipe-network generation unless a case-specific benchmark has validated those inputs, outputs, and QA checks.

@@ -324,27 +324,15 @@ def seed_provenance_run_dir(project_root: Path, provenance: dict[str, Any]) -> P
 
 @contextlib.contextmanager
 def patched_audit_hook_subprocess(**extra_stubs: Any):
-    """Stub ``trigger_memory_refresh``'s two heavy externals to success.
+    """Stub ``audit_hook`` attributes for a test.
 
-    Patches ``audit_hook._summarize_memory_cli`` and
-    ``audit_hook._refresh_rag_corpus`` to ``(0, "")`` so audit-hook tests
-    exercise only the in-process wiring. Additional ``audit_hook``
-    attributes can be stubbed via keyword args, e.g.
-    ``patched_audit_hook_subprocess(_run_decay_pass={"skipped": True})``.
+    Until the memory simplification (2026-09-26) the hook shelled out to
+    the lessons summariser and the RAG refresh, which this stubbed to
+    success; both are gone and the hook is in-process only, so with no
+    keyword args this is a no-op. Additional ``audit_hook`` attributes
+    can still be stubbed via keyword args.
     """
     with contextlib.ExitStack() as stack:
-        stack.enter_context(
-            mock.patch(
-                "agentic_swmm.memory.audit_hook._summarize_memory_cli",
-                return_value=(0, ""),
-            )
-        )
-        stack.enter_context(
-            mock.patch(
-                "agentic_swmm.memory.audit_hook._refresh_rag_corpus",
-                return_value=(0, ""),
-            )
-        )
         for attr, retval in extra_stubs.items():
             stack.enter_context(
                 mock.patch(

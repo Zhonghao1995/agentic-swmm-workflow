@@ -459,7 +459,6 @@ def _build_install_checks(root: Path) -> list[tuple[str, bool, str, bool]]:
         Path("skills/swmm-runner/scripts/swmm_runner.py"),
         Path("skills/swmm-experiment-audit/scripts/audit_run.py"),
         Path("skills/swmm-plot/scripts/plot_rain_runoff_si.py"),
-        Path("skills/swmm-modeling-memory/scripts/summarize_memory.py"),
     ):
         # Resolve the SAME way the runtime does. `root / path` is source-tree
         # only: on a pip install the scripts ship under the wheel's data dir,

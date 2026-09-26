@@ -135,30 +135,6 @@ class IterationAccumulationTests(unittest.TestCase):
             self.assertEqual(best["algorithm"], "sceua")
             self.assertEqual(best["n_evaluations"], 5)
 
-    def test_exit_appends_lesson_line(self) -> None:
-        with TemporaryDirectory() as tmp:
-            memory_dir = Path(tmp) / "memory"
-            batch = CalibrationBatch(
-                case_name="saanich-b8",
-                use_case="stormwater_event",
-                algorithm="sceua",
-                memory_dir=memory_dir,
-            )
-            with batch:
-                batch.record_iteration(
-                    iter_idx=0,
-                    parameters={"manning_n": 0.013},
-                    objective_value=0.78,
-                    run_id="run-0",
-                )
-
-            lessons = memory_dir / "lessons_learned.md"
-            self.assertTrue(lessons.is_file())
-            text = lessons.read_text(encoding="utf-8")
-            self.assertIn("calibration batch", text)
-            self.assertIn("saanich-b8", text)
-            self.assertIn("sceua", text)
-
     def test_no_iterations_recorded_skips_store_write(self) -> None:
         with TemporaryDirectory() as tmp:
             memory_dir = Path(tmp) / "memory"
@@ -169,8 +145,7 @@ class IterationAccumulationTests(unittest.TestCase):
                 memory_dir=memory_dir,
             ):
                 pass
-            # No iterations -> no calibration_memory.jsonl row, but
-            # lessons_learned.md should NOT be created for empty.
+            # No iterations -> no calibration_memory.jsonl row.
             self.assertFalse((memory_dir / "calibration_memory.jsonl").exists())
 
     def test_rmse_objective_picks_minimum(self) -> None:

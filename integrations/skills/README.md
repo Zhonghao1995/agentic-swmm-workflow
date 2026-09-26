@@ -42,7 +42,6 @@ The installer copies every `skills/*` directory that contains `SKILL.md`, includ
 - `swmm-plot`
 - `swmm-calibration`
 - `swmm-experiment-audit`
-- `swmm-modeling-memory`
 - `swmm-uncertainty`
 
 The copied skill directories include their local workflow scripts. MCP server code lives separately under the repository-level `mcp/` directory.
@@ -69,11 +68,11 @@ For Hermes and OpenClaw, keep the skill and memory files as explicit preload/con
 
 Before using `swmm-end-to-end`, load the public memory files:
 
-1. `agent/memory/identification_memory.md`
-2. `agent/memory/soul.md`
-3. `agent/memory/operational_memory.md`
-4. `agent/memory/modeling_workflow_memory.md`
-5. `agent/memory/evidence_memory.md`
-6. `agent/memory/user_bridge_memory.md`
+1. `memory/initial/identification_memory.md`
+2. `memory/initial/soul.md`
+3. `memory/initial/operational_memory.md`
+4. `memory/initial/modeling_workflow_memory.md`
+5. `memory/initial/evidence_memory.md`
+6. `memory/initial/user_bridge_memory.md`
 
 Those files are startup context, not executable tools.

@@ -167,7 +167,7 @@ def _step3_audit(swmm_run_dir: Path) -> tuple[bool, dict, float, str]:
         "--case-name", "greenwich_e2e_chain",
         "--workflow-mode", "synthetic_bbox",
         "--objective", "e2e_chain_acceptance",
-        "--no-memory",  # spike: don't pollute lessons_learned
+        "--no-memory",  # spike: don't pollute the memory store
     ]
     print(f"$ {' '.join(cmd)}", flush=True)
     rc, stdout, stderr, elapsed = _run(cmd, cwd=REPO_ROOT)
