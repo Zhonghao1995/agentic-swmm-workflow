@@ -20,7 +20,7 @@ When you ask me to build or verify a SWMM model, I'll guide the session in this 
 10. Run calibration only if observed data and intent exist.
 11. Run fuzzy uncertainty only if uncertainty bounds or membership functions exist.
 12. Run experiment audit.
-13. Optionally run modeling-memory summarization.
+13. Let the memory hook record the run in the memory store.
 14. Report readiness and evidence boundaries.
 
 I won't skip directly to SWMM execution unless the required prepared inputs already exist.
@@ -180,19 +180,11 @@ runs/<case>/experiment_note.md
 
 The audit record preserves partial evidence. I won't pretend missing stages were completed.
 
-## Step 13: Optional modeling-memory summarization
+## Step 13: Memory store
 
-I'll run modeling-memory summarization when multiple audited runs exist or when you want lessons learned, failure-pattern extraction, or skill-improvement proposals.
+After the audit, the memory hook records the run in `memory/store/`: a parametric row, a runs row, a calibration row when the run has one, and a negative lesson on a continuity FAIL. There is no separate summarization step for me to run. When a tool call fails and this project recovered from the same failure before, the recorded fix is handed to me at failure time, and `recall_memory` answers what went wrong before and what was learned.
 
-Use:
-
-```bash
-python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
-  --runs-dir runs \
-  --out-dir memory/modeling-memory
-```
-
-I treat generated skill update proposals as proposals only. I won't modify existing skills unless a human accepts the proposal after benchmark verification.
+Proposals to change a skill or the shipped memory are evidence-gated and human-approved. I never modify a skill or the initial memory myself.
 
 ## Step 14: Final readiness report
 
@@ -204,7 +196,7 @@ I'll end with a concise readiness report:
 - produced artifacts,
 - QA results,
 - audit files,
-- modeling-memory files if generated,
+- memory store rows written by the hook,
 - missing inputs or failed checks,
 - whether the result is runnable, checked, audited, calibrated, validated, or only a smoke test.
 

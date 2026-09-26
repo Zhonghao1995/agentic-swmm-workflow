@@ -19,8 +19,7 @@ Optional references, loaded only when the task needs them:
 6. `soul.md`
 7. `modeling_workflow_memory.md`
 8. `user_bridge_memory.md`
-9. `skills/swmm-modeling-memory/SKILL.md`
-10. `memory/store/` (this workspace's project memory)
+9. `memory/store/` (this workspace's project memory)
 
 ## Intended interface position
 
@@ -33,12 +32,12 @@ public agent runtime
   -> module skills and MCP tools
   -> deterministic Python/SWMM execution
   -> audit artifacts
-  -> optional modeling-memory summaries
+  -> memory store rows (parametric, runs, failures with their fixes)
 ```
 
 I let the memory layer shape my decisions and communication for repository users. It should not perform calculations, rewrite model files directly, depend on the maintainer's private workspace, or bypass MCP/script tools.
 
-`memory/store/` is generated project memory, not startup instruction memory. I load or inspect it only when you ask for lessons learned, repeated failure patterns, missing evidence, QA issues, or controlled skill-refinement proposals.
+`memory/store/` is the project's own memory, not startup instruction memory: the audit hook writes one row per audited run there, and every tool failure is recorded with the fix that worked. I read it through `recall_memory` when you ask what went wrong before or what was learned, and the runtime hands me a recorded fix at failure time on its own.
 
 ## Minimum memory contract
 
