@@ -12,24 +12,12 @@ from agentic_swmm.utils.paths import resolve_memory_dir, resolve_runs_dir
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     parser = subparsers.add_parser(
         "memory",
-        help="What aiswmm remembers: show a case, rebuild the database, promote facts, health and archive.",
+        help="What aiswmm remembers: show a case, review proposals, rebuild the database, health and archive.",
     )
     register_example_flag(parser, example_text="aiswmm memory show <case>")
     parser.set_defaults(func=_dispatch)
 
     sub = parser.add_subparsers(dest="memory_command")
-    promote = sub.add_parser(
-        "promote-facts",
-        help="Open the staged facts file in $EDITOR, then append to facts.md.",
-    )
-    promote.add_argument(
-        "--editor",
-        type=str,
-        default=None,
-        help="Editor binary to invoke (overrides $EDITOR).",
-    )
-    promote.set_defaults(func=promote_facts_main)
-
     show = sub.add_parser(
         "show",
         help="Print a plain-text memory card for one case (what aiswmm remembers about it).",
@@ -46,6 +34,30 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Memory store directory. Defaults to memory/store.",
     )
     show.set_defaults(func=show_main)
+
+    # Memory simplification PR 4: proposals await a human decision.
+    proposals = sub.add_parser(
+        "proposals",
+        help="List the proposals awaiting a decision (a fix seen often enough, or a fact the agent proposed).",
+    )
+    proposals.add_argument("--all", action="store_true", help="Include promoted and rejected proposals.")
+    proposals.add_argument("--json", action="store_true", help="Emit the list as JSON.")
+    proposals.set_defaults(func=proposals_main)
+
+    promote = sub.add_parser(
+        "promote",
+        help="Apply one proposal to its target file (facts.md anywhere; a SKILL.md or the initial memory in a source checkout).",
+    )
+    promote.add_argument("proposal_id", type=str, help="The proposal id (e.g. 003).")
+    promote.set_defaults(func=promote_main)
+
+    reject = sub.add_parser(
+        "reject",
+        help="Decline one proposal; the same proposal is never made again.",
+    )
+    reject.add_argument("proposal_id", type=str, help="The proposal id (e.g. 003).")
+    reject.add_argument("--reason", type=str, default="", help="Why, recorded in the proposal file.")
+    reject.set_defaults(func=reject_main)
 
     rebuild = sub.add_parser(
         "rebuild",
@@ -123,8 +135,8 @@ def _dispatch(args: argparse.Namespace) -> int:
     if getattr(args, "memory_command", None):
         return int(args.func(args) or 0)
     raise SystemExit(
-        "aiswmm memory needs a subcommand: show <case>, rebuild, promote-facts, "
-        "health, archive, restore or repair-sessions."
+        "aiswmm memory needs a subcommand: show <case>, proposals, promote <id>, "
+        "reject <id>, rebuild, health, archive, restore or repair-sessions."
     )
 
 
@@ -141,32 +153,67 @@ def show_main(args: argparse.Namespace) -> int:
     return 0
 
 
-def promote_facts_main(args: argparse.Namespace) -> int:
-    """Drive the user-facing ``aiswmm memory promote-facts`` flow.
+def proposals_main(args: argparse.Namespace) -> int:
+    """``aiswmm memory proposals [--all] [--json]``: what awaits a decision."""
+    from agentic_swmm.memory.proposals import list_proposals, proposals_dir
 
-    Hands control off to the user's ``$EDITOR`` on the staging file
-    and, if the editor exits cleanly, appends the (possibly edited)
-    content to ``facts.md`` then truncates staging.
-
-    PRD-08 A.3 (audit #32): when the staging file is empty, emit a
-    typed remediation stanza pointing at ``record_fact`` rather than
-    the bare "staging is empty" line.
-    """
-    from agentic_swmm.agent.error_remediation import staged_facts_empty
-    from agentic_swmm.memory import facts as _facts_mod
-
-    result = _facts_mod.promote_facts(editor=getattr(args, "editor", None))
-    if not result.get("ok"):
-        print(result.get("reason", "promote-facts failed"))
-        return 1
-    reason = result.get("reason", "promote-facts: done")
-    if reason == "staging is empty":
-        staging_path = result.get("staging_md")
-        staging = Path(staging_path) if staging_path else None
-        err = staged_facts_empty(staging_md=staging)
-        sys.stderr.write(err.format_for_stderr() + "\n")
+    rows = list_proposals(include_decided=bool(getattr(args, "all", False)))
+    if getattr(args, "json", False):
+        print(json.dumps(
+            [
+                {
+                    "id": p.id, "kind": p.kind, "status": p.status, "target": p.target,
+                    "created_utc": p.created_utc, "decided_utc": p.decided_utc, "reason": p.reason,
+                    "path": str(p.path), "evidence": p.evidence,
+                }
+                for p in rows
+            ],
+            indent=2, ensure_ascii=False,
+        ))
         return 0
-    print(reason)
+    if not rows:
+        print(f"no open proposals under {proposals_dir()}")
+        return 0
+    print(f"{'id':<4} {'status':<9} {'kind':<6} target")
+    for p in rows:
+        print(f"{p.id:<4} {p.status:<9} {p.kind:<6} {p.target}")
+        first = p.addition.strip().splitlines()[0] if p.addition.strip() else ""
+        if p.kind == "fact":
+            first = next((line for line in p.addition.splitlines() if line.startswith("text: ")), first)
+        print(f"     {first[:110]}")
+    print("decide with: aiswmm memory promote <id> | aiswmm memory reject <id> --reason ...")
+    return 0
+
+
+def promote_main(args: argparse.Namespace) -> int:
+    """``aiswmm memory promote <id>``: apply the proposal to its target file."""
+    from agentic_swmm.memory.proposals import promote
+
+    try:
+        result = promote(str(args.proposal_id))
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if not result.get("ok"):
+        print(f"not promoted: {result.get('reason')}", file=sys.stderr)
+        return 1
+    print(f"promoted {result['id']} -> {result['target']} (now review with git diff, then commit or open a PR)")
+    return 0
+
+
+def reject_main(args: argparse.Namespace) -> int:
+    """``aiswmm memory reject <id> [--reason]``: decline the proposal for good."""
+    from agentic_swmm.memory.proposals import reject
+
+    try:
+        result = reject(str(args.proposal_id), reason=str(getattr(args, "reason", "") or ""))
+    except KeyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if not result.get("ok"):
+        print(f"not rejected: {result.get('reason')}", file=sys.stderr)
+        return 1
+    print(f"rejected {result['id']}" + (f": {result['reason']}" if result.get("reason") else ""))
     return 0
 
 

@@ -161,8 +161,9 @@ def run_openai_plan(
             resolve_store,
         )
 
+        store = resolve_store()
         recorded = record_run_failures(
-            resolve_store(),
+            store,
             run_id=executor.session_dir.name,
             results=outcome.results,
         )
@@ -171,6 +172,22 @@ def run_openai_plan(
                 trace_path,
                 {"event": "run_failures_recorded", "count": len(recorded)},
             )
+            # Memory simplification PR 4: a fix seen in enough runs and cases
+            # becomes a proposal for the skill that owns the tool (or the
+            # operational memory), awaiting the user's decision.
+            from agentic_swmm.memory.proposals import propose_from_failures
+
+            for proposal in propose_from_failures(store.parent):
+                write_event(
+                    trace_path,
+                    {
+                        "event": "proposal_created",
+                        "id": proposal.id,
+                        "kind": proposal.kind,
+                        "target": proposal.target,
+                        "path": str(proposal.path),
+                    },
+                )
     except Exception as exc:  # noqa: BLE001 - observability must not break the turn
         write_event(trace_path, {"event": "run_failures_error", "error": str(exc)})
 

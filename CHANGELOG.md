@@ -4,6 +4,22 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: proposals with a human decision (2026-09-26)
+
+- A fix the failure loop recorded for the same failure in at least three
+  runs across two cases becomes a proposal: a bullet for the skill that
+  owns the failed tool, or for the operational memory when the tool is
+  agent-internal. A fact the agent records with `record_fact` becomes a
+  proposal for `memory/facts.md`. Proposals are Markdown files under
+  `memory/proposals/` with the evidence, the proposed addition and a
+  unified diff; nothing changes until a human decides.
+- `aiswmm memory proposals [--all]` lists them; `aiswmm memory promote <id>`
+  applies one (a `SKILL.md` or the initial memory only in a source
+  checkout; `facts.md` anywhere) and refuses a target that changed since
+  the proposal; `aiswmm memory reject <id> [--reason]` declines it for
+  good. `aiswmm memory promote-facts` and the fact staging file are
+  gone.
+
 ### Memory: retirement of the generated layer (2026-09-26)
 
 - Removed the lessons summariser (`swmm-modeling-memory` skill and its

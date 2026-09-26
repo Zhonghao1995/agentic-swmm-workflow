@@ -1,26 +1,19 @@
-"""LLM-curated project facts: staging append + manual promotion.
+"""Curated project facts: the file the agent reads at startup.
 
-Two files live side by side:
-
-- ``agent/memory/curated/facts.md``
-    Tracked. The agent reads this at startup and injects its content
-    under a ``<project-facts>`` fence into the system prompt.
-- ``memory/facts_staging.md``
-    Gitignored. The ``record_fact`` tool appends candidate facts here.
-    The user reviews and promotes them with ``aiswmm memory promote-facts``.
-
-The staging file is never injected — only ``facts.md``. This keeps
-unreviewed LLM-proposed text out of the live system prompt.
+``memory/facts.md`` is tracked and human-approved; the agent injects its
+content under a ``<project-facts>`` fence into the system prompt. The
+agent never writes it: a candidate fact from the ``record_fact`` tool
+becomes a proposal (``memory/proposals/``, see ``memory.proposals``) and
+lands here only when the user runs ``aiswmm memory promote <id>``. The
+staging file and the ``promote-facts`` verb that preceded proposals were
+retired in the memory simplification (PR 4, 2026-09-26).
 """
 
 from __future__ import annotations
 
 import os
 import re
-import subprocess
-import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -49,7 +42,6 @@ class FactsPaths:
 
     curated_dir: Path
     facts_md: Path
-    staging_md: Path
 
 
 def resolve_paths(repo_root: Path | None = None) -> FactsPaths:
@@ -57,8 +49,7 @@ def resolve_paths(repo_root: Path | None = None) -> FactsPaths:
 
     Honours ``AISWMM_FACTS_DIR`` for tests; otherwise the facts live in the
     workspace's ``memory/`` folder next to the store (``memory/facts.md``,
-    promoted and human-approved; ``memory/facts_staging.md``, program
-    written and gitignored). ``repo_root`` overrides the workspace root.
+    promoted and human-approved). ``repo_root`` overrides the workspace root.
     """
     override = os.environ.get("AISWMM_FACTS_DIR")
     if override:
@@ -72,7 +63,6 @@ def resolve_paths(repo_root: Path | None = None) -> FactsPaths:
     return FactsPaths(
         curated_dir=curated_dir,
         facts_md=curated_dir / "facts.md",
-        staging_md=curated_dir / "facts_staging.md",
     )
 
 
@@ -86,44 +76,6 @@ def ensure_facts_md_exists(paths: FactsPaths) -> None:
         paths.facts_md.write_text(FACTS_HEADER, encoding="utf-8")
 
 
-def record_fact_to_staging(
-    text: str,
-    *,
-    source_session_id: str | None = None,
-    paths: FactsPaths | None = None,
-    now: datetime | None = None,
-) -> Path:
-    """Append a candidate fact block to the staging file.
-
-    The block uses ``§`` as both opener and closer; the same delimiter
-    is what ``aiswmm memory promote-facts`` uses to count what got
-    promoted. Returns the staging file path so callers can include it
-    in tool summaries.
-    """
-    if paths is None:
-        paths = resolve_paths()
-    text = (text or "").strip()
-    if not text:
-        raise ValueError("record_fact_to_staging: text must not be empty")
-    paths.curated_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
-    block = (
-        f"{_FACT_BLOCK_DELIMITER}\n"
-        f"text: {text}\n"
-        f"source_session: {source_session_id or 'unknown'}\n"
-        f"proposed_utc: {timestamp}\n"
-        f"{_FACT_BLOCK_DELIMITER}\n"
-    )
-    leading = ""
-    if paths.staging_md.exists() and paths.staging_md.stat().st_size > 0:
-        existing = paths.staging_md.read_text(encoding="utf-8")
-        if existing and not existing.endswith("\n"):
-            leading = "\n"
-    with paths.staging_md.open("a", encoding="utf-8") as handle:
-        handle.write(leading + block)
-    return paths.staging_md
-
-
 def read_facts_for_injection(
     paths: FactsPaths | None = None,
     *,
@@ -131,7 +83,7 @@ def read_facts_for_injection(
 ) -> str:
     """Return a ``<project-facts>``-fenced block for system-prompt injection.
 
-    Reads ``facts.md`` only — staging is never injected. Returns the
+    Reads ``facts.md`` only. Returns the
     empty string when the file is missing, empty, or contains nothing
     but the header (so the planner doesn't pay the fence cost for an
     empty project).
@@ -151,85 +103,6 @@ def read_facts_for_injection(
         f"{truncated}\n"
         "</project-facts>"
     )
-
-
-def promote_facts(
-    *,
-    paths: FactsPaths | None = None,
-    editor: str | None = None,
-) -> dict:
-    """Open the staging file in ``$EDITOR``, then append to ``facts.md``.
-
-    Returns ``{"ok": bool, "promoted_blocks": int, ...}`` so the CLI
-    layer can render a summary. If the editor exits non-zero, neither
-    file is modified.
-    """
-    if paths is None:
-        paths = resolve_paths()
-    ensure_facts_md_exists(paths)
-    if not paths.staging_md.exists() or paths.staging_md.stat().st_size == 0:
-        return {
-            "ok": True,
-            "promoted_blocks": 0,
-            "reason": "staging is empty",
-            "facts_md": str(paths.facts_md),
-            "staging_md": str(paths.staging_md),
-        }
-
-    editor = editor or os.environ.get("EDITOR") or "vi"
-    try:
-        # The editor receives the staging file as its argv. Tests pass
-        # in ``true`` (no-op) or ``false`` (abort) via $EDITOR.
-        cmd = editor.split() + [str(paths.staging_md)]
-        proc = subprocess.run(cmd, check=False)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {
-            "ok": False,
-            "promoted_blocks": 0,
-            "reason": f"editor invocation failed: {exc}",
-            "facts_md": str(paths.facts_md),
-            "staging_md": str(paths.staging_md),
-        }
-    if proc.returncode != 0:
-        return {
-            "ok": False,
-            "promoted_blocks": 0,
-            "reason": f"editor exited with rc={proc.returncode}; staging left unchanged",
-            "facts_md": str(paths.facts_md),
-            "staging_md": str(paths.staging_md),
-        }
-
-    staging_body = paths.staging_md.read_text(encoding="utf-8")
-    block_count = _count_blocks(staging_body)
-    if not staging_body.strip():
-        paths.staging_md.write_text("", encoding="utf-8")
-        return {
-            "ok": True,
-            "promoted_blocks": 0,
-            "reason": "staging emptied by editor; nothing to promote",
-            "facts_md": str(paths.facts_md),
-            "staging_md": str(paths.staging_md),
-        }
-
-    facts_existing = paths.facts_md.read_text(encoding="utf-8")
-    leading = "" if facts_existing.endswith("\n") else "\n"
-    with paths.facts_md.open("a", encoding="utf-8") as handle:
-        handle.write(leading + staging_body if not staging_body.startswith("\n") else leading + staging_body)
-        if not staging_body.endswith("\n"):
-            handle.write("\n")
-    paths.staging_md.write_text("", encoding="utf-8")
-    return {
-        "ok": True,
-        "promoted_blocks": block_count,
-        "reason": f"promoted {block_count} entr{'y' if block_count == 1 else 'ies'} to facts.md",
-        "facts_md": str(paths.facts_md),
-        "staging_md": str(paths.staging_md),
-    }
-
-
-def _count_blocks(text: str) -> int:
-    delimiters = re.findall(rf"^{re.escape(_FACT_BLOCK_DELIMITER)}\s*$", text, flags=re.M)
-    return max(0, len(delimiters) // 2)
 
 
 def _strip_comment_header(text: str) -> str:

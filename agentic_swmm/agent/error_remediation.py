@@ -591,28 +591,6 @@ def storm_library_not_found(
     )
 
 
-def staged_facts_empty(*, staging_md: Path | None = None) -> RemediationError:
-    """``aiswmm memory promote-facts`` found nothing to promote.
-
-    The user almost always reaches this command after the agent
-    proposed a fact but they forgot the staging step, so the hint
-    points at both the right tool (``record_fact``) and the right
-    file path so they can also paste a candidate by hand.
-    """
-    staging_str = str(staging_md) if staging_md else "memory/facts_staging.md"
-    summary = "no staged facts to promote"
-    cause = (
-        f"the staging file at {staging_str} is empty; nothing has been "
-        "queued by the 'record_fact' tool yet"
-    )
-    hint = (
-        "ask the agent to record a fact (it calls 'record_fact' which "
-        f"appends to {staging_str}), or edit the file directly with one "
-        "fact block per entry"
-    )
-    return RemediationError(summary=summary, cause=cause, hint=hint)
-
-
 __all__ = [
     "swmm_external_file_error",
     "RemediationError",
@@ -621,5 +599,4 @@ __all__ = [
     "case_not_found",
     "transfer_empty_result",
     "storm_library_not_found",
-    "staged_facts_empty",
 ]
