@@ -1,94 +1,62 @@
 # Modeling Memory and Controlled Skill Evolution
 
-> **Status (2026-09-26).** The summariser this page describes
-> (`swmm-modeling-memory`, `memory_summary.json`, `lessons_learned.md`,
-> the index files and the RAG corpus) was retired in the memory
-> simplification: the store under `memory/store/` (JSONL ledgers plus
-> `memory.sqlite`) now holds what audited runs taught the project, tool
-> failures remember their fix, and skill proposals return as an
-> evidence-gated, human-approved mechanism in the next step. The design
-> intent below still holds; the mechanics are being rewritten.
-
-Agentic SWMM is not only an automation workflow. It is a memory-informed, verification-first modeling system that can learn from audited modeling history through controlled skill refinement.
+Agentic SWMM is not only an automation workflow. It is a memory-informed, verification-first modeling system that learns from audited modeling history and changes its own rules only through a human decision.
 
 ## Problem
 
 Environmental modeling workflows create many hidden decisions, assumptions, failures, QA checks, and artifacts. If these are not remembered, agentic modeling becomes hard to audit and reproduce. A single successful SWMM execution is not enough to explain which inputs were trusted, which checks passed, which evidence was missing, or which failures repeated across attempts.
 
-## Existing Audit Layer
+## The Audit Layer
 
-`swmm-experiment-audit` records run-level evidence. It consolidates provenance, artifacts, QA checks, metrics, warnings, limitations, comparisons, and Obsidian-compatible experiment notes for individual runs.
+`swmm-experiment-audit` records run-level evidence. It consolidates provenance, artifacts, QA checks, metrics, warnings, limitations, comparisons, and Obsidian-compatible experiment notes for individual runs, and writes `model_diagnostics.json` when it can inspect model and report artifacts (high continuity error, node flooding reported by SWMM, invalid subcatchment area, width or imperviousness, missing rain gages, missing subcatchment outlets, suspicious conduit slopes, large routing steps, disconnected outfalls).
 
 The audit layer answers what happened in one run.
 
-## New Modeling-Memory Layer
+## The Memory Store
 
-`swmm-modeling-memory` reads multiple audit records and turns them into reusable project memory. It scans historical `experiment_provenance.json`, `comparison.json`, `experiment_note.md`, and optional `model_diagnostics.json` files, tolerates partial runs, and summarizes repeated assumptions, QA issues, missing evidence, run-to-run differences, failure patterns, deterministic SWMM diagnostics, and successful practices.
+Everything the project learns lives in one place, `memory/store/` in the workspace (gitignored): append-only JSONL ledgers and a SQLite database (`memory.sqlite`) whose tables are synced indexes of the ledgers plus the sessions and the runs.
 
-The layer now has three granularities:
+- After every audited run the memory hook writes the store: a `parametric_memory.jsonl` row (the run's quantitative fingerprint), a `runs` table row (case, mode, status, QA, peak flow, continuity), a `calibration_memory.jsonl` row when the run has an accepted calibration, a `negative_lessons.jsonl` row when the run failed its continuity gate, and the outcome ledger.
+- At the end of every agent session, every tool call that failed is written to `run_failures.jsonl` with its pattern, and when the call right after it worked, with that call as the fix (the same tool with the arguments that changed, a plain retry, or another tool instead).
+- `aiswmm memory rebuild` recreates the database from the ledgers and `runs/`; deleting it never loses anything.
 
-- Run-level memory cards: each audited run gets a `memory_summary.json` with success/failure, QA state, missing evidence, warnings, assumptions, suspect parameters, deterministic diagnostic IDs, and next-run cautions.
-- Project/case-level memory: aggregate outputs under `memory/store/projects/<project-key>/` keep Tod Creek, Tecnopolo, TUFLOW, Generate_SWMM_inp, acceptance, and other cases separate.
-- Global modeling memory: the root index, lessons, and skill proposals still summarize cross-run patterns across the full `runs/` tree.
+The shipped memory (`memory/initial/`: the startup files and the reference tables) and the promoted facts (`memory/facts.md`) are hand-written and change only through a pull request. Nothing the program writes in normal use is tracked.
 
-The modeling-memory skill does not automatically rewrite existing skills. It analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.
+## How Memory Reaches the Agent
 
-The modeling-memory layer answers what keeps happening across runs.
+Three paths, each measured in the live campaign that shaped them:
 
-## SWMM-Specific Diagnostics
+1. **At session start** the shell injects the startup memory, the promoted facts, the previous session's summary, and a digest of the project's recent failures with the fix recorded next to each.
+2. **At failure time** the planner looks the failed call's pattern up in the store; when this project recovered from it before, the next model turn carries a `[failure_memory]` item naming the last fix, and the trace records whether the next successful call followed it.
+3. **On request** the `recall_memory` tool answers what went wrong before and what was learned (failures with their fixes, negative lessons), and `recall_session_history` searches earlier conversations. Both are read-only and wrapped in `<memory-context>` fences, which the output scrubber strips so historical memory is never parsed as new instructions.
 
-SWMM-specific modeling intelligence should come from deterministic audit evidence rather than free-text inference. `swmm-experiment-audit` writes `model_diagnostics.json` when it can inspect model/report artifacts. The current screening diagnostics include high continuity error, node flooding reported by SWMM, invalid subcatchment area/width/imperviousness, missing rain gages, missing subcatchment outlets, suspicious conduit slopes, large routing steps, and disconnected outfalls.
-
-`swmm-modeling-memory` only summarizes those diagnostics after they have been generated by the audit layer. It does not guess hydrologic model errors from notes.
+Parametric, calibration and negative-lesson rows also feed the memory-informed defaults, the cross-watershed transfer recommender and the case-adaptive thresholds described in [docs/memory_runtime.md](memory_runtime.md).
 
 ## Controlled Skill Refinement
 
-The intended controlled loop is:
+Learning is allowed to change a skill or the shipped memory, but only through a proposal and a human decision:
 
 1. SWMM run
-2. experiment audit
-3. deterministic model diagnostics
-4. run-level memory card
-5. Obsidian-compatible note
-6. project/global modeling-memory summarization
-7. failure-pattern extraction
-8. skill update proposal
-9. human review
-10. benchmark verification
-11. accepted skill update
+2. experiment audit and deterministic model diagnostics
+3. the memory hook writes the store; the session end records failures and fixes
+4. evidence gate: the same fix for the same failure pattern in at least three runs across two cases, or a fact the agent recorded with `record_fact`
+5. a proposal file under `memory/proposals/` (evidence, the proposed addition, a unified diff of the target: a `SKILL.md`, `memory/initial/operational_memory.md`, or `memory/facts.md`)
+6. human review: `aiswmm memory proposals`, then `promote <id>` or `reject <id> --reason`
+7. benchmark verification of the promoted change, as an ordinary pull request
 
-The proposal step is intentionally separate from the accepted update step. Modeling memory may suggest where a workflow or skill appears weak, but it does not modify scientific rules or repository skills by itself. Proposed updates are accepted only after human review and benchmark verification.
-
-## Curated vs Raw Memory (PRD M7.3 contract)
-
-Memory is split into two layers, never mixed:
-
-- **Curated**: `memory/store/lessons_learned.md` and `memory/store/INDEX.md`. LLM-summarised / LLM-curated. Subject to compaction (PRD M3) when the lessons file exceeds the configured size or pattern-count threshold. Recall tool: `recall_memory(pattern)`.
-- **Raw**: every `runs/<case>/09_audit/experiment_note.md` and every `runs/<date>/<chat-session>/chat_note.md`. Never edited after audit; treated as the source of truth for evidence. Recall tool: `recall_memory_search(query, top_k)` returns raw + curated entries side-by-side, each tagged with `layer: "curated"` or `layer: "raw"` so the planner knows which side it is reading.
-
-Recall results returned to the planner are wrapped in `<memory-context source="lessons|rag" stale="...">…</memory-context>` (PRD M7.1). A streaming scrubber on the final-output path strips that fence from any text the agent emits to the user, so historical memory can never be parsed as new user instructions.
+The proposal step is intentionally separate from the accepted update step. The program never edits a skill, the initial memory or the facts on its own; a rejected proposal is never made again; a promotion is refused when the target file changed since the proposal was made.
 
 ## Safety Boundary
 
-The agent does not autonomously rewrite scientific modeling rules. Skill update proposals are not evidence of correctness. A proposed refinement should only be accepted after human review, existing benchmark verification, and clear evidence that the change improves the workflow without hiding missing data, failed QA, or unsupported assumptions.
+The agent does not autonomously rewrite scientific modeling rules. A proposal is not evidence of correctness. A proposed refinement should only be accepted after human review, existing benchmark verification, and clear evidence that the change improves the workflow without hiding missing data, failed QA, or unsupported assumptions. Audit records are evidence for a run; the store is a record of repeated patterns; neither proves a scientific claim by itself.
 
-## Example CLI Usage
-
-Main command:
+## CLI
 
 ```bash
-python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
-  --runs-dir runs \
-  --out-dir memory/store
-```
-
-This command writes aggregate memory under `memory/store/` and writes `memory_summary.json` into each audited run directory.
-
-Optional Obsidian export:
-
-```bash
-python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
-  --runs-dir runs \
-  --out-dir memory/store \
-  --obsidian-dir "/path/to/Obsidian/Agentic SWMM/05_Modeling_Memory"
+aiswmm memory show <case>              # what the store holds about one case
+aiswmm memory proposals [--all]        # what awaits a decision
+aiswmm memory promote <id>             # apply one proposal (a SKILL.md or the initial memory: in a source checkout)
+aiswmm memory reject <id> --reason ... # decline it for good
+aiswmm memory rebuild                  # recreate memory.sqlite from the ledgers and runs/
+aiswmm doctor                          # the store's row counts and health, section "Memory stores"
 ```

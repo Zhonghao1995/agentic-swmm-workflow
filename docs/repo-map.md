@@ -42,7 +42,7 @@ One table binds the layers: `EXPECTED_BINDINGS` in `agentic_swmm/agent/mcp_cover
 |---|---|
 | `agent/` | Planner loop, tool registry, skill router, permissions and profiles, HITL surface, gap-fill runtime, session bootstrap, SWMM runtime helpers. |
 | `commands/` | One module per CLI verb; `expert/` holds the operator-only authority verbs. |
-| `memory/` | Cross-run memory: parametric records, lessons lifecycle, recall, session store. |
+| `memory/` | Cross-run memory: the ledgers and their database, the failure loop, recall, proposals, the session store. |
 | `providers/` | LLM providers (openai default, anthropic opt-in), standard-library HTTP clients. |
 | `gap_fill/` | Detect-propose-review-record loop for missing inputs. |
 | `hitl/` | Threshold evaluator and expert-review pause. |
