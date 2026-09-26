@@ -2,12 +2,34 @@
 
 Quick reference for the memory-facing CLI surfaces added across
 PRD-06 and PRD-07. Each verb is a deterministic surface over a pure
-function — none of them invoke the LLM. The default-mode verbs are
+function, and none of them invokes the LLM. The default-mode verbs are
 visible to every user; the expert-mode verbs are listed under the
 "expert" set in `agentic_swmm.agent.memory_verbs`.
 
 For the underlying substrate, see
 [docs/memory_runtime.md](memory_runtime.md).
+
+## `aiswmm memory`
+
+What aiswmm remembers, and the decisions only a human makes.
+
+```bash
+aiswmm memory show <case>                 # the memory card for one case: parameters, calibrations, known-bad regions
+aiswmm memory proposals [--all] [--json]  # proposals awaiting a decision (--all includes promoted and rejected)
+aiswmm memory promote <id>                # apply one proposal to its target file
+aiswmm memory reject <id> --reason "..."  # decline it; the same proposal is never made again
+aiswmm memory rebuild [--runs-dir DIR]    # set memory.sqlite aside and rebuild it from the ledgers and runs/
+aiswmm memory repair-sessions [--yes]     # rebuild the sessions from runs/**/agent_trace.jsonl
+aiswmm memory health                      # the application outcome ledger
+aiswmm memory archive / restore           # move an entry out of, or back into, the live store
+```
+
+`promote` re-derives the diff before writing and refuses a target that
+changed since the proposal was made. A proposal for a `SKILL.md` or the
+initial memory is promoted only in a source checkout (never inside an
+installed package), and the result is an ordinary `git diff` to commit
+or open a pull request from; a proposal for `memory/facts.md` promotes
+anywhere.
 
 ## `aiswmm compare`
 
@@ -37,7 +59,7 @@ Use `--json` for machine-readable output.
 ## `aiswmm storm`
 
 Generate an algorithmic design storm in SWMM `[TIMESERIES]` format.
-No IDF lookup — the shape primitives are uniform, triangular,
+No IDF lookup: the shape primitives are uniform, triangular,
 front_loaded, back_loaded.
 
 ```bash
@@ -75,7 +97,7 @@ aiswmm transfer --inp examples/new_case/new_case.inp --top-k 3
 
 Each recommendation surfaces the source case, similarity score, the
 calibration's primary objective, and the proposed parameter set. The
-verb is advisory only — it never writes to the new INP.
+verb is advisory only: it never writes to the new INP.
 
 ## `aiswmm bootstrap memory`
 

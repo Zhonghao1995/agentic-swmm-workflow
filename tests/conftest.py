@@ -25,9 +25,9 @@ import pytest
 _MEMORY_DIR_PRESET_AT_SESSION_START = bool(os.environ.get("AISWMM_MEMORY_DIR"))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def _memory_store_copy(tmp_path_factory):
-    """One copy of the shipped memory stores for the whole session (F-14).
+    """An empty memory store for each test (F-14, F-168).
 
     Finding F-14 (2026-09-02): every full-suite run appended four
     ``aiswmm_run_cli / swmm_error "ERROR 205: invalid keyword"`` rows to
@@ -39,6 +39,9 @@ def _memory_store_copy(tmp_path_factory):
     # Since 2026-09-06 nothing program-written is tracked, so the copy is
     # an empty store; reference tables resolve to memory/initial/ through
     # utils.paths.reference_table_path when the store has no override.
+    # Per test since 2026-09-26 (F-168): with one copy for the whole
+    # session, a test that counted rows in a ledger saw the rows of
+    # every earlier test and passed or failed by order.
     return tmp_path_factory.mktemp("memory-store")
 
 
