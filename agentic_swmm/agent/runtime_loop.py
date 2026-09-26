@@ -794,7 +794,12 @@ def _welcome_disabled() -> bool:
 # Module-level set tracking sessions already synced. Both the
 # end-of-session hook and ``atexit`` consult this to avoid double-writes
 # (idempotent inserts make this cheap, but skipping the trip is nicer).
-_SYNCED_SESSION_DIRS: set[str] = set()
+# session_dir -> the database it was synced to. The database path is
+# captured at first sync, while the caller's environment (AISWMM_SESSION_DB,
+# AISWMM_MEMORY_DIR) is live: the atexit re-sync runs after a test harness
+# has restored the environment, and resolving the path there wrote test
+# sessions into the developer's real store (2026-09-06; F-14 class).
+_SYNCED_SESSION_DIRS: dict[str, Path] = {}
 
 
 def _build_system_prompt_extras(
@@ -833,10 +838,13 @@ def _sync_session_end(session_dir: Path) -> None:
     key = str(session_dir.resolve()) if session_dir else ""
     if not key or key in _SYNCED_SESSION_DIRS:
         return
+    from agentic_swmm.memory.session_sync import default_db_path
+
+    db_path = default_db_path()
     try:
-        sync_session_to_db(session_dir)
+        sync_session_to_db(session_dir, db_path=db_path)
     finally:
-        _SYNCED_SESSION_DIRS.add(key)
+        _SYNCED_SESSION_DIRS[key] = db_path
 
 
 def _refresh_moc_after_session(session_dir: Path) -> None:
@@ -860,7 +868,7 @@ def _refresh_moc_after_session(session_dir: Path) -> None:
 
 
 @on_exception_return_default(default=None, scope="session_db_sync_atexit")
-def _atexit_sync_one(raw: str) -> None:
+def _atexit_sync_one(raw: str, db_path: Path | None = None) -> None:
     """Sync one session_dir at atexit; never abort the surrounding loop.
 
     Extracted so the broad ``Exception`` catch lives at the
@@ -869,7 +877,7 @@ def _atexit_sync_one(raw: str) -> None:
     outer iterator advance to the next session when one sync raises,
     matching the legacy ``except Exception: continue`` semantics.
     """
-    sync_session_to_db(Path(raw))
+    sync_session_to_db(Path(raw), db_path=db_path)
 
 
 def _atexit_sync_recent_sessions() -> None:
@@ -881,8 +889,8 @@ def _atexit_sync_recent_sessions() -> None:
     seen in this process and runs the projector again; the unique
     indices guarantee idempotency.
     """
-    for raw in list(_SYNCED_SESSION_DIRS):
-        _atexit_sync_one(raw)
+    for raw, db_path in list(_SYNCED_SESSION_DIRS.items()):
+        _atexit_sync_one(raw, db_path)
 
 
 atexit.register(_atexit_sync_recent_sessions)

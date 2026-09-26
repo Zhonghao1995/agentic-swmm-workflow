@@ -133,3 +133,57 @@ def test_reference_table_lookup_prefers_the_store_copy(tmp_path: Path) -> None:
     override = store / "storm_library.yaml"
     override.write_text("schema_version: \"1.0\"\n", encoding="utf-8")
     assert paths.reference_table_path("storm_library.yaml", store) == override
+
+
+def test_a_legacy_database_is_never_adopted_under_an_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-09-06: with AISWMM_MEMORY_DIR pointing at a temp store (the test
+    suite), the workspace's own runs/sessions.sqlite must stay untouched."""
+    from agentic_swmm.memory.session_sync import default_db_path
+
+    workspace = tmp_path / "ws"
+    (workspace / "runs").mkdir(parents=True)
+    legacy = workspace / "runs" / "sessions.sqlite"
+    legacy.write_bytes(b"legacy")
+    monkeypatch.setattr(paths, "repo_root", lambda: workspace)
+    monkeypatch.setattr(paths, "is_checkout", lambda root=None: True)
+    monkeypatch.delenv("AISWMM_SESSION_DB", raising=False)
+    monkeypatch.setenv("AISWMM_MEMORY_DIR", str(tmp_path / "elsewhere"))
+    db = default_db_path()
+    assert db == (tmp_path / "elsewhere").resolve() / "memory.sqlite"
+    assert legacy.read_bytes() == b"legacy"
+    assert not db.exists()
+
+
+def test_the_suite_isolates_the_session_database() -> None:
+    import os
+
+    assert os.environ.get("AISWMM_SESSION_DB"), "conftest must point AISWMM_SESSION_DB at the temp store"
+    assert Path(os.environ["AISWMM_SESSION_DB"]).parent == Path(os.environ["AISWMM_MEMORY_DIR"])
+
+
+def test_the_atexit_resync_uses_the_database_captured_at_sync_time(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """2026-09-06: the atexit re-sync resolved the database path at interpreter
+    exit, after the test harness had restored the environment, and wrote
+    test sessions into the developer's real store."""
+    import json
+
+    from agentic_swmm.agent import runtime_loop
+    from agentic_swmm.agent.swmm_runtime.run_layout import agent_file_for_write
+
+    session_dir = tmp_path / "sessions" / "2026-09-06" / "120000_probe_chat"
+    trace = agent_file_for_write(session_dir, "agent_trace.jsonl")
+    trace.write_text(
+        json.dumps({"event": "user_prompt", "text": "probe", "timestamp_utc": "2026-09-06T12:00:00+00:00"}) + "\n",
+        encoding="utf-8",
+    )
+    harness_db = tmp_path / "harness" / "memory.sqlite"
+    monkeypatch.setenv("AISWMM_SESSION_DB", str(harness_db))
+    monkeypatch.setattr(runtime_loop, "_SYNCED_SESSION_DIRS", {})
+    runtime_loop._sync_session_end(session_dir)
+    assert harness_db.exists()
+    # The harness restores the environment; a later default would point elsewhere.
+    real_default = tmp_path / "real" / "memory.sqlite"
+    monkeypatch.setenv("AISWMM_SESSION_DB", str(real_default))
+    runtime_loop._atexit_sync_recent_sessions()
+    assert not real_default.exists(), "atexit re-sync must reuse the database captured at sync time"
+

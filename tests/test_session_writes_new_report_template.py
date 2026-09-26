@@ -30,6 +30,10 @@ class SessionReportTemplateWiringTests(unittest.TestCase):
                 "AISWMM_CONFIG_DIR": str(Path(tmp) / "cfg"),
                 "AISWMM_OPENAI_MOCK_RESPONSE": "ok",
                 # Ensure no real OpenAI call; planner stays deterministic.
+                # A hand-built environment loses the suite's isolation; without
+                # this the subprocess wrote its session into the developer's
+                # real memory store (2026-09-06, F-14 class).
+                "AISWMM_MEMORY_DIR": str(Path(tmp) / "store"),
             }
             proc = subprocess.run(
                 [

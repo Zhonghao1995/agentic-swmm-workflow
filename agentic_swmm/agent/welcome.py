@@ -261,7 +261,11 @@ def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
     default_provider = resolve_selection().route
     if provider_key_present(default_provider):
         return None
-    target = memory_dir or (Path.cwd() / "memory" / "modeling-memory")
+    if memory_dir is None:
+        from agentic_swmm.utils.paths import resolve_memory_dir
+
+        memory_dir = resolve_memory_dir()
+    target = memory_dir
     try:
         if target.is_dir():
             # Any populated subdir / non-empty file means the user has
@@ -272,7 +276,13 @@ def _missing_setup_tip(*, memory_dir: Path | None = None) -> str | None:
     except OSError:
         # Filesystem error: do not pester the user with the tip.
         return None
-    return "Tip: run `aiswmm login` to set your provider API key (or `aiswmm doctor` to see what's set up)."
+    # Two lines: the welcome is measured against an 80-column terminal
+    # (CI on main went red the first time the store shipped empty and the
+    # tip finally fired, 2026-09-06).
+    return (
+        "Tip: run `aiswmm login` to set your provider API key\n"
+        "     (or `aiswmm doctor` to see what's set up)."
+    )
 
 
 def render_returning_banner(

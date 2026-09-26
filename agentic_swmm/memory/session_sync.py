@@ -46,6 +46,13 @@ def default_db_path(repo_root: Path | None = None) -> Path:
         from agentic_swmm.utils.paths import resolve_memory_dir, workspace_root
 
         store = resolve_memory_dir()
+        # Adopt only the workspace's own legacy file, and only when the store
+        # is the workspace default. With AISWMM_MEMORY_DIR pointing elsewhere
+        # (the test suite does this) the workspace's runs/sessions.sqlite must
+        # stay where it is: on 2026-09-06 the first version of this function
+        # moved the developer's 26.7 MB database into a pytest temp dir.
+        if os.environ.get("AISWMM_MEMORY_DIR"):
+            return store / DB_FILENAME
         legacy = workspace_root() / LEGACY_DB_RELATIVE
     db_path = store / DB_FILENAME
     _adopt_legacy_db(db_path, legacy)

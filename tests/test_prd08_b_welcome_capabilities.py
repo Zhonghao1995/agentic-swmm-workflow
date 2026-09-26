@@ -83,6 +83,32 @@ class MissingSetupTipTests(unittest.TestCase):
             self.assertIsNotNone(tip)
             self.assertIn("aiswmm login", tip)
 
+    def test_tip_fits_an_80_column_terminal(self) -> None:
+        # CI on main went red on 2026-09-06: the store ships empty since the
+        # memory layout change, so the tip fired for the first time in CI
+        # and its 95-column line broke the 80-column welcome budget.
+        with TemporaryDirectory() as tmp:
+            empty_dir = Path(tmp) / "missing"
+            with mock.patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("OPENAI_API_KEY", None)
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+                tip = _missing_setup_tip(memory_dir=empty_dir)
+            assert tip is not None
+            for line in tip.splitlines():
+                self.assertLessEqual(len(line), 80, line)
+
+    def test_tip_reads_the_memory_store_not_the_old_folder(self) -> None:
+        # The default memory dir is the store (memory/store), never a
+        # cwd-relative memory/modeling-memory.
+        with TemporaryDirectory() as tmp:
+            store = Path(tmp) / "store"
+            store.mkdir()
+            (store / "run_failures.jsonl").write_text("{}\n", encoding="utf-8")
+            with mock.patch.dict(os.environ, {"AISWMM_MEMORY_DIR": str(store)}, clear=False):
+                os.environ.pop("OPENAI_API_KEY", None)
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+                self.assertIsNone(_missing_setup_tip())
+
     def test_tip_silent_when_default_provider_key_set(self) -> None:
         # Default provider is openai; an OPENAI_API_KEY suppresses the tip.
         with TemporaryDirectory() as tmp:
