@@ -30,7 +30,6 @@ def test_store_and_proposals_are_ignored_and_initial_is_tracked() -> None:
 
     assert ignored("memory/store/anything.jsonl")
     assert ignored("memory/proposals/001-anything.md")
-    assert ignored("memory/facts_staging.md")
     assert not ignored("memory/initial/soul.md")
     assert not ignored("memory/facts.md")
 
@@ -52,7 +51,7 @@ def test_the_shipped_initial_memory_is_complete() -> None:
 
 
 def test_a_pip_install_never_writes_under_the_resource_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Drive the writers a session touches (run failures, facts staging, the
+    """Drive the writers a session touches (run failures, fact proposals, the
     session database, bootstrap) on a pip-shaped install and assert the
     packaged root is untouched."""
     site = tmp_path / "site-packages"
@@ -71,17 +70,17 @@ def test_a_pip_install_never_writes_under_the_resource_root(tmp_path: Path, monk
     before = _snapshot(packaged)
 
     from agentic_swmm.commands import bootstrap_memory
-    from agentic_swmm.memory import facts, run_failures, session_db
+    from agentic_swmm.memory import facts, proposals, run_failures, session_db
     from agentic_swmm.memory.session_sync import default_db_path
 
     result = bootstrap_memory.bootstrap_memory_dir(None)
     assert result.target_dir == workspace / "memory" / "store"
     store = run_failures.resolve_store()
     assert store == workspace / "memory" / "store" / "run_failures.jsonl"
-    facts.record_fact_to_staging("the outfall is OUT_0")
+    proposal = proposals.propose_fact("the outfall is OUT_0")
+    assert proposal.path is not None and proposal.path.parent == workspace / "memory" / "proposals"
     fp = facts.resolve_paths()
     assert fp.facts_md == workspace / "memory" / "facts.md"
-    assert fp.staging_md == workspace / "memory" / "facts_staging.md"
     db = default_db_path()
     assert db == workspace / "memory" / "store" / "memory.sqlite"
     with session_db.connect(db):

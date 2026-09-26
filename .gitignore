@@ -51,10 +51,9 @@ runs/sessions.sqlite-shm
 # everything the program writes in normal use lives under memory/store/
 # (ledgers, memory.sqlite, project overrides, generated views) and
 # memory/proposals/ (pending, human-reviewed proposals). Neither is ever
-# committed. The promoted memory/facts.md is tracked; its staging file is not.
+# committed. The promoted memory/facts.md is tracked.
 memory/store/
 memory/proposals/
-memory/facts_staging.md
 
 # Small reproducible Tod Creek raw-GIS case used by swmm-gis/QGIS examples.
 !data/

@@ -49,6 +49,7 @@ MEMORY_SUBMODULE_RATCHET = {
     "memory_archive",
     "memory_outcomes",
     "parametric_memory",
+    "proposals",
     "reference_benchmarks",
     "run_failures",
     "run_progress",

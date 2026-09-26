@@ -9,7 +9,7 @@ The facade exposes three verbs:
 - ``trigger_memory_refresh`` — post-audit hook (used by ``commands/audit.py``)
 - ``recall_memory`` — keyword recall over the store's failures and
   negative lessons (used by ``agent/tool_handlers/swmm_memory.py``)
-- ``append_fact`` — record a candidate fact to staging
+- ``propose_fact`` — turn a candidate fact into a proposal
   (used by ``agent/tool_handlers/swmm_memory.py``)
 
 Internal sub-module imports keep working — this PRD is a contract
@@ -22,7 +22,7 @@ from __future__ import annotations
 EXPECTED_PUBLIC_VERBS = {
     "trigger_memory_refresh",
     "recall_memory",
-    "append_fact",
+    "propose_fact",
 }
 
 
@@ -37,19 +37,19 @@ def test_each_verb_is_a_callable_re_export_of_the_implementing_function() -> Non
     sub-modules expose. If a future refactor renames the implementation
     without updating the alias, this test fails loudly."""
     from agentic_swmm.memory import (
-        append_fact,
+        propose_fact,
         recall_memory,
         trigger_memory_refresh,
     )
     from agentic_swmm.memory.audit_hook import (
         trigger_memory_refresh as impl_refresh,
     )
-    from agentic_swmm.memory.facts import record_fact_to_staging as impl_append
+    from agentic_swmm.memory.proposals import propose_fact as impl_propose
     from agentic_swmm.memory.recall import recall as impl_recall
 
     assert trigger_memory_refresh is impl_refresh
     assert recall_memory is impl_recall
-    assert append_fact is impl_append
+    assert propose_fact is impl_propose
 
 
 def _imports_facade_verb(source: str, verb: str) -> bool:
@@ -88,7 +88,7 @@ def test_commands_audit_uses_facade_for_trigger_memory_refresh() -> None:
 
 def test_tool_handler_uses_facade_for_the_three_agent_verbs() -> None:
     """``agent/tool_handlers/swmm_memory.py`` is the canonical external
-    caller of recall_memory and append_fact. After PRD-03 it must import
+    caller of recall_memory and propose_fact. After PRD-03 it must import
     both via the facade.
     """
     from pathlib import Path
@@ -96,7 +96,7 @@ def test_tool_handler_uses_facade_for_the_three_agent_verbs() -> None:
     import agentic_swmm.agent.tool_handlers.swmm_memory as handler_mod
 
     source = Path(handler_mod.__file__).read_text(encoding="utf-8")
-    for verb in ("recall_memory", "append_fact"):
+    for verb in ("recall_memory", "propose_fact"):
         assert _imports_facade_verb(source, verb), (
             f"agent/tool_handlers/swmm_memory.py should import {verb} from "
             "the agentic_swmm.memory facade (PRD-03)."

@@ -168,16 +168,3 @@ def test_storm_library_entry_placeholder(tmp_path):
     assert rc == 1
     assert "placeholder" in err.lower()
     assert "idf_params" in err
-
-
-# ----- memory promote-facts empty staging -----
-
-
-def test_memory_promote_facts_empty_emits_hint(tmp_path, monkeypatch):
-    facts_dir = tmp_path / "facts"
-    facts_dir.mkdir()
-    (facts_dir / "facts_staging.md").write_text("", encoding="utf-8")
-    monkeypatch.setenv("AISWMM_FACTS_DIR", str(facts_dir))
-    rc, _, err = _dispatch(["memory", "promote-facts"])
-    assert rc == 0  # not a hard failure
-    assert "record_fact" in err

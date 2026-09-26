@@ -10,7 +10,8 @@ not a code move:
 - :func:`trigger_memory_refresh` — post-audit refresh hook
 - :func:`recall_memory` — keyword recall over the store's failures and
   negative lessons (memory simplification PR 3b)
-- :func:`append_fact` — append a candidate fact to ``facts_staging.md``
+- :func:`propose_fact` — turn a candidate fact into a proposal for
+  ``memory/facts.md`` (memory simplification PR 4)
 
 Internal submodule tier (issue #359)
 ------------------------------------
@@ -26,12 +27,12 @@ surface is a conscious edit to that pin in the same PR.
 from __future__ import annotations
 
 from agentic_swmm.memory.audit_hook import trigger_memory_refresh
-from agentic_swmm.memory.facts import record_fact_to_staging as append_fact
+from agentic_swmm.memory.proposals import propose_fact
 from agentic_swmm.memory.recall import recall as recall_memory
 
 
 __all__ = [
     "trigger_memory_refresh",
     "recall_memory",
-    "append_fact",
+    "propose_fact",
 ]

@@ -147,14 +147,14 @@ def _recall_session_history_tool(call: ToolCall, session_dir: Path) -> dict[str,
 
 
 def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
-    """Append a candidate fact block to ``facts_staging.md``.
+    """Turn a candidate project fact into a proposal for ``memory/facts.md``.
 
-    This is the only write path the LLM has into the facts layer; the
-    user promotes from staging into ``facts.md`` manually via the
-    ``aiswmm memory promote-facts`` CLI. Marking the tool ``is_read_only=False``
-    keeps it out of ``Profile.QUICK`` auto-approve.
+    This is the only write path the LLM has into the facts layer, and it
+    writes a proposal file, never the facts: the user decides with
+    ``aiswmm memory promote <id>`` or ``reject <id>``. Marking the tool
+    ``is_read_only=False`` keeps it out of ``Profile.QUICK`` auto-approve.
     """
-    from agentic_swmm.memory import append_fact
+    from agentic_swmm.memory import propose_fact
 
     text = str(call.args.get("text") or "").strip()
     if not text:
@@ -162,15 +162,19 @@ def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
     source_id = call.args.get("source_session_id")
     source_id = str(source_id).strip() if isinstance(source_id, str) and source_id.strip() else None
     try:
-        staging_path = append_fact(text, source_session_id=source_id)
+        proposal = propose_fact(text, source_session_id=source_id)
     except Exception as exc:
         return _failure(call, f"record_fact failed: {exc}")
     return {
         "tool": call.name,
         "args": call.args,
         "ok": True,
-        "path": str(staging_path),
-        "summary": "fact appended to staging; run `aiswmm memory promote-facts` to review",
+        "proposal_id": proposal.id,
+        "path": str(proposal.path),
+        "summary": (
+            f"fact proposed as {proposal.id}; the user reviews it with `aiswmm memory proposals` "
+            f"and applies it with `aiswmm memory promote {proposal.id}`"
+        ),
     }
 
 
@@ -233,7 +237,7 @@ def tool_specs():
         ToolSpec(
             "record_fact",
             (
-                "Append a candidate project fact to the staging file for later user review.\n"
+                "Propose a project fact for the user to approve later (it becomes a proposal, not a fact, until they promote it).\n"
                 "USE WHEN: user just expressed a durable preference, project convention, or "
                 "confirmed fix recipe that future sessions should remember.\n"
                 "DO NOT USE WHEN: ephemeral state, file path, secret, or anything you are not "

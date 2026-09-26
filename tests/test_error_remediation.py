@@ -10,7 +10,6 @@ from agentic_swmm.agent.error_remediation import (
     case_not_found,
     fuzzy_match_suggestions,
     parameter_lookup_error,
-    staged_facts_empty,
     storm_library_not_found,
     transfer_empty_result,
 )
@@ -211,11 +210,3 @@ class TestStormLibraryNotFound:
         out = err.format_for_stderr()
         assert "placeholder" in out
         assert "idf_params" in out
-
-
-class TestStagedFactsEmpty:
-    def test_hints_record_fact(self) -> None:
-        err = staged_facts_empty(staging_md=Path("/x/facts_staging.md"))
-        out = err.format_for_stderr()
-        assert "record_fact" in out
-        assert "/x/facts_staging.md" in out

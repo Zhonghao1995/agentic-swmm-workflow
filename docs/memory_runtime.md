@@ -110,7 +110,7 @@ registered with an explicit `stakes` label, and a goal that mentions a
 high-stakes verb is treated as high stakes without any further
 keyword analysis. The second is the legacy keyword sniff
 (`_HIGH_STAKES_TOKENS`) covering the older accept-calibration /
-promote-facts verb that predates the registry.
+proposals verbs (`aiswmm memory proposals / promote / reject`) that predate the registry.
 
 The four quadrants map onto the two axes in this matrix:
 
