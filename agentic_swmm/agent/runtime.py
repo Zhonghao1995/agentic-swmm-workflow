@@ -166,6 +166,7 @@ def run_openai_plan(
             store,
             run_id=executor.session_dir.name,
             results=outcome.results,
+            calls=outcome.plan,
         )
         if recorded:
             write_event(
