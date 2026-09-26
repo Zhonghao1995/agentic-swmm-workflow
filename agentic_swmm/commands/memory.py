@@ -29,7 +29,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     parser.add_argument(
         "--out-dir",
         type=Path,
-        help="Output directory. Defaults to memory/modeling-memory.",
+        help="Output directory. Defaults to the memory store (memory/store).",
     )
     parser.add_argument(
         "--obsidian-dir",
@@ -67,7 +67,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--memory-dir",
         type=Path,
         default=None,
-        help="Modeling-memory directory. Defaults to memory/modeling-memory.",
+        help="Memory store directory. Defaults to memory/store.",
     )
     show.set_defaults(func=show_main)
 
@@ -123,13 +123,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
     _add_archive(sub)
 
-    # Issue #204: non-destructive repair for runs/sessions.sqlite.
+    # Issue #204: non-destructive repair for the session database (memory.sqlite).
     repair = sub.add_parser(
         "repair-sessions",
         help=(
             "Back up the cross-session SQLite store and rebuild it from "
             "the raw agent_trace.jsonl files under runs/. Non-destructive: "
-            "the original file is moved to sessions.sqlite.corrupt-<utc>."
+            "the original file is moved to memory.sqlite.corrupt-<utc>."
         ),
     )
     repair.add_argument(
@@ -232,7 +232,9 @@ def _resolve_rag_dir() -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    return resource_root() / "memory" / "rag-memory"
+    # Program-generated, so inside the store (gitignored), never the
+    # resource root.
+    return resolve_memory_dir() / "rag"
 
 
 def _resolve_evolution_config() -> Path:
@@ -431,8 +433,9 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
         runs_root = args.runs_root.expanduser().resolve()
     else:
         runs_root = resolve_runs_dir()
+    from agentic_swmm.memory.session_sync import default_db_path
 
-    db_path = runs_root / "sessions.sqlite"
+    db_path = default_db_path()
 
     # ---- --dry-run: walk the same paths but write nothing.
     if getattr(args, "dry_run", False):
@@ -443,7 +446,7 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
         if backup:
             print(f"would back up corrupt store -> {backup}")
         else:
-            print("no prior sessions.sqlite to back up (would fresh-rebuild)")
+            print("no prior memory.sqlite to back up (would fresh-rebuild)")
         print(
             f"would rebuild {preview['would_rebuild_sessions']} session(s)"
         )
@@ -464,7 +467,7 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
         print(f"runs dir: {runs_root}")
         print(f"db path:  {db_path}")
         print(
-            "This will move the current sessions.sqlite (if any) to a "
+            "This will move the current memory.sqlite (if any) to a "
             ".corrupt-<utc> backup and rebuild from runs/*/agent_trace.jsonl."
         )
         response = input("Proceed? [y/N]: ").strip().lower()
@@ -485,7 +488,7 @@ def repair_sessions_main(args: argparse.Namespace) -> int:
     if backup:
         print(f"backed up corrupt store -> {backup}")
     else:
-        print("no prior sessions.sqlite to back up (fresh rebuild)")
+        print("no prior memory.sqlite to back up (fresh rebuild)")
     print(
         f"rebuilt {rebuilt} session(s), {messages} message(s), "
         f"{tool_events} tool event(s)"

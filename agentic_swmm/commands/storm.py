@@ -43,7 +43,7 @@ from agentic_swmm.agent.swmm_runtime.design_storm import (
     to_swmm_dat,
 )
 from agentic_swmm.memory.storm_library import recall_chicago_spec
-from agentic_swmm.utils.paths import repo_root, resolve_memory_dir
+from agentic_swmm.utils.paths import reference_table_path, repo_root
 
 
 _STORM_EXAMPLE = (
@@ -178,7 +178,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         noun="storm-library",
         help_text=(
             "Optional override for the storm_library.yaml location. "
-            "Defaults to memory/modeling-memory/storm_library.yaml."
+            "Defaults to the shipped memory/initial/storm_library.yaml, or a copy in the memory store."
         ),
         default=None,
         legacy_aliases=("--storm-library",),
@@ -210,7 +210,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _default_library_path() -> Path:
-    return resolve_memory_dir() / "storm_library.yaml"
+    return reference_table_path("storm_library.yaml")
 
 
 def _parse_idf(text: str) -> dict[str, float]:

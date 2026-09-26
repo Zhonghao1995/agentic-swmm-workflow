@@ -12,7 +12,7 @@ scratch.
 Usage::
 
     python scripts/backfill_sessions.py            # dry-run, prints counts
-    python scripts/backfill_sessions.py --apply    # writes to runs/sessions.sqlite
+    python scripts/backfill_sessions.py --apply    # writes to memory/store/memory.sqlite
     python scripts/backfill_sessions.py --apply --rebuild
 """
 
@@ -41,8 +41,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--db-path",
         type=Path,
-        default=Path("runs/sessions.sqlite"),
-        help="SQLite store to fill. Default: runs/sessions.sqlite",
+        default=Path("memory/store/memory.sqlite"),
+        help="SQLite store to fill. Default: memory/store/memory.sqlite",
     )
     parser.add_argument(
         "--apply",

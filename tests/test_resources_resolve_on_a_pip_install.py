@@ -45,9 +45,9 @@ def pip_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     site.mkdir()
     packaged = tmp_path / "aiswmm"
     (packaged / "skills" / "swmm-runner").mkdir(parents=True)
-    (packaged / "agent" / "memory").mkdir(parents=True)
-    (packaged / "memory" / "modeling-memory").mkdir(parents=True)
-    (packaged / "memory" / "modeling-memory" / "lessons_learned.md").write_text("# lessons\n", encoding="utf-8")
+    (packaged / "memory" / "initial").mkdir(parents=True)
+    (packaged / "memory" / "initial" / "soul.md").write_text("# soul\n", encoding="utf-8")
+    (packaged / "memory" / "initial" / "citations.yaml").write_text("schema_version: \"1.0\"\n", encoding="utf-8")
     (packaged / "docs").mkdir()
     (packaged / "docs" / "hitl-thresholds.md").write_text(
         "---\nschema_version: 1\nthresholds:\n  continuity_error_over_threshold:\n    severity: block\n"
@@ -65,11 +65,29 @@ def pip_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return packaged
 
 
-def test_memory_resolves_under_the_packaged_root(pip_shape: Path) -> None:
-    assert paths.resolve_memory_dir() == pip_shape / "memory" / "modeling-memory"
+def test_the_store_resolves_under_the_workspace_never_the_package(pip_shape: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Memory layout 2026-09-06: what the program writes goes next to the
+    user's runs, never into site-packages or the packaged resource root."""
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    assert paths.resolve_memory_dir() == workspace / "memory" / "store"
     from agentic_swmm.commands import doctor
 
-    assert doctor._memory_dir(paths.repo_root()) == pip_shape / "memory" / "modeling-memory"
+    assert doctor._memory_dir(paths.repo_root()) == workspace / "memory" / "store"
+
+
+def test_the_initial_memory_and_reference_tables_come_from_the_package(pip_shape: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    assert paths.initial_memory_dir() == pip_shape / "memory" / "initial"
+    assert paths.reference_table_path("citations.yaml") == pip_shape / "memory" / "initial" / "citations.yaml"
+    # A copy in the store overrides the shipped table.
+    local = workspace / "memory" / "store" / "citations.yaml"
+    local.parent.mkdir(parents=True)
+    local.write_text("schema_version: \"1.0\"\n", encoding="utf-8")
+    assert paths.reference_table_path("citations.yaml") == local
 
 
 def test_the_thresholds_document_is_read_from_the_packaged_root(pip_shape: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,32 +141,15 @@ def test_bootstrap_writes_where_doctor_reads(pip_shape: Path, monkeypatch: pytes
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     result = bootstrap_memory.bootstrap_memory_dir(None)
-    assert result.target_dir == pip_shape / "memory" / "modeling-memory"
-    assert not (elsewhere / "memory").exists()
+    # 2026-09-06: the store is the workspace (the directory aiswmm runs in),
+    # and doctor reads the same place.
+    assert result.target_dir == elsewhere / "memory" / "store"
     names = {s.name: s for s in collect_memory_store_status(doctor._memory_dir(paths.repo_root()))}
     for store in ("parametric_memory.jsonl", "calibration_memory.jsonl"):
         assert store in names, sorted(names)
         assert "bootstrap" not in (names[store].remediation or ""), names[store]
 
 
-def test_bootstrap_creates_the_three_yaml_libraries_and_doctor_stops_asking(pip_shape: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from agentic_swmm.commands import bootstrap_memory, doctor
-    from agentic_swmm.diagnostics.doctor_report import collect_memory_store_status
-
-    monkeypatch.chdir(tmp_path)
-    bootstrap_memory.bootstrap_memory_dir(None)
-    memory_dir = doctor._memory_dir(paths.repo_root())
-    for name in ("reference_benchmarks.yaml", "citations.yaml", "storm_library.yaml"):
-        assert (memory_dir / name).exists(), name
-    remedies = {s.name: (s.remediation or "") for s in collect_memory_store_status(memory_dir)}
-    assert not any("copy from repo" in r for r in remedies.values()), remedies
-
-
-def test_the_yaml_skeletons_match_the_checkout_placeholders() -> None:
-    from agentic_swmm.commands import bootstrap_memory
-
-    for name, text in bootstrap_memory._YAML_SKELETONS.items():
-        source = REPO / "memory" / "modeling-memory" / name
-        if not source.exists():
-            pytest.skip("not a checkout")
-        assert text == source.read_text(encoding="utf-8"), f"{name} skeleton drifted from the checkout file"
+# Removed 2026-09-06: the reference tables ship under memory/initial/ and
+# resolve there (see test_the_initial_memory_and_reference_tables_come_from_the_package).
+# Removed 2026-09-06: bootstrap no longer embeds yaml skeletons.

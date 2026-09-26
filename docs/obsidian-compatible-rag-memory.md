@@ -45,10 +45,10 @@ The diagram shows the core boundary: retrieval can generate advice, but advice d
 
 The first implementation is keyword and tag based. It retrieves over:
 
-- `memory/modeling-memory/modeling_memory_index.json`
-- `memory/modeling-memory/run_memory_summaries.json` when present
-- `memory/modeling-memory/*.md`
-- `memory/modeling-memory/projects/*/project_memory.{json,md}`
+- `memory/store/modeling_memory_index.json`
+- `memory/store/run_memory_summaries.json` when present
+- `memory/store/*.md`
+- `memory/store/projects/*/project_memory.{json,md}`
 - `runs/**/memory_summary.json`
 - `runs/**/experiment_note.md`
 - `runs/**/model_diagnostics.json`
@@ -61,16 +61,16 @@ The retriever gives extra weight to deterministic Agentic SWMM fields such as fa
 
 ```bash
 python3 skills/swmm-rag-memory/scripts/build_memory_corpus.py \
-  --memory-dir memory/modeling-memory \
+  --memory-dir memory/store \
   --runs-dir runs \
-  --out-dir memory/rag-memory
+  --out-dir memory/store/rag
 ```
 
 Outputs:
 
-- `memory/rag-memory/corpus.jsonl`
-- `memory/rag-memory/keyword_index.json`
-- `memory/rag-memory/embedding_index.json`
+- `memory/store/rag/corpus.jsonl`
+- `memory/store/rag/keyword_index.json`
+- `memory/store/rag/embedding_index.json`
 
 The current embedding backend is `local-hashed-token-char-ngram`. It is deterministic and has no API key or extra package dependency. It is a local semantic-retrieval scaffold, not a large language model embedding. It can later be replaced by a sentence-transformer or another embedding model without changing the corpus contract.
 
@@ -79,7 +79,7 @@ The current embedding backend is `local-hashed-token-char-ngram`. It is determin
 ```bash
 python3 skills/swmm-rag-memory/scripts/retrieve_memory.py \
   --query "peak flow parsing is missing" \
-  --memory-dir memory/modeling-memory \
+  --memory-dir memory/store \
   --runs-dir runs \
   --top-k 5
 ```
@@ -89,7 +89,7 @@ Hybrid retrieval with the generated index:
 ```bash
 python3 skills/swmm-rag-memory/scripts/retrieve_memory.py \
   --query "peak flow was not parsed from the report" \
-  --index-dir memory/rag-memory \
+  --index-dir memory/store/rag \
   --retriever hybrid \
   --top-k 5
 ```
@@ -114,7 +114,7 @@ Each result includes:
 ```bash
 python3 skills/swmm-rag-memory/scripts/answer_with_memory.py \
   --query "Why does high continuity error keep recurring?" \
-  --memory-dir memory/modeling-memory \
+  --memory-dir memory/store \
   --runs-dir runs \
   --top-k 6
 ```
@@ -126,12 +126,12 @@ The output is Markdown that can be passed to Codex, OpenClaw, Hermes, or another
 ```bash
 python3 skills/swmm-rag-memory/scripts/answer_with_memory.py \
   --query "How should I investigate missing peak-flow parsing?" \
-  --memory-dir memory/modeling-memory \
+  --memory-dir memory/store \
   --runs-dir runs \
   --obsidian-dir "$HOME/Documents/Agentic-SWMM-Obsidian-Vault/10_Memory_Layer/RAG Queries"
 ```
 
-This writes a query note into the selected Obsidian folder. Obsidian remains the human-readable memory notebook; `memory/rag-memory/` is the machine retrieval layer.
+This writes a query note into the selected Obsidian folder. Obsidian remains the human-readable memory notebook; `memory/store/rag/` is the machine retrieval layer.
 
 ## Evidence Boundary
 
@@ -152,12 +152,12 @@ The safe repair loop is:
 SWMM run
 -> audit_run.py records facts
 -> summarize_memory.py writes memory_summary.json
--> build_memory_corpus.py refreshes memory/rag-memory
+-> build_memory_corpus.py refreshes memory/store/rag
 -> generate_failure_advice.py writes failure_advice.{json,md} only when trigger conditions are met
 -> human or Codex decides whether to repair
 -> verification runs
 -> record_resolution_memory.py writes resolution_memory.json
--> build_memory_corpus.py refreshes memory/rag-memory again
+-> build_memory_corpus.py refreshes memory/store/rag again
 ```
 
 The same post-audit sequence can be run with one command:
@@ -166,13 +166,13 @@ The same post-audit sequence can be run with one command:
 python3 skills/swmm-rag-memory/scripts/refresh_after_run.py \
   --run-dir runs/<case> \
   --runs-dir runs \
-  --memory-dir memory/modeling-memory \
-  --rag-dir memory/rag-memory
+  --memory-dir memory/store \
+  --rag-dir memory/store/rag
 ```
 
 This command does not run SWMM and does not repair anything. By default, it rebuilds the RAG index from existing memory, generates failure advice only when conservative trigger conditions are met, and then rebuilds the index if advice was written.
 
-It does not regenerate curated `memory/modeling-memory` outputs unless this explicit flag is provided:
+It does not regenerate curated `memory/store` outputs unless this explicit flag is provided:
 
 ```bash
 --refresh-modeling-memory
@@ -185,7 +185,7 @@ Generate failure advice:
 ```bash
 python3 skills/swmm-rag-memory/scripts/generate_failure_advice.py \
   --run-dir runs/<case> \
-  --index-dir memory/rag-memory \
+  --index-dir memory/store/rag \
   --retriever hybrid
 ```
 

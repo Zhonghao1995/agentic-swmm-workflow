@@ -35,6 +35,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+from agentic_swmm.utils.paths import reference_table_path
 from typing import Any
 
 
@@ -66,7 +68,7 @@ class MemoryStoreStatus:
     * ``"EMPTY"`` — store exists but has zero rows.
     * ``"MISSING"`` — file does not exist.
     * ``"CORRUPT"`` — file exists but failed integrity validation
-      (issue #204, used by the sessions.sqlite row).
+      (issue #204, used by the memory.sqlite row).
     """
 
     name: str
@@ -218,9 +220,11 @@ _RUN_FAILURES_EMPTY_HINT = "no failed tool call recorded yet; no manual action"
 def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
     """Return one :class:`MemoryStoreStatus` per known memory store.
 
-    ``memory_dir`` is the ``memory/modeling-memory/`` directory. The
-    function is read-only; missing stores produce ``MISSING`` rows so
-    a caller can render the report even on a brand-new install.
+    ``memory_dir`` is the memory store (``memory/store/``). The reference
+    tables resolve through ``reference_table_path`` (a copy in the store,
+    else the shipped one under ``memory/initial/``). The function is
+    read-only; missing stores produce ``MISSING`` rows so a caller can
+    render the report even on a brand-new install.
 
     Stores reported (fixed list — additions require a code change):
 
@@ -388,7 +392,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
         )
 
     # ---- 4. reference_benchmarks.yaml
-    rb_path = memory_dir / "reference_benchmarks.yaml"
+    rb_path = reference_table_path("reference_benchmarks.yaml", memory_dir)
     if rb_path.exists():
         data = _load_yaml(rb_path)
         partial = _benchmarks_partial(data) if data else True
@@ -421,12 +425,12 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="run `aiswmm bootstrap memory`",
+                remediation="shipped with aiswmm under memory/initial/; reinstall aiswmm (or copy the table into the store)",
             )
         )
 
     # ---- 5. citations.yaml
-    cit_path = memory_dir / "citations.yaml"
+    cit_path = reference_table_path("citations.yaml", memory_dir)
     if cit_path.exists():
         data = _load_yaml(cit_path)
         verified, total = _citations_verified_count(data) if data else (0, 0)
@@ -467,12 +471,12 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="run `aiswmm bootstrap memory`",
+                remediation="shipped with aiswmm under memory/initial/; reinstall aiswmm (or copy the table into the store)",
             )
         )
 
     # ---- 6. storm_library.yaml
-    sl_path = memory_dir / "storm_library.yaml"
+    sl_path = reference_table_path("storm_library.yaml", memory_dir)
     if sl_path.exists():
         data = _load_yaml(sl_path)
         usable, total = _storm_library_verified_count(data) if data else (0, 0)
@@ -513,7 +517,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
                 verified_count=None,
                 last_modified_utc=None,
                 severity="MISSING",
-                remediation="run `aiswmm bootstrap memory`",
+                remediation="shipped with aiswmm under memory/initial/; reinstall aiswmm (or copy the table into the store)",
             )
         )
 
@@ -553,7 +557,7 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
 
 
 # ---------------------------------------------------------------------------
-# sessions.sqlite (issue #204)
+# memory.sqlite, the session database (issue #204; runs/sessions.sqlite before 2026-09-06)
 # ---------------------------------------------------------------------------
 
 
@@ -575,8 +579,9 @@ def _format_size(size_bytes: int | None) -> str:
     return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
 
 
-def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
-    """Return the doctor row for ``runs_dir / sessions.sqlite``.
+def collect_sessions_db_status(memory_dir: Path) -> MemoryStoreStatus:
+    """Return the doctor row for ``memory_dir / memory.sqlite`` (the session
+    database; ``runs/sessions.sqlite`` before 2026-09-06).
 
     Three branches per the issue spec:
 
@@ -591,12 +596,12 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
     """
     from agentic_swmm.memory import session_db
 
-    db_path = runs_dir / "sessions.sqlite"
+    db_path = Path(memory_dir) / "memory.sqlite"
     report = session_db.integrity_check(db_path)
 
     if report.state == "absent":
         return MemoryStoreStatus(
-            name="sessions.sqlite",
+            name="memory.sqlite",
             path=db_path,
             exists=False,
             row_count=None,
@@ -609,7 +614,7 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
     if report.state == "ok":
         last = _last_modified_utc(db_path)
         return MemoryStoreStatus(
-            name="sessions.sqlite",
+            name="memory.sqlite",
             path=db_path,
             exists=True,
             row_count=report.session_count,
@@ -632,7 +637,7 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
         # remediation hint instead.
         first_error = report.errors[0] if report.errors else "cannot read file"
         return MemoryStoreStatus(
-            name="sessions.sqlite",
+            name="memory.sqlite",
             path=db_path,
             exists=True,
             row_count=None,
@@ -649,7 +654,7 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
     # state == "corrupt"
     corrupt_pages = len(report.errors)
     return MemoryStoreStatus(
-        name="sessions.sqlite",
+        name="memory.sqlite",
         path=db_path,
         exists=True,
         row_count=None,
@@ -664,7 +669,7 @@ def collect_sessions_db_status(runs_dir: Path) -> MemoryStoreStatus:
 
 
 def render_sessions_sqlite_row(status: MemoryStoreStatus) -> str:
-    """Render the ``sessions.sqlite`` doctor row as a single line.
+    """Render the session database (``memory.sqlite``) doctor row as a single line.
 
     The shared :func:`render_memory_stores_section` renderer is fine
     for the absent / corrupt branches, but the OK branch wants the
@@ -1067,10 +1072,10 @@ def render_memory_stores_section(
     )
     lines = [header]
     for s in statuses:
-        # sessions.sqlite has its own renderer: it needs the on-disk
+        # memory.sqlite (the session database) has its own renderer: it needs the on-disk
         # size formatted compactly and the "N sessions, M messages"
         # phrasing instead of the generic "N rows".
-        if s.name == "sessions.sqlite":
+        if s.name == "memory.sqlite":
             lines.append(render_sessions_sqlite_row(s))
             continue
 

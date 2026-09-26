@@ -21,20 +21,45 @@ from agentic_swmm.memory.case_inference import infer_case_name
 from agentic_swmm.agent.swmm_runtime.run_layout import agent_file
 
 
-def default_db_path(repo_root: Path | None = None) -> Path:
-    """Return the canonical store path under ``runs/sessions.sqlite``.
+DB_FILENAME = "memory.sqlite"
+LEGACY_DB_RELATIVE = Path("runs") / "sessions.sqlite"
 
-    Honours ``AISWMM_SESSION_DB`` for tests, otherwise resolves
-    against the supplied ``repo_root`` (or the package's repo root).
+
+def default_db_path(repo_root: Path | None = None) -> Path:
+    """Return the session database path: ``<memory store>/memory.sqlite``.
+
+    Honours ``AISWMM_SESSION_DB`` for tests. ``repo_root`` (a workspace
+    root) puts the store at ``<repo_root>/memory/store``; otherwise the
+    store is :func:`agentic_swmm.utils.paths.resolve_memory_dir`.
+
+    Before 2026-09-06 the file was ``runs/sessions.sqlite``. When that
+    legacy file exists and the new path does not, it is moved into place
+    once, so the sessions a user already had are not forgotten.
     """
     override = os.environ.get("AISWMM_SESSION_DB")
     if override:
         return Path(override)
-    if repo_root is None:
-        from agentic_swmm.utils.paths import repo_root as _repo_root
+    if repo_root is not None:
+        store = repo_root / "memory" / "store"
+        legacy = repo_root / LEGACY_DB_RELATIVE
+    else:
+        from agentic_swmm.utils.paths import resolve_memory_dir, workspace_root
 
-        repo_root = _repo_root()
-    return repo_root / "runs" / "sessions.sqlite"
+        store = resolve_memory_dir()
+        legacy = workspace_root() / LEGACY_DB_RELATIVE
+    db_path = store / DB_FILENAME
+    _adopt_legacy_db(db_path, legacy)
+    return db_path
+
+
+def _adopt_legacy_db(db_path: Path, legacy: Path) -> None:
+    if db_path.exists() or not legacy.is_file():
+        return
+    try:
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        legacy.replace(db_path)
+    except OSError:
+        return
 
 
 def sync_session_to_db(

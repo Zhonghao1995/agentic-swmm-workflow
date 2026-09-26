@@ -91,15 +91,14 @@ def default_project_overrides_path(memory_dir: Path | None = None) -> Path:
     """Return the conventional path for the project overrides file.
 
     Callers typically construct this once per invocation:
-    ``default_project_overrides_path(Path("memory/modeling-memory"))``.
+    ``default_project_overrides_path(Path("memory/store"))``.
     The file does not need to exist — :func:`resolve_threshold` treats
     a missing override file as "no overrides registered".
     """
     if memory_dir is None:
-        # Two parents up from this module: agentic_swmm/memory/ ->
-        # agentic_swmm/ -> repo root.
-        repo_root = Path(__file__).resolve().parents[2]
-        memory_dir = repo_root / "memory" / "modeling-memory"
+        from agentic_swmm.utils.paths import resolve_memory_dir
+
+        memory_dir = resolve_memory_dir()
     return Path(memory_dir) / PROJECT_OVERRIDES_FILENAME
 
 

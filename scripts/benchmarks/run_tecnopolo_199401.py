@@ -273,7 +273,7 @@ def main() -> None:
         "--runs-dir",
         "runs",
         "--out-dir",
-        "memory/modeling-memory",
+        "memory/store",
     ])
 
     summary = {

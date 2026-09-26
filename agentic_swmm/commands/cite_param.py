@@ -40,7 +40,7 @@ from agentic_swmm.memory.citations import cite_parameter_choice
 from agentic_swmm.memory.reference_benchmarks import (
     load_reference_benchmarks,
 )
-from agentic_swmm.utils.paths import repo_root, resolve_memory_dir
+from agentic_swmm.utils.paths import reference_table_path, repo_root
 
 
 _CITE_PARAM_EXAMPLE = (
@@ -78,7 +78,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Optional override for reference_benchmarks.yaml. "
-            "Defaults to memory/modeling-memory/reference_benchmarks.yaml."
+            "Defaults to the shipped memory/initial/reference_benchmarks.yaml, or a copy in the memory store."
         ),
     )
     parser.add_argument(
@@ -87,7 +87,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Optional override for citations.yaml. "
-            "Defaults to memory/modeling-memory/citations.yaml."
+            "Defaults to the shipped memory/initial/citations.yaml, or a copy in the memory store."
         ),
     )
     parser.add_argument(
@@ -101,11 +101,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _default_benchmarks_path() -> Path:
-    return resolve_memory_dir() / "reference_benchmarks.yaml"
+    return reference_table_path("reference_benchmarks.yaml")
 
 
 def _default_citations_path() -> Path:
-    return resolve_memory_dir() / "citations.yaml"
+    return reference_table_path("citations.yaml")
 
 
 def _collect_dotted_keys(node: Any, prefix: str = "") -> list[str]:

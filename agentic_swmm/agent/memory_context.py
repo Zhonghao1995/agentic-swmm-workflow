@@ -356,7 +356,9 @@ def gather_memory_context(
         )
 
     parametric_path = memory_dir_path / "parametric_memory.jsonl"
-    benchmarks_path = memory_dir_path / "reference_benchmarks.yaml"
+    from agentic_swmm.utils.paths import reference_table_path
+
+    benchmarks_path = reference_table_path("reference_benchmarks.yaml", memory_dir_path)
     project_overrides_path = memory_dir_path / PROJECT_OVERRIDES_FILENAME
 
     filters: dict[str, Any] = {"case_name": case_name}

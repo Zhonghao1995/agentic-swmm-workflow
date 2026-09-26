@@ -6,7 +6,7 @@ These tests pin:
 1. Creates the four stores + README on first invocation.
 2. Re-running preserves existing files and reports them as ``skipped``.
 3. The directory is created if missing.
-4. The default location is ``./memory/modeling-memory/``.
+4. The default location is the memory store (``memory/store/``).
 5. The CLI smoke-tests via the cli main dispatcher.
 """
 
@@ -37,7 +37,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             result = bootstrap_memory_dir(target)
             self.assertIsInstance(result, BootstrapResult)
             self.assertEqual(result.target_dir, target)
-            self.assertEqual(len(result.created), 8)
+            self.assertEqual(len(result.created), 5)
             self.assertEqual(len(result.skipped), 0)
 
             # Confirm all five files exist on disk.
@@ -92,12 +92,12 @@ class BootstrapMemoryDirTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "modeling-memory"
             first = bootstrap_memory_dir(target)
-            self.assertEqual(len(first.created), 8)
+            self.assertEqual(len(first.created), 5)
 
             # Run again — nothing should be created.
             second = bootstrap_memory_dir(target)
             self.assertEqual(len(second.created), 0)
-            self.assertEqual(len(second.skipped), 8)
+            self.assertEqual(len(second.skipped), 5)
 
     def test_idempotent_preserves_user_edits(self) -> None:
         # A user might edit ``project_overrides.yaml`` between
@@ -134,7 +134,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             (target / "README.md").write_text("# custom\n", encoding="utf-8")
 
             result = bootstrap_memory_dir(target)
-            self.assertEqual(len(result.created), 6)
+            self.assertEqual(len(result.created), 3)
             self.assertEqual(len(result.skipped), 2)
             # The pre-seeded README is preserved verbatim.
             self.assertEqual(
@@ -168,7 +168,7 @@ class BootstrapMemoryDirTests(unittest.TestCase):
             self.assertFalse(target.exists())
             result = bootstrap_memory_dir(target)
             self.assertTrue(target.is_dir())
-            self.assertEqual(len(result.created), 8)
+            self.assertEqual(len(result.created), 5)
 
     def test_bootstrap_result_is_frozen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -205,7 +205,7 @@ class MemoryMainCliTests(unittest.TestCase):
                 memory_main(ns)
             output = buf.getvalue()
             self.assertIn("skipped", output)
-            self.assertIn("(8)", output)
+            self.assertIn("(5)", output)
 
     def test_register_attaches_subparser(self) -> None:
         # Smoke test that the registration plumbing works against a

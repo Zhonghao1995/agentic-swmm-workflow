@@ -65,10 +65,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         parser,
         noun="calibration-memory",
         help_text=(
-            "Path to calibration_memory.jsonl. Defaults to the project's "
-            "canonical store under memory/modeling-memory/."
+            "Path to calibration_memory.jsonl. Defaults to the memory store "
+            "(memory/store/calibration_memory.jsonl)."
         ),
-        default=Path("memory/modeling-memory/calibration_memory.jsonl"),
+        default=None,
         legacy_aliases=("--calibration-store",),
         dest="calibration_store",
     )
@@ -91,7 +91,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         noun="storm-library",
         help_text=(
             "Path to storm_library.yaml. Defaults to "
-            "memory/modeling-memory/storm_library.yaml under the "
+            "memory/store/storm_library.yaml under the "
             "repo root."
         ),
         default=None,
@@ -103,7 +103,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         noun="negative-lessons",
         help_text=(
             "Path to negative_lessons.jsonl. Defaults to "
-            "memory/modeling-memory/negative_lessons.jsonl under the "
+            "memory/store/negative_lessons.jsonl under the "
             "repo root."
         ),
         default=None,
@@ -116,7 +116,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Path to reference_benchmarks.yaml. Defaults to "
-            "memory/modeling-memory/reference_benchmarks.yaml under "
+            "memory/store/reference_benchmarks.yaml under "
             "the repo root."
         ),
     )
@@ -241,6 +241,10 @@ def _count_calibration_rows(store_path: Path) -> int:
 
 
 def main(args: argparse.Namespace) -> int:
+    if getattr(args, "calibration_store", None) is None:
+        from agentic_swmm.utils.paths import resolve_memory_dir
+
+        args.calibration_store = resolve_memory_dir() / "calibration_memory.jsonl"
     target = args.inp
     if not target.is_file():
         print(f"error: --inp not found: {target}", file=sys.stderr)

@@ -319,6 +319,10 @@ class ManningNFieldTests(unittest.TestCase):
                 candidate_attributes=_twin_attrs(),
                 top_k=1,
                 repo_root=base,
+                # Memory layout 2026-09-06: with no explicit path the shipped
+                # table under memory/initial/ is found, so "missing" must be
+                # stated explicitly here.
+                benchmarks_path=base / "missing_benchmarks.yaml",
             )
         # No benchmarks file → no prefixes → empty dict.
         self.assertEqual(recs[0].recommended_manning_n, {})

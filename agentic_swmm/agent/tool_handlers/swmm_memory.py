@@ -63,7 +63,7 @@ def _rag_index_dir() -> Path:
     override = os.environ.get("AISWMM_RAG_DIR")
     if override:
         return Path(override)
-    return resource_root() / "memory" / "rag-memory"
+    return resolve_memory_dir() / "rag"
 
 
 def _recall_memory_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:

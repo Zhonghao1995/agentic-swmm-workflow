@@ -1,11 +1,11 @@
-"""Doctor row for ``runs/sessions.sqlite`` (issue #204).
+"""Doctor row for the session database ``memory/store/memory.sqlite`` (issue #204).
 
 Adds a single :class:`MemoryStoreStatus` to the Memory stores section
 that surfaces one of three states:
 
-* ``OK      sessions.sqlite - N sessions, M messages, X.X MB``  — intact
-* ``CORRUPT sessions.sqlite - integrity check failed (Y corrupt pages); run aiswmm memory repair-sessions`` — broken
-* ``OK      sessions.sqlite - file absent (will be created on first session)`` — fresh install
+* ``OK      memory.sqlite - N sessions, M messages, X.X MB``  — intact
+* ``CORRUPT memory.sqlite - integrity check failed (Y corrupt pages); run aiswmm memory repair-sessions`` — broken
+* ``OK      memory.sqlite - file absent (will be created on first session)`` — fresh install
 
 Tested at two layers:
 
@@ -69,7 +69,7 @@ def test_sessions_sqlite_row_absent(tmp_path: Path) -> None:
 
     status = collect_sessions_db_status(runs_dir)
 
-    assert status.name == "sessions.sqlite"
+    assert status.name == "memory.sqlite"
     assert status.severity == "OK"
     assert "file absent" in (status.remediation or "")
 
@@ -83,11 +83,11 @@ def test_sessions_sqlite_row_ok(tmp_path: Path) -> None:
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    _seed_intact_db(runs_dir / "sessions.sqlite")
+    _seed_intact_db(runs_dir / "memory.sqlite")
 
     status = collect_sessions_db_status(runs_dir)
 
-    assert status.name == "sessions.sqlite"
+    assert status.name == "memory.sqlite"
     assert status.severity == "OK"
     assert status.row_count == 1  # 1 session
     assert status.verified_count == 7  # 7 messages
@@ -104,7 +104,7 @@ def test_sessions_sqlite_row_corrupt(tmp_path: Path) -> None:
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    db_path = runs_dir / "sessions.sqlite"
+    db_path = runs_dir / "memory.sqlite"
     _seed_intact_db(db_path)
     _corrupt(db_path)
     # Bust the per-path cache so the post-corruption probe re-runs.
@@ -112,7 +112,7 @@ def test_sessions_sqlite_row_corrupt(tmp_path: Path) -> None:
 
     status = collect_sessions_db_status(runs_dir)
 
-    assert status.name == "sessions.sqlite"
+    assert status.name == "memory.sqlite"
     assert status.severity == "CORRUPT"
     assert status.remediation is not None
     assert "aiswmm memory repair-sessions" in status.remediation
@@ -134,7 +134,7 @@ def test_render_memory_stores_includes_sessions_sqlite_row_absent(
 
     rendered = render_memory_stores_section([status])
 
-    assert "sessions.sqlite" in rendered
+    assert "memory.sqlite" in rendered
     assert "file absent" in rendered
 
 
@@ -150,13 +150,13 @@ def test_render_memory_stores_includes_sessions_sqlite_row_ok(
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    _seed_intact_db(runs_dir / "sessions.sqlite")
+    _seed_intact_db(runs_dir / "memory.sqlite")
     status = collect_sessions_db_status(runs_dir)
 
     rendered = render_memory_stores_section([status])
 
     # Acceptance criterion wording from the issue.
-    assert "sessions.sqlite" in rendered
+    assert "memory.sqlite" in rendered
     assert "session" in rendered  # "1 session" or "1 sessions"
     # The size is rendered as "X.X MB" (or "X KB" for small DBs).
     assert "B" in rendered  # "KB" or "MB" tail
@@ -174,7 +174,7 @@ def test_render_memory_stores_includes_sessions_sqlite_row_corrupt(
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    db_path = runs_dir / "sessions.sqlite"
+    db_path = runs_dir / "memory.sqlite"
     _seed_intact_db(db_path)
     _corrupt(db_path)
     session_db.clear_integrity_cache()
@@ -183,7 +183,7 @@ def test_render_memory_stores_includes_sessions_sqlite_row_corrupt(
     rendered = render_memory_stores_section([status])
 
     assert "CORRUPT" in rendered
-    assert "sessions.sqlite" in rendered
+    assert "memory.sqlite" in rendered
     assert "integrity check failed" in rendered
     assert "aiswmm memory repair-sessions" in rendered
 
@@ -203,7 +203,7 @@ def test_render_corrupt_severity_header_counter(tmp_path: Path) -> None:
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    db_path = runs_dir / "sessions.sqlite"
+    db_path = runs_dir / "memory.sqlite"
     _seed_intact_db(db_path)
     _corrupt(db_path)
     session_db.clear_integrity_cache()
@@ -234,12 +234,13 @@ def test_doctor_exit_code_nonzero_on_corrupt_sessions_sqlite(
     session_db.clear_integrity_cache()
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    db_path = runs_dir / "sessions.sqlite"
+    db_path = runs_dir / "memory.sqlite"
     _seed_intact_db(db_path)
     _corrupt(db_path)
     session_db.clear_integrity_cache()
 
-    monkeypatch.setenv("AISWMM_RUNS_ROOT", str(runs_dir))
+    # Memory layout 2026-09-06: the session database lives in the memory store.
+    monkeypatch.setenv("AISWMM_MEMORY_DIR", str(runs_dir))
 
     buf = io.StringIO()
     with redirect_stdout(buf):
@@ -249,5 +250,5 @@ def test_doctor_exit_code_nonzero_on_corrupt_sessions_sqlite(
     body = buf.getvalue()
     # Issues section surfaces the corrupt row + the remediation hint.
     assert "Issues:" in body
-    assert "sessions.sqlite" in body
+    assert "memory.sqlite" in body
     assert "aiswmm memory repair-sessions" in body

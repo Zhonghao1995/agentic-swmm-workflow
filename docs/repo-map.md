@@ -27,7 +27,7 @@ One table binds the layers: `EXPECTED_BINDINGS` in `agentic_swmm/agent/mcp_cover
 | `tests/` | Top-level test suite. |
 | `scripts/` | Installers and bootstrap, benchmarks, acceptance runner, MCP config generation. |
 | `agent/` | Startup memory files the planner loads, plus `config/intent_map.json` (keyword-to-skill routing hints). |
-| `memory/modeling-memory/` | Generated modeling memory derived from audited runs. |
+| `memory/` | `initial/` is the hand-written, shipped memory (startup files, reference tables); `store/` and `proposals/` are written by the program in the workspace and never committed. |
 | `examples/` | Small reusable input fixtures and prepared cases. |
 | `cases/` | Public case studies with their figures and sample deliverables. |
 | `data/` | Raw GIS inputs backing the bundled cases. |
@@ -92,8 +92,8 @@ New sessions land under `runs/<YYYY-MM-DD>/<HHMMSS>_<case>_run/` (a goal that ex
 
 | Layer | Path | Job |
 |---|---|---|
-| Startup memory | `agent/memory/` | Identity and operating posture the planner loads into its system prompt. |
-| Modeling memory | `memory/modeling-memory/` | Generated summaries of audited runs: lessons, parametric records, proposals. |
+| Startup memory | `memory/initial/` | Identity and operating posture the planner loads into its system prompt, plus the reference tables. |
+| Project memory | `memory/store/` | What the program writes from audited runs: ledgers, the session database, generated views. Gitignored. |
 | Session evidence | `runs/**/agent_trace.jsonl` and `09_audit/` | Per-session event log and derived audit records. |
 
 The audit layer feeds modeling memory:

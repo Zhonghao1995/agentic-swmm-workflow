@@ -109,10 +109,10 @@ def _seed_row(
 
 def _write_target_and_library(tmp: Path) -> tuple[Path, Path]:
     """Build a layout that matches the repo-root convention used by
-    ``_storm_key_resolves`` (memory/modeling-memory/storm_library.yaml)."""
+    ``_storm_key_resolves`` (memory/store/storm_library.yaml, a store copy overriding the shipped table)."""
     target = tmp / "new_case.inp"
     target.write_text(_TINY_INP, encoding="utf-8")
-    lib_dir = tmp / "memory" / "modeling-memory"
+    lib_dir = tmp / "memory" / "store"
     lib_dir.mkdir(parents=True, exist_ok=True)
     lib_path = lib_dir / "storm_library.yaml"
     lib_path.write_text(_LIBRARY_YAML, encoding="utf-8")
@@ -124,7 +124,7 @@ class StormKeyRationaleTests(unittest.TestCase):
         with TemporaryDirectory() as raw:
             tmp = Path(raw)
             target, _ = _write_target_and_library(tmp)
-            store = tmp / "memory" / "modeling-memory" / "calibration_memory.jsonl"
+            store = tmp / "memory" / "store" / "calibration_memory.jsonl"
             _seed_row(
                 store,
                 "saanich-b8",
@@ -150,7 +150,7 @@ class StormKeyRationaleTests(unittest.TestCase):
         with TemporaryDirectory() as raw:
             tmp = Path(raw)
             target, _ = _write_target_and_library(tmp)
-            store = tmp / "memory" / "modeling-memory" / "calibration_memory.jsonl"
+            store = tmp / "memory" / "store" / "calibration_memory.jsonl"
             _seed_row(store, "rouge-a1")  # no metadata block
 
             recs = recommend_parameters_for_new_case(
@@ -168,7 +168,7 @@ class StormKeyRationaleTests(unittest.TestCase):
         with TemporaryDirectory() as raw:
             tmp = Path(raw)
             target, _ = _write_target_and_library(tmp)
-            store = tmp / "memory" / "modeling-memory" / "calibration_memory.jsonl"
+            store = tmp / "memory" / "store" / "calibration_memory.jsonl"
             _seed_row(
                 store,
                 "rouge-a2",
@@ -197,7 +197,7 @@ class StormKeyRationaleTests(unittest.TestCase):
             target = tmp / "new_case.inp"
             target.write_text(_TINY_INP, encoding="utf-8")
             # NOTE: no memory/modeling-memory dir created.
-            store = tmp / "memory" / "modeling-memory" / "calibration_memory.jsonl"
+            store = tmp / "memory" / "store" / "calibration_memory.jsonl"
             _seed_row(
                 store,
                 "rouge-a3",
@@ -219,7 +219,7 @@ class StormKeyRationaleTests(unittest.TestCase):
         with TemporaryDirectory() as raw:
             tmp = Path(raw)
             target, _ = _write_target_and_library(tmp)
-            store = tmp / "memory" / "modeling-memory" / "calibration_memory.jsonl"
+            store = tmp / "memory" / "store" / "calibration_memory.jsonl"
             # metadata is a string instead of dict.
             _seed_row(store, "rouge-a4", metadata=None)
             # Append a corrupt extra row by hand to exercise the

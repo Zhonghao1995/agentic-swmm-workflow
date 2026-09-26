@@ -111,8 +111,10 @@ def _apply_onboarding_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
             parametric_store = memory_dir / "parametric_memory.jsonl"
             calibration_store = memory_dir / "calibration_memory.jsonl"
             negative_store = memory_dir / "negative_lessons.jsonl"
-            storm_library = memory_dir / "storm_library.yaml"
-            benchmarks = memory_dir / "reference_benchmarks.yaml"
+            from agentic_swmm.utils.paths import reference_table_path
+
+            storm_library = reference_table_path("storm_library.yaml", memory_dir)
+            benchmarks = reference_table_path("reference_benchmarks.yaml", memory_dir)
             # Look for the target INP in conventional locations.
             from agentic_swmm.utils.paths import repo_root
             from agentic_swmm.memory.cross_watershed_transfer import (

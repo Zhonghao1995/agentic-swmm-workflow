@@ -336,7 +336,9 @@ def _storm_key_resolves(storm_key: str, repo_root: Path) -> bool:
     # storm_library into their import graph.
     from agentic_swmm.memory.storm_library import recall_chicago_spec
 
-    library_path = repo_root / "memory" / "modeling-memory" / "storm_library.yaml"
+    from agentic_swmm.utils.paths import reference_table_path
+
+    library_path = reference_table_path("storm_library.yaml", repo_root / "memory" / "store")
     spec = recall_chicago_spec(library_path, storm_key)
     return spec is not None
 
@@ -638,20 +640,23 @@ def recommend_parameters_for_new_case(
 
     # Resolve enrichment-store paths once per call so per-source-case
     # lookups stay cheap and the defaults derive from ``repo_root``.
+    from agentic_swmm.utils.paths import reference_table_path
+
+    store_dir = repo_root_path / "memory" / "store"
     storm_library = (
         Path(storm_library_path)
         if storm_library_path is not None
-        else repo_root_path / "memory" / "modeling-memory" / "storm_library.yaml"
+        else reference_table_path("storm_library.yaml", store_dir)
     )
     negative_store = (
         Path(negative_lessons_store)
         if negative_lessons_store is not None
-        else repo_root_path / "memory" / "modeling-memory" / "negative_lessons.jsonl"
+        else store_dir / "negative_lessons.jsonl"
     )
     benchmarks = (
         Path(benchmarks_path)
         if benchmarks_path is not None
-        else repo_root_path / "memory" / "modeling-memory" / "reference_benchmarks.yaml"
+        else reference_table_path("reference_benchmarks.yaml", store_dir)
     )
 
     recommendations: list[TransferRecommendation] = []
@@ -717,8 +722,8 @@ def _default_repo_root(calibration_store: Path) -> Path:
     """Best-effort repo root for the conventional-location lookup.
 
     The canonical layout is
-    ``<repo>/memory/modeling-memory/calibration_memory.jsonl`` so the
-    grandparent of the store is a safe default. Callers can always
+    ``<workspace>/memory/store/calibration_memory.jsonl`` so the
+    great-grandparent of the store file is a safe default. Callers can always
     override via the ``repo_root`` argument.
     """
     store = Path(calibration_store)

@@ -9,7 +9,7 @@ Part of [Agentic SWMM](https://github.com/Zhonghao1995/agentic-swmm-workflow) �
 
 ## What this skill provides
 - A top-level orchestration contract for the agent runtime.
-- A stable handoff point for Agentic AI project memory in `agent/memory/`.
+- A stable handoff point for Agentic AI project memory in `memory/initial/`.
 - A deterministic execution order across the existing module skills:
   - `swmm-canada` (entry skill for Canadian AOIs — real municipal pipes where covered, synthesized elsewhere in Canada)
   - `swmm-anywhere` (entry skill for data-scarce regions outside Canada — no real pipe data)
@@ -48,7 +48,7 @@ Use this skill when the user asks for:
 Do **not** use this skill when the user clearly wants only one module in isolation, such as only rainfall formatting or only calibration metrics.
 
 ## Recommended public memory preload
-Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `agent/memory/`:
+Before using this skill in Codex, OpenClaw, Hermes, or another compatible runtime, load the Markdown files in `memory/initial/`:
 
 1. `identification_memory.md`
 2. `soul.md`

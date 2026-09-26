@@ -96,7 +96,11 @@ class CollectMemoryStoreStatusEmptyDirTests(unittest.TestCase):
         )
         # 6 are MISSING; project_overrides.yaml is OK when absent.
         severities = [s.severity for s in statuses]
-        self.assertEqual(severities.count("MISSING"), 6)
+        # Memory layout 2026-09-06: the three reference tables ship under
+        # memory/initial/ and resolve there when the store has no copy, so an
+        # empty store reports them PARTIAL (placeholder values), not MISSING.
+        self.assertEqual(severities.count("MISSING"), 3)
+        self.assertEqual(severities.count("PARTIAL"), 3)
         self.assertEqual(severities.count("OK"), 2)  # project_overrides + absent run_failures (healthy)
         # Every MISSING store has an actionable remediation.
         for s in statuses[:-1]:

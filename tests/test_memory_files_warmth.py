@@ -24,7 +24,7 @@ import unittest
 from pathlib import Path
 
 
-_MEMORY_DIR = Path(__file__).resolve().parents[1] / "agent" / "memory"
+_MEMORY_DIR = Path(__file__).resolve().parents[1] / "memory" / "initial"
 
 _FILES = (
     "soul.md",

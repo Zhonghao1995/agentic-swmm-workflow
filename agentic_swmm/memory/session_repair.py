@@ -47,7 +47,9 @@ def repair_sessions_db(
 
     runs_dir = Path(runs_dir)
     if db_path is None:
-        db_path = runs_dir / "sessions.sqlite"
+        from agentic_swmm.memory.session_sync import default_db_path
+
+        db_path = default_db_path()
     db_path = Path(db_path)
 
     summary: dict[str, Any] = {

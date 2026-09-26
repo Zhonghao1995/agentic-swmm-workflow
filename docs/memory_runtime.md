@@ -12,7 +12,7 @@ exception.
 
 ## Substrate
 
-All memory artifacts live under `memory/modeling-memory/` in the
+All program-written memory artifacts live under `memory/store/` in the workspace (the shipped reference tables live under `memory/initial/`), in the
 project root. The directory is created lazily by the audit hook, or
 explicitly via `aiswmm bootstrap memory`.
 
@@ -269,7 +269,7 @@ fixers); leave it unset for interactive modeling work.
 1. **Install** — Python, swmm5, MCP routing, package skills.
 2. **Memory stores** — file existence, row counts, last-modified
    timestamps, and verified-entry counts for every store under
-   `memory/modeling-memory/`. A fresh PyPI install shows seven
+   `memory/store/`. A fresh PyPI install shows seven
    `MISSING` rows pointing the user at `aiswmm bootstrap memory`
    or the YAML-library copy paths.
 3. **Runtime knobs** — current state (set/unset and raw value) of

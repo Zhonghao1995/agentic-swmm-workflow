@@ -9,8 +9,9 @@ from pathlib import Path
 
 FORBIDDEN_SUBSTRINGS = (
     "/skills/swmm-lid-optimization/",
-    "/memory/modeling-memory/projects/",
-    "/memory/modeling-memory/run_memory_summaries.json",
+    # The memory store is program-written and never ships (2026-09-06).
+    "/memory/store/",
+    "/memory/facts.md",
     "/skills/swmm-gis/scripts/flowpath_entropy_partition.py",
     "/skills/swmm-gis/scripts/cell_entropy_similarity_aggregation.py",
     "/skills/swmm-gis/scripts/plot_entropy_threshold_sensitivity.py",

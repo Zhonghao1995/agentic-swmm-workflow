@@ -60,29 +60,26 @@ PUBLIC_SKILLS = {
 
 PUBLIC_AGENT_FILES = {
     Path("agent/config/intent_map.json"),
-    # Curated cross-session project facts (PRD session-db-facts). Only
-    # the tracked facts.md is shipped; the gitignored staging file
-    # never makes it into the wheel.
-    Path("agent/memory/curated/facts.md"),
 }
 
-# The runtime declares these as REQUIRED resources (agentic_swmm/runtime/
-# registry.py: LONG_TERM_MEMORY_FILES + MODELING_MEMORY_FILES). They are all
-# git-tracked/public, so the public wheel must ship them or `aiswmm setup`
-# reports incomplete after a real pip install (review P1-1). Keep this set in
-# sync with the registry; test_wheel_ships_registry_memory pins that.
+# The hand-written memory the runtime declares as REQUIRED resources
+# (agentic_swmm/runtime/registry.py: LONG_TERM_MEMORY_FILES +
+# REFERENCE_TABLE_FILES). They are git-tracked under memory/initial/ and the
+# public wheel must ship them or `aiswmm setup` reports incomplete after a
+# real pip install (review P1-1). Nothing else under memory/ ships: the
+# store and the facts file are written in the user's workspace. Keep this
+# set in sync with the registry; test_wheel_ships_registry_memory pins that.
 PUBLIC_MEMORY_FILES = {
-    Path("agent/memory/identification_memory.md"),
-    Path("agent/memory/operational_memory.md"),
-    Path("agent/memory/evidence_memory.md"),
-    Path("agent/memory/soul.md"),
-    Path("agent/memory/modeling_workflow_memory.md"),
-    Path("agent/memory/user_bridge_memory.md"),
-    Path("agent/memory/README.md"),
-    Path("memory/modeling-memory/modeling_memory_index.md"),
-    Path("memory/modeling-memory/lessons_learned.md"),
-    Path("memory/modeling-memory/benchmark_verification_plan.md"),
-    Path("memory/modeling-memory/skill_update_proposals.md"),
+    Path("memory/initial/identification_memory.md"),
+    Path("memory/initial/operational_memory.md"),
+    Path("memory/initial/evidence_memory.md"),
+    Path("memory/initial/soul.md"),
+    Path("memory/initial/modeling_workflow_memory.md"),
+    Path("memory/initial/user_bridge_memory.md"),
+    Path("memory/initial/README.md"),
+    Path("memory/initial/reference_benchmarks.yaml"),
+    Path("memory/initial/storm_library.yaml"),
+    Path("memory/initial/citations.yaml"),
 }
 
 EXCLUDED_DIRS = {
@@ -166,7 +163,7 @@ def _include_public_resource(relative: Path) -> bool:
     if not parts:
         return False
     if parts[0] == "agent":
-        return relative in PUBLIC_AGENT_FILES or relative in PUBLIC_MEMORY_FILES
+        return relative in PUBLIC_AGENT_FILES
     if parts[0] == "skills":
         return len(parts) >= 2 and parts[1] in PUBLIC_SKILLS
     if parts[0] == "scripts":

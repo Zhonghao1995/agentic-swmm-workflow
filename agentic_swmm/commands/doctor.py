@@ -497,10 +497,10 @@ def main(args: argparse.Namespace) -> int:
 
     memory_dir = _memory_dir(root)
     memory_stores = collect_memory_store_status(memory_dir)
-    # Append the cross-session SQLite store row (issue #204). It lives
-    # under runs/, not memory/modeling-memory/, so it has its own
-    # collector — but it renders in the same Memory stores section.
-    memory_stores.append(collect_sessions_db_status(_runs_dir(root)))
+    # Append the session database row (issue #204). Since 2026-09-06 it is
+    # memory.sqlite inside the store; it keeps its own collector because it
+    # renders row counts, not line counts.
+    memory_stores.append(collect_sessions_db_status(memory_dir))
     optout_flags = collect_optout_status()
     llm_provider = collect_llm_provider_status()
 

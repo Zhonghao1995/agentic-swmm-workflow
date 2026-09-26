@@ -5,7 +5,7 @@ Two files live side by side:
 - ``agent/memory/curated/facts.md``
     Tracked. The agent reads this at startup and injects its content
     under a ``<project-facts>`` fence into the system prompt.
-- ``agent/memory/curated/facts_staging.md``
+- ``memory/facts_staging.md``
     Gitignored. The ``record_fact`` tool appends candidate facts here.
     The user reviews and promotes them with ``aiswmm memory promote-facts``.
 
@@ -55,18 +55,20 @@ class FactsPaths:
 def resolve_paths(repo_root: Path | None = None) -> FactsPaths:
     """Return the resolved facts paths.
 
-    Honours ``AISWMM_FACTS_DIR`` for tests; otherwise resolves under
-    ``agent/memory/curated/`` of the supplied (or package) repo root.
+    Honours ``AISWMM_FACTS_DIR`` for tests; otherwise the facts live in the
+    workspace's ``memory/`` folder next to the store (``memory/facts.md``,
+    promoted and human-approved; ``memory/facts_staging.md``, program
+    written and gitignored). ``repo_root`` overrides the workspace root.
     """
     override = os.environ.get("AISWMM_FACTS_DIR")
     if override:
         curated_dir = Path(override)
+    elif repo_root is not None:
+        curated_dir = repo_root / "memory"
     else:
-        if repo_root is None:
-            from agentic_swmm.utils.paths import repo_root as _repo_root
+        from agentic_swmm.utils.paths import resolve_memory_dir
 
-            repo_root = _repo_root()
-        curated_dir = repo_root / "agent" / "memory" / "curated"
+        curated_dir = resolve_memory_dir().parent
     return FactsPaths(
         curated_dir=curated_dir,
         facts_md=curated_dir / "facts.md",

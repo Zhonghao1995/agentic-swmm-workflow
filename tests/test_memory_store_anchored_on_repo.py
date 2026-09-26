@@ -20,14 +20,14 @@ def test_run_failures_store_is_anchored_on_the_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     store = run_failures.resolve_store()
     assert store.is_absolute()
-    assert store == repo_root() / "memory" / "modeling-memory" / "run_failures.jsonl"
+    assert store == repo_root() / "memory" / "store" / "run_failures.jsonl"
     assert not (tmp_path / "memory").exists()
 
 
 def test_audit_hook_memory_dir_is_anchored_on_the_repo(tmp_path, monkeypatch):
     monkeypatch.delenv("AISWMM_MEMORY_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
-    assert audit_hook._resolve_memory_dir(None) == repo_root() / "memory" / "modeling-memory"
+    assert audit_hook._resolve_memory_dir(None) == repo_root() / "memory" / "store"
 
 
 def test_explicit_arguments_and_the_override_still_win(tmp_path, monkeypatch):
@@ -36,4 +36,4 @@ def test_explicit_arguments_and_the_override_still_win(tmp_path, monkeypatch):
     assert audit_hook._resolve_memory_dir(None) == Path(str(tmp_path / "override"))
     monkeypatch.delenv("AISWMM_MEMORY_DIR", raising=False)
     assert run_failures.resolve_store(tmp_path / "explicit") == tmp_path / "explicit" / "run_failures.jsonl"
-    assert audit_hook._resolve_memory_dir(tmp_path / "proj") == tmp_path / "proj" / "memory" / "modeling-memory"
+    assert audit_hook._resolve_memory_dir(tmp_path / "proj") == tmp_path / "proj" / "memory" / "store"

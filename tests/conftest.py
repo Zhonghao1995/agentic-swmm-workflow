@@ -36,13 +36,10 @@ def _memory_store_copy(tmp_path_factory):
     default path is the repo-relative store). Hundreds of test rows had
     accumulated in the failure memory the product is meant to learn from.
     """
-    import shutil
-
-    source = Path(__file__).resolve().parents[1] / "memory" / "modeling-memory"
-    target = tmp_path_factory.mktemp("modeling-memory")
-    if source.is_dir():
-        shutil.copytree(source, target, dirs_exist_ok=True)
-    return target
+    # Since 2026-09-06 nothing program-written is tracked, so the copy is
+    # an empty store; reference tables resolve to memory/initial/ through
+    # utils.paths.reference_table_path when the store has no override.
+    return tmp_path_factory.mktemp("memory-store")
 
 
 @pytest.fixture(autouse=True)

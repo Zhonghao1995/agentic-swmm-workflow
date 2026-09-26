@@ -17,7 +17,7 @@ from agentic_swmm.agent.flag_naming import (
     register_quiet_flag,
 )
 from agentic_swmm.memory.citations import recall_citation
-from agentic_swmm.utils.paths import repo_root, resolve_memory_dir
+from agentic_swmm.utils.paths import reference_table_path, repo_root
 
 
 _CITE_EXAMPLE = "aiswmm cite huber_dickinson_1988"
@@ -39,7 +39,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         default=None,
         help=(
             "Optional override for the citations.yaml location. "
-            "Defaults to memory/modeling-memory/citations.yaml."
+            "Defaults to the shipped memory/initial/citations.yaml, or a copy in the memory store."
         ),
     )
     parser.add_argument(
@@ -53,7 +53,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _default_path() -> Path:
-    return resolve_memory_dir() / "citations.yaml"
+    return reference_table_path("citations.yaml")
 
 
 def main(args: argparse.Namespace) -> int:
