@@ -302,6 +302,8 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
       failure_class TEXT,
       summary       TEXT,
       recorded_at   TEXT,
+      pattern       TEXT,
+      fix           TEXT,
       raw           TEXT
     )
     """,
@@ -371,17 +373,35 @@ _PREVIOUS_SESSION_FENCE = re.compile(
 )
 
 
+#: Columns added to a table after its first release: (table, column, type).
+#: ``CREATE TABLE IF NOT EXISTS`` leaves an existing table alone, so
+#: :func:`initialize` adds these to a database created before them.
+_ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("failures", "pattern", "TEXT"),
+    ("failures", "fix", "TEXT"),
+)
+
+
+def _add_missing_columns(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _ADDED_COLUMNS:
+        present = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in present:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def initialize(db_path: Path) -> None:
     """Create the schema in ``db_path`` if it is not already present.
 
     Safe to call repeatedly — the IF NOT EXISTS clauses keep this
-    idempotent. The schema_version row is upserted so the file always
-    carries the current marker.
+    idempotent, and columns added since a database was created are
+    appended in place. The schema_version row is upserted so the file
+    always carries the current marker.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
         for stmt in _SCHEMA_STATEMENTS:
             conn.execute(stmt)
+        _add_missing_columns(conn)
         conn.execute(
             "INSERT OR REPLACE INTO schema_version(version) VALUES (?)",
             (SCHEMA_VERSION,),

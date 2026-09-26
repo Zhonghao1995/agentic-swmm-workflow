@@ -40,7 +40,7 @@ LEDGER_TABLES: dict[str, str] = {
 #: columns copied out of the raw row so the table can be queried without
 #: parsing JSON; everything else stays in ``raw``.
 _INDEXED: dict[str, tuple[str, ...]] = {
-    "failures": ("run_id", "tool", "failure_class", "summary", "recorded_at"),
+    "failures": ("run_id", "tool", "failure_class", "summary", "recorded_at", "pattern", "fix"),
     "parametric": ("run_id", "case_name", "calibration_status", "recorded_utc"),
     "calibration": ("run_id", "case_name", "use_case", "algorithm", "objective_name", "created_at"),
     "negative_lessons": ("run_id", "case_name", "lesson_type", "recorded_at"),
