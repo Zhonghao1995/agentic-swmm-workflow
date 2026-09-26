@@ -55,6 +55,46 @@ def _isolated_memory_store(monkeypatch, _memory_store_copy):
     if _MEMORY_DIR_PRESET_AT_SESSION_START:
         return
     monkeypatch.setenv("AISWMM_MEMORY_DIR", str(_memory_store_copy))
+    # The session database follows the store (2026-09-06); a test that clears
+    # the environment still falls back to the real workspace, which the
+    # session-end guard below reports.
+    monkeypatch.setenv("AISWMM_SESSION_DB", str(_memory_store_copy / "memory.sqlite"))
+
+
+def _real_store_snapshot() -> dict[str, tuple[int, int]]:
+    """Size and mtime of every file in the real workspace store."""
+    store = Path(__file__).resolve().parents[1] / "memory" / "store"
+    if not store.is_dir():
+        return {}
+    out: dict[str, tuple[int, int]] = {}
+    for path in store.rglob("*"):
+        if path.is_file():
+            stat = path.stat()
+            out[str(path.relative_to(store))] = (stat.st_size, stat.st_mtime_ns)
+    return out
+
+
+def pytest_sessionstart(session):
+    session.config._aiswmm_real_store_before = _real_store_snapshot()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """The suite never writes the developer's own memory (F-14, 2026-09-02;
+    the session database joined the rule on 2026-09-06 after a full run left
+    eight test sessions in memory/store/memory.sqlite)."""
+    before = getattr(session.config, "_aiswmm_real_store_before", None)
+    if before is None:
+        return
+    after = _real_store_snapshot()
+    changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    if changed:
+        sys.stderr.write(
+            "\nERROR: the test suite wrote into the real memory store (memory/store/): "
+            + ", ".join(changed)
+            + "\nA test dropped AISWMM_MEMORY_DIR / AISWMM_SESSION_DB (or cleared the environment) "
+            "and then ran a session. Isolate it.\n"
+        )
+        session.exitstatus = 1
 
 
 
