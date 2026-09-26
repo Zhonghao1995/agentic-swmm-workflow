@@ -262,7 +262,7 @@ Prepared-input example:
 aiswmm run --inp examples/tecnopolo/tecnopolo_r1_199401.inp --run-dir runs/tecnopolo-cli --node OUT_0
 aiswmm audit --run-dir runs/tecnopolo-cli
 aiswmm plot --run-dir runs/tecnopolo-cli --node OUT_0
-aiswmm memory --runs-dir runs --out-dir memory/modeling-memory
+aiswmm memory --runs-dir runs --out-dir memory/store
 ```
 
 The CLI currently wraps the existing validated scripts. Lower-level scripts and MCP tools remain the right interface for module development, debugging, GIS preprocessing, parameter mapping, network import, calibration, and uncertainty workflows that are not yet exposed through the CLI.
@@ -283,7 +283,7 @@ The `aiswmm` CLI groups verbs by purpose. Run `aiswmm --help` for the full group
 | `aiswmm transfer` | Suggest starter parameters for a new case from similar past cases. | `aiswmm transfer --inp examples/saanich/saanich.inp --top-k 3` |
 | `aiswmm uncertainty plan` | Plan a SALib uncertainty scan (does not execute SWMM). | `aiswmm uncertainty plan --inp model.inp --param manning_n=0.010,0.018 --method morris --n-samples 50` |
 | `aiswmm calibrate` | Calibration loop with checkpoint-aware progress (stub today). | `aiswmm calibrate --inp model.inp --run-id calib_001 --total-iters 100 --param manning_n=0.010,0.018 --run-dir runs/calib_001` |
-| `aiswmm bootstrap memory` | Scaffold an empty `memory/modeling-memory/` skeleton. | `aiswmm bootstrap memory --dir memory/modeling-memory` |
+| `aiswmm bootstrap memory` | Scaffold an empty `memory/store/` skeleton. | `aiswmm bootstrap memory --dir memory/store` |
 | `aiswmm doctor` | Diagnose install, memory stores, and opt-out knobs; optional `--fix`. | `aiswmm doctor --fix --yes` |
 
 The flag convention is shared across verbs: `--inp` for the model input, `--<noun>-path` for path overrides (`--calibration-memory-path`, `--storm-library-path`, ...), `--<noun>-entry` for keys inside a library, `--json` for machine-readable output, and `--quiet` to suppress chrome. Legacy flag spellings (for example `--base-inp`, `--calibration-store`, `--from-library`) still work, but emit a `[deprecated]:` warning to stderr.

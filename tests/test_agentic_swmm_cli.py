@@ -1014,23 +1014,19 @@ class AgenticSwmmCliTests(unittest.TestCase):
             # #79 P1-1 expanded LONG_TERM_MEMORY_FILES from 3 to 7. Use
             # dynamic counts from the runtime registry so future expansions
             # don't drift the test.
+            # Memory layout 2026-09-06: the registry only declares the
+            # hand-written startup files; generated memory is not a resource.
             from agentic_swmm.runtime.registry import (
                 LONG_TERM_MEMORY_FILES as _LONG_TERM_MEMORY_FILES,
-                MODELING_MEMORY_FILES as _MODELING_MEMORY_FILES,
             )
             expected_long_term = len(_LONG_TERM_MEMORY_FILES)
-            expected_project_modeling = len(_MODELING_MEMORY_FILES)
             self.assertEqual(
                 payload["resources"]["memory_files"],
-                expected_long_term + expected_project_modeling,
+                expected_long_term,
             )
             self.assertEqual(
                 payload["resources"]["memory_layers"]["long_term"],
                 expected_long_term,
-            )
-            self.assertEqual(
-                payload["resources"]["memory_layers"]["project_modeling"],
-                expected_project_modeling,
             )
             self.assertTrue((Path(tmp) / "config.toml").exists())
             self.assertTrue((Path(tmp) / "skills.json").exists())

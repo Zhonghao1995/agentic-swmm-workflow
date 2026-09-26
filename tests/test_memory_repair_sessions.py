@@ -294,7 +294,11 @@ class RepairSessionsCLITests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             runs_dir = Path(tmp)
-            db_path = runs_dir / "sessions.sqlite"
+            # Memory layout 2026-09-06: the session database lives in the
+            # memory store, not under runs/.
+            store = runs_dir / "store"
+            store.mkdir()
+            db_path = store / "memory.sqlite"
             _seed_intact_db(db_path)
             _corrupt(db_path)
             session_db.clear_integrity_cache()
@@ -311,6 +315,7 @@ class RepairSessionsCLITests(unittest.TestCase):
             import os
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
+            os.environ["AISWMM_MEMORY_DIR"] = str(store)
             try:
                 with redirect_stdout(buf):
                     # ``--yes`` skips the new interactive prompt
@@ -320,11 +325,12 @@ class RepairSessionsCLITests(unittest.TestCase):
                     rc = cli_main(["memory", "repair-sessions", "--yes"])
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
+                os.environ.pop("AISWMM_MEMORY_DIR", None)
 
         self.assertEqual(rc, 0)
         body = buf.getvalue()
         # Summary mentions both the backup filename and the rebuild count.
-        self.assertIn("sessions.sqlite.corrupt-", body)
+        self.assertIn("memory.sqlite.corrupt-", body)
         self.assertIn("rebuilt", body.lower())
 
     def test_cli_repair_sessions_dry_run_writes_nothing(self) -> None:
@@ -337,7 +343,11 @@ class RepairSessionsCLITests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             runs_dir = Path(tmp)
-            db_path = runs_dir / "sessions.sqlite"
+            # Memory layout 2026-09-06: the session database lives in the
+            # memory store, not under runs/.
+            store = runs_dir / "store"
+            store.mkdir()
+            db_path = store / "memory.sqlite"
             _seed_intact_db(db_path)
             _corrupt(db_path)
             session_db.clear_integrity_cache()
@@ -355,6 +365,7 @@ class RepairSessionsCLITests(unittest.TestCase):
             import os
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
+            os.environ["AISWMM_MEMORY_DIR"] = str(store)
             try:
                 with redirect_stdout(buf):
                     rc = cli_main(
@@ -362,6 +373,7 @@ class RepairSessionsCLITests(unittest.TestCase):
                     )
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
+                os.environ.pop("AISWMM_MEMORY_DIR", None)
 
             self.assertEqual(rc, 0)
             body = buf.getvalue()
@@ -371,7 +383,7 @@ class RepairSessionsCLITests(unittest.TestCase):
             # File untouched — same bytes as before.
             self.assertEqual(db_path.read_bytes(), corrupt_bytes)
             # No backup file was created.
-            backups = list(runs_dir.glob("sessions.sqlite.corrupt-*"))
+            backups = list(store.glob("memory.sqlite.corrupt-*"))
             self.assertEqual(backups, [])
 
     def test_cli_repair_sessions_refuses_without_yes_on_non_tty(
@@ -386,7 +398,11 @@ class RepairSessionsCLITests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             runs_dir = Path(tmp)
-            db_path = runs_dir / "sessions.sqlite"
+            # Memory layout 2026-09-06: the session database lives in the
+            # memory store, not under runs/.
+            store = runs_dir / "store"
+            store.mkdir()
+            db_path = store / "memory.sqlite"
             _seed_intact_db(db_path)
             _corrupt(db_path)
             session_db.clear_integrity_cache()
@@ -400,11 +416,13 @@ class RepairSessionsCLITests(unittest.TestCase):
             from contextlib import redirect_stderr
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
+            os.environ["AISWMM_MEMORY_DIR"] = str(store)
             try:
                 with redirect_stdout(buf_out), redirect_stderr(buf_err):
                     rc = cli_main(["memory", "repair-sessions"])
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
+                os.environ.pop("AISWMM_MEMORY_DIR", None)
 
             self.assertEqual(rc, 1)
             # Friendly stderr explaining the refusal.

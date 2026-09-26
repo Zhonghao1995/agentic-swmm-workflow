@@ -19,7 +19,7 @@ The audit layer answers what happened in one run.
 The layer now has three granularities:
 
 - Run-level memory cards: each audited run gets a `memory_summary.json` with success/failure, QA state, missing evidence, warnings, assumptions, suspect parameters, deterministic diagnostic IDs, and next-run cautions.
-- Project/case-level memory: aggregate outputs under `memory/modeling-memory/projects/<project-key>/` keep Tod Creek, Tecnopolo, TUFLOW, Generate_SWMM_inp, acceptance, and other cases separate.
+- Project/case-level memory: aggregate outputs under `memory/store/projects/<project-key>/` keep Tod Creek, Tecnopolo, TUFLOW, Generate_SWMM_inp, acceptance, and other cases separate.
 - Global modeling memory: the root index, lessons, and skill proposals still summarize cross-run patterns across the full `runs/` tree.
 
 The modeling-memory skill does not automatically rewrite existing skills. It analyzes historical audit records and generates proposed refinements for relevant workflow skills, such as end-to-end orchestration, audit reporting, QA verification, model building, or result parsing.
@@ -54,7 +54,7 @@ The proposal step is intentionally separate from the accepted update step. Model
 
 Memory is split into two layers, never mixed:
 
-- **Curated**: `memory/modeling-memory/lessons_learned.md` and `memory/modeling-memory/INDEX.md`. LLM-summarised / LLM-curated. Subject to compaction (PRD M3) when the lessons file exceeds the configured size or pattern-count threshold. Recall tool: `recall_memory(pattern)`.
+- **Curated**: `memory/store/lessons_learned.md` and `memory/store/INDEX.md`. LLM-summarised / LLM-curated. Subject to compaction (PRD M3) when the lessons file exceeds the configured size or pattern-count threshold. Recall tool: `recall_memory(pattern)`.
 - **Raw**: every `runs/<case>/09_audit/experiment_note.md` and every `runs/<date>/<chat-session>/chat_note.md`. Never edited after audit; treated as the source of truth for evidence. Recall tool: `recall_memory_search(query, top_k)` returns raw + curated entries side-by-side, each tagged with `layer: "curated"` or `layer: "raw"` so the planner knows which side it is reading.
 
 Recall results returned to the planner are wrapped in `<memory-context source="lessons|rag" stale="...">…</memory-context>` (PRD M7.1). A streaming scrubber on the final-output path strips that fence from any text the agent emits to the user, so historical memory can never be parsed as new user instructions.
@@ -70,16 +70,16 @@ Main command:
 ```bash
 python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
   --runs-dir runs \
-  --out-dir memory/modeling-memory
+  --out-dir memory/store
 ```
 
-This command writes aggregate memory under `memory/modeling-memory/` and writes `memory_summary.json` into each audited run directory.
+This command writes aggregate memory under `memory/store/` and writes `memory_summary.json` into each audited run directory.
 
 Optional Obsidian export:
 
 ```bash
 python3 skills/swmm-modeling-memory/scripts/summarize_memory.py \
   --runs-dir runs \
-  --out-dir memory/modeling-memory \
+  --out-dir memory/store \
   --obsidian-dir "/path/to/Obsidian/Agentic SWMM/05_Modeling_Memory"
 ```

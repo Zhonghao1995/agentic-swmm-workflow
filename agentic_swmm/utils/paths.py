@@ -9,19 +9,65 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def workspace_root() -> Path:
+    """The directory the user works in: the checkout, or the cwd on a pip install.
+
+    Runs, the memory store and the facts file all live under it (F-137
+    for runs; the memory layout refactor of 2026-09-06 for memory).
+    """
+    root = repo_root()
+    if is_checkout(root):
+        return root
+    return Path.cwd().resolve()
+
+
 def resolve_memory_dir(explicit: Path | None = None) -> Path:
-    """Resolve the modeling-memory directory.
+    """Resolve the memory STORE: the directory the program writes.
 
     Precedence: ``explicit`` argument -> ``AISWMM_MEMORY_DIR`` env var ->
-    ``<repo>/memory/modeling-memory``. Explicit and env values are
+    ``<workspace>/memory/store``. Explicit and env values are
     expanduser()+resolve()d.
+
+    The store is gitignored and never ships: everything in it is written
+    by the program in normal use (ledgers, the session database, the
+    project overrides). Hand-written memory ships from
+    :func:`initial_memory_dir` instead. Before 2026-09-06 the default was
+    ``<resource_root>/memory/modeling-memory``, which on a pip install
+    meant writing into site-packages.
     """
     if explicit is not None:
         return explicit.expanduser().resolve()
     override = os.environ.get("AISWMM_MEMORY_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    return resource_root() / "memory" / "modeling-memory"
+    return workspace_root() / "memory" / "store"
+
+
+def initial_memory_dir() -> Path:
+    """The shipped, hand-written memory: ``<resource_root>/memory/initial``.
+
+    Startup memory files and the reference tables (benchmarks, storm
+    library, citations) live here. Read-only at runtime; changed only
+    through a pull request.
+    """
+    return resource_root() / "memory" / "initial"
+
+
+def reference_table_path(name: str, memory_dir: Path | None = None) -> Path:
+    """The effective copy of a reference table (``reference_benchmarks.yaml``,
+    ``storm_library.yaml``, ``citations.yaml``).
+
+    A copy in the memory store (``memory_dir``, default
+    :func:`resolve_memory_dir`) wins, so a project can override the shipped
+    table by copying it there; otherwise the shipped copy under
+    :func:`initial_memory_dir` is used. The returned path may not exist
+    when neither copy does.
+    """
+    store = resolve_memory_dir() if memory_dir is None else Path(memory_dir)
+    local = store / name
+    if local.exists():
+        return local
+    return initial_memory_dir() / name
 
 
 def resolve_runs_dir(explicit: Path | None = None) -> Path:

@@ -22,9 +22,15 @@ def test_run_failures_go_to_the_copy() -> None:
     assert store.resolve() != real
 
 
-def test_the_copy_carries_the_shipped_stores() -> None:
-    # Readers of the shipped stores (benchmarks, citations, storm library)
-    # must see the same files they would see in the project.
+def test_the_shipped_tables_resolve_from_initial_when_the_copy_has_none() -> None:
+    # Memory layout 2026-09-06: the copy is an empty store; readers of the
+    # shipped tables (benchmarks, citations, storm library) fall back to
+    # memory/initial/ through reference_table_path.
+    from agentic_swmm.utils.paths import initial_memory_dir, reference_table_path
+
     override = Path(os.environ["AISWMM_MEMORY_DIR"])
-    assert (override / "reference_benchmarks.yaml").is_file()
-    assert (override / "citations.yaml").is_file()
+    assert not (override / "reference_benchmarks.yaml").exists()
+    for name in ("reference_benchmarks.yaml", "citations.yaml", "storm_library.yaml"):
+        resolved = reference_table_path(name, override)
+        assert resolved == initial_memory_dir() / name
+        assert resolved.is_file()

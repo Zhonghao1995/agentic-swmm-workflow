@@ -97,14 +97,9 @@ class QAReport:
 
 def _resolve_default_benchmarks_path() -> Path:
     """Return the repo-rooted default ``reference_benchmarks.yaml``."""
-    # Two parents up: agentic_swmm/agent/swmm_runtime/ -> agentic_swmm/
-    # ... up one more to repo root.
-    return (
-        Path(__file__).resolve().parents[3]
-        / "memory"
-        / "modeling-memory"
-        / "reference_benchmarks.yaml"
-    )
+    from agentic_swmm.utils.paths import reference_table_path
+
+    return reference_table_path("reference_benchmarks.yaml")
 
 
 def _find_rpt(run_dir: Path) -> Path | None:

@@ -25,7 +25,7 @@ Restrict to specific metrics with repeated `--metric` flags.
 
 ## `aiswmm cite`
 
-Print a citation entry from `memory/modeling-memory/citations.yaml`.
+Print a citation entry from the shipped `memory/initial/citations.yaml` (or a copy in `memory/store/`).
 
 ```bash
 aiswmm cite huber_dickinson_1988_t4_5
@@ -79,7 +79,7 @@ verb is advisory only — it never writes to the new INP.
 
 ## `aiswmm bootstrap memory`
 
-Scaffold a project's `memory/modeling-memory/` skeleton with empty
+Scaffold a project's `memory/store/` skeleton with empty
 JSONL stores, an empty `project_overrides.yaml`, and a README that
 points at the substrate doc. Idempotent: re-running never overwrites
 an existing file.
@@ -93,7 +93,7 @@ Use `--dir <path>` to override the default location.
 After running, you'll see something like:
 
 ```
-target_dir: memory/modeling-memory
+target_dir: memory/store
 created (5):
   + parametric_memory.jsonl
   + calibration_memory.jsonl
@@ -106,7 +106,7 @@ skipped: (none)
 Re-running on the same directory:
 
 ```
-target_dir: memory/modeling-memory
+target_dir: memory/store
 created: (none)
 skipped (5):
   = parametric_memory.jsonl

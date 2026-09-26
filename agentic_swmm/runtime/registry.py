@@ -24,27 +24,31 @@ MCP_SERVERS = [
     "swmm-uncertainty",
 ]
 
-# All seven LLM-readable startup memory files under ``agent/memory/``.
-# ``identification`` / ``operational`` / ``evidence`` ship as the eager core
-# (loaded first), and ``soul`` / ``modeling_workflow`` / ``user_bridge`` /
-# ``README`` join them as warm-identity context (PR #74). The README in
-# ``agent/memory/`` advertises this exact list, so the registry must mirror it
-# to avoid silent README-vs-runtime drift (P1-1 in #79).
+# All seven LLM-readable startup memory files under ``memory/initial/``
+# (hand-written, shipped, loaded into the system prompt under the context
+# budget). ``identification`` / ``operational`` / ``evidence`` are the eager
+# core, ``soul`` / ``modeling_workflow`` / ``user_bridge`` / ``README`` the
+# warm-identity context (PR #74). The README in ``memory/initial/``
+# advertises this exact list, so the registry must mirror it (P1-1 in #79).
+# The fallback is the pre-2026-09-06 location, so an older packaged root
+# still resolves.
 LONG_TERM_MEMORY_FILES = [
-    ("agent/memory/identification_memory.md", "agent/identification_memory.md"),
-    ("agent/memory/operational_memory.md", "agent/operational_memory.md"),
-    ("agent/memory/evidence_memory.md", "agent/evidence_memory.md"),
-    ("agent/memory/soul.md", "agent/soul.md"),
-    ("agent/memory/modeling_workflow_memory.md", "agent/modeling_workflow_memory.md"),
-    ("agent/memory/user_bridge_memory.md", "agent/user_bridge_memory.md"),
-    ("agent/memory/README.md", "agent/memory_README.md"),
+    ("memory/initial/identification_memory.md", "agent/memory/identification_memory.md"),
+    ("memory/initial/operational_memory.md", "agent/memory/operational_memory.md"),
+    ("memory/initial/evidence_memory.md", "agent/memory/evidence_memory.md"),
+    ("memory/initial/soul.md", "agent/memory/soul.md"),
+    ("memory/initial/modeling_workflow_memory.md", "agent/memory/modeling_workflow_memory.md"),
+    ("memory/initial/user_bridge_memory.md", "agent/memory/user_bridge_memory.md"),
+    ("memory/initial/README.md", "agent/memory/README.md"),
 ]
 
-MODELING_MEMORY_FILES = [
-    "memory/modeling-memory/modeling_memory_index.md",
-    "memory/modeling-memory/lessons_learned.md",
-    "memory/modeling-memory/benchmark_verification_plan.md",
-    "memory/modeling-memory/skill_update_proposals.md",
+# Hand-maintained reference tables that ship next to the startup memory.
+# Read at runtime through ``utils.paths.reference_table_path`` (a copy in
+# the memory store overrides the shipped one). Never written by the program.
+REFERENCE_TABLE_FILES = [
+    "memory/initial/reference_benchmarks.yaml",
+    "memory/initial/storm_library.yaml",
+    "memory/initial/citations.yaml",
 ]
 
 
@@ -97,8 +101,6 @@ def discover_memory_files() -> list[dict[str, Any]]:
                 load_at_startup=True,
             )
         )
-    for relative in MODELING_MEMORY_FILES:
-        records.append(_memory_record(root, relative, layer="project_modeling", load_at_startup=False))
     return records
 
 
@@ -175,7 +177,15 @@ def load_memory_registry() -> list[dict[str, Any]]:
         return discover_memory_files()
     payload = json.loads(path.read_text(encoding="utf-8"))
     records = payload.get("memory_files", [])
-    return records if isinstance(records, list) else []
+    if not isinstance(records, list):
+        return []
+    # A registry written before the memory layout moved (2026-09-06) names
+    # startup files that no longer exist; without this fallback the shell
+    # silently loaded no startup memory until `aiswmm setup` was rerun.
+    startup = [r for r in records if isinstance(r, dict) and r.get("load_at_startup")]
+    if startup and not any(Path(str(r.get("path", ""))).expanduser().exists() for r in startup):
+        return discover_memory_files()
+    return records
 
 
 def enabled_startup_memory_files() -> list[Path]:

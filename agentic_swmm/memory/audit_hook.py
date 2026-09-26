@@ -101,8 +101,8 @@ def _resolve_memory_dir(project_root: Path | None = None) -> Path:
     if override:
         return Path(override)
     if project_root is not None:
-        return project_root / "memory" / "modeling-memory"
-    # Repository-anchored, never cwd-relative (finding F-15, 2026-09-02).
+        return project_root / "memory" / "store"
+    # Workspace-anchored, never bare cwd-relative (finding F-15, 2026-09-02).
     from agentic_swmm.utils.paths import resolve_memory_dir
 
     return resolve_memory_dir()
@@ -113,8 +113,10 @@ def _resolve_rag_dir(project_root: Path | None = None) -> Path:
     if override:
         return Path(override)
     if project_root is not None:
-        return project_root / "memory" / "rag-memory"
-    return Path("memory/rag-memory")
+        return project_root / "memory" / "store" / "rag"
+    from agentic_swmm.utils.paths import resolve_memory_dir
+
+    return resolve_memory_dir() / "rag"
 
 
 def _project_root_for(runs_dir: Path) -> Path:

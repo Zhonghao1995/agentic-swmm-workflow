@@ -2,6 +2,33 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
+## Unreleased
+
+### Memory layout: one folder, three kinds (2026-09-06)
+
+- Everything memory-related now lives under `memory/`. `memory/initial/`
+  is the hand-written, shipped memory: the seven startup files the shell
+  loads into its system prompt (formerly `agent/memory/`) and the three
+  reference tables (`reference_benchmarks.yaml`, `storm_library.yaml`,
+  `citations.yaml`, formerly under `memory/modeling-memory/`).
+- `memory/store/` is what the program writes in normal use: the ledgers,
+  the session database (`memory.sqlite`, formerly `runs/sessions.sqlite`,
+  adopted automatically), project overrides and generated views. It lives
+  in the workspace (the checkout, or the directory a pip user runs aiswmm
+  in) and is never committed. On a pip install the memory used to be
+  written into site-packages.
+- `memory/facts.md` holds the promoted project facts (formerly
+  `agent/memory/curated/facts.md`); its staging file sits next to it and
+  is ignored.
+- The program-generated files that were tracked in the repository
+  (lessons, indexes, proposals, the RAG corpus and its indexes) are no
+  longer shipped or tracked; a fresh install starts with an empty store.
+- `aiswmm bootstrap memory` scaffolds the store (ledgers, overrides,
+  README); the reference tables ship with the package and a project
+  overrides one by copying it into the store.
+- The rule behind all of this: a file the program writes in normal use
+  is not in the repository.
+
 ## v0.9.4 - What two days of real use changed (2026-09-03)
 
 Every change here came from driving the interactive shell with natural language

@@ -1,19 +1,21 @@
-"""``aiswmm bootstrap memory`` — scaffold a project memory directory (PRD-06 Phase D.4).
+"""``aiswmm bootstrap memory`` — scaffold the memory store (PRD-06 Phase D.4).
 
-A fresh project has no ``memory/modeling-memory/`` directory; the
-existing memory stores (``parametric_memory.jsonl``,
-``calibration_memory.jsonl``, ``negative_lessons.jsonl``) are created
-lazily by the audit hook the first time it tries to append a row. For
-human onboarding that lazy-create flow is opaque — the user opens the
-project and sees nothing memory-related until after the first SWMM
-run.
-
-This command creates the skeleton ahead of time so the user can:
+A fresh workspace has no ``memory/store/`` directory; the ledgers
+(``parametric_memory.jsonl``, ``calibration_memory.jsonl``,
+``negative_lessons.jsonl``) are created lazily by the audit hook the
+first time it appends a row. For human onboarding that lazy-create flow
+is opaque, so this command creates the skeleton ahead of time so the
+user can:
 
     * grep for the empty JSONL files and confirm where memory lives;
     * paste-edit ``project_overrides.yaml`` before the first run;
     * read the bundled ``README.md`` and follow the link to
       ``docs/memory_runtime.md`` for the substrate's contract.
+
+The reference tables (``reference_benchmarks.yaml``, ``storm_library.yaml``,
+``citations.yaml``) are not part of the skeleton: they ship with the
+package under ``memory/initial/`` and a project overrides one by copying
+it into the store (see ``utils.paths.reference_table_path``).
 
 Idempotent
 ----------
@@ -40,13 +42,13 @@ from agentic_swmm.agent.flag_naming import (
 )
 
 
-_BOOTSTRAP_EXAMPLE = "aiswmm bootstrap memory --dir memory/modeling-memory"
+_BOOTSTRAP_EXAMPLE = "aiswmm bootstrap memory --dir memory/store"
 
 
 # Default target directory. Matches the layout the rest of the package
-# uses (``memory/modeling-memory/``) so the bootstrap output lands
-# where the audit hook will later append to it.
-_DEFAULT_DIR = Path("memory") / "modeling-memory"
+# uses (``memory/store/``) so the bootstrap output lands where the audit
+# hook will later append to it.
+_DEFAULT_DIR = Path("memory") / "store"
 
 
 # Filenames the skeleton creates. Kept as a module-level tuple so the
@@ -57,14 +59,9 @@ _SKELETON_FILES: tuple[str, ...] = (
     "calibration_memory.jsonl",
     "negative_lessons.jsonl",
     "project_overrides.yaml",
-    # Live finding F-132 (2026-09-04): doctor told a pip user these three were
-    # MISSING with the remedy "ship from package or copy from repo", and a pip
-    # user has no repo. The skeletons below are the checkout's placeholder
-    # files (null leaves, pending-verification entries); bootstrap never
-    # overwrites an existing one, so a curated copy survives upgrades.
-    "reference_benchmarks.yaml",
-    "citations.yaml",
-    "storm_library.yaml",
+    # The reference tables are no longer skeletons here (2026-09-06): they
+    # ship under memory/initial/ and reference_table_path() reads a copy in
+    # the store first, so a curated copy still survives upgrades.
     "README.md",
 )
 
@@ -87,9 +84,10 @@ _PROJECT_OVERRIDES_HEADER = (
 # user looks, so the README should point them at the substrate doc
 # rather than at PR numbers.
 _README_CONTENT = (
-    "# Modeling memory\n"
+    "# Memory store\n"
     "\n"
-    "This directory holds the project's modeling memory:\n"
+    "This directory is written by aiswmm in normal use and is gitignored.\n"
+    "It holds the project's memory ledgers and the session database:\n"
     "\n"
     "* `parametric_memory.jsonl` — append-only log of run-level\n"
     "  parameters and QA metrics.\n"
@@ -97,8 +95,13 @@ _README_CONTENT = (
     "  calibrations and goodness-of-fit metrics.\n"
     "* `negative_lessons.jsonl` — append-only log of known-bad\n"
     "  parameter regions and failure codes.\n"
-    "* `project_overrides.yaml` — per-project overlay on the library\n"
-    "  reference benchmarks.\n"
+    "* `project_overrides.yaml` — per-project overlay on the shipped\n"
+    "  reference benchmarks (memory/initial/reference_benchmarks.yaml).\n"
+    "* `memory.sqlite` — the session database, rebuilt from runs/ on\n"
+    "  demand (`aiswmm memory repair-sessions`).\n"
+    "\n"
+    "Hand-written memory ships with the package under memory/initial/;\n"
+    "copy a reference table here to override it for this project.\n"
     "\n"
     "See [docs/memory_runtime.md](../../docs/memory_runtime.md) for\n"
     "the substrate contract and the four confidence quadrants the\n"
@@ -130,15 +133,8 @@ class BootstrapResult:
 
 
 
-_YAML_SKELETONS: dict[str, str] = {
-    'reference_benchmarks.yaml': '# ===========================================================================\n# WARNING — UN-CITED PLACEHOLDERS\n# ---------------------------------------------------------------------------\n# Most numeric leaves in this file are deliberately ``null``. Each null leaf\n# has a sibling ``citation`` key pointing into ``citations.yaml`` (also under\n# this directory). A numeric leaf lands ONLY AFTER the matching citation\n# entry has been verified by the maintainer (``verified_by`` and\n# ``verified_on`` populated) — schema-only placeholder entries are not\n# sufficient. See ``agentic_swmm/memory/citations.py`` for the typed reader.\n#\n# Two consequences for runtime:\n#  * ``classify_metric`` returns ``"UNKNOWN"`` for any metric whose threshold\n#    leaf is ``null`` (see agentic_swmm/memory/reference_benchmarks.py).\n#  * ``recall_reference_benchmark(path, dotted_key, default)`` always returns\n#    the caller\'s ``default`` for a ``null`` leaf — callers must pass a\n#    safe-conservative numeric default.\n#\n# The only block that ships with concrete numbers is\n# ``continuity_thresholds_pct`` — those are the SWMM User Manual\'s own\n# magnitude bands for the runoff / flow / mass-balance continuity printout,\n# not a literature recall. A later phase will move them under a citation\n# key too, for consistency.\n# ===========================================================================\n\nschema_version: "1.0"\n\n# ---------------------------------------------------------------------------\n# Goodness-of-fit thresholds for calibrated runs. NSE = Nash-Sutcliffe.\n# Use case keys match ``model_structure.use_case`` in parametric_memory.\n#\n# Leaves are intentionally ``null`` — populate from the project\'s\n# citation library in Phase B (Moriasi-class watershed-modeling guidance\n# for streamflow; stormwater-event guidance is separate literature).\n# ---------------------------------------------------------------------------\nnse_acceptable_thresholds:\n  stormwater_event:\n    acceptable: null\n    good: null\n    excellent: null\n    citation: null  # lands when matching citations.yaml entry is verified\n  stormwater_continuous:\n    acceptable: null\n    good: null\n    excellent: null\n    citation: null  # lands when matching citations.yaml entry is verified\n  baseflow_low_flow:\n    acceptable: null\n    good: null\n    excellent: null\n    citation: null  # lands when matching citations.yaml entry is verified\n\n# ---------------------------------------------------------------------------\n# Continuity error thresholds read from the .rpt by postflight_qa.\n# WARN bumps the run to manual review; FAIL gates downstream acceptance.\n# Magnitudes — see classify_metric() semantics.\n#\n# These bands track the SWMM User Manual\'s own continuity-error printout\n# convention (small percentages indicate a numerically sound run; double-digit\n# percentages indicate the simulation has gone off the rails). Treat them as\n# the project\'s *default* gate; project-local overrides should pass an\n# explicit ``benchmarks_path`` to ``postflight_qa``.\n# ---------------------------------------------------------------------------\ncontinuity_thresholds_pct:\n  runoff:\n    warn: 5.0\n    fail: 10.0\n  flow:\n    warn: 1.0\n    fail: 5.0\n  mass_balance:\n    warn: 2.0\n    fail: 5.0\n\n# ---------------------------------------------------------------------------\n# Manning\'s n for overland flow (SWMM SUBCATCHMENT N-IMPERV / N-PERV).\n#\n# Leaves are intentionally ``null`` pending Phase B citations.yaml.\n# Citation keys are kept inline so the Phase B migration is a value-only\n# fill, not a schema change.\n# ---------------------------------------------------------------------------\nmanning_n_overland:\n  asphalt:\n    min: null\n    typical: null\n    max: null\n    citation: null  # populate together with values in Phase B\n  concrete:\n    min: null\n    typical: null\n    max: null\n    citation: null\n  grass_short:\n    min: null\n    typical: null\n    max: null\n    citation: null\n\n# ---------------------------------------------------------------------------\n# Manning\'s n for closed-conduit roughness (SWMM CONDUIT ROUGHNESS).\n# Leaves intentionally ``null`` pending Phase B citations.yaml.\n# ---------------------------------------------------------------------------\nmanning_n_pipes:\n  concrete_smooth:\n    min: null\n    typical: null\n    max: null\n    citation: null\n  hdpe:\n    min: null\n    typical: null\n    max: null\n    citation: null\n',
-    'citations.yaml': '# ===========================================================================\n# CITATION LIBRARY — PRD-06 Phase B.2\n# ---------------------------------------------------------------------------\n# This file is HAND-EDITED. Each entry is a citation token (the dictionary\n# key) plus the bibliographic fields needed to look up the original source\n# manually. The library is the substrate behind two things:\n#\n#   1. The ``citation`` leaf next to every numeric range in\n#      ``reference_benchmarks.yaml``. A reference-benchmark range is only\n#      populated AFTER the matching citations.yaml entry has been verified\n#      against the original work — bibliographic placeholder entries do not\n#      authorise populating numeric leaves.\n#\n#   2. The ``aiswmm cite <citation_key>`` CLI surface, which prints the entry\n#      so a human (or agent in transparency mode) can audit which work backs\n#      a parameter choice.\n#\n# Verification contract:\n#   * Every entry MUST be hand-verified by the maintainer before it is used\n#     to backfill a numeric leaf in ``reference_benchmarks.yaml``.\n#   * The ``verified_by`` and ``verified_on`` fields record who and when.\n#   * Unverified entries are useful as schema placeholders only.\n#\n# Schema (every entry must follow this shape):\n#   <citation_key>:\n#     authors: "..."                 # full author list as printed on source\n#     year: <int>                    # publication year\n#     title: "..."                   # title of the work\n#     work: "..."                    # journal / book / report container\n#     locator: "..."                 # page / table / section locator\n#     url: ""                        # optional, may be empty\n#     verified_by: "..."             # maintainer who verified the entry\n#     verified_on: "YYYY-MM-DD"      # ISO date of verification\n#\n# Keys are snake_case. Use the convention ``<lead-author>_<year>_<short>`` so\n# the token reads cleanly in code comments and audit notes.\n# ===========================================================================\n\nschema_version: "1.0"\n\n# ---------------------------------------------------------------------------\n# Worked-example entry — schema demonstration only.\n# Replace these placeholder fields once the maintainer has verified the\n# underlying source. Do NOT cite this entry from reference_benchmarks.yaml\n# until the placeholder text has been replaced with verified bibliographic\n# data.\n# ---------------------------------------------------------------------------\nworked_example_pending_verification:\n  authors: "<author-list-pending-verification>"\n  year: 0\n  title: "<title-pending-verification>"\n  work: "<container-pending-verification>"\n  locator: "<page-or-table-pending-verification>"\n  url: ""\n  verified_by: ""\n  verified_on: ""\n',
-    'storm_library.yaml': '# ===========================================================================\n# STORM LIBRARY — curated design-storm specifications.\n# ---------------------------------------------------------------------------\n# This file is HAND-EDITED by the maintainer. The four blocks below cover\n# Chicago, Huff, SCS Type II, and free-form user-curated events. Schema-only\n# placeholder entries are preserved so the reader can validate keys before\n# the maintainer fills in real values.\n#\n# Three runtime consumers:\n#\n#   1. ``aiswmm storm --from-library <key>`` — looks up a chicago_hyetographs\n#      entry and constructs the Chicago hyetograph from its idf_params /\n#      peak_position. Numeric placeholder leaves cause the CLI to skip the\n#      entry with a clear "library entry not populated" message.\n#\n#   2. The Huff and SCS blocks let a maintainer add project-local overrides\n#      of the in-code dimensionless tables (typically not needed; the\n#      in-code defaults are the source of truth).\n#\n#   3. ``user_curated`` holds free-form historical / recorded events with\n#      a ``timeseries_csv`` reference. Currently consumed only by the\n#      reader; future CLI verbs will surface these directly.\n#\n# Loader: ``agentic_swmm/memory/storm_library.py``.\n# ===========================================================================\n\nschema_version: "1.0"\n\n# ---------------------------------------------------------------------------\n# Chicago hyetograph specifications keyed by region+return-period+duration.\n# Each entry\'s ``idf_params`` provides {a, b, c} for the IDF formula\n# ``i = a / (t + b)^c``. ``peak_position`` is the fractional location of\n# the peak (0.0..1.0).\n# ---------------------------------------------------------------------------\nchicago_hyetographs:\n  # Schema-demonstration entry. Replace placeholder fields with verified\n  # IDF parameters and add a ``citation`` key pointing into citations.yaml\n  # before relying on this entry at runtime.\n  example_region_100yr_3hr_5min:\n    idf_params:\n      a: null\n      b: null\n      c: null\n    peak_position: null\n    duration_min: 180\n    interval_min: 5\n    citation: null\n\n# ---------------------------------------------------------------------------\n# Huff quartile distributions are computed in code from embedded tables;\n# this block lets the maintainer override / add user-curated regional\n# variants. Each override entry mirrors the in-code shape:\n#   quartile: 1..4\n#   cumulative: [0.1, 0.2, ..., 1.0]  # 10-point monotone-increasing\n# ---------------------------------------------------------------------------\nhuff_user_overrides: {}\n\n# ---------------------------------------------------------------------------\n# SCS Type II is computed in code; same override mechanism here. Each\n# override entry holds:\n#   total_hours: 24\n#   cumulative: [[hours, fraction], ...]\n# ---------------------------------------------------------------------------\nscs_user_overrides: {}\n\n# ---------------------------------------------------------------------------\n# Free-form user-curated events (one entry per historical or design storm).\n# ---------------------------------------------------------------------------\nuser_curated:\n  # Schema-demonstration entry. ``timeseries_csv`` is the relative path to\n  # a two-column CSV (timestamp, intensity_mm_per_hr).\n  example_recorded_event:\n    source: null\n    timeseries_csv: null\n    notes: null\n',
-}
 
 def _content_for(filename: str) -> str:
-    if filename in _YAML_SKELETONS:
-        return _YAML_SKELETONS[filename]
     """Return the initial content for ``filename``.
 
     JSONL stores get an empty string (the file just needs to exist
@@ -158,8 +154,8 @@ def bootstrap_memory_dir(target_dir: Path | None = None) -> BootstrapResult:
     Arguments:
         target_dir: Directory to scaffold. ``None`` defaults to the
             directory the runtime and doctor read (``resolve_memory_dir()``:
-            ``AISWMM_MEMORY_DIR``, else the checkout's or the installed
-            package's ``memory/modeling-memory``). Created if missing.
+            ``AISWMM_MEMORY_DIR``, else ``memory/store`` under the
+            workspace). Created if missing.
 
     Returns:
         A :class:`BootstrapResult` describing what was created vs.
@@ -203,8 +199,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     memory_parser = inner.add_parser(
         "memory",
         help=(
-            "Create memory/modeling-memory/ with empty stores so the audit "
-            "hook has somewhere to append to."
+            "Create the memory store (memory/store/) with empty ledgers so "
+            "the audit hook has somewhere to append to."
         ),
     )
     memory_parser.add_argument(
@@ -213,8 +209,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         type=Path,
         default=None,
         help=(
-            "Directory to scaffold. Default: ./memory/modeling-memory/ "
-            "relative to the current working directory."
+            "Directory to scaffold. Default: the memory store the runtime "
+            "and doctor read (memory/store/ under the workspace)."
         ),
     )
     # PRD-08 A.2 (audit #20): the description above intentionally does
@@ -250,10 +246,7 @@ def memory_main(args: argparse.Namespace) -> int:
             # PRD-08 A.2 (audit #20): be explicit that the bootstrap
             # command does NOT seed citations.yaml or
             # reference_benchmarks.yaml; those are user-maintained.
-            "not_seeded": [
-                "citations.yaml",
-                "reference_benchmarks.yaml",
-            ],
+            "shipped_reference_tables": "memory/initial/",
         }
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0
@@ -282,8 +275,9 @@ def memory_main(args: argparse.Namespace) -> int:
     # PRD-08 A.2 (audit #20): clarify scope so the user does not
     # expect bootstrap to seed the project-shipped citation library.
     print(
-        "note: citations.yaml and reference_benchmarks.yaml are "
-        "separately maintained and not seeded by this command."
+        "note: the reference tables (reference_benchmarks.yaml, storm_library.yaml, "
+        "citations.yaml) ship with the package under memory/initial/; copy one "
+        "into the store to override it for this project."
     )
     # PRD-08 Phase B (audit #22): point the user at follow-up commands
     # so they know what to do after the skeleton lands. Doctor confirms

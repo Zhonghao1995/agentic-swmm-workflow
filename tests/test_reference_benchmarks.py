@@ -104,9 +104,9 @@ class ClassifyMetricTests(unittest.TestCase):
 
 class ShippedTemplateTests(unittest.TestCase):
     def test_shipped_template_loads_and_has_continuity_thresholds(self) -> None:
-        # The repo ships a template under memory/modeling-memory/.
+        # The repo ships the table under memory/initial/ (memory layout 2026-09-06).
         repo_root = Path(__file__).resolve().parent.parent
-        template = repo_root / "memory" / "modeling-memory" / "reference_benchmarks.yaml"
+        template = repo_root / "memory" / "initial" / "reference_benchmarks.yaml"
         self.assertTrue(template.is_file(), f"missing template at {template}")
         data = load_reference_benchmarks(template)
         self.assertIn("continuity_thresholds_pct", data)

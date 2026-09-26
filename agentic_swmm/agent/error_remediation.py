@@ -509,7 +509,7 @@ def transfer_empty_result(
         "no cross-watershed transfer candidates found"
     )
     if not calibration_store_exists:
-        path_str = str(store_path) if store_path else "memory/modeling-memory/calibration_memory.jsonl"
+        path_str = str(store_path) if store_path else "memory/store/calibration_memory.jsonl"
         cause = f"calibration store does not exist at {path_str}"
         hint = (
             "run 'aiswmm bootstrap memory' to scaffold the memory "
@@ -599,7 +599,7 @@ def staged_facts_empty(*, staging_md: Path | None = None) -> RemediationError:
     points at both the right tool (``record_fact``) and the right
     file path so they can also paste a candidate by hand.
     """
-    staging_str = str(staging_md) if staging_md else "agent/memory/curated/facts_staging.md"
+    staging_str = str(staging_md) if staging_md else "memory/facts_staging.md"
     summary = "no staged facts to promote"
     cause = (
         f"the staging file at {staging_str} is empty; nothing has been "

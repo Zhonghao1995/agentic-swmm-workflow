@@ -182,10 +182,9 @@ def _resolve_memory_dir_for_planner() -> Path:
     no other shared API, so the planner has its own tiny resolver
     that follows the same env var contract.
     """
-    override = os.environ.get("AISWMM_MEMORY_DIR")
-    if override:
-        return Path(override)
-    return Path("memory/modeling-memory")
+    from agentic_swmm.utils.paths import resolve_memory_dir
+
+    return resolve_memory_dir()
 
 
 _HIGH_STAKES_TOKENS: tuple[str, ...] = (
@@ -946,8 +945,10 @@ class Planner:
 
             calibration_store = memory_dir / "calibration_memory.jsonl"
             negative_store = memory_dir / "negative_lessons.jsonl"
-            storm_library = memory_dir / "storm_library.yaml"
-            benchmarks = memory_dir / "reference_benchmarks.yaml"
+            from agentic_swmm.utils.paths import reference_table_path
+
+            storm_library = reference_table_path("storm_library.yaml", memory_dir)
+            benchmarks = reference_table_path("reference_benchmarks.yaml", memory_dir)
 
             # Locate the target INP using the same conventions as the old
             # adapter hook.

@@ -40,8 +40,6 @@ def test_is_excluded_matches_any_identifier() -> None:
     )
 
 
-def test_seeded_excluded_file_is_honored() -> None:
-    # the repo's seeded list must parse and contain the confirmed demo runs
-    repo_excluded = _SCRIPT.resolve().parents[3] / "memory" / "modeling-memory"
-    names = sm.load_excluded_runs(repo_excluded)
-    assert {"agent-gpt55-demo", "agent-nl-swmm-demo", "swmm_run"} <= names
+# The seeded excluded_runs.txt no longer ships (memory layout 2026-09-06:
+# nothing program-related under memory/ is tracked); the loader is still
+# covered by the tests above.
