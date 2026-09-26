@@ -316,6 +316,9 @@ class RepairSessionsCLITests(unittest.TestCase):
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
             os.environ["AISWMM_MEMORY_DIR"] = str(store)
+            # The suite points AISWMM_SESSION_DB at its own copy (#552); the CLI
+            # must repair the database seeded here, so say which one.
+            os.environ["AISWMM_SESSION_DB"] = str(db_path)
             try:
                 with redirect_stdout(buf):
                     # ``--yes`` skips the new interactive prompt
@@ -326,6 +329,7 @@ class RepairSessionsCLITests(unittest.TestCase):
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
                 os.environ.pop("AISWMM_MEMORY_DIR", None)
+                os.environ.pop("AISWMM_SESSION_DB", None)
 
         self.assertEqual(rc, 0)
         body = buf.getvalue()
@@ -366,6 +370,9 @@ class RepairSessionsCLITests(unittest.TestCase):
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
             os.environ["AISWMM_MEMORY_DIR"] = str(store)
+            # The suite points AISWMM_SESSION_DB at its own copy (#552); the CLI
+            # must repair the database seeded here, so say which one.
+            os.environ["AISWMM_SESSION_DB"] = str(db_path)
             try:
                 with redirect_stdout(buf):
                     rc = cli_main(
@@ -374,6 +381,7 @@ class RepairSessionsCLITests(unittest.TestCase):
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
                 os.environ.pop("AISWMM_MEMORY_DIR", None)
+                os.environ.pop("AISWMM_SESSION_DB", None)
 
             self.assertEqual(rc, 0)
             body = buf.getvalue()
@@ -417,12 +425,16 @@ class RepairSessionsCLITests(unittest.TestCase):
 
             os.environ["AISWMM_RUNS_ROOT"] = str(runs_dir)
             os.environ["AISWMM_MEMORY_DIR"] = str(store)
+            # The suite points AISWMM_SESSION_DB at its own copy (#552); the CLI
+            # must repair the database seeded here, so say which one.
+            os.environ["AISWMM_SESSION_DB"] = str(db_path)
             try:
                 with redirect_stdout(buf_out), redirect_stderr(buf_err):
                     rc = cli_main(["memory", "repair-sessions"])
             finally:
                 os.environ.pop("AISWMM_RUNS_ROOT", None)
                 os.environ.pop("AISWMM_MEMORY_DIR", None)
+                os.environ.pop("AISWMM_SESSION_DB", None)
 
             self.assertEqual(rc, 1)
             # Friendly stderr explaining the refusal.

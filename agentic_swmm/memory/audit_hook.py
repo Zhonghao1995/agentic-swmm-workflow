@@ -832,6 +832,20 @@ def _phase_parametric_bridge(ctx: _RefreshContext) -> None:
         ctx.result["errors"].append(f"parametric memory write failed: {exc}")
 
 
+def _phase_runs_row(ctx: _RefreshContext) -> None:
+    """One row per audited run in the store's database (memory simplification
+    part 2, 2026-09-06): the ``runs`` table replaces the generated index
+    files as the answer to "what has been run for this case"."""
+    try:
+        from agentic_swmm.memory.store import record_run
+
+        row = record_run(ctx.memory_dir, ctx.run_dir)
+        if row:
+            ctx.result["runs_row"] = row["run_id"]
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"runs row write failed: {exc}")
+
+
 def _phase_calibration_bridge(ctx: _RefreshContext) -> None:
     # PRD-06 Phase B.3: bridge audit -> calibration_memory. Only fires
     # when provenance carries a ``calibration`` block; non-calibration
@@ -923,6 +937,7 @@ _REFRESH_PHASES: tuple[Callable[[_RefreshContext], None], ...] = (
     _phase_memory_moc,
     _phase_lifecycle_metadata,
     _phase_parametric_bridge,
+    _phase_runs_row,
     _phase_calibration_bridge,
     _phase_negative_lessons,
     _phase_decay_pass,

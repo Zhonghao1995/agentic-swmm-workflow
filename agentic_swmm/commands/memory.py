@@ -90,6 +90,29 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     compact.set_defaults(func=compact_main)
 
+    rebuild = sub.add_parser(
+        "rebuild",
+        help=(
+            "Set the memory database aside and rebuild it from the ledgers in "
+            "the store and the run records under runs/ (sessions, runs, "
+            "failures, parametric, calibration, negative lessons). Deleting the "
+            "database never loses anything; this is how it comes back."
+        ),
+    )
+    rebuild.add_argument(
+        "--runs-dir",
+        dest="rebuild_runs_dir",
+        type=Path,
+        default=None,
+        help="Runs root to walk for sessions and run records. Defaults to the workspace's runs/.",
+    )
+    rebuild.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit the rebuild summary as JSON.",
+    )
+    rebuild.set_defaults(func=rebuild_main)
+
     # Expert-only: LLM-driven reflection (ME-3). Registered as a memory
     # subcommand so it lives under ``aiswmm memory reflect``; it is
     # NOT a ToolSpec and NOT an MCP tool — see PRD
@@ -262,6 +285,28 @@ def _print_report_table(report_dict: dict) -> None:
             joined = "(none)"
         print(f"  {label:24s} {len(names_list):3d}  {joined}")
     print("-" * 40)
+
+
+def rebuild_main(args: argparse.Namespace) -> int:
+    """``aiswmm memory rebuild``: the database is a projection; rebuild it."""
+    from agentic_swmm.memory.store import rebuild, table_counts
+
+    memory_dir = resolve_memory_dir()
+    runs_dir = args.rebuild_runs_dir.expanduser().resolve() if getattr(args, "rebuild_runs_dir", None) else resolve_runs_dir()
+    result = rebuild(memory_dir, runs_dir if runs_dir.is_dir() else None)
+    result["counts"] = table_counts(Path(result["db_path"]))
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0
+    print(f"db path:  {result['db_path']}")
+    if result.get("backup"):
+        print(f"previous: {result['backup']}")
+    for table, count in result["counts"].items():
+        print(f"  {table:16} {count} row(s)")
+    sessions = result.get("sessions") or {}
+    if sessions:
+        print(f"sessions rebuilt from runs/: {sessions.get('rebuilt', 0)} ({sessions.get('failures', 0)} failure(s))")
+    return 0
 
 
 def compact_main(args: argparse.Namespace) -> int:

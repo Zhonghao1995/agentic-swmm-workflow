@@ -52,7 +52,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from agentic_swmm.memory.jsonl_store import append_row, iter_rows
+from agentic_swmm.memory.jsonl_store import append_row
 from typing import Any
 
 
@@ -193,55 +193,19 @@ def recall_parametric(
     Missing files yield ``[]`` (not an error) so first-time callers
     do not have to special-case a fresh project.
 
-    SQLite acceleration (PRD-06 §4.1)
-    ---------------------------------
-    When the JSONL has grown past the index threshold (default 1k
-    rows), this verb transparently builds or refreshes a SQLite sidecar
-    next to the JSONL and queries through it. The JSONL stays the
-    canonical source of truth; the sidecar is derived and can be
-    deleted safely (it just rebuilds on the next read). For smaller
-    stores the linear-scan path stays — the SQLite cost only buys back
-    over many rows.
+    Rows are read through the store's database (``memory.sqlite`` next
+    to the ledger, memory simplification part 2, 2026-09-06): the table
+    is synced from the ledger on read, the ledger stays the truth.
     """
-    from agentic_swmm.memory.parametric_memory_index import (
-        IndexStaleError,
-        build_or_refresh_index,
-        index_path_for,
-        needs_index,
-        recall_via_index,
-    )
+    from agentic_swmm.memory.store import ledger_rows
     from agentic_swmm.memory.version_compat import migrate_record
 
     store_path = Path(store_path)
     if not store_path.is_file():
         return []
-
     filters = filters or {}
-
-    # SQLite acceleration: only kicks in once the JSONL is large enough
-    # that a linear scan starts paying. For small stores the index
-    # build itself would dominate the cost so we stay on the linear
-    # path. ``needs_index`` answers both "is the store big enough" and
-    # "is the existing sidecar fresh".
-    try:
-        if needs_index(store_path):
-            build_or_refresh_index(store_path)
-        sidecar = index_path_for(store_path)
-        if sidecar.is_file():
-            try:
-                return recall_via_index(store_path, filters)
-            except IndexStaleError:
-                # Sidecar is older than the JSONL (e.g. an append
-                # raced the read). Fall back to the linear path which
-                # is always correct against the canonical JSONL.
-                pass
-    except (OSError, ValueError):
-        # SQLite construction or query failure must never block the
-        # caller — fall back to the linear scan.
-        pass
-
     matches: list[dict[str, Any]] = []
-    for row in iter_rows(store_path):
+    for row in ledger_rows(store_path):
         row = migrate_record("parametric_memory", row)
         if _matches(row, filters):
             matches.append(row)
