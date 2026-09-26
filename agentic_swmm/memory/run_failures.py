@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from agentic_swmm.memory.jsonl_store import append_rows
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 
 SCHEMA_VERSION = "1.1"
@@ -234,24 +234,70 @@ def resolve_store(memory_dir: Path | None = None) -> Path:
     return resolve_memory_dir() / "run_failures.jsonl"
 
 
+def _with_call_args(
+    results: Iterable[dict[str, Any]], calls: Sequence[Any] | None
+) -> list[dict[str, Any]]:
+    """The result dicts, with each call's own arguments when ``calls`` aligns.
+
+    A handler may rewrite the ``args`` it reports on success (apply_patch
+    reports ``path_count`` instead of the patch), so a fix described from
+    result args read "patch dropped; path_count=1 added" (live finding
+    F-170, 2026-09-26). The planner's plan carries the arguments as
+    called, one entry per executed result, in order.
+    """
+    rows = [result for result in results if isinstance(result, dict)]
+    if calls is None or len(calls) != len(rows):
+        return rows
+    aligned: list[dict[str, Any]] = []
+    for result, call in zip(rows, calls):
+        args = getattr(call, "args", None)
+        if isinstance(args, dict) and str(getattr(call, "name", "")) == str(result.get("tool", "")):
+            result = {**result, "args": dict(args)}
+        aligned.append(result)
+    return aligned
+
+
+def _fix_for(rows: list[dict[str, Any]], index: int) -> dict[str, Any] | None:
+    """The call that fixed the failure at ``index``, or ``None``.
+
+    The first later success of the same tool in the turn wins: that is
+    the retry that worked, even when the planner looked around first
+    (live finding F-171, 2026-09-26: the refused ``wc -l`` was fixed by
+    ``run_allowed_command`` running pytest twelve steps later, not by
+    the ``list_dir`` that came next). Otherwise the call right after
+    the failure, when it worked: the planner's reaction, with another
+    tool.
+    """
+    tool = str(rows[index].get("tool", ""))
+    for later in rows[index + 1 :]:
+        if later.get("ok") and not later.get("skipped") and str(later.get("tool", "")) == tool:
+            return later
+    following = rows[index + 1] if index + 1 < len(rows) else None
+    if following is not None and following.get("ok") and not following.get("skipped"):
+        return following
+    return None
+
+
 def record_run_failures(
     store: Path,
     run_id: str,
     results: Iterable[dict[str, Any]],
+    calls: Sequence[Any] | None = None,
 ) -> list[RunFailure]:
     """Append every operational failure in ``results`` to ``store``.
 
     Scans ``results`` (the executor's per-tool result dicts, in call
     order), classifies each genuine failure (skipping successes and
-    permission denials), and appends one JSONL row per failure. When the
-    call right after a failure succeeded, that call is recorded as the
-    failure's fix (:func:`describe_fix`): it is the planner's reaction to
-    the failure, and it worked. Returns the recorded failures.
+    permission denials), and appends one JSONL row per failure with the
+    call that fixed it when one did (:func:`_fix_for`,
+    :func:`describe_fix`). ``calls`` (the planner's plan, one ToolCall
+    per result) supplies the arguments as called. Returns the recorded
+    failures.
 
     No-op (returns ``[]``, writes nothing) when there are no failures, so
     a clean run never creates the file.
     """
-    rows = [result for result in results if isinstance(result, dict)]
+    rows = _with_call_args(results, calls)
     failures: list[RunFailure] = []
     for index, result in enumerate(rows):
         failure_class = classify_failure(result)
@@ -260,9 +306,9 @@ def record_run_failures(
         tool = str(result.get("tool", ""))
         summary = str(result.get("summary", ""))[:_SUMMARY_CAP]
         fix_tool = fix = ""
-        following = rows[index + 1] if index + 1 < len(rows) else None
-        if following is not None and following.get("ok") and not following.get("skipped"):
-            fix_tool, fix = describe_fix(result, following)
+        fixed_by = _fix_for(rows, index)
+        if fixed_by is not None:
+            fix_tool, fix = describe_fix(result, fixed_by)
         failures.append(
             RunFailure(
                 run_id=run_id or "",

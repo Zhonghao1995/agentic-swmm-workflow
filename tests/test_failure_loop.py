@@ -77,6 +77,42 @@ def test_another_tool_right_after_the_failure_is_recorded_as_instead(tmp_path: P
     assert row.fix_tool == "read_rpt_summary"
 
 
+def test_a_later_success_of_the_same_tool_beats_the_next_call(tmp_path: Path):
+    """F-171 (S71d): the refused wc -l was fixed by run_allowed_command running pytest
+    twelve steps later, not by the list_dir that happened to come next."""
+    store = tmp_path / "run_failures.jsonl"
+    results = [
+        _fail("run_allowed_command", "command is not allowlisted", command=["wc", "-l", "a.inp"]),
+        _ok("list_dir", path="scripts"),
+        _ok("search_files", query="x"),
+        _ok("run_allowed_command", command=["python", "-m", "pytest", "runs/s/_agent/test_count.py"]),
+    ]
+    (row,) = record_run_failures(store, "run-4", results)
+    assert row.fix_tool == "run_allowed_command"
+    assert row.fix == 'run_allowed_command again with command: ["wc", "-l", "a.inp"] -> ["python", "-m", "pytest", "runs/s/_agent/test_count.py"]'
+
+
+def test_the_plan_supplies_the_arguments_as_called(tmp_path: Path):
+    """F-170 (S71d): apply_patch reports path_count instead of the patch on success,
+    so the fix read "patch dropped; path_count=1 added" until the plan's arguments won."""
+    from agentic_swmm.agent.types import ToolCall
+
+    store = tmp_path / "run_failures.jsonl"
+    results = [
+        {"tool": "apply_patch", "args": {"patch": "*** Begin Patch\n+++ scripts/x.mjs", "allow_evidence_edits": False}, "ok": False, "summary": "patch writes code into the product tree: scripts/x.mjs"},
+        {"tool": "apply_patch", "args": {"path_count": 1, "allow_evidence_edits": False}, "ok": True, "summary": "applied envelope patch: 1 file op(s)"},
+    ]
+    calls = [
+        ToolCall("apply_patch", {"patch": "*** Begin Patch\n+++ scripts/x.mjs", "allow_evidence_edits": False}),
+        ToolCall("apply_patch", {"patch": "*** Begin Patch\n+++ runs/s/_agent/x.mjs", "allow_evidence_edits": False}),
+    ]
+    (row,) = record_run_failures(store, "run-5", results, calls=calls)
+    assert row.fix == "apply_patch again with patch: *** Begin Patch\n+++ scripts/x.mjs -> *** Begin Patch\n+++ runs/s/_agent/x.mjs"
+    # without the plan, or with a plan that does not align, the result args are used as before
+    (row,) = record_run_failures(tmp_path / "other.jsonl", "run-6", results, calls=calls[:1])
+    assert "path_count=1 added" in row.fix
+
+
 def test_no_fix_when_the_next_call_also_failed_or_was_skipped(tmp_path: Path):
     store = tmp_path / "run_failures.jsonl"
     results = [
