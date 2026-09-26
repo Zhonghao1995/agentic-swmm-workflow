@@ -71,7 +71,6 @@
     "swmm-climate",
     "swmm-experiment-audit",
     "swmm-gis",
-    "swmm-modeling-memory",
     "swmm-network",
     "swmm-params",
     "swmm-plot",
@@ -223,21 +222,11 @@
       "next_user_prompt": "Provide subcatchments, parameter JSON, network JSON, and rainfall references."
     },
     {
-      "id": "modeling-memory",
-      "skills": ["swmm-modeling-memory"],
-      "keywords": ["memory", "lessons", "failure pattern", "skill update", "建模记忆", "经验"],
-      "required_inputs": ["runs_dir"],
-      "optional_inputs": ["out_dir"],
-      "preferred_tools": ["summarize_memory"],
-      "stop_conditions": ["missing audited runs"],
-      "next_user_prompt": "Provide a runs directory containing audit artifacts."
-    },
-    {
       "id": "memory-retrieval",
-      "skills": ["swmm-rag-memory"],
+      "skills": [],
       "keywords": ["recall", "what did we learn", "have I seen", "similar past", "lessons", "failure pattern", "前面", "以前", "类似"],
       "required_inputs": ["query"],
-      "preferred_tools": ["retrieve_memory"],
+      "preferred_tools": ["recall_memory", "recall_session_history"],
       "stop_conditions": ["empty query"],
       "next_user_prompt": "What question should I ask the modeling memory?"
     },

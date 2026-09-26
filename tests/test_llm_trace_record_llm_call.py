@@ -1,7 +1,7 @@
 """Unit tests for ``agentic_swmm.audit.llm_calls.record_llm_call``.
 
 PRD-LLM-TRACE makes ``record_llm_call`` the single write seam every
-caller (planner / gap_fill / memory_reflect) funnels through. These
+caller (planner / gap_fill) funnels through. These
 tests pin its public contract:
 
 * The schema fields the PRD lists land in the JSONL line.

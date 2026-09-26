@@ -231,11 +231,3 @@ jobs:
           test -f runs/acceptance/ci-audit/09_audit/comparison.json
           test -f runs/acceptance/ci-audit/09_audit/experiment_note.md
           test -f runs/acceptance/ci-audit/09_audit/model_diagnostics.json
-
-      - name: Refresh modeling memory
-        run: |
-          python skills/swmm-modeling-memory/scripts/summarize_memory.py \
-            --runs-dir runs \
-            --out-dir memory/modeling-memory
-          test -f runs/acceptance/ci-audit/memory_summary.json
-          test -f memory/modeling-memory/project_memory_index.md

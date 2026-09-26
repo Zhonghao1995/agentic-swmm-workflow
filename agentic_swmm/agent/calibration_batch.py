@@ -2,17 +2,18 @@
 
 A modeler iterating 50 calibrations is one *workflow*, not 50. Without
 a batch wrapper the audit hook would write 50 rows into
-``parametric_memory.jsonl`` and 50 lines into ``lessons_learned.md`` —
-the user's memory store would be flooded by the inner sweep instead of
-recording the outcome that matters: which parameter set won.
+``parametric_memory.jsonl`` — the user's memory store would be flooded
+by the inner sweep instead of recording the outcome that matters: which
+parameter set won.
 
 This module ships a context manager that flips a process-level env var
 (:data:`BATCH_ENV_VAR`) on enter and clears it on exit. Other hooks
 read the var and short-circuit. On exit we commit:
 
 1. One :class:`CalibrationRecord` row (the best iteration) to
-   ``calibration_memory.jsonl``.
-2. One human-readable line to ``lessons_learned.md``.
+   ``calibration_memory.jsonl``. (The human-readable line this used to
+   append to ``lessons_learned.md`` went with that file in the memory
+   simplification, 2026-09-26.)
 
 Exception behaviour
 -------------------
@@ -89,8 +90,7 @@ class CalibrationBatch:
                 batch.record_iteration(iter_idx, params, obj, run_id)
 
     On ``__exit__`` (success or failure) the batch writes one
-    consolidated record to ``calibration_memory.jsonl`` and appends one
-    summary line to ``lessons_learned.md``. Per-iteration audit-hook
+    consolidated record to ``calibration_memory.jsonl``. Per-iteration audit-hook
     writes that observe :data:`BATCH_ENV_VAR` skip themselves while the
     batch is active.
     """
@@ -226,7 +226,6 @@ class CalibrationBatch:
 
         if write_side_effects and best is not None:
             self._write_calibration_record(best, consolidated_text)
-            self._append_lesson_line(consolidated_text)
 
         return CalibrationBatchOutcome(
             n_iterations=n,
@@ -260,21 +259,6 @@ class CalibrationBatch:
         except (ValueError, OSError):
             # Soft-fail to match the calibration_memory bridge contract.
             return
-
-    def _append_lesson_line(self, text: str) -> None:
-        self._memory_dir.mkdir(parents=True, exist_ok=True)
-        lessons = self._memory_dir / "lessons_learned.md"
-        prefix = "" if lessons.exists() else "<!-- schema_version: 1.1 -->\n# Lessons\n"
-        existing = lessons.read_text(encoding="utf-8") if lessons.exists() else ""
-        with lessons.open("w", encoding="utf-8") as handle:
-            if prefix:
-                handle.write(prefix)
-            elif existing and not existing.endswith("\n"):
-                handle.write(existing)
-                handle.write("\n")
-            else:
-                handle.write(existing)
-            handle.write(f"- {text.splitlines()[0]}\n")
 
 
 def is_batch_active() -> bool:

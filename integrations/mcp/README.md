@@ -2,14 +2,13 @@
 
 This folder makes the Agentic SWMM module MCP servers easier to attach to Codex, Hermes, OpenClaw, or any other stdio MCP client.
 
-The repository has eleven module MCP servers:
+The repository has ten module MCP servers:
 
 - `swmm-builder`
 - `swmm-calibration`
 - `swmm-climate`
 - `swmm-experiment-audit`
 - `swmm-gis`
-- `swmm-modeling-memory`
 - `swmm-network`
 - `swmm-params`
 - `swmm-plot`

@@ -20,7 +20,6 @@ def _ctx(tmp_path: Path) -> audit_hook._RefreshContext:
         runs_dir=tmp_path / "runs",
         project_root=tmp_path,
         memory_dir=tmp_path / "memory",
-        lessons_path=tmp_path / "memory" / "lessons_learned.md",
         result={"skipped": False, "reason": "", "errors": []},
     )
 
@@ -31,14 +30,10 @@ def test_phase_order_is_pinned() -> None:
     marker) and before the outcome ledger (complete provenance)."""
     names = [phase.__name__ for phase in audit_hook._REFRESH_PHASES]
     assert names == [
-        "_phase_compaction_marker",
-        "_phase_memory_moc",
-        "_phase_lifecycle_metadata",
         "_phase_parametric_bridge",
         "_phase_runs_row",
         "_phase_calibration_bridge",
         "_phase_negative_lessons",
-        "_phase_decay_pass",
         "_phase_outcome_ledger",
     ]
 

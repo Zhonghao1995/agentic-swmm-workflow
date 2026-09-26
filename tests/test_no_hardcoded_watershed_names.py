@@ -58,7 +58,6 @@ _ALLOWED_FILES = {
     REPO_ROOT / "agentic_swmm" / "commands" / "setup.py",
     REPO_ROOT / "agentic_swmm" / "agent" / "prompts.py",
     REPO_ROOT / "agentic_swmm" / "agent" / "welcome.py",
-    REPO_ROOT / "skills" / "swmm-modeling-memory" / "scripts" / "summarize_memory.py",
 }
 
 # Tests are exempt — fixtures legitimately reference example cases.

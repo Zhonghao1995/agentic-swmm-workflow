@@ -37,7 +37,7 @@ def test_coverage_subcommand_exits_zero_when_all_ok() -> None:
     assert "ToolSpec" in proc.stdout
     assert "MCP server" in proc.stdout
     assert "audit_run" in proc.stdout
-    assert "summarize_memory" in proc.stdout
+    assert "audit_run" in proc.stdout
 
 
 def test_coverage_subcommand_supports_json_output() -> None:
@@ -48,5 +48,5 @@ def test_coverage_subcommand_supports_json_output() -> None:
     payload = json.loads(proc.stdout)
     assert isinstance(payload, list)
     assert all(set(entry.keys()) >= {"tool_spec_name", "mcp_server", "mcp_tool_name", "status"} for entry in payload)
-    assert {entry["tool_spec_name"] for entry in payload} >= {"audit_run", "build_inp", "summarize_memory"}
+    assert {entry["tool_spec_name"] for entry in payload} >= {"audit_run", "build_inp", "plot_run"}
     assert all(entry["status"] == "OK" for entry in payload)

@@ -96,12 +96,6 @@ EXPECTED_BINDINGS: tuple[ExpectedBinding, ...] = (
         mcp_server="swmm-runner",
         mcp_tool_name="swmm_run",
     ),
-    ExpectedBinding(
-        tool_spec_name="summarize_memory",
-        script_relpath="skills/swmm-modeling-memory/scripts/summarize_memory.py",
-        mcp_server="swmm-modeling-memory",
-        mcp_tool_name="summarize_memory",
-    ),
     # dark-MCP registration (PR 1, issue #246): 6 calibration tools
     ExpectedBinding(
         tool_spec_name="swmm_calibrate",

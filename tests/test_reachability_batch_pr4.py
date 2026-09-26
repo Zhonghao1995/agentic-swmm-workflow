@@ -3,10 +3,8 @@
 Per-item assertions:
   C1 — build_raingage_section: in registry, is_read_only=False, missing
        out_text_path → _failure, mapper emits camelCase keys.
-  C2 — summarize_memory: obsidian_dir in schema; mapper emits obsidianDir.
   C3 — format_rainfall: extended schema properties surfaced.
   C4 — audit_run: compare_to in schema; mapper emits compareTo.
-  C5 — retrieve_memory in skill_router._DETERMINISTIC_BINDINGS → swmm-rag-memory.
   C6 — plot_run: focus_day/window_start/window_end in schema and mapper.
 """
 
@@ -116,32 +114,6 @@ def test_c1_build_raingage_section_mapper_emits_camel_case() -> None:
 
 
 # ---------------------------------------------------------------------------
-# C2 — summarize_memory obsidian_dir
-# ---------------------------------------------------------------------------
-
-def test_c2_summarize_memory_schema_has_obsidian_dir(registry: AgentToolRegistry) -> None:
-    spec = registry._tools["summarize_memory"]
-    props = spec.parameters.get("properties", {})
-    assert "obsidian_dir" in props, "obsidian_dir must be in summarize_memory schema"
-
-
-def test_c2_summarize_memory_mapper_emits_obsidian_dir() -> None:
-    from agentic_swmm.agent.tool_registry import _summarize_memory_args as _sma
-
-    call = _call("summarize_memory", {"runs_dir": "/some/runs", "obsidian_dir": "/vault/notes"})
-    result = _sma(call, _SESSION)
-    assert result.get("obsidianDir") == "/vault/notes"
-
-
-def test_c2_summarize_memory_mapper_absent_obsidian_dir() -> None:
-    from agentic_swmm.agent.tool_registry import _summarize_memory_args as _sma
-
-    call = _call("summarize_memory", {"runs_dir": "/some/runs"})
-    result = _sma(call, _SESSION)
-    assert "obsidianDir" not in result
-
-
-# ---------------------------------------------------------------------------
 # C3 — format_rainfall extended schema
 # ---------------------------------------------------------------------------
 
@@ -221,7 +193,6 @@ def test_c4_audit_run_mapper_absent_compare_to(tmp_path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# C5 — retrieve_memory skill binding
 # ---------------------------------------------------------------------------
 
 def test_c6_plot_run_schema_has_focus_day(registry: AgentToolRegistry) -> None:

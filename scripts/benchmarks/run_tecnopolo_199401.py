@@ -267,15 +267,6 @@ def main() -> None:
         "--objective",
         "Verify prepared-input execution, direct SWMM consistency, node-level QA, plotting, and audit.",
     ])
-    run_cmd([
-        "python3",
-        "skills/swmm-modeling-memory/scripts/summarize_memory.py",
-        "--runs-dir",
-        "runs",
-        "--out-dir",
-        "memory/store",
-    ])
-
     summary = {
         "run_dir": rel(run_dir),
         "status": "pass",

@@ -49,7 +49,7 @@ def test_missing_servers_triggers_warning_and_fallback(isolated_config_dir, caps
     mcp_path = isolated_config_dir / "mcp.json"
     stale = [name for name in registry.MCP_SERVERS if name not in {
         "swmm-experiment-audit",
-        "swmm-modeling-memory",
+        "swmm-network",
         "swmm-uncertainty",
     }]
     _write_partial_registry(mcp_path, names=stale)
@@ -63,7 +63,7 @@ def test_missing_servers_triggers_warning_and_fallback(isolated_config_dir, caps
     stderr = capsys.readouterr().err
     assert "warn:" in stderr
     assert "swmm-experiment-audit" in stderr
-    assert "swmm-modeling-memory" in stderr
+    assert "swmm-network" in stderr
     assert "swmm-uncertainty" in stderr
     assert "aiswmm setup" in stderr
 

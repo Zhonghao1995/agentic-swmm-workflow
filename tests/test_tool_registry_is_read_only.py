@@ -34,10 +34,8 @@ EXPECTED_READ_ONLY: set[str] = {
     "read_rpt_summary",
     "read_skill",
     "recall_memory",
-    "recall_memory_search",
     "recall_session_history",
     # Issue #124 Part A: hybrid retrieval over audited-run memory.
-    "retrieve_memory",
     "search_files",
     "select_skill",
     # web_fetch_url removed: network egress goes through the approval gate (review P1-3).

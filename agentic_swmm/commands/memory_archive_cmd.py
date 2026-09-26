@@ -3,7 +3,7 @@
 These are the materialized archive/restore verbs that move entries between
 the live store and the archive sibling file.  Read-time tier filtering
 (which happens without any explicit verb) is a separate code path in
-``recall_search.py`` and ``context_budget.py``.
+``context_budget.py``.
 
 Usage::
 

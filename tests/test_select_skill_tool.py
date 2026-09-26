@@ -6,7 +6,7 @@ PRD-Y "Two-level planner surface":
   tool subset without performing any deterministic-SWMM operation.
 - The description carries the literal ``USE WHEN`` / ``DO NOT USE WHEN``
   routing text required by the planner-routing convention (mirrors
-  ``recall_memory`` / ``recall_memory_search``).
+  ``recall_memory`` / ``recall_session_history``).
 - A valid skill_name returns ``ok=True`` with a JSON-serialisable tool
   list (name + description + parameters).
 - An invalid skill_name returns ``ok=False`` with a clear summary so

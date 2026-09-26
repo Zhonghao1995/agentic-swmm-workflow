@@ -71,10 +71,8 @@ CAPABILITY_GROUPS: "OrderedDict[str, tuple[str, ...]]" = OrderedDict(
             "Memory",
             (
                 "recall_memory",
-                "recall_memory_search",
                 "recall_session_history",
                 "record_fact",
-                "summarize_memory",
             ),
         ),
         (

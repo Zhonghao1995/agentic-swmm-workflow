@@ -669,7 +669,7 @@ class TestAuditHookOutcomeLog(unittest.TestCase):
         project_root, run_dir = self._make_project(prov)
         memory_dir = project_root / "memory" / "modeling-memory"
 
-        with patched_audit_hook_subprocess(_run_decay_pass={"skipped": True}):
+        with patched_audit_hook_subprocess():
             result = trigger_memory_refresh(run_dir)
 
         # Outcome events must be present in result and in the ledger
@@ -692,7 +692,7 @@ class TestAuditHookOutcomeLog(unittest.TestCase):
         project_root, run_dir = self._make_project(prov)
         memory_dir = project_root / "memory" / "modeling-memory"
 
-        with patched_audit_hook_subprocess(_run_decay_pass={"skipped": True}):
+        with patched_audit_hook_subprocess():
             result = trigger_memory_refresh(run_dir)
 
         # No outcome events when memories_applied is empty

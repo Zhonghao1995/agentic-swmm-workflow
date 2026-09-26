@@ -31,13 +31,11 @@ _MIGRATED_FAMILIES = [
         "swmm_memory",
         (
             "_recall_memory_tool",
-            "_recall_memory_search_tool",
             "_recall_session_history_tool",
             "_record_fact_tool",
         ),
         (
             "recall_memory",
-            "recall_memory_search",
             "recall_session_history",
             "record_fact",
         ),

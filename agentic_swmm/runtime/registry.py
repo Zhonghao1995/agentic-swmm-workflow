@@ -16,7 +16,6 @@ MCP_SERVERS = [
     "swmm-climate",
     "swmm-experiment-audit",
     "swmm-gis",
-    "swmm-modeling-memory",
     "swmm-network",
     "swmm-params",
     "swmm-plot",
