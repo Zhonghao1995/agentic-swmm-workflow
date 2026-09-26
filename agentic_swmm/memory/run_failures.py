@@ -22,17 +22,30 @@ JSONL — one line per recorded failure. Same contract as the other
 memory stores: atomic append, tolerant of a torn final line on read,
 missing file yields ``[]``. A clean run writes nothing (no empty file).
 
-Schema (``SCHEMA_VERSION == "1.0"``)
+Schema (``SCHEMA_VERSION == "1.1"``)
 ------------------------------------
 - ``run_id``: the run/session directory name — join key with the trace
 - ``tool``: the tool whose call failed
 - ``failure_class``: enumerated — see ``FAILURE_CLASSES``
 - ``summary``: the (truncated) failure summary, verbatim from the tool
 - ``recorded_at``: ISO 8601 UTC
+- ``pattern`` (1.1): ``tool:failure_class:<normalized summary>``, the key
+  a later failure is matched on; paths and long numbers are collapsed
+  because they change between runs while the failure does not
+- ``fix`` / ``fix_tool`` (1.1, present only when known): what the planner
+  did right after this failure that worked, i.e. the same tool with
+  changed arguments or another tool instead. Rows without a fix are
+  failures nobody recovered from inside the turn.
+
+The failure loop (memory simplification PR 3a, 2026-09-26): the fix is
+derived at session end from the ordered tool results, a later failure
+with the same pattern gets the fix as a planner hint at failure time
+(:func:`failure_hint`), and the session-start digest names known fixes.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -42,7 +55,7 @@ from agentic_swmm.memory.jsonl_store import append_rows
 from typing import Any, Iterable
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 # Operational failure taxonomy. Distinct from negative_lessons' modeling
 # ``lesson_type`` enum — these describe how the *runtime* broke, not what
@@ -55,6 +68,19 @@ FAILURE_CLASSES = frozenset(
 # store. The head carries the diagnostic signal; the tail is usually a
 # repeated path or stack frame.
 _SUMMARY_CAP = 300
+
+# Pattern normalization: a token with a path separator becomes <path>,
+# a number of four or more digits (run stamps, dates, sizes) becomes #,
+# three-digit SWMM error codes survive.
+_PATTERN_CAP = 120
+_PATH_TOKEN_RE = re.compile(r"\S*[/\\]\S*")
+_LONG_NUMBER_RE = re.compile(r"\d{4,}")
+_WS_RE = re.compile(r"\s+")
+
+# A fix names the arguments that changed; values are shortened so one
+# long patch or path cannot bloat the row.
+_ARG_VALUE_CAP = 80
+_FIX_CAP = 300
 
 _SWMM_ERROR_RE = re.compile(r"\bERROR\s+\d{3}\b")
 
@@ -116,6 +142,47 @@ def classify_failure(result: dict[str, Any]) -> str | None:
     return "tool_error"
 
 
+def failure_pattern(tool: str, failure_class: str, summary: str) -> str:
+    """The key a failure is matched on across runs."""
+    text = _PATH_TOKEN_RE.sub("<path>", str(summary))
+    text = _LONG_NUMBER_RE.sub("#", text)
+    text = _WS_RE.sub(" ", text).strip().lower()[:_PATTERN_CAP]
+    return f"{tool}:{failure_class}:{text}"
+
+
+def _short(value: Any) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False)
+    if len(text) > _ARG_VALUE_CAP:
+        return text[: _ARG_VALUE_CAP - 3] + "..."
+    return text
+
+
+def describe_fix(failed: dict[str, Any], fixed: dict[str, Any]) -> tuple[str, str]:
+    """Return ``(fix_tool, fix)`` for the successful call after a failure.
+
+    Same tool: the arguments that changed (``key: old -> new``, added,
+    dropped), or "the same arguments" when a plain retry worked (a
+    transient fault). Another tool: that call, "instead".
+    """
+    tool = str(fixed.get("tool", ""))
+    before = failed.get("args") if isinstance(failed.get("args"), dict) else {}
+    after = fixed.get("args") if isinstance(fixed.get("args"), dict) else {}
+    if tool == str(failed.get("tool", "")):
+        parts: list[str] = []
+        for key in sorted(set(before) | set(after)):
+            if key not in after:
+                parts.append(f"{key} dropped")
+            elif key not in before:
+                parts.append(f"{key}={_short(after[key])} added")
+            elif before[key] != after[key]:
+                parts.append(f"{key}: {_short(before[key])} -> {_short(after[key])}")
+        text = f"{tool} again with " + ("; ".join(parts) if parts else "the same arguments")
+    else:
+        args = ", ".join(f"{key}={_short(value)}" for key, value in sorted(after.items()))
+        text = f"{tool}({args}) instead"
+    return tool, text[:_FIX_CAP]
+
+
 @dataclass(frozen=True)
 class RunFailure:
     """One row of operational run-failure memory."""
@@ -125,10 +192,13 @@ class RunFailure:
     failure_class: str
     summary: str
     recorded_at: str | None = None
+    pattern: str = ""
+    fix: str = ""
+    fix_tool: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Return the schema-versioned dict written to disk."""
-        return {
+        row: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
             "tool": self.tool,
@@ -138,7 +208,12 @@ class RunFailure:
             or datetime.now(timezone.utc)
             .isoformat(timespec="seconds")
             .replace("+00:00", "Z"),
+            "pattern": self.pattern or failure_pattern(self.tool, self.failure_class, self.summary),
         }
+        if self.fix:
+            row["fix"] = self.fix
+            row["fix_tool"] = self.fix_tool
+        return row
 
 
 def resolve_store(memory_dir: Path | None = None) -> Path:
@@ -166,27 +241,37 @@ def record_run_failures(
 ) -> list[RunFailure]:
     """Append every operational failure in ``results`` to ``store``.
 
-    Scans ``results`` (the executor's per-tool result dicts), classifies
-    each genuine failure (skipping successes and permission denials), and
-    appends one JSONL row per failure. Returns the recorded failures.
+    Scans ``results`` (the executor's per-tool result dicts, in call
+    order), classifies each genuine failure (skipping successes and
+    permission denials), and appends one JSONL row per failure. When the
+    call right after a failure succeeded, that call is recorded as the
+    failure's fix (:func:`describe_fix`): it is the planner's reaction to
+    the failure, and it worked. Returns the recorded failures.
 
     No-op (returns ``[]``, writes nothing) when there are no failures, so
     a clean run never creates the file.
     """
+    rows = [result for result in results if isinstance(result, dict)]
     failures: list[RunFailure] = []
-    for result in results:
-        if not isinstance(result, dict):
-            continue
+    for index, result in enumerate(rows):
         failure_class = classify_failure(result)
         if failure_class is None:
             continue
+        tool = str(result.get("tool", ""))
         summary = str(result.get("summary", ""))[:_SUMMARY_CAP]
+        fix_tool = fix = ""
+        following = rows[index + 1] if index + 1 < len(rows) else None
+        if following is not None and following.get("ok") and not following.get("skipped"):
+            fix_tool, fix = describe_fix(result, following)
         failures.append(
             RunFailure(
                 run_id=run_id or "",
-                tool=str(result.get("tool", "")),
+                tool=tool,
                 failure_class=failure_class,
                 summary=summary,
+                pattern=failure_pattern(tool, failure_class, summary),
+                fix=fix,
+                fix_tool=fix_tool,
             )
         )
 
@@ -196,6 +281,38 @@ def record_run_failures(
     store = Path(store)
     append_rows(store, (failure.to_dict() for failure in failures))
     return failures
+
+
+def failure_hint(result: dict[str, Any], store: Path | None = None) -> dict[str, Any] | None:
+    """The ``[failure_memory]`` message for a failed call, or ``None``.
+
+    The read side of the failure loop: when this project recorded the
+    same failure pattern before and the call after it worked, the planner
+    gets that fix in its next turn instead of rediscovering it. Returns
+    ``{"content", "pattern", "fix", "fix_tool"}``; ``None`` when the
+    result is not a recordable failure or nothing fixed it before.
+    """
+    failure_class = classify_failure(result)
+    if failure_class is None:
+        return None
+    tool = str(result.get("tool", ""))
+    summary = str(result.get("summary", ""))[:_SUMMARY_CAP]
+    pattern = failure_pattern(tool, failure_class, summary)
+    path = Path(store) if store is not None else resolve_store()
+    seen = [row for row in read_run_failures(path) if row.pattern == pattern]
+    fixed = [row for row in seen if row.fix]
+    if not fixed:
+        return None
+    last = fixed[-1]
+    content = (
+        "[failure_memory]\n"
+        f"tool: {tool}\n"
+        f"failure: {summary}\n"
+        f"seen: {len(seen)} time(s) in this project, recovered {len(fixed)} time(s)\n"
+        f"last fix: {last.fix}\n"
+        "resume: apply that fix if it applies here; otherwise say why it does not."
+    )
+    return {"content": content, "pattern": pattern, "fix": last.fix, "fix_tool": last.fix_tool}
 
 
 #: Default window and size of the digest handed to the planner.
@@ -228,6 +345,7 @@ def recent_failure_digest(
     cutoff = moment.timestamp() - days * 86400
     counts: dict[tuple[str, str], int] = {}
     latest: dict[tuple[str, str], float] = {}
+    fixes: dict[tuple[str, str], str] = {}
     for row in rows:
         stamp = _parse_stamp(row.recorded_at)
         if stamp is None or stamp < cutoff:
@@ -235,19 +353,26 @@ def recent_failure_digest(
         key = (row.tool, row.summary)
         counts[key] = counts.get(key, 0) + 1
         latest[key] = max(latest.get(key, 0.0), stamp)
+        if row.fix:
+            fixes[key] = row.fix
     if not counts:
         return ""
     ordered = sorted(counts, key=lambda key: (-counts[key], -latest[key]))[:limit]
     lines = [
         "<recent-failures>",
         f"Tool calls that failed in this project during the last {days} days. "
-        "Do not repeat them as written; use the alternative each hint names "
+        "Do not repeat them as written; use the fix recorded next to a line, "
+        "or the alternative each hint names "
         "(read_rpt_summary for .rpt data, read_file / search_files for files).",
     ]
     for tool, summary in ordered:
         times = counts[(tool, summary)]
         suffix = f" (x{times})" if times > 1 else ""
-        lines.append(f"- {tool}: {summary}{suffix}")
+        line = f"- {tool}: {summary}{suffix}"
+        fix = fixes.get((tool, summary))
+        if fix:
+            line += f" -> fixed last time by: {fix}"
+        lines.append(line)
     lines.append("</recent-failures>")
     return "\n".join(lines)
 
@@ -279,13 +404,21 @@ def read_run_failures(store: Path) -> list[RunFailure]:
     from agentic_swmm.memory.store import ledger_rows
 
     for row in ledger_rows(store):
+        tool = str(row.get("tool", ""))
+        failure_class = str(row.get("failure_class", ""))
+        summary = str(row.get("summary", ""))
         out.append(
             RunFailure(
                 run_id=str(row.get("run_id", "")),
-                tool=str(row.get("tool", "")),
-                failure_class=str(row.get("failure_class", "")),
-                summary=str(row.get("summary", "")),
+                tool=tool,
+                failure_class=failure_class,
+                summary=summary,
                 recorded_at=row.get("recorded_at"),
+                # Rows written before 1.1 carry no pattern; derive it so
+                # they count as "seen" for the hint.
+                pattern=str(row.get("pattern") or failure_pattern(tool, failure_class, summary)),
+                fix=str(row.get("fix") or ""),
+                fix_tool=str(row.get("fix_tool") or ""),
             )
         )
     return out

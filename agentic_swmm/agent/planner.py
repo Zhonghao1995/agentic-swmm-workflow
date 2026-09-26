@@ -504,6 +504,10 @@ class Planner:
         failure_log: list[tuple[str, str]] = []
         failures_since_checkpoint = 0
         checkpoint_pending = False
+        # Failure loop (memory simplification PR 3a): the tool a shown
+        # [failure_memory] hint recommended, until the next success tells
+        # whether the planner followed it.
+        pending_hint_tool: str | None = None
 
         for step in range(1, self.max_steps + 1):
             # Issue #58 (UX-3): the LLM call is the longest silent
@@ -677,12 +681,41 @@ class Planner:
                                 sort_keys=True,
                             ),
                         })
+                    # The failure loop's read side: the same failure was
+                    # recorded in this project before and the call after it
+                    # worked, so the next turn gets that fix (a user-role
+                    # item, like the L5 gap decision) instead of rediscovering it.
+                    hint = _failure_memory_hint(result)
+                    if hint is not None:
+                        outputs.append({"role": "user", "content": hint["content"]})
+                        pending_hint_tool = hint["fix_tool"]
+                        write_event(
+                            trace_path,
+                            {
+                                "event": "failure_hint_shown",
+                                "step": step,
+                                "tool": call.name,
+                                "pattern": hint["pattern"],
+                                "fix": hint["fix"],
+                            },
+                        )
                     break
                 # A successful tool resets the same-tool failure streak and
                 # clears the open-failure flag: the model recovered.
                 last_failed_tool = None
                 consecutive_failures = 0
                 unresolved_failure = False
+                if pending_hint_tool is not None:
+                    write_event(
+                        trace_path,
+                        {
+                            "event": "failure_hint_followed",
+                            "step": step,
+                            "tool": call.name,
+                            "followed": call.name == pending_hint_tool,
+                        },
+                    )
+                    pending_hint_tool = None
 
             input_items = outputs
 
@@ -1257,6 +1290,20 @@ def _build_l5_replan_clarification(
         "judgement above; decide the next step in context of this choice."
     )
     return {"role": "user", "content": content}
+
+
+def _failure_memory_hint(result: dict[str, Any]) -> dict[str, Any] | None:
+    """The ``[failure_memory]`` item for a failed call, or ``None``.
+
+    Best-effort like every memory read: a store problem must never
+    change the turn, so any exception yields no hint.
+    """
+    try:
+        from agentic_swmm.memory.run_failures import failure_hint
+
+        return failure_hint(result)
+    except Exception:  # noqa: BLE001 - memory must not break the planner
+        return None
 
 
 # Back-compat alias: the class predates the two-provider factory and was

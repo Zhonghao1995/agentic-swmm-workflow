@@ -4,6 +4,34 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: the failure loop (2026-09-26)
+
+- A tool failure now remembers what fixed it. When the call right after a
+  failed call succeeds, the run-failure ledger records it as the failure's
+  fix (the same tool with the arguments that changed, or another tool
+  instead); the ledger schema is 1.1 and older rows still read.
+- When a failure with the same pattern (tool, class, summary with paths
+  and long numbers collapsed) happens again, the planner's next turn
+  carries a `[failure_memory]` message naming the last fix, and the trace
+  records `failure_hint_shown` and whether the next successful call
+  followed it (`failure_hint_followed`).
+- The `<recent-failures>` digest at session start names the known fix
+  next to each line.
+- The `failures` table gained `pattern` and `fix` columns; a database
+  created before them gets the columns in place.
+
+### Memory: one database (2026-09-26)
+
+- `memory/store/memory.sqlite` now holds the project memory next to the
+  sessions: `failures`, `parametric`, `calibration`, `negative_lessons`
+  and `runs`. The JSONL ledgers stay the append-only truth; each table is
+  a lazily synced index of its ledger, so the writers are unchanged and
+  the readers query the database.
+- `aiswmm memory rebuild` sets the current database aside and rebuilds
+  every table from the ledgers and `runs/`.
+- The parametric memory's separate sqlite index is gone; the database is
+  the index.
+
 ### Memory layout: one folder, three kinds (2026-09-06)
 
 - Everything memory-related now lives under `memory/`. `memory/initial/`
