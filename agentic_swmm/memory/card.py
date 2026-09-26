@@ -12,31 +12,20 @@ or a case has no memory yet.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 
 def _read_case_rows(path: Path, case: str) -> list[dict[str, Any]]:
-    """Return JSONL rows in ``path`` whose ``case_name`` matches ``case``."""
+    """Return the ledger rows in ``path`` whose ``case_name`` matches ``case``."""
+    from agentic_swmm.memory.store import ledger_rows
+
     if not path.exists():
         return []
-    rows: list[dict[str, Any]] = []
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        return ledger_rows(path, case_name=case)
     except OSError:
         return []
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(rec, dict) and rec.get("case_name") == case:
-            rows.append(rec)
-    return rows
 
 
 def _num(value: Any) -> float | None:

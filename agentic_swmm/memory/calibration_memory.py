@@ -47,7 +47,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from agentic_swmm.memory.jsonl_store import append_row, iter_rows
+from agentic_swmm.memory.jsonl_store import append_row
 from typing import Any
 
 
@@ -146,7 +146,9 @@ def recall_calibration(
 
     filters = filters or {}
     matches: list[dict[str, Any]] = []
-    for row in iter_rows(store_path):
+    from agentic_swmm.memory.store import ledger_rows
+
+    for row in ledger_rows(store_path):
         row = migrate_record("calibration_memory", row)
         if _matches(row, filters):
             matches.append(row)

@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from agentic_swmm.memory.jsonl_store import append_rows, iter_rows
+from agentic_swmm.memory.jsonl_store import append_rows
 from typing import Any, Iterable
 
 
@@ -276,7 +276,9 @@ def read_run_failures(store: Path) -> list[RunFailure]:
     if not store.is_file():
         return []
     out: list[RunFailure] = []
-    for row in iter_rows(store):
+    from agentic_swmm.memory.store import ledger_rows
+
+    for row in ledger_rows(store):
         out.append(
             RunFailure(
                 run_id=str(row.get("run_id", "")),

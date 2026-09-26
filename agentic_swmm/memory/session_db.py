@@ -1,4 +1,4 @@
-"""SQLite-backed cross-session memory store (PRD session-db-facts).
+"""SQLite-backed memory database: sessions plus, since 2026-09-06, the project-memory tables (PRD session-db-facts; memory simplification part 2).
 
 ``agent_trace.jsonl`` remains the ground truth for any single session.
 This module projects that JSONL into an FTS5-indexed SQLite database
@@ -280,6 +280,88 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
     "CREATE UNIQUE INDEX IF NOT EXISTS uniq_tool_events_step ON tool_events(session_id, step, kind, tool_name)",
     # Unique composite makes message ingestion idempotent under re-run.
     "CREATE UNIQUE INDEX IF NOT EXISTS uniq_messages_step ON messages(session_id, step, role)",
+    # ---- project memory (memory simplification part 2, 2026-09-06). The
+    # JSONL ledgers stay the truth; these tables are their synced index
+    # (agentic_swmm.memory.store). ``raw`` keeps the whole row; the other
+    # columns are the ones worth a WHERE clause. ``fingerprint`` (sha1 of
+    # the canonical JSON line) makes every import idempotent.
+    """
+    CREATE TABLE IF NOT EXISTS ledger_state (
+      ledger     TEXT PRIMARY KEY,
+      size       INTEGER,
+      mtime_ns   INTEGER,
+      synced_utc TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS failures (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      fingerprint   TEXT UNIQUE,
+      run_id        TEXT,
+      tool          TEXT,
+      failure_class TEXT,
+      summary       TEXT,
+      recorded_at   TEXT,
+      raw           TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS parametric (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      fingerprint        TEXT UNIQUE,
+      run_id             TEXT,
+      case_name          TEXT,
+      calibration_status TEXT,
+      recorded_utc       TEXT,
+      raw                TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS calibration (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      fingerprint    TEXT UNIQUE,
+      run_id         TEXT,
+      case_name      TEXT,
+      use_case       TEXT,
+      algorithm      TEXT,
+      objective_name TEXT,
+      created_at     TEXT,
+      raw            TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS negative_lessons (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      fingerprint TEXT UNIQUE,
+      run_id      TEXT,
+      case_name   TEXT,
+      lesson_type TEXT,
+      recorded_at TEXT,
+      raw         TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS runs (
+      run_id             TEXT PRIMARY KEY,
+      run_dir            TEXT,
+      case_name          TEXT,
+      project            TEXT,
+      workflow_mode      TEXT,
+      status             TEXT,
+      qa_status          TEXT,
+      diagnostics_status TEXT,
+      swmm_return_code   TEXT,
+      peak_flow          TEXT,
+      continuity         TEXT,
+      failure_patterns   TEXT,
+      generated_at_utc   TEXT
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_parametric_case ON parametric(case_name)",
+    "CREATE INDEX IF NOT EXISTS idx_calibration_case ON calibration(case_name)",
+    "CREATE INDEX IF NOT EXISTS idx_negative_case ON negative_lessons(case_name)",
+    "CREATE INDEX IF NOT EXISTS idx_runs_case ON runs(case_name)",
+    "CREATE INDEX IF NOT EXISTS idx_failures_tool ON failures(tool)",
 )
 
 

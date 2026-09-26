@@ -58,6 +58,7 @@ MEMORY_SUBMODULE_RATCHET = {
     "session_db",
     "session_repair",
     "session_sync",
+    "store",
     "storm_library",
     "user_baseline",
 }

@@ -35,6 +35,7 @@ def test_phase_order_is_pinned() -> None:
         "_phase_memory_moc",
         "_phase_lifecycle_metadata",
         "_phase_parametric_bridge",
+        "_phase_runs_row",
         "_phase_calibration_bridge",
         "_phase_negative_lessons",
         "_phase_decay_pass",
@@ -84,6 +85,7 @@ def test_one_broken_phase_does_not_block_the_next(tmp_path: Path) -> None:
     ):
         for phase in (
             audit_hook._phase_parametric_bridge,
+            audit_hook._phase_runs_row,
             audit_hook._phase_calibration_bridge,
         ):
             phase(ctx)
