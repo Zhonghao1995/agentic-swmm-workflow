@@ -710,6 +710,66 @@ def propose_fact(text: str, *, source_session_id: str | None = None, directory: 
     return _write(folder, proposal, "a project fact", evidence_lines, _slugify(text))
 
 
+def propose_experience(
+    text: str,
+    *,
+    target: str,
+    source_session_id: str | None = None,
+    known_tools: set[str] | None = None,
+    directory: Path | None = None,
+) -> Proposal:
+    """A user-affirmed experience aimed at a tool, a skill or the operating memory (#566).
+
+    The planner had the context, so the text is the body: appended under
+    the usual section, never drafted (``drafted_by`` is ``user``). The
+    gate is one occurrence: the user said it.
+    """
+    text = " ".join((text or "").split())
+    if not text:
+        raise ValueError("propose_experience: text must not be empty")
+    name = (target or "").strip()
+    root = _tracked_root()
+    skills = sorted(
+        path.parent.name for path in root.glob("skills/*/SKILL.md") if path.parent.name not in PRIVATE_SKILLS
+    )
+    if name == "operational":
+        kind, target_path, section = "rule", RULE_TARGET, SECTION
+    elif name in skills:
+        kind, target_path, section = "skill", f"skills/{name}/SKILL.md", SECTION
+    elif known_tools is not None and name in known_tools:
+        kind, target_path, section = "tool", TOOL_TARGET, f"## {name}"
+    else:
+        raise ValueError(
+            f"unknown target {name!r}: pass a tool name, one of the skills ({', '.join(skills) or 'none'}) or 'operational'"
+        )
+    addition = text if text.startswith("- ") else f"- {text}"
+    if kind == "tool":
+        from agentic_swmm.memory.tool_notes import MAX_NOTE_CHARS
+
+        if len(addition) - 2 > MAX_NOTE_CHARS:
+            raise ValueError(f"a tool note is at most {MAX_NOTE_CHARS} characters; this one is {len(addition) - 2}")
+    folder = proposals_dir(directory)
+    stamp = _utcnow()
+    before = _read_target(target_path)
+    proposal = Proposal(
+        id=_next_id(folder),
+        kind=kind,
+        status="open",
+        target=target_path,
+        key=f"{kind}|{name}|{text[:80]}",
+        created_utc=stamp,
+        addition=addition,
+        diff=_unified_diff(target_path, before, apply_addition(before, addition, section=section)),
+        evidence={"source_session": source_session_id or "unknown", "affirmed_by": "user"},
+        section=section,
+        drafted_by="user",
+        drafted_utc=stamp,
+        verdict="stated by the user; written as given",
+    )
+    evidence_lines = [f"- stated by the user in session {source_session_id or 'unknown'}; the gate is one occurrence"]
+    return _write(folder, proposal, f"{name} learns what the user affirmed", evidence_lines, _slugify(f"{name}-{text}"))
+
+
 # --- decisions ---------------------------------------------------------------
 
 

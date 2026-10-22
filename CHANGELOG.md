@@ -4,6 +4,14 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: a correction stated in the session becomes a proposal (2026-10-21)
+
+- `record_fact` takes an optional `target`: a tool name, a skill name or
+  `operational`. With a target, a correction the user stated becomes a
+  proposal of kind `tool`, `skill` or `rule` for that home, written as
+  given, never drafted, still awaiting the user's decision; an unknown
+  target is refused with the known names.
+
 ### Memory: the watch list and the stats (2026-10-21)
 
 - The runs row records which QA checks failed and which model
