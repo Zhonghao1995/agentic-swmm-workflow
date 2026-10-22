@@ -240,7 +240,23 @@ def run_row_from_dir(run_dir: Path) -> dict[str, Any] | None:
         "continuity": _scalar(metrics.get("continuity_error")),
         "failure_patterns": _scalar(summary.get("failure_patterns")),
         "generated_at_utc": provenance.get("generated_at_utc"),
+        # The watch list (#565): evidence that counts but cannot propose.
+        "qa_failed_checks": _scalar([
+            str(check.get("id") or "") for check in (qa.get("checks") or []) if isinstance(check, dict) and check.get("ok") is False
+        ]),
+        "diagnostic_errors": _scalar(_diagnostic_ids(diagnostics, "error")),
+        "diagnostic_warnings": _scalar(_diagnostic_ids(diagnostics, "warning")),
     }
+
+
+def _diagnostic_ids(diagnostics: dict[str, Any], severity: str) -> list[str]:
+    out: list[str] = []
+    for item in diagnostics.get("diagnostics") or []:
+        if isinstance(item, dict) and str(item.get("severity") or "") == severity:
+            ident = str(item.get("id") or "")
+            if ident and ident not in out:
+                out.append(ident)
+    return out
 
 
 def upsert_run(db_path: Path, row: dict[str, Any]) -> None:

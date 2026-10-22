@@ -356,7 +356,10 @@ _SCHEMA_STATEMENTS: tuple[str, ...] = (
       peak_flow          TEXT,
       continuity         TEXT,
       failure_patterns   TEXT,
-      generated_at_utc   TEXT
+      generated_at_utc   TEXT,
+      qa_failed_checks   TEXT,
+      diagnostic_errors  TEXT,
+      diagnostic_warnings TEXT
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_parametric_case ON parametric(case_name)",
@@ -379,6 +382,10 @@ _PREVIOUS_SESSION_FENCE = re.compile(
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("failures", "pattern", "TEXT"),
     ("failures", "fix", "TEXT"),
+    # The watch list (#565): which QA checks failed and which diagnostics fired.
+    ("runs", "qa_failed_checks", "TEXT"),
+    ("runs", "diagnostic_errors", "TEXT"),
+    ("runs", "diagnostic_warnings", "TEXT"),
 )
 
 

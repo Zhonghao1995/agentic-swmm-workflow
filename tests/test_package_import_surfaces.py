@@ -64,6 +64,8 @@ MEMORY_SUBMODULE_RATCHET = {
     # build time and doctor reports the file (skill refinement loop, #562).
     "tool_notes",
     "user_baseline",
+    # The memory command renders the watch list and the stats (#565).
+    "watch",
 }
 
 
