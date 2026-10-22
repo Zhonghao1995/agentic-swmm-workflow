@@ -179,6 +179,16 @@ def test_a_draft_may_retarget_to_a_skill_the_session_selected(workspace: Path) -
     assert "-- Read the report under 06_run/model.rpt." in reloaded.diff and "+- Read the report under 06_runner/model.rpt" in reloaded.diff
 
 
+def test_a_retarget_without_a_procedure_diff_keeps_the_tool_note(workspace: Path) -> None:
+    # Measured 2026-10-22: a bullet moved into a SKILL.md is never read; only a diff may move.
+    proposal = _seed(workspace)
+    reply = json.loads(GOOD)
+    reply["retarget_skill"] = "swmm-experiment-audit"
+    draft = draft_mod.draft_proposal(proposal, provider=FakeProvider(json.dumps(reply)), store_dir=workspace / "memory" / "store")
+    assert draft.ok and draft.retarget_skill == ""
+    assert mod.load_all()[0].kind == "tool" and mod.load_all()[0].target == "memory/initial/tool_notes.md"
+
+
 def test_a_retarget_to_a_skill_the_session_never_selected_is_ignored(workspace: Path) -> None:
     proposal = _seed(workspace)
     reply = json.loads(GOOD)
