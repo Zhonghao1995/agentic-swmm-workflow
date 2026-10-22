@@ -210,11 +210,11 @@ def test_the_cli_refresh_runs_the_gate_and_reject_takes_until(workspace: Path, c
     store = workspace / "memory" / "store" / "run_failures.jsonl"
     for session, run_dir in (("100000_a_run", KELOWNA), ("110000_b_run", TODCREEK), ("120000_c_run", KELOWNA)):
         _missing_rpt(store, session, run_dir)
-    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=True)) == 0
+    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=True, proposal_id=None, draft=None, no_draft=True, model=None)) == 0
     out = capsys.readouterr().out
     assert out.startswith("1 new proposal(s): 001 (open)") and "001" in out
     assert memory_cmd.reject_main(argparse.Namespace(proposal_id="001", reason="later", until=6)) == 0
     assert "after 6 runs" in capsys.readouterr().out
-    assert memory_cmd.proposals_main(argparse.Namespace(all=True, json=True, refresh=False)) == 0
+    assert memory_cmd.proposals_main(argparse.Namespace(all=True, json=True, refresh=False, proposal_id=None, draft=None, no_draft=True, model=None)) == 0
     (row,) = json.loads(capsys.readouterr().out)
     assert row["status"] == "rejected"

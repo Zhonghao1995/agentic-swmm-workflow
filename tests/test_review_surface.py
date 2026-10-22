@@ -85,7 +85,7 @@ def test_the_list_names_each_proposal_with_its_evidence(workspace: Path, capsys:
         _missing_rpt(store, session, run_dir)
     mod.propose_from_failures(store.parent)
     mod.propose_fact("the outfall of record is OUT_0", source_session_id="s9")
-    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id=None)) == 0
+    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id=None, draft=None, no_draft=True, model=None)) == 0
     lines = capsys.readouterr().out.splitlines()
     assert lines[0].startswith("id   status     kind   evidence")
     assert lines[1] == "001  open       tool   3 runs, 2 cases    memory/initial/tool_notes.md"
@@ -99,9 +99,9 @@ def test_one_proposal_prints_in_full(workspace: Path, capsys: pytest.CaptureFixt
     from agentic_swmm.commands import memory as memory_cmd
 
     proposal = mod.propose_fact("metric units", source_session_id="s1")
-    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id="1")) == 0
+    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id="1", draft=None, no_draft=True, model=None)) == 0
     assert capsys.readouterr().out == proposal.path.read_text(encoding="utf-8")
-    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id="7")) == 1
+    assert memory_cmd.proposals_main(argparse.Namespace(all=False, json=False, refresh=False, proposal_id="7", draft=None, no_draft=True, model=None)) == 1
 
 
 # --- dry run ------------------------------------------------------------------------
