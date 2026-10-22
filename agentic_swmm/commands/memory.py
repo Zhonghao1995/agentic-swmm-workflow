@@ -48,6 +48,8 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     proposals.add_argument("--draft", metavar="ID", default=None, help="Draft (again) one proposal's body through the configured model.")
     proposals.add_argument("--no-draft", action="store_true", help="List without drafting the undrafted proposals.")
     proposals.add_argument("--model", default=None, help="The model for this listing's drafts (default: the configured one).")
+    proposals.add_argument("--watch", action="store_true", help="Evidence without a known fix, and promoted changes that still fail.")
+    proposals.add_argument("--stats", action="store_true", help="Proposals, promotions and rejections over time.")
     proposals.set_defaults(func=proposals_main)
 
     promote = sub.add_parser(
@@ -191,6 +193,16 @@ def proposals_main(args: argparse.Namespace) -> int:
         if not getattr(args, "json", False):
             ids = ", ".join(f"{p.id} ({p.status})" for p in created)
             print(f"{len(created)} new proposal(s)" + (f": {ids}" if ids else ""))
+    if getattr(args, "watch", False) or getattr(args, "stats", False):
+        from agentic_swmm.memory.watch import proposal_stats, render_stats, render_watch_list, watch_list
+
+        if getattr(args, "watch", False):
+            data = watch_list(resolve_memory_dir())
+            print(json.dumps(data, indent=2, ensure_ascii=False) if getattr(args, "json", False) else render_watch_list(data))
+        if getattr(args, "stats", False):
+            data = proposal_stats(resolve_memory_dir())
+            print(json.dumps(data, indent=2, ensure_ascii=False) if getattr(args, "json", False) else render_stats(data))
+        return 0
     wanted = str(getattr(args, "proposal_id", None) or "").strip()
     if wanted:
         for proposal in load_all():

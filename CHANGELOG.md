@@ -4,6 +4,19 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: the watch list and the stats (2026-10-21)
+
+- The runs row records which QA checks failed and which model
+  diagnostics fired (error and warning level); `aiswmm memory rebuild`
+  fills the columns for older runs from their provenance.
+- `aiswmm memory proposals --watch` lists failed QA checks, diagnostics
+  and negative lessons with run and case counts and the last occurrence,
+  marks entries that cleared the evidence gate without a known fix, and
+  flags promoted changes whose pattern failed again in three runs since
+  the promotion. `--stats` prints proposals, promotions and rejections
+  per month, recurrence after promotion, and drafted versus template
+  promotions. Both are computed on request; nothing is written.
+
 ### Memory: a drafted body at review time (2026-10-21)
 
 - `aiswmm memory proposals` drafts the undrafted open proposals through the
