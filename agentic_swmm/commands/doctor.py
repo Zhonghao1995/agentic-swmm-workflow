@@ -571,6 +571,9 @@ def main(args: argparse.Namespace) -> int:
         # Section 2 — Memory stores.
         print()
         print(render_memory_stores_section(memory_stores))
+        from agentic_swmm.diagnostics.doctor_report import render_open_proposals_line
+
+        print(render_open_proposals_line())
         # Section 3 — Runtime knobs.
         print()
         print(render_runtime_knobs_section(optout_flags))

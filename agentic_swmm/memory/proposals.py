@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 from agentic_swmm.memory.run_failures import RunFailure, _parse_stamp, read_run_failures
+from agentic_swmm.runtime.registry import enabled_startup_memory_files
 
 KINDS = ("tool", "skill", "rule", "fact")
 STATUSES = ("open", "promoted", "rejected", "documented")
@@ -671,12 +672,75 @@ def _find(proposal_id: str, directory: Path | None) -> Proposal:
     raise KeyError(f"no proposal {wanted} under {proposals_dir(directory)}")
 
 
-def promote(proposal_id: str, directory: Path | None = None) -> dict[str, Any]:
+
+def _context_budget_chars() -> int:
+    """The startup memory budget the shell applies (``memory.context_budget_chars``)."""
+    from agentic_swmm.config import load_config
+    from agentic_swmm.memory.context_budget import DEFAULT_CONTEXT_BUDGET_CHARS
+
+    try:
+        return int(load_config().get("memory.context_budget_chars", DEFAULT_CONTEXT_BUDGET_CHARS))
+    except Exception:  # noqa: BLE001 - a broken config falls back to the shipped default
+        return DEFAULT_CONTEXT_BUDGET_CHARS
+
+
+def startup_budget_refusal(target_path: Path, after: str) -> str | None:
+    """Why writing ``after`` into a startup memory file would push a file out of
+    the startup budget, or ``None`` when every file still fits as before.
+
+    The shell packs the startup files greedily into ``memory.context_budget_chars``;
+    a file that no longer fits is dropped whole (live measurement 2026-10-21:
+    operational_memory.md sat 133 characters under the cliff). A rule promotion
+    that would evict any file is refused with the numbers (ADR-0014).
+    """
+    from agentic_swmm.memory.context_budget import MemoryEntry, apply_context_budget
+
+    files = enabled_startup_memory_files()
+    resolved = {path.resolve(): path for path in files}
+    target = target_path.resolve()
+    if target not in resolved:
+        return None
+    budget = _context_budget_chars()
+
+    def entries(replacement: str | None) -> list[MemoryEntry]:
+        out: list[MemoryEntry] = []
+        for path in files:
+            if path.resolve() == target and replacement is not None:
+                text = replacement.strip()
+            else:
+                text = path.read_text(encoding="utf-8", errors="ignore").strip()
+            out.append(MemoryEntry(id=f"startup/{path.name}", text=f"---\nStartup memory: {path.name}\n---\n" + text))
+        return out
+
+    before = apply_context_budget(entries(None), budget=budget)
+    result = apply_context_budget(entries(after), budget=budget)
+    evicted = [name.split("/", 1)[-1] for name in result.excluded_ids if name not in before.excluded_ids]
+    if not evicted:
+        return None
+    return (
+        f"promoting into {target_path.name} would push {', '.join(evicted)} out of the startup memory "
+        f"budget ({budget} characters; injected {len(before.injected_text)} -> {len(result.injected_text)}, "
+        f"{target_path.name} {len(target_path.read_text(encoding='utf-8', errors='ignore'))} -> {len(after)} characters); "
+        "shorten the file, raise memory.context_budget_chars, or reject the proposal"
+    )
+
+
+def open_proposal_count(directory: Path | None = None) -> int:
+    """How many proposals await a decision (0 when the folder is absent)."""
+    try:
+        return len(list_proposals(directory))
+    except Exception:  # noqa: BLE001 - a count is never worth an error
+        return 0
+
+
+def promote(proposal_id: str, directory: Path | None = None, *, dry_run: bool = False) -> dict[str, Any]:
     """Apply an open proposal to its target file and mark it promoted.
 
     The addition is applied by the same operation the proposal was made
     with; the resulting diff must equal the stored one, so a target that
     changed since the proposal is refused rather than patched blindly.
+    With ``dry_run`` every check runs and the diff is returned, but nothing
+    is written and the proposal stays open.
     """
     proposal = _find(proposal_id, directory)
     if proposal.status != "open":
@@ -706,12 +770,17 @@ def promote(proposal_id: str, directory: Path | None = None) -> dict[str, Any]:
             "id": proposal.id,
             "reason": f"{proposal.target} changed since the proposal was made; reject it and let it be proposed again",
         }
+    if proposal.kind == "rule":
+        refusal = startup_budget_refusal(path, after)
+        if refusal:
+            return {"ok": False, "id": proposal.id, "reason": refusal}
+    if dry_run:
+        return {"ok": True, "id": proposal.id, "target": str(path), "kind": proposal.kind, "diff": proposal.diff, "dry_run": True}
     path.write_text(after, encoding="utf-8")
     proposal.status = "promoted"
     proposal.decided_utc = _utcnow()
     _rewrite(proposal)
     return {"ok": True, "id": proposal.id, "target": str(path), "kind": proposal.kind}
-
 
 def reject(proposal_id: str, *, reason: str = "", until: int = 0, directory: Path | None = None) -> dict[str, Any]:
     """Mark an open proposal rejected; its key is never proposed again.

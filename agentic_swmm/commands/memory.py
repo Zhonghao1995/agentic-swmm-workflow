@@ -43,6 +43,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     proposals.add_argument("--all", action="store_true", help="Include promoted, rejected and documented proposals.")
     proposals.add_argument("--json", action="store_true", help="Emit the list as JSON.")
     proposals.add_argument("--refresh", action="store_true", help="Run the evidence gate over the store first (the session end and the audit do this too).")
+    proposals.add_argument("proposal_id", nargs="?", default=None, help="Print one proposal in full instead of the list.")
     proposals.set_defaults(func=proposals_main)
 
     promote = sub.add_parser(
@@ -50,6 +51,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         help="Apply one proposal to its target file (facts.md anywhere; a SKILL.md or the initial memory in a source checkout).",
     )
     promote.add_argument("proposal_id", type=str, help="The proposal id (e.g. 003).")
+    promote.add_argument("--dry-run", action="store_true", help="Run every check and print the diff; write nothing.")
     promote.set_defaults(func=promote_main)
 
     reject = sub.add_parser(
@@ -155,23 +157,52 @@ def show_main(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _evidence_summary(proposal: Any) -> str:
+    evidence = proposal.evidence or {}
+    if proposal.kind == "fact":
+        return f"session {evidence.get('source_session', 'unknown')}"
+    runs, cases = evidence.get("runs") or [], evidence.get("cases") or []
+    text = f"{len(runs)} run{'s' if len(runs) != 1 else ''}"
+    if cases:
+        text += f", {len(cases)} case{'s' if len(cases) != 1 else ''}"
+    return text
+
+
+def _one_line(proposal: Any) -> str:
+    """The condition and the action of a proposal, on one line."""
+    text = proposal.addition.strip()
+    if proposal.kind == "fact":
+        text = next((line for line in text.splitlines() if line.startswith("text: ")), text)
+    first = text.splitlines()[0] if text else ""
+    return first[2:] if first.startswith("- ") else first
+
+
 def proposals_main(args: argparse.Namespace) -> int:
-    """``aiswmm memory proposals [--all] [--json] [--refresh]``: what awaits a decision."""
-    from agentic_swmm.memory.proposals import list_proposals, propose_all, proposals_dir
+    """``aiswmm memory proposals [id] [--all] [--json] [--refresh]``: what awaits a decision, or one proposal in full."""
+    from agentic_swmm.memory.proposals import list_proposals, load_all, propose_all, proposals_dir
 
     if getattr(args, "refresh", False):
         created = propose_all(resolve_memory_dir())
         if not getattr(args, "json", False):
             ids = ", ".join(f"{p.id} ({p.status})" for p in created)
             print(f"{len(created)} new proposal(s)" + (f": {ids}" if ids else ""))
+    wanted = str(getattr(args, "proposal_id", None) or "").strip()
+    if wanted:
+        for proposal in load_all():
+            if proposal.id == wanted.zfill(3) and proposal.path is not None:
+                print(proposal.path.read_text(encoding="utf-8"), end="")
+                return 0
+        print(f"no proposal {wanted.zfill(3)} under {proposals_dir()}", file=sys.stderr)
+        return 1
     rows = list_proposals(include_decided=bool(getattr(args, "all", False)))
     if getattr(args, "json", False):
         print(json.dumps(
             [
                 {
-                    "id": p.id, "kind": p.kind, "status": p.status, "target": p.target,
+                    "id": p.id, "kind": p.kind, "status": p.status, "target": p.target, "section": p.section,
                     "created_utc": p.created_utc, "decided_utc": p.decided_utc, "reason": p.reason,
-                    "path": str(p.path), "evidence": p.evidence,
+                    "path": str(p.path), "evidence": p.evidence, "baseline_60d": p.baseline, "verify": p.verify,
                 }
                 for p in rows
             ],
@@ -181,32 +212,33 @@ def proposals_main(args: argparse.Namespace) -> int:
     if not rows:
         print(f"no open proposals under {proposals_dir()}")
         return 0
-    print(f"{'id':<4} {'status':<9} {'kind':<6} target")
+    print(f"{'id':<4} {'status':<10} {'kind':<6} {'evidence':<18} target")
     for p in rows:
-        print(f"{p.id:<4} {p.status:<9} {p.kind:<6} {p.target}")
-        first = p.addition.strip().splitlines()[0] if p.addition.strip() else ""
-        if p.kind == "fact":
-            first = next((line for line in p.addition.splitlines() if line.startswith("text: ")), first)
-        print(f"     {first[:110]}")
-    print("decide with: aiswmm memory promote <id> | aiswmm memory reject <id> --reason ...")
+        print(f"{p.id:<4} {p.status:<10} {p.kind:<6} {_evidence_summary(p):<18} {p.target}")
+        print(f"     {_one_line(p)[:120]}")
+    print("decide with: aiswmm memory promote <id> [--dry-run] | aiswmm memory reject <id> --reason ... [--until N] | aiswmm memory proposals <id>")
     return 0
 
 
 def promote_main(args: argparse.Namespace) -> int:
-    """``aiswmm memory promote <id>``: apply the proposal to its target file."""
+    """``aiswmm memory promote <id> [--dry-run]``: apply the proposal to its target file."""
     from agentic_swmm.memory.proposals import promote
 
+    dry_run = bool(getattr(args, "dry_run", False))
     try:
-        result = promote(str(args.proposal_id))
+        result = promote(str(args.proposal_id), dry_run=dry_run)
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if not result.get("ok"):
         print(f"not promoted: {result.get('reason')}", file=sys.stderr)
         return 1
+    if dry_run:
+        print(result.get("diff", ""), end="")
+        print(f"dry run: {result['id']} would be applied to {result['target']}; nothing written")
+        return 0
     print(f"promoted {result['id']} -> {result['target']} (now review with git diff, then commit or open a PR)")
     return 0
-
 
 def reject_main(args: argparse.Namespace) -> int:
     """``aiswmm memory reject <id> [--reason] [--until N]``: decline the proposal, for good or until the evidence grows."""
