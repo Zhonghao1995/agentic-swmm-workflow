@@ -553,6 +553,37 @@ def collect_memory_store_status(memory_dir: Path) -> list[MemoryStoreStatus]:
             )
         )
 
+    # ---- 9. tool_notes.md (shipped; read by the tool registry, #562)
+    from agentic_swmm.memory.tool_notes import load_tool_notes, tool_notes_path
+
+    tn_path = tool_notes_path()
+    if tn_path.exists():
+        statuses.append(
+            MemoryStoreStatus(
+                name="tool_notes.md",
+                path=tn_path,
+                exists=True,
+                row_count=sum(len(items) for items in load_tool_notes(tn_path).values()),
+                verified_count=None,
+                last_modified_utc=_last_modified_utc(tn_path),
+                severity="OK",
+                remediation=None,
+            )
+        )
+    else:
+        statuses.append(
+            MemoryStoreStatus(
+                name="tool_notes.md",
+                path=tn_path,
+                exists=False,
+                row_count=None,
+                verified_count=None,
+                last_modified_utc=None,
+                severity="MISSING",
+                remediation="shipped with aiswmm under memory/initial/; reinstall aiswmm",
+            )
+        )
+
     return statuses
 
 

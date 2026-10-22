@@ -115,12 +115,13 @@ def test_the_bullet_names_the_change_and_the_dedupe_finding_names_the_existing_h
     _missing_rpt(store, "210801_todcreek_chat", TODCREEK, fixed="final_report.md")
     _missing_rpt(store, "211138_model_chat", KELOWNA)
     (proposal,) = mod.propose_from_failures(store.parent)
-    assert proposal.kind == "rule" and proposal.status == "open"
+    assert proposal.kind == "tool" and proposal.status == "open" and proposal.section == "## read_file"
+    # the note cap drops the evidence tail and then the rarer change (the evidence stays in the file)
     assert proposal.addition == (
-        '- When `read_file` fails with "file not found: <path>", calling it again with a different `path` worked: '
-        "`path: .../06_run/model.rpt -> .../final_report.md` (2 runs); `path: .../06_run/model.rpt -> .../06_runner/model.rpt` (1 run) "
-        "(3 runs across 2 cases: downtown-kelowna-bc, todcreek)."
+        '- Fails with "file not found: <path>": calling it again with a different `path` worked: '
+        "`path: .../06_run/model.rpt -> .../final_report.md` (2 runs)."
     )
+    assert proposal.evidence["changes"] == [["path: .../06_run/model.rpt -> .../final_report.md", 2], ["path: .../06_run/model.rpt -> .../06_runner/model.rpt", 1]]
     assert "103702" not in proposal.addition and "live-test" not in proposal.addition
     assert proposal.dedupe["tokens"] == ["06_runner"]
     assert proposal.dedupe["found"] == [
@@ -134,8 +135,8 @@ def test_the_bullet_names_the_change_and_the_dedupe_finding_names_the_existing_h
 
 
 def test_knowledge_already_in_the_target_is_documented_not_proposed(workspace: Path) -> None:
-    target = workspace / "memory" / "initial" / "operational_memory.md"
-    target.write_text(target.read_text(encoding="utf-8") + "\n- Builder runs keep the report under 06_runner/.\n", encoding="utf-8")
+    target = workspace / "memory" / "initial" / "tool_notes.md"
+    target.write_text("# Tool notes\n\n## read_file\n\n- Builder runs keep the report under 06_runner/.\n", encoding="utf-8")
     store = workspace / "memory" / "store" / "run_failures.jsonl"
     for session, run_dir in (("100000_a_run", KELOWNA), ("110000_b_run", TODCREEK), ("120000_c_run", KELOWNA)):
         _missing_rpt(store, session, run_dir)

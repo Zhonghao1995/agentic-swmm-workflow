@@ -4,6 +4,18 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: tool notes ride the tool description (2026-10-21)
+
+- `memory/initial/tool_notes.md` ships with the package: one section per
+  tool, at most three hand-reviewed notes of two hundred characters. When
+  the tool registry is built, a tool's notes are appended to its
+  description, so the planner reads them at the moment it considers the
+  tool, every turn, without spending the startup memory budget. The
+  trace records what was injected (`tool_notes_injected`).
+- A fix for an agent-internal tool that clears the evidence gate becomes
+  a proposal of kind `tool` for the notes file; `promote` refuses a fourth
+  note for a tool or a note over the cap. `aiswmm doctor` lists the file.
+
 ### Memory: the evidence gate counts real cases, recent runs and known knowledge (2026-10-21)
 
 - The case of a recorded failure is the run directory the failing call

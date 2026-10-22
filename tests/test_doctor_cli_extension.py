@@ -41,7 +41,7 @@ class DoctorJsonFlagTests(unittest.TestCase):
             self.assertIn(key, payload)
         # 8 memory stores reported (7 modeling-memory stores +
         # sessions.sqlite row from issue #204).
-        self.assertEqual(len(payload["memory_stores"]), 9)  # 8 stores + run_failures.jsonl
+        self.assertEqual(len(payload["memory_stores"]), 10)  # 8 stores + run_failures.jsonl + tool_notes.md (#562)
         # 6 opt-out flags reported (includes ANTHROPIC_API_KEY).
         self.assertEqual(len(payload["optout_status"]), 10)  # 6 flags + 4 campaign knobs
         # The LLM-provider block carries both API-key presence flags.

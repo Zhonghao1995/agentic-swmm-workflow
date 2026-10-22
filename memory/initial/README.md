@@ -4,6 +4,8 @@ This folder is the hand-written, shipped memory: the lightweight Markdown files 
 
 The rest of `memory/` is the workspace's own: `memory/store/` is what the program writes in normal use (ledgers, the session database, project overrides; gitignored), `memory/facts.md` holds promoted, human-approved project facts, and `memory/proposals/` holds pending proposals awaiting a human decision (gitignored).
 
+`tool_notes.md` in this folder is the home of tool-level experience: one `## <tool>` section per tool, at most three bullets of two hundred characters, appended to that tool's description when the tool registry is built. It is hand-reviewed like everything else here; a note arrives through a promoted proposal of kind `tool` or a pull request.
+
 These files are not executable code and are not a replacement for `skills/swmm-end-to-end/SKILL.md`. I treat them as a compact public project context pack — they get loaded before the top-level SWMM orchestration skill so I start each session with the right identity, operating rules, and evidence boundaries.
 
 ## Recommended load order

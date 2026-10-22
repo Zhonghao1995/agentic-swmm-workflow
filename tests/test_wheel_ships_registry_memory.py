@@ -13,7 +13,7 @@ import importlib.util
 from pathlib import Path
 from unittest import mock
 
-from agentic_swmm.runtime.registry import LONG_TERM_MEMORY_FILES, REFERENCE_TABLE_FILES
+from agentic_swmm.runtime.registry import LONG_TERM_MEMORY_FILES, REFERENCE_TABLE_FILES, TOOL_NOTES_FILE
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +35,7 @@ _setup = _load_setup()
 def _registry_memory_paths() -> set[Path]:
     paths = {Path(source) for source, _target in LONG_TERM_MEMORY_FILES}
     paths |= {Path(p) for p in REFERENCE_TABLE_FILES}
+    paths.add(Path(TOOL_NOTES_FILE))
     return paths
 
 

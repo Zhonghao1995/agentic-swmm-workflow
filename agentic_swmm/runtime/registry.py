@@ -50,6 +50,11 @@ REFERENCE_TABLE_FILES = [
     "memory/initial/citations.yaml",
 ]
 
+# The tool notes (skill refinement loop, #562): hand-reviewed, shipped, read
+# by the tool registry at build time and never at startup. Not a startup
+# memory file, so it is not in LONG_TERM_MEMORY_FILES.
+TOOL_NOTES_FILE = "memory/initial/tool_notes.md"
+
 
 def discover_skills() -> list[dict[str, Any]]:
     root = resource_root()
