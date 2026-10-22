@@ -1079,6 +1079,16 @@ def group_identical_warns(rows: list[dict]) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 
+def render_open_proposals_line() -> str:
+    """One line for the proposals awaiting a decision (skill refinement loop, #563)."""
+    from agentic_swmm.memory.proposals import open_proposal_count
+
+    count = open_proposal_count()
+    if not count:
+        return "  proposals awaiting a decision: 0"
+    return f"  proposals awaiting a decision: {count} (aiswmm memory proposals)"
+
+
 def render_memory_stores_section(
     statuses: list[MemoryStoreStatus],
 ) -> str:

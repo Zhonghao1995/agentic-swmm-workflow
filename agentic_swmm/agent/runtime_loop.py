@@ -668,6 +668,7 @@ def run_openai_planner(
         )
         _sync_session_end(session_dir)
         _refresh_moc_after_session(session_dir)
+        _announce_open_proposals()
         if chat_note is not None:
             _agent_say(f"Chat note: {_display_path(chat_note)}")
         if outcome.final_text:
@@ -694,6 +695,7 @@ def run_openai_planner(
     _write_event(trace_path, {"event": "session_end", "ok": outcome.ok, "report": str(report), "final_text": outcome.final_text})
     _sync_session_end(session_dir)
     _refresh_moc_after_session(session_dir)
+    _announce_open_proposals()
     # Honesty in the announcement (BUG-7, user live test 2026-08-09):
     # a turn that only ASKED something executed no consequential tool,
     # and calling its artifact a "Final report" implied a completed
@@ -821,6 +823,16 @@ def _build_system_prompt_extras(
 
 
 @on_exception_return_default(default=None, scope="session_db_sync_end")
+def _announce_open_proposals() -> None:
+    """One line at session end when proposals await a decision (skill
+    refinement loop, #563). Silent when there are none; never an error."""
+    from agentic_swmm.memory.proposals import open_proposal_count
+
+    count = open_proposal_count()
+    if count:
+        _agent_say(f"{count} proposal{'s' if count != 1 else ''} await your decision: aiswmm memory proposals")
+
+
 def _sync_session_end(session_dir: Path) -> None:
     """Sync the just-finished session into the SQLite store.
 

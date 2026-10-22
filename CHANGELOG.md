@@ -4,6 +4,18 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: the review surface and the rule budget guard (2026-10-21)
+
+- `aiswmm memory proposals` prints one line per open proposal (id, status,
+  kind, evidence counts, target) and the condition and action under it;
+  `aiswmm memory proposals <id>` prints one proposal in full;
+  `aiswmm memory promote <id> --dry-run` runs every check and prints the
+  diff without writing.
+- A `rule` promotion that would push any startup memory file out of the
+  context budget is refused with the numbers.
+- The interactive session's end summary says when proposals await a
+  decision; `aiswmm doctor` counts them under the memory stores.
+
 ### Memory: tool notes ride the tool description (2026-10-21)
 
 - `memory/initial/tool_notes.md` ships with the package: one section per
