@@ -36,6 +36,12 @@ Schema (``SCHEMA_VERSION == "1.1"``)
   did right after this failure that worked, i.e. the same tool with
   changed arguments or another tool instead. Rows without a fix are
   failures nobody recovered from inside the turn.
+- ``case`` (1.2, present when known): the case the failure belongs to,
+  read from the run directory the failing call named (its arguments or
+  the summary), else a case directory, else the session itself when
+  the session is a run. A chat session's slug is never a case: the
+  evidence gate of the proposals counts cases, and "model" from a
+  prompt word is not one (ADR-0014).
 
 The failure loop (memory simplification PR 3a, 2026-09-26): the fix is
 derived at session end from the ordered tool results, a later failure
@@ -55,7 +61,7 @@ from agentic_swmm.memory.jsonl_store import append_rows
 from typing import Any, Iterable, Sequence
 
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 # Operational failure taxonomy. Distinct from negative_lessons' modeling
 # ``lesson_type`` enum — these describe how the *runtime* broke, not what
@@ -89,6 +95,11 @@ _FIX_CAP = 300
 _BOUNDARY_CHARS = frozenset("/\\ \t\n")
 
 _SWMM_ERROR_RE = re.compile(r"\bERROR\s+\d{3}\b")
+
+# A session or run directory name: <stamp>_<slug>_<kind>. Slugs may hold
+# underscores (harness scenarios do), so the kind anchors the match.
+_RUN_DIR_RE = re.compile(r"(?<![A-Za-z0-9_-])\d{6}_([A-Za-z0-9][A-Za-z0-9_-]*?)_(run|chat)(?![A-Za-z0-9_-])")
+_CASE_DIR_RE = re.compile(r"(?:^|[/\\\s\"'])(?:examples|cases)[/\\]([A-Za-z0-9][A-Za-z0-9_-]*)[/\\]")
 
 _PATH_MARKERS = (
     "could not resolve",
@@ -174,6 +185,39 @@ def classify_failure(result: dict[str, Any]) -> str | None:
         return "path_resolution"
 
     return "tool_error"
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _strings(item)]
+    if isinstance(value, (list, tuple)):
+        return [text for item in value for text in _strings(item)]
+    return []
+
+
+def case_for(run_id: str, args: Any = None, summary: str = "") -> str:
+    """The case a failure belongs to, or ``""``.
+
+    In order: the slug of a run directory named in the call's arguments
+    or in the summary; the slug of an ``examples/`` or ``cases/``
+    directory there; the session's own slug when the session is a run.
+    A chat session is not a case.
+    """
+    texts = _strings(args) + [str(summary or "")]
+    for text in texts:
+        for match in _RUN_DIR_RE.finditer(text):
+            if match.group(2) == "run":
+                return match.group(1)
+    for text in texts:
+        match = _CASE_DIR_RE.search(text)
+        if match:
+            return match.group(1)
+    match = _RUN_DIR_RE.search(str(run_id or "").rsplit("/", 1)[-1])
+    if match and match.group(2) == "run":
+        return match.group(1)
+    return ""
 
 
 def failure_pattern(tool: str, failure_class: str, summary: str) -> str:
@@ -262,6 +306,7 @@ class RunFailure:
     pattern: str = ""
     fix: str = ""
     fix_tool: str = ""
+    case: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Return the schema-versioned dict written to disk."""
@@ -280,6 +325,8 @@ class RunFailure:
         if self.fix:
             row["fix"] = self.fix
             row["fix_tool"] = self.fix_tool
+        if self.case:
+            row["case"] = self.case
         return row
 
 
@@ -385,6 +432,7 @@ def record_run_failures(
                 pattern=failure_pattern(tool, failure_class, summary),
                 fix=fix,
                 fix_tool=fix_tool,
+                case=case_for(run_id or "", result.get("args"), summary),
             )
         )
 
@@ -536,6 +584,7 @@ def read_run_failures(store: Path) -> list[RunFailure]:
                 pattern=failure_pattern(tool, failure_class, summary),
                 fix=str(row.get("fix") or ""),
                 fix_tool=str(row.get("fix_tool") or ""),
+                case=str(row.get("case") or case_for(str(row.get("run_id", "")), None, summary)),
             )
         )
     return out

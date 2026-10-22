@@ -64,7 +64,7 @@ def test_retry_with_changed_argument_is_recorded_as_the_fix(tmp_path: Path):
     (stored,) = read_run_failures(store)
     assert stored.fix == row.fix and stored.pattern == row.pattern
     raw = json.loads(store.read_text(encoding="utf-8").splitlines()[0])
-    assert raw["schema_version"] == "1.1" and raw["pattern"] == row.pattern and raw["fix_tool"] == "run_swmm_inp"
+    assert raw["schema_version"] == "1.2" and raw["pattern"] == row.pattern and raw["fix_tool"] == "run_swmm_inp"
 
 
 def test_another_tool_right_after_the_failure_is_recorded_as_instead(tmp_path: Path):

@@ -647,16 +647,32 @@ def _phase_outcome_ledger(ctx: _RefreshContext) -> None:
         ctx.result["errors"].append(f"outcome log write failed: {exc}")
 
 
+def _phase_proposals(ctx: _RefreshContext) -> None:
+    """The evidence gate of the proposals, after the store has this run's
+    rows (skill refinement loop, ADR-0014): a fix seen often enough becomes a
+    proposal file awaiting the user's decision."""
+    try:
+        from agentic_swmm.memory.proposals import propose_all
+
+        created = propose_all(ctx.memory_dir)
+        if created:
+            ctx.result["proposals"] = [proposal.id for proposal in created]
+    except Exception as exc:  # noqa: BLE001 — keep audit pipeline alive
+        ctx.result["errors"].append(f"proposals failed: {exc}")
+
+
 # Ordered pipeline. Order is behaviour: the parametric bridge precedes
 # negative-lessons (eligibility marker) and the outcome ledger (complete
-# provenance). Each phase is fail-soft in isolation — one phase's
-# exception never blocks the next.
+# provenance); the proposals come last so they see every row this run
+# wrote. Each phase is fail-soft in isolation — one phase's exception
+# never blocks the next.
 _REFRESH_PHASES: tuple[Callable[[_RefreshContext], None], ...] = (
     _phase_parametric_bridge,
     _phase_runs_row,
     _phase_calibration_bridge,
     _phase_negative_lessons,
     _phase_outcome_ledger,
+    _phase_proposals,
 )
 
 

@@ -91,7 +91,7 @@ def test_agent_internal_tool_targets_the_operational_memory_rule(workspace: Path
     store = workspace / "memory" / "store" / "run_failures.jsonl"
     for run_id in ("100000_a_run", "110000_b_run", "120000_c_run"):
         record_run_failures(store, run_id, [
-            _fail("run_allowed_command", "command is not allowlisted", command="python -c 1"),
+            _fail("search_files", "query is required", glob="*.rpt"),
             _ok("read_rpt_summary", rpt_path="r.rpt"),
         ])
     (proposal,) = mod.propose_from_failures(store.parent)
@@ -100,13 +100,23 @@ def test_agent_internal_tool_targets_the_operational_memory_rule(workspace: Path
     assert proposal.key.endswith("|read_rpt_summary|instead")
 
 
+def test_a_refusal_by_policy_is_never_evidence(workspace: Path) -> None:
+    store = workspace / "memory" / "store" / "run_failures.jsonl"
+    for run_id in ("100000_a_run", "110000_b_run", "120000_c_run"):
+        record_run_failures(store, run_id, [
+            _fail("run_allowed_command", "command is not allowlisted", command="python -c 1"),
+            _ok("read_rpt_summary", rpt_path="r.rpt"),
+        ])
+    assert mod.propose_from_failures(store.parent) == []
+
+
 def test_a_rejected_key_is_never_proposed_again(workspace: Path) -> None:
     store = workspace / "memory" / "store" / "run_failures.jsonl"
     for run_id in ("100000_a_run", "110000_b_run", "120000_c_run"):
         _record_fix(store, run_id)
     (proposal,) = mod.propose_from_failures(store.parent)
     result = mod.reject(proposal.id, reason="the runner already resolves that path")
-    assert result == {"ok": True, "id": "001", "reason": "the runner already resolves that path"}
+    assert result == {"ok": True, "id": "001", "reason": "the runner already resolves that path", "until": 0}
     reloaded = mod.load_all()[0]
     assert reloaded.status == "rejected" and reloaded.reason == "the runner already resolves that path" and reloaded.decided_utc
     _record_fix(store, "130000_d_run")
