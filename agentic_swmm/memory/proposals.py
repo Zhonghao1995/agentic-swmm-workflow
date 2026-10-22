@@ -47,7 +47,7 @@ from typing import Any
 
 from agentic_swmm.memory.run_failures import RunFailure, _parse_stamp, read_run_failures
 
-KINDS = ("skill", "rule", "fact")
+KINDS = ("tool", "skill", "rule", "fact")
 STATUSES = ("open", "promoted", "rejected", "documented")
 
 #: Evidence gate for a failure-derived proposal.
@@ -63,6 +63,8 @@ FRESH_DAYS = 60
 SECTION = "## Learned from runs"
 RULE_TARGET = "memory/initial/operational_memory.md"
 FACTS_TARGET = "memory/facts.md"
+#: Tool-level experience lives in the tool notes (one section per tool).
+TOOL_TARGET = "memory/initial/tool_notes.md"
 #: Skills that never receive a public proposal.
 PRIVATE_SKILLS = frozenset({"swmm-lid-optimization"})
 #: Tracked files the dedupe search reads, relative to the checkout.
@@ -94,6 +96,7 @@ class Proposal:
     baseline: int = 0
     verify: list[str] = field(default_factory=list)
     dedupe: dict[str, Any] = field(default_factory=dict)
+    section: str = ""
     path: Path | None = None
 
     @property
@@ -199,8 +202,10 @@ def _unified_diff(target: str, before: str, after: str) -> str:
     )
 
 
-def _section_for(kind: str) -> str | None:
-    return None if kind == "fact" else SECTION
+def _section_for(proposal: Proposal) -> str | None:
+    if proposal.section:
+        return proposal.section
+    return None if proposal.kind == "fact" else SECTION
 
 
 # --- files ------------------------------------------------------------------
@@ -214,6 +219,7 @@ def _render(proposal: Proposal, title: str, evidence_lines: list[str]) -> str:
             f"kind: {proposal.kind}",
             f"status: {proposal.status}",
             f"target: {proposal.target}",
+            f"section: {proposal.section}",
             f"key: {proposal.key}",
             f"created_utc: {proposal.created_utc}",
             f"decided_utc: {proposal.decided_utc}",
@@ -227,7 +233,8 @@ def _render(proposal: Proposal, title: str, evidence_lines: list[str]) -> str:
             "---",
         ]
     )
-    where = f'appended under "{SECTION}" of `{proposal.target}`' if proposal.kind != "fact" else f"appended to `{proposal.target}`"
+    section = _section_for(proposal)
+    where = f'appended under "{section}" of `{proposal.target}`' if section else f"appended to `{proposal.target}`"
     body = ["", f"# Proposal {proposal.id}: {title}", "", "## Evidence", "", *evidence_lines]
     found = (proposal.dedupe or {}).get("found") or []
     if found:
@@ -279,6 +286,7 @@ def _parse(path: Path) -> Proposal | None:
         evidence=evidence if isinstance(evidence, dict) else {},
         decided_utc=fields.get("decided_utc", ""),
         reason=fields.get("reason", ""),
+        section=fields.get("section", ""),
         until=_int(fields.get("until")),
         baseline=_int(fields.get("baseline_60d")),
         verify=[str(item) for item in verify] if isinstance(verify, list) else [],
@@ -488,8 +496,8 @@ def _rests(group: list[RunFailure]) -> list[str]:
     return out
 
 
-def _describe_changes(group: list[RunFailure]) -> str:
-    """The distinct changes the fix made, most frequent first, at most three."""
+def _describe_changes(group: list[RunFailure], limit: int = 3) -> str:
+    """The distinct changes the fix made, most frequent first, at most ``limit``."""
     latest = group[-1]
     match = _AGAIN_RE.match(latest.fix)
     if match and match.group("tool") == latest.tool:
@@ -497,9 +505,27 @@ def _describe_changes(group: list[RunFailure]) -> str:
             return "calling it again unchanged worked (a transient fault)"
         names = fix_key(latest).rsplit("|", 1)[-1].replace(",", "`, `")
         counts = Counter(rest for rest in _rests(group) if rest != "the same arguments")
-        changes = "; ".join(f"`{rest}` ({n} run{'s' if n != 1 else ''})" for rest, n in counts.most_common(3))
+        changes = "; ".join(f"`{rest}` ({n} run{'s' if n != 1 else ''})" for rest, n in counts.most_common(limit))
         return f"calling it again with a different `{names}` worked: {changes}"
     return f"using `{latest.fix_tool}` instead worked"
+
+
+def _tool_note(group: list[RunFailure], where: str) -> str:
+    """A tool-note bullet within the note cap: the full sentence, else without
+    the evidence tail, else with one change only, else cut at a word."""
+    from agentic_swmm.memory.tool_notes import MAX_NOTE_CHARS, fit_note
+
+    latest = group[-1]
+    summary = latest.pattern.split(":", 2)[-1]
+    candidates = [
+        f"- Fails with \"{summary}\": {_describe_changes(group)} ({where}).",
+        f"- Fails with \"{summary}\": {_describe_changes(group)}.",
+        f"- Fails with \"{summary}\": {_describe_changes(group, limit=1)}.",
+    ]
+    for text in candidates:
+        if len(text) - 2 <= MAX_NOTE_CHARS:
+            return text
+    return "- " + fit_note(candidates[-1][2:])
 
 
 def _blocked_keys(folder: Path, groups: dict[str, list[RunFailure]]) -> set[str]:
@@ -540,11 +566,16 @@ def propose_from_failures(store_dir: Path, directory: Path | None = None, *, now
         cases = sorted({row.case for row in group if row.case})
         latest = group[-1]
         skill = _skill_for_tool(latest.tool)
-        kind = "skill" if skill else "rule"
-        target = f"skills/{skill}/SKILL.md" if skill else RULE_TARGET
         summary = latest.pattern.split(":", 2)[-1]
         where = f"{len(runs)} runs across {len(cases)} cases: {', '.join(cases)}" if cases else f"{len(runs)} runs"
-        addition = f"- When `{latest.tool}` fails with \"{summary}\", {_describe_changes(group)} ({where})."
+        if skill:
+            kind, target, section = "skill", f"skills/{skill}/SKILL.md", SECTION
+            addition = f"- When `{latest.tool}` fails with \"{summary}\", {_describe_changes(group)} ({where})."
+        else:
+            # An agent-internal tool has no SKILL.md: the experience rides the
+            # tool description through the tool notes (ADR-0014).
+            kind, target, section = "tool", TOOL_TARGET, f"## {latest.tool}"
+            addition = _tool_note(group, where)
         finding = dedupe_finding(root, target, distinctive_tokens(latest.fix))
         baseline = sum(
             1 for row in all_rows if row.pattern == latest.pattern and (stamp := _parse_stamp(row.recorded_at)) is not None and stamp >= cutoff
@@ -554,6 +585,7 @@ def propose_from_failures(store_dir: Path, directory: Path | None = None, *, now
             kind=kind,
             status="documented" if finding["in_target"] else "open",
             target=target,
+            section=section,
             key=key,
             created_utc=_utcnow(),
             addition=addition,
@@ -572,11 +604,11 @@ def propose_from_failures(store_dir: Path, directory: Path | None = None, *, now
         )
         if proposal.status == "open":
             before = _read_target(target)
-            proposal.diff = _unified_diff(target, before, apply_addition(before, addition, section=SECTION))
+            proposal.diff = _unified_diff(target, before, apply_addition(before, addition, section=section))
         else:
             proposal.decided_utc = proposal.created_utc
             proposal.reason = f"already written in {target}"
-        title = f"{skill or 'operational memory'} learns a fix for `{latest.tool}`"
+        title = f"{skill} learns a fix for `{latest.tool}`" if skill else f"`{latest.tool}` learns from runs"
         evidence_lines = [
             f"- pattern: `{latest.pattern}`",
             f"- fix: {latest.fix}",
@@ -654,7 +686,20 @@ def promote(proposal_id: str, directory: Path | None = None) -> dict[str, Any]:
     except RuntimeError as exc:
         return {"ok": False, "id": proposal.id, "reason": str(exc)}
     before = path.read_text(encoding="utf-8") if path.is_file() else ""
-    after = apply_addition(before, proposal.addition, section=_section_for(proposal.kind))
+    if proposal.kind == "tool":
+        from agentic_swmm.memory.tool_notes import MAX_NOTE_CHARS, MAX_NOTES_PER_TOOL, parse_tool_notes
+
+        tool = proposal.section[3:] if proposal.section.startswith("## ") else proposal.section
+        existing = parse_tool_notes(before).get(tool, [])
+        if len(existing) >= MAX_NOTES_PER_TOOL:
+            return {
+                "ok": False,
+                "id": proposal.id,
+                "reason": f"{proposal.target} already holds {len(existing)} notes for {tool}; the cap is {MAX_NOTES_PER_TOOL}, retire one first",
+            }
+        if len(proposal.addition.strip()) - 2 > MAX_NOTE_CHARS:
+            return {"ok": False, "id": proposal.id, "reason": f"the note is {len(proposal.addition.strip()) - 2} characters; the cap is {MAX_NOTE_CHARS}"}
+    after = apply_addition(before, proposal.addition, section=_section_for(proposal))
     if _unified_diff(proposal.target, before, after) != proposal.diff:
         return {
             "ok": False,

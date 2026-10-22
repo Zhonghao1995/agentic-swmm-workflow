@@ -58,6 +58,9 @@ MEMORY_SUBMODULE_RATCHET = {
     "session_sync",
     "store",
     "storm_library",
+    # The tool registry appends promoted tool notes to tool descriptions at
+    # build time and doctor reports the file (skill refinement loop, #562).
+    "tool_notes",
     "user_baseline",
 }
 

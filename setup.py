@@ -78,6 +78,7 @@ PUBLIC_MEMORY_FILES = {
     Path("memory/initial/reference_benchmarks.yaml"),
     Path("memory/initial/storm_library.yaml"),
     Path("memory/initial/citations.yaml"),
+    Path("memory/initial/tool_notes.md"),
 }
 
 EXCLUDED_DIRS = {

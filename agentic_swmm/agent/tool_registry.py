@@ -101,6 +101,16 @@ def _control_flow_exception_types() -> tuple[type[BaseException], ...]:
 class AgentToolRegistry:
     def __init__(self) -> None:
         self._tools = _build_tools()
+        # Skill refinement loop (#562): promoted tool-level experience rides
+        # the tool description, read once per file version per process.
+        from agentic_swmm.memory.tool_notes import apply_tool_notes
+
+        self._tool_notes: dict[str, int] = apply_tool_notes(self._tools)
+
+    def tool_notes_report(self, names: "set[str] | None" = None) -> dict[str, Any]:
+        """Which tools in ``names`` (all when ``None``) carry notes, and the characters added."""
+        tools = sorted(name for name in self._tool_notes if names is None or name in names)
+        return {"tools": tools, "chars": sum(self._tool_notes[name] for name in tools)}
 
     @property
     def names(self) -> set[str]:

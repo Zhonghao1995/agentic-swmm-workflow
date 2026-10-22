@@ -469,6 +469,7 @@ class Planner:
             )
 
         tool_subset = self._tool_subset_for(goal, trace_path=trace_path)
+        self._trace_tool_notes(tool_subset, trace_path)
         input_items: list[dict[str, Any]] = [
             {
                 "role": "user",
@@ -1059,6 +1060,17 @@ class Planner:
             {"event": "tool_subset_grown", "skill": skill_name, "added": added, "tool_count": len(grown)},
         )
         return grown
+
+    def _trace_tool_notes(self, tool_subset: "set[str] | None", trace_path: Path | None) -> None:
+        """Record which tool notes the model sees this turn (skill refinement loop, #562)."""
+        try:
+            report = self.registry.tool_notes_report(tool_subset)
+        except Exception:  # noqa: BLE001 - a registry without notes is not an error
+            return
+        if report["tools"]:
+            _trace_event_best_effort(
+                trace_path, {"event": "tool_notes_injected", "tools": report["tools"], "chars": report["chars"]}
+            )
 
     def _tool_subset_for(self, goal: str, *, trace_path: Path | None = None) -> "set[str] | None":
         """The tool names this goal's skills need, or ``None`` for all.

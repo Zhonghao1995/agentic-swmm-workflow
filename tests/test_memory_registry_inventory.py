@@ -70,10 +70,15 @@ def test_registry_matches_agent_memory_markdown_inventory() -> None:
     files on disk so that a new tracked memory file fails this test until
     the registry is updated to include it."""
 
+    from agentic_swmm.runtime.registry import TOOL_NOTES_FILE
+
     on_disk = {
         f"memory/initial/{p.name}"
         for p in _AGENT_MEMORY_DIR.glob("*.md")
     }
+    # The tool notes ship next to the startup files but are read by the
+    # tool registry, not at startup (#562).
+    on_disk.discard(TOOL_NOTES_FILE)
     registered = {preferred for preferred, _fallback in LONG_TERM_MEMORY_FILES}
     assert on_disk == registered, (
         "Registry vs. on-disk memory/initial/*.md drift; on_disk-only="

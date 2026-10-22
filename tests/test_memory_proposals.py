@@ -87,7 +87,7 @@ def test_too_few_runs_or_cases_propose_nothing(workspace: Path) -> None:
     assert mod.propose_from_failures(store2.parent) == []  # one case only
 
 
-def test_agent_internal_tool_targets_the_operational_memory_rule(workspace: Path) -> None:
+def test_agent_internal_tool_targets_a_tool_note(workspace: Path) -> None:
     store = workspace / "memory" / "store" / "run_failures.jsonl"
     for run_id in ("100000_a_run", "110000_b_run", "120000_c_run"):
         record_run_failures(store, run_id, [
@@ -95,7 +95,7 @@ def test_agent_internal_tool_targets_the_operational_memory_rule(workspace: Path
             _ok("read_rpt_summary", rpt_path="r.rpt"),
         ])
     (proposal,) = mod.propose_from_failures(store.parent)
-    assert proposal.kind == "rule" and proposal.target == "memory/initial/operational_memory.md"
+    assert proposal.kind == "tool" and proposal.target == "memory/initial/tool_notes.md" and proposal.section == "## search_files"
     assert "using `read_rpt_summary` instead worked" in proposal.addition
     assert proposal.key.endswith("|read_rpt_summary|instead")
 
