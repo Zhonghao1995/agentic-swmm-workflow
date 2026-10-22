@@ -35,6 +35,7 @@ def test_phase_order_is_pinned() -> None:
         "_phase_calibration_bridge",
         "_phase_negative_lessons",
         "_phase_outcome_ledger",
+        "_phase_proposals",
     ]
 
 

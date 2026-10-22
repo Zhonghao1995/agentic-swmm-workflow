@@ -40,8 +40,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "proposals",
         help="List the proposals awaiting a decision (a fix seen often enough, or a fact the agent proposed).",
     )
-    proposals.add_argument("--all", action="store_true", help="Include promoted and rejected proposals.")
+    proposals.add_argument("--all", action="store_true", help="Include promoted, rejected and documented proposals.")
     proposals.add_argument("--json", action="store_true", help="Emit the list as JSON.")
+    proposals.add_argument("--refresh", action="store_true", help="Run the evidence gate over the store first (the session end and the audit do this too).")
     proposals.set_defaults(func=proposals_main)
 
     promote = sub.add_parser(
@@ -57,6 +58,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     reject.add_argument("proposal_id", type=str, help="The proposal id (e.g. 003).")
     reject.add_argument("--reason", type=str, default="", help="Why, recorded in the proposal file.")
+    reject.add_argument("--until", type=int, default=0, help="Allow the key to be proposed once more after this many distinct runs.")
     reject.set_defaults(func=reject_main)
 
     rebuild = sub.add_parser(
@@ -154,9 +156,14 @@ def show_main(args: argparse.Namespace) -> int:
 
 
 def proposals_main(args: argparse.Namespace) -> int:
-    """``aiswmm memory proposals [--all] [--json]``: what awaits a decision."""
-    from agentic_swmm.memory.proposals import list_proposals, proposals_dir
+    """``aiswmm memory proposals [--all] [--json] [--refresh]``: what awaits a decision."""
+    from agentic_swmm.memory.proposals import list_proposals, propose_all, proposals_dir
 
+    if getattr(args, "refresh", False):
+        created = propose_all(resolve_memory_dir())
+        if not getattr(args, "json", False):
+            ids = ", ".join(f"{p.id} ({p.status})" for p in created)
+            print(f"{len(created)} new proposal(s)" + (f": {ids}" if ids else ""))
     rows = list_proposals(include_decided=bool(getattr(args, "all", False)))
     if getattr(args, "json", False):
         print(json.dumps(
@@ -202,18 +209,25 @@ def promote_main(args: argparse.Namespace) -> int:
 
 
 def reject_main(args: argparse.Namespace) -> int:
-    """``aiswmm memory reject <id> [--reason]``: decline the proposal for good."""
+    """``aiswmm memory reject <id> [--reason] [--until N]``: decline the proposal, for good or until the evidence grows."""
     from agentic_swmm.memory.proposals import reject
 
     try:
-        result = reject(str(args.proposal_id), reason=str(getattr(args, "reason", "") or ""))
+        result = reject(
+            str(args.proposal_id),
+            reason=str(getattr(args, "reason", "") or ""),
+            until=int(getattr(args, "until", 0) or 0),
+        )
     except KeyError as exc:
         print(str(exc), file=sys.stderr)
         return 1
     if not result.get("ok"):
         print(f"not rejected: {result.get('reason')}", file=sys.stderr)
         return 1
-    print(f"rejected {result['id']}" + (f": {result['reason']}" if result.get("reason") else ""))
+    line = f"rejected {result['id']}" + (f": {result['reason']}" if result.get("reason") else "")
+    if result.get("until"):
+        line += f" (may be proposed again after {result['until']} runs)"
+    print(line)
     return 0
 
 

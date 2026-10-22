@@ -4,6 +4,24 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: the evidence gate counts real cases, recent runs and known knowledge (2026-10-21)
+
+- The case of a recorded failure is the run directory the failing call
+  touched (a chat session's own name is never a case); the gate needs the
+  same fix in three runs across two cases, the latest within sixty days,
+  or four runs on two days when no case can be read. Refusals by policy
+  are never evidence.
+- Before a proposal is written, the shipped skills and the initial memory
+  are searched for the fix's distinctive tokens: knowledge that exists
+  elsewhere is reported in the proposal; knowledge already in the target
+  marks the key `documented` instead of proposing it.
+- A proposal states the change generally (which argument, how it changed,
+  how often) and never one run's literal path; it carries the prompts of
+  the evidence sessions and the pattern's recent count.
+- The gate runs at session end, after an audit and on
+  `aiswmm memory proposals --refresh`; `aiswmm memory reject <id> --until N`
+  lets a key be proposed once more after N distinct runs.
+
 ### Memory: failure rows tell the truth (2026-10-21)
 
 - A recorded fix names only the part of a changed value that differs

@@ -176,15 +176,16 @@ def run_openai_plan(
             # Memory simplification PR 4: a fix seen in enough runs and cases
             # becomes a proposal for the skill that owns the tool (or the
             # operational memory), awaiting the user's decision.
-            from agentic_swmm.memory.proposals import propose_from_failures
+            from agentic_swmm.memory.proposals import propose_all
 
-            for proposal in propose_from_failures(store.parent):
+            for proposal in propose_all(store.parent):
                 write_event(
                     trace_path,
                     {
                         "event": "proposal_created",
                         "id": proposal.id,
                         "kind": proposal.kind,
+                        "status": proposal.status,
                         "target": proposal.target,
                         "path": str(proposal.path),
                     },
