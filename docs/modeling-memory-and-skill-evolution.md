@@ -34,29 +34,31 @@ Parametric, calibration and negative-lesson rows also feed the memory-informed d
 
 ## Controlled Skill Refinement
 
-Learning is allowed to change a skill or the shipped memory, but only through a proposal and a human decision:
+Learning is allowed to change a skill, a tool's note or the shipped memory, but only through a proposal and a human decision:
 
 1. SWMM run
 2. experiment audit and deterministic model diagnostics
-3. the memory hook writes the store; the session end records failures and fixes
-4. evidence gate: the same fix for the same failure pattern in at least three runs across two cases, or a fact the agent recorded with `record_fact`
-5. a proposal file under `memory/proposals/` (evidence, the proposed addition, a unified diff of the target: a `SKILL.md`, `memory/initial/operational_memory.md`, or `memory/facts.md`)
-6. human review: `aiswmm memory proposals`, then `promote <id>` or `reject <id> --reason`
-7. benchmark verification of the promoted change, as an ordinary pull request
+3. the memory hook writes the store; the session end records failures and the fix that worked
+4. evidence gate: the same fix for the same failure pattern in at least three runs across two cases (the run directory the call touched), the latest within sixty days; a fact the agent recorded with `record_fact`; or a correction the user stated and aimed at a tool, a skill or the operating memory. Refusals by policy are never evidence. Knowledge that already exists in a shipped file is reported, not duplicated
+5. a proposal file under `memory/proposals/` with the evidence, the proposed addition, a unified diff of the target and the prompts that reproduce the evidence. The kind says where the experience lands: a tool note (`memory/initial/tool_notes.md`, appended to the tool's description when the tool registry is built, so the planner reads it at the moment it considers the tool), a skill's `SKILL.md` (under `## Learned from runs`), the operating memory (only when it still fits the startup budget), or `memory/facts.md`
+6. human review: `aiswmm memory proposals` drafts the body of each undrafted proposal through the configured model (the template stays as fallback and comparison), then `promote <id>` or `reject <id> --reason`
+7. a paired session on an empty memory store, before and after the promotion, measures the change; the numbers go into the pull request that carries it
 
-The proposal step is intentionally separate from the accepted update step. The program never edits a skill, the initial memory or the facts on its own; a rejected proposal is never made again; a promotion is refused when the target file changed since the proposal was made.
+The proposal step is intentionally separate from the accepted update step. The program never edits a skill, a tool note, the initial memory or the facts on its own; a rejected proposal is never made again unless the rejection named a recurrence count; a promotion is refused when the target file changed since the proposal was made. `aiswmm memory proposals --watch` lists what keeps showing without a known fix (failed QA checks, model diagnostics, negative lessons) and flags a promoted change whose failure came back; `--stats` counts proposals, promotions and rejections over time.
 
 ## Safety Boundary
 
-The agent does not autonomously rewrite scientific modeling rules. A proposal is not evidence of correctness. A proposed refinement should only be accepted after human review, existing benchmark verification, and clear evidence that the change improves the workflow without hiding missing data, failed QA, or unsupported assumptions. Audit records are evidence for a run; the store is a record of repeated patterns; neither proves a scientific claim by itself.
+The agent does not autonomously rewrite scientific modeling rules. A proposal is not evidence of correctness. A proposed refinement should only be accepted after human review, a measured pair of sessions, and clear evidence that the change improves the workflow without hiding missing data, failed QA, or unsupported assumptions. Audit records are evidence for a run; the store is a record of repeated patterns; neither proves a scientific claim by itself.
 
 ## CLI
 
 ```bash
 aiswmm memory show <case>              # what the store holds about one case
-aiswmm memory proposals [--all]        # what awaits a decision
-aiswmm memory promote <id>             # apply one proposal (a SKILL.md or the initial memory: in a source checkout)
-aiswmm memory reject <id> --reason ... # decline it for good
+aiswmm memory proposals [id]           # what awaits a decision (drafts first; an id prints one proposal)
+aiswmm memory proposals --watch        # evidence without a known fix; promoted changes that still fail
+aiswmm memory proposals --stats        # proposals, promotions and rejections over time
+aiswmm memory promote <id> [--dry-run] # apply one proposal (a SKILL.md, the tool notes or the initial memory: in a source checkout)
+aiswmm memory reject <id> --reason ... [--until N]  # decline it, for good or until the evidence grows
 aiswmm memory rebuild                  # recreate memory.sqlite from the ledgers and runs/
-aiswmm doctor                          # the store's row counts and health, section "Memory stores"
+aiswmm doctor                          # the store's row counts, the tool notes, and the proposals awaiting a decision
 ```
