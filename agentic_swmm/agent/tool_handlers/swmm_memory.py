@@ -161,6 +161,33 @@ def _record_fact_tool(call: ToolCall, session_dir: Path) -> dict[str, Any]:
         return _failure(call, "text is required")
     source_id = call.args.get("source_session_id")
     source_id = str(source_id).strip() if isinstance(source_id, str) and source_id.strip() else None
+    target = str(call.args.get("target") or "").strip()
+    if target:
+        # Skill refinement loop (#566): a correction the user stated becomes a
+        # proposal for a tool's note, a skill's SKILL.md or the operating
+        # memory, written as given and still awaiting the user's decision.
+        from agentic_swmm.agent.tool_registry import AgentToolRegistry
+        from agentic_swmm.memory.proposals import propose_experience
+
+        try:
+            proposal = propose_experience(text, target=target, source_session_id=source_id, known_tools=AgentToolRegistry().names)
+        except ValueError as exc:
+            return _failure(call, f"record_fact: {exc}")
+        except Exception as exc:
+            return _failure(call, f"record_fact failed: {exc}")
+        return {
+            "tool": call.name,
+            "args": call.args,
+            "ok": True,
+            "proposal_id": proposal.id,
+            "kind": proposal.kind,
+            "target": proposal.target,
+            "path": str(proposal.path),
+            "summary": (
+                f"experience proposed as {proposal.id} for {proposal.target} ({proposal.kind}); the user reviews it with "
+                f"`aiswmm memory proposals` and applies it with `aiswmm memory promote {proposal.id}`"
+            ),
+        }
     try:
         proposal = propose_fact(text, source_session_id=source_id)
     except Exception as exc:
@@ -240,11 +267,18 @@ def tool_specs():
                 "Propose a project fact for the user to approve later (it becomes a proposal, not a fact, until they promote it).\n"
                 "USE WHEN: user just expressed a durable preference, project convention, or "
                 "confirmed fix recipe that future sessions should remember.\n"
+                "With `target` (a tool name, a skill name, or 'operational'), ONLY for a correction the user stated in this "
+                "conversation, the text becomes a proposal for that tool's note, that skill's SKILL.md or the operating "
+                "memory, written as given; never pass a target for something you inferred yourself.\n"
                 "DO NOT USE WHEN: ephemeral state, file path, secret, or anything you are not "
                 "certain the user wants persisted."
             ),
             _object(
-                {"text": {"type": "string"}, "source_session_id": {"type": "string"}},
+                {
+                    "text": {"type": "string"},
+                    "source_session_id": {"type": "string"},
+                    "target": {"type": "string", "description": "A tool name, a skill name, or 'operational'; only for what the user affirmed."},
+                },
                 ["text"],
             ),
             _record_fact_tool,
