@@ -78,9 +78,13 @@ previously bad region" before a calibration accept.
 
 One line per tool call that failed in an agent session, written at
 session end: tool, failure class (mcp_transport, path_resolution,
-swmm_error, tool_error), the summary, and a `pattern` (tool, class and
+swmm_error, tool_error, and policy_refusal for a refusal by design such
+as a command outside the allowlist or a patch into a protected path),
+the summary, the case the call touched, and a `pattern` (tool, class and
 the summary with paths and long numbers collapsed) that a later failure
-is matched on. When the call right after the failure worked, the row
+is matched on. The class and the pattern are derived from the stored
+summary on every read, so older rows match the way the same failure is
+recorded today. When the call right after the failure worked, the row
 carries it as the `fix`: the same tool with the arguments that changed,
 a plain retry, or another tool instead. This is the failure loop: at
 session start the `<recent-failures>` digest lists the project's recent
@@ -123,14 +127,37 @@ ties. It reads the tables, needs no index to rebuild, and wraps its
 result in a `<memory-context source="store">` fence.
 
 A fix recorded for the same failure pattern in at least three runs
-across two cases, or a fact the agent recorded with `record_fact`,
-becomes a proposal under `memory/proposals/`: a Markdown file with the
-evidence, the proposed addition and a unified diff of the target (the
-`SKILL.md` of the skill that owns the failed tool, or
-`memory/initial/operational_memory.md`, or `memory/facts.md`). Nothing
-changes until `aiswmm memory promote <id>`; `reject <id>` is remembered.
-The program never edits the shipped memory, the facts or a skill on its
-own.
+across two cases (the case is the run directory the failing call
+touched, never a chat session's name), the latest within sixty days,
+becomes a proposal under `memory/proposals/`; so does a fact the agent
+recorded with `record_fact`, and a correction the user stated that
+`record_fact` aims at a tool, a skill or the operating memory. Refusals
+by policy are never evidence. Before a proposal is written, the shipped
+skills and the initial memory are searched for the fix's distinctive
+tokens: knowledge that exists elsewhere is reported in the proposal, and
+a key already documented in its own target is marked `documented`
+instead of proposed.
+
+A proposal is a Markdown file with the evidence, the proposed addition,
+a unified diff of the target, the prompts of the evidence sessions and
+the pattern's recent count. Its kind says where the experience lands:
+`tool` (a note in `memory/initial/tool_notes.md`, appended to that
+tool's description when the tool registry is built), `skill` (a bullet
+under `## Learned from runs` of that skill's `SKILL.md`), `rule`
+(`memory/initial/operational_memory.md`, refused when it would push a
+startup file out of the context budget) or `fact` (`memory/facts.md`).
+
+The session end writes the template proposal and never calls a model.
+`aiswmm memory proposals` drafts the undrafted ones through the
+configured route before listing (condition, action, why, confidence;
+a strict in-place diff for a `SKILL.md` target); the template stays in
+the file as fallback and comparison, a failed draft records why, and the
+call's transcript goes to a `.draft.json` sidecar. `promote <id>`
+applies one proposal (`--dry-run` prints the diff), `reject <id>` is
+remembered (`--until N` lets the key return after N runs), `--watch`
+lists evidence without a known fix and promoted patterns that still
+fail, `--stats` counts proposals over time. The program never edits the
+shipped memory, the facts, the tool notes or a skill on its own.
 
 ## The four confidence quadrants
 

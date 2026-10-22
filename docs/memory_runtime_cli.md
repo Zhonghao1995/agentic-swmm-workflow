@@ -15,9 +15,10 @@ What aiswmm remembers, and the decisions only a human makes.
 
 ```bash
 aiswmm memory show <case>                 # the memory card for one case: parameters, calibrations, known-bad regions
-aiswmm memory proposals [--all] [--json]  # proposals awaiting a decision (--all includes promoted and rejected)
-aiswmm memory promote <id>                # apply one proposal to its target file
-aiswmm memory reject <id> --reason "..."  # decline it; the same proposal is never made again
+aiswmm memory proposals [id] [--all] [--json] [--refresh] [--draft ID] [--no-draft] [--model M] [--watch] [--stats]
+                                          # proposals awaiting a decision; an id prints one in full; drafts the undrafted ones first
+aiswmm memory promote <id> [--dry-run]    # apply one proposal to its target file (a dry run prints the diff and writes nothing)
+aiswmm memory reject <id> --reason "..." [--until N]  # decline it; the same key returns only after N more runs, if asked
 aiswmm memory rebuild [--runs-dir DIR]    # set memory.sqlite aside and rebuild it from the ledgers and runs/
 aiswmm memory repair-sessions [--yes]     # rebuild the sessions from runs/**/agent_trace.jsonl
 aiswmm memory health                      # the application outcome ledger

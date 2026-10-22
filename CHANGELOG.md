@@ -4,6 +4,12 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Docs: the skill refinement loop as shipped (2026-10-21)
+
+- The memory docs describe the proposal kinds, the tool notes, the
+  review commands and flags, the drafting step, the watch list, the
+  stats and the paired verification exactly as shipped.
+
 ### Memory: a reverted promotion is a recorded decision; bullets stay with the tool (2026-10-22)
 
 - `aiswmm memory reject <id>` accepts a promoted proposal whose addition
