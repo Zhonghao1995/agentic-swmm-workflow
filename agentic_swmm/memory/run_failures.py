@@ -106,6 +106,15 @@ _POLICY_MARKERS = (
     "command is not allowlisted",
     "writes code into the product tree",
     "modifies evidence/generated memory path",
+    "blocked by policy",
+    "must be inside repository",
+    "creates a run folder",
+    "edits a repository fixture",
+    "writes a new file at the run root",
+    "of the audited run",
+    "refusing to read",
+    "outside the repository's tests/ tree",
+    "resolves to non-public address",
 )
 
 
@@ -133,7 +142,11 @@ def classify_failure(result: dict[str, Any]) -> str | None:
     if _is_permission_denial(result):
         return None
 
-    summary = str(result.get("summary", ""))
+    # The stored summary is cut at _SUMMARY_CAP, and the class and the
+    # pattern are derived from the stored text on every read; classifying
+    # the same capped text here keeps a row's class identical at write
+    # time, at hint time and at read time (review of #569).
+    summary = str(result.get("summary", ""))[:_SUMMARY_CAP]
     low = summary.lower()
 
     if any(marker in low for marker in _POLICY_MARKERS):
@@ -190,18 +203,14 @@ def _differing(old: str, new: str) -> tuple[str, str]:
     the segment that changed). The shared suffix is kept while the rest
     fits the value cap, and becomes "..." too when it does not.
     """
-    n = 0
-    while n < min(len(old), len(new)) and old[n] == new[n]:
-        n += 1
+    n = len(os.path.commonprefix([old, new]))
     cut = n
     while cut > 0 and old[cut - 1] not in _BOUNDARY_CHARS:
         cut -= 1
     if cut > 0:
         cut -= 1  # keep the boundary character with the differing part
     old_rest, new_rest = old[cut:], new[cut:]
-    m = 0
-    while m < min(len(old_rest), len(new_rest)) and old_rest[-1 - m] == new_rest[-1 - m]:
-        m += 1
+    m = len(os.path.commonprefix([old_rest[::-1], new_rest[::-1]]))
     if m and (len(old_rest) > _ARG_VALUE_CAP or len(new_rest) > _ARG_VALUE_CAP):
         suffix = old_rest[len(old_rest) - m :]
         boundary = next((i for i, ch in enumerate(suffix) if ch in _BOUNDARY_CHARS), None)

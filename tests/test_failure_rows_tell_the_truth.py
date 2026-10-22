@@ -84,6 +84,16 @@ def test_refusals_by_policy_are_their_own_class() -> None:
         "command is not allowlisted (allowed: pytest <repo test paths>)",
         "patch writes code into the product tree: scripts/count_lines.mjs",
         "patch modifies evidence/generated memory path; set allow_evidence_edits only for explicit regenerate tasks: runs/x",
+        "patch path is blocked by policy: .git/config",
+        "patch path must be inside repository: /etc/hosts",
+        "patch creates a run folder: runs/2026-10-21/new_run",
+        "patch edits a repository fixture: tests/fixtures/a.inp",
+        "patch writes a new file at the run root: runs/2026-10-21/x/notes.md",
+        "patch edits a file of the audited run 103702_downtown-kelowna-bc_run",
+        "refusing to read product source: agentic_swmm/agent/planner.py",
+        "refusing to read outside repository",
+        "test path is outside the repository's tests/ tree: scripts/x.py",
+        "refused: host 'intranet' resolves to non-public address 10.0.0.5",
     )
     for text in refusals:
         assert classify_failure(_fail("t", text)) == "policy_refusal", text
@@ -123,6 +133,19 @@ def test_rows_recorded_with_the_old_class_read_back_with_the_true_one(tmp_path: 
     assert row.pattern.startswith("run_swmm_inp:swmm_error:")
 
 
+def test_a_marker_past_the_summary_cap_reads_back_the_way_it_was_written(tmp_path: Path) -> None:
+    # The stored summary is cut at 300 characters; the class must come from the
+    # same text at write time, at hint time and at read time, or the hint for an
+    # identical failure never fires (review of #569).
+    ledger = tmp_path / "run_failures.jsonl"
+    summary = "swmm_run failed: " + "x" * 300 + " ERROR 209: undefined object"
+    (row,) = record_run_failures(ledger, "run-1", [_fail("run_swmm_inp", summary, inp_path="a.inp"), _ok("run_swmm_inp", inp_path="b.inp")])
+    (stored,) = read_run_failures(ledger)
+    assert row.failure_class == stored.failure_class == "tool_error" and row.pattern == stored.pattern
+    hint = failure_hint(_fail("run_swmm_inp", summary, inp_path="c.inp"), ledger)
+    assert hint is not None and hint["fix"] == row.fix
+
+
 # --- repeats -----------------------------------------------------------------
 
 
@@ -143,6 +166,20 @@ def test_identical_rows_are_counted_as_repeats(tmp_path: Path) -> None:
     assert "(x7)" in digest
 
 
+def test_an_in_place_rewrite_of_a_ledger_leaves_no_stale_or_doubled_row(tmp_path: Path) -> None:
+    # `aiswmm memory archive` rewrites a ledger without one row; the table
+    # must follow the ledger (review of #569).
+    ledger = tmp_path / "run_failures.jsonl"
+    for run_id in ("r1", "r2", "r3", "r4"):
+        append_row(ledger, _refusal_row(run_id))
+    assert [row.run_id for row in read_run_failures(ledger)] == ["r1", "r2", "r3", "r4"]
+    lines = ledger.read_text(encoding="utf-8").splitlines()
+    ledger.write_text("\n".join(line for line in lines if '"r2"' not in line) + "\n", encoding="utf-8")
+    assert [row.run_id for row in read_run_failures(ledger)] == ["r1", "r3", "r4"]
+    append_row(ledger, _refusal_row("r5"))
+    assert [row.run_id for row in read_run_failures(ledger)] == ["r1", "r3", "r4", "r5"]
+
+
 def test_a_database_with_the_old_fingerprints_is_reimported_without_doubling(tmp_path: Path) -> None:
     ledger = tmp_path / "run_failures.jsonl"
     append_row(ledger, _refusal_row("r1"))
@@ -151,6 +188,7 @@ def test_a_database_with_the_old_fingerprints_is_reimported_without_doubling(tmp
     with store.session_db.connect(db) as conn:  # the row as the previous fingerprint wrote it: a bare hash
         conn.execute("UPDATE failures SET fingerprint = 'deadbeef'")
         conn.commit()
+    store._LEGACY_CHECKED.clear()  # the probe runs once per process: this is the next process
     append_row(ledger, _refusal_row("r2"))
     store.sync_ledger(db, ledger)
     assert store.table_counts(db)["failures"] == 2

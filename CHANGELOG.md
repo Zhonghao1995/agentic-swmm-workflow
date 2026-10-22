@@ -11,9 +11,10 @@ All notable changes to Agentic SWMM Workflow are documented here.
   never cut off; a failure pattern carries one `<path>` token where a
   path with spaces used to leave several.
 - Refusals by policy (a command outside the allowlist, a patch into the
-  product tree, a patch into an evidence path) are their own failure
-  class, `policy_refusal`: recorded and hinted like any failure, never
-  evidence for a proposal.
+  product tree, a patch into an evidence path, a read outside the
+  repository, a refused host) are their own failure class,
+  `policy_refusal`: recorded and hinted like any failure; the evidence
+  gate of the following change excludes them from proposals.
 - A SWMM error that arrives through the runner's MCP transport is
   classified as a SWMM error; rows recorded before this read back with
   the class and pattern the same failure gets today.
