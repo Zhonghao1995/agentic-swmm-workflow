@@ -4,6 +4,24 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: a reverted promotion is a recorded decision; bullets stay with the tool (2026-10-22)
+
+- `aiswmm memory reject <id>` accepts a promoted proposal whose addition
+  was removed from the target by hand (a verification pair measured no
+  effect), recording the reason and, with `--until N`, when the key may
+  return.
+- A drafted bullet stays in the tool notes; only a draft that edits a
+  skill's procedure in place (a diff) may move to that skill's SKILL.md.
+  The drafting prompt asks for the concrete directory or file the
+  evidence shows, never generic advice.
+- The dev harness gains `verify_proposal.py`: the proposal's prompts run
+  twice on an empty memory store, before and after the promotion, and
+  the metrics print side by side with the pass line.
+
+- The first promoted tool note (`read_file`: a builder run keeps its report
+  under `06_runner/`, a run that never executed SWMM has `final_report.md`)
+  ships with its verification pair in the pull request.
+
 ### Memory: a correction stated in the session becomes a proposal (2026-10-21)
 
 - `record_fact` takes an optional `target`: a tool name, a skill name or

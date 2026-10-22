@@ -891,6 +891,15 @@ def promote(proposal_id: str, directory: Path | None = None, *, dry_run: bool = 
     _rewrite(proposal)
     return {"ok": True, "id": proposal.id, "target": str(path), "kind": proposal.kind}
 
+def _target_holds(proposal: Proposal) -> bool:
+    """Whether the target file still carries the proposal's addition."""
+    try:
+        text = _read_target(proposal.target)
+    except Exception:  # noqa: BLE001 - an unreadable target counts as reverted
+        return False
+    return proposal.addition.strip() in text
+
+
 def reject(proposal_id: str, *, reason: str = "", until: int = 0, directory: Path | None = None) -> dict[str, Any]:
     """Mark an open proposal rejected; its key is never proposed again.
 
@@ -898,7 +907,11 @@ def reject(proposal_id: str, *, reason: str = "", until: int = 0, directory: Pat
     proposed once more (the evidence grew enough to look again).
     """
     proposal = _find(proposal_id, directory)
-    if proposal.status != "open":
+    if proposal.status == "promoted" and not _target_holds(proposal):
+        # The promotion was reverted by hand (a verification pair measured no
+        # effect, ADR-0014): the decision is recorded as a rejection.
+        pass
+    elif proposal.status != "open":
         return {"ok": False, "id": proposal.id, "reason": f"proposal {proposal.id} is {proposal.status}"}
     proposal.status = "rejected"
     proposal.decided_utc = _utcnow()

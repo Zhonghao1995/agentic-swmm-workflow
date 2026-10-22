@@ -38,7 +38,7 @@ MAX_EXCERPT_SESSIONS = 3
 #: A drafted bullet for a SKILL.md or the operating memory may run this long.
 MAX_BULLET_CHARS = 400
 
-SYSTEM_PROMPT = """You write one short, reviewable change to an agent's tool note, skill text or operating rule, from recorded evidence of runs. The agent plans SWMM stormwater modelling work by calling tools; a failure that was fixed the same way in several runs is the evidence. Write for the planner that will read the text later, in the imperative, general enough for the whole class of cases and never one run's literal path. Say when the rule applies (the condition), what to do (the action) and why it works (the reason, inferred from the trace). Return JSON only, with these keys: condition, action, why, addition, diff, confidence, verdict, retarget_skill. `addition` is the finished text in the form the target takes (a Markdown bullet starting with "- "); `diff` is a unified diff of the target that edits existing text, or null (allowed only when the target is a SKILL.md and the existing text is wrong); `confidence` is a number from 0 to 1 for how sure you are the text is right and worth keeping; `verdict` is one sentence; `retarget_skill` is the name of the skill whose procedure this really concerns, or null."""
+SYSTEM_PROMPT = """You write one short, reviewable change to an agent's tool note, skill text or operating rule, from recorded evidence of runs. The agent plans SWMM stormwater modelling work by calling tools; a failure that was fixed the same way in several runs is the evidence. Write for the planner that will read the text later, in the imperative, general enough for the whole class of cases and never one run's literal path. Say when the rule applies (the condition), what to do (the action) and why it works (the reason, inferred from the trace). When the evidence shows the same concrete change across runs (a directory, a file name, an argument value), the note must name it: a planner acts on "the report of a builder run is at 06_runner/model.rpt", not on "paths vary by run". Generic advice that the planner already follows (list the directory, retry) is worth nothing; prefer the specific rule the evidence supports, and say what to read instead of the failing path. Return JSON only, with these keys: condition, action, why, addition, diff, confidence, verdict, retarget_skill. `addition` is the finished text in the form the target takes (a Markdown bullet starting with "- "); `diff` is a unified diff of the target that edits existing text, or null (allowed only when the target is a SKILL.md and the existing text is wrong); `confidence` is a number from 0 to 1 for how sure you are the text is right and worth keeping; `verdict` is one sentence; `retarget_skill` is the name of the skill whose procedure this really concerns, or null."""
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.M)
 _HUNK_RE = re.compile(r"^@@ .* @@.*$", re.M)
@@ -337,7 +337,15 @@ def draft_proposal(proposal: Proposal, *, provider: Any, store_dir: Path, direct
                 draft.confidence = max(0.0, min(1.0, float(data.get("confidence") or 0.0)))
             except (TypeError, ValueError):
                 draft.confidence = 0.0
-            _maybe_retarget(proposal, draft, excerpts)
+            # A bullet stays where the planner reads it every turn (the tool
+            # note); only a procedure change (an in-place diff) may move to the
+            # SKILL.md of a skill the evidence sessions selected. Measured
+            # 2026-10-22: a note promoted into swmm-runner/SKILL.md changed
+            # nothing because no session read that skill.
+            if str(data.get("diff") or "").strip():
+                _maybe_retarget(proposal, draft, excerpts)
+            else:
+                draft.retarget_skill = ""
             if proposal.target != _proposals.TOOL_TARGET and proposal.kind == "tool":
                 target_text = _proposals._read_target(proposal.target)
             reason, addition, diff = validate_draft(proposal, data, _proposals._read_target(proposal.target))

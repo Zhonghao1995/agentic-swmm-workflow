@@ -172,3 +172,15 @@ def test_doctor_counts_the_open_proposals(workspace: Path) -> None:
     mod.propose_fact("metric units", source_session_id="s1")
     mod.propose_fact("imperial units", source_session_id="s2")
     assert render_open_proposals_line() == "  proposals awaiting a decision: 2 (aiswmm memory proposals)"
+
+
+def test_a_promotion_reverted_by_hand_can_be_rejected_with_its_reason(workspace: Path) -> None:
+    # A verification pair measured no effect: the file is reverted, the decision recorded (ADR-0014).
+    proposal = mod.propose_fact("metric units", source_session_id="s1")
+    assert mod.promote(proposal.id)["ok"] is True
+    assert mod.reject(proposal.id, reason="no measured effect")["ok"] is False  # the target still carries it
+    facts = workspace / "memory" / "facts.md"
+    facts.write_text("<!-- WHEN TO PROPOSE -->\n# Project facts (curated)\n", encoding="utf-8")
+    result = mod.reject(proposal.id, reason="no measured effect", until=3)
+    assert result["ok"] is True and mod.load_all()[0].status == "rejected" and mod.load_all()[0].until == 3
+
