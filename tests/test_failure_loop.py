@@ -59,7 +59,8 @@ def test_retry_with_changed_argument_is_recorded_as_the_fix(tmp_path: Path):
     ]
     (row,) = record_run_failures(store, "run-1", results)
     assert row.fix_tool == "run_swmm_inp"
-    assert row.fix == "run_swmm_inp again with inp_path: examples/todcreek/model_nope.inp -> examples/todcreek/model.inp"
+    # the shared directory is "...": only the part of the value that changed is named (#560)
+    assert row.fix == "run_swmm_inp again with inp_path: .../model_nope.inp -> .../model.inp"
     (stored,) = read_run_failures(store)
     assert stored.fix == row.fix and stored.pattern == row.pattern
     raw = json.loads(store.read_text(encoding="utf-8").splitlines()[0])
@@ -107,7 +108,7 @@ def test_the_plan_supplies_the_arguments_as_called(tmp_path: Path):
         ToolCall("apply_patch", {"patch": "*** Begin Patch\n+++ runs/s/_agent/x.mjs", "allow_evidence_edits": False}),
     ]
     (row,) = record_run_failures(store, "run-5", results, calls=calls)
-    assert row.fix == "apply_patch again with patch: *** Begin Patch\n+++ scripts/x.mjs -> *** Begin Patch\n+++ runs/s/_agent/x.mjs"
+    assert row.fix == "apply_patch again with patch: ... scripts/x.mjs -> ... runs/s/_agent/x.mjs"
     # without the plan, or with a plan that does not align, the result args are used as before
     (row,) = record_run_failures(tmp_path / "other.jsonl", "run-6", results, calls=calls[:1])
     assert "path_count=1 added" in row.fix
@@ -218,7 +219,10 @@ def test_database_created_before_the_columns_gets_them_in_place(tmp_path: Path):
     assert "pattern" in columns and "fix" in columns and kept == "map_run"
     store = tmp_path / "run_failures.jsonl"
     record_run_failures(store, "run-1", [_fail("map_run", "map_run failed", run_dir="r"), _ok("map_run", run_dir="runs/r")])
-    assert len(ledger_rows(store)) == 2  # the old row and the synced one
+    # A table whose rows carry the previous fingerprint (a bare hash) is
+    # imported again from the ledger, which is the truth; the row inserted
+    # by hand above was never in the ledger, so only the synced one is left (#560).
+    assert len(ledger_rows(store)) == 1
 
 
 # --- the planner: the same failure twice ------------------------------------

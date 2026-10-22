@@ -58,8 +58,15 @@ def table_for(ledger_path: Path) -> str | None:
     return LEDGER_TABLES.get(Path(ledger_path).name)
 
 
-def _fingerprint(row: Any) -> str:
-    return hashlib.sha1(dump_line(row).encode("utf-8")).hexdigest()
+def _fingerprint(index: int, row: Any) -> str:
+    """``<line index>:<sha1 of the canonical line>``.
+
+    The index makes two identical ledger lines two table rows (live
+    finding F-173: four refused commands in one second collapsed to one
+    row and the digest undercounted); a ledger is append-only, so the
+    index of a row never changes and a re-sync still adds nothing.
+    """
+    return f"{index}:{hashlib.sha1(dump_line(row).encode('utf-8')).hexdigest()}"
 
 
 def _ledger_state(ledger: Path) -> tuple[int, int]:
@@ -70,9 +77,12 @@ def _ledger_state(ledger: Path) -> tuple[int, int]:
 def sync_ledger(db_path: Path, ledger: Path) -> int:
     """Import the rows of ``ledger`` its table does not have yet.
 
-    Idempotent: rows are keyed by a fingerprint of their canonical JSON
-    line, and the import is skipped when the ledger's size and mtime
-    match the last import. Returns the number of rows added.
+    Idempotent: rows are keyed by a fingerprint of their line index and
+    canonical JSON line, and the import is skipped when the ledger's size
+    and mtime match the last import. Returns the number of rows added.
+    A table still holding the previous fingerprints (a bare hash, no
+    index) is emptied and imported again once, so an upgraded database
+    never doubles its rows.
     """
     ledger = Path(ledger)
     table = table_for(ledger)
@@ -80,11 +90,17 @@ def sync_ledger(db_path: Path, ledger: Path) -> int:
         return 0
     size, mtime = _ledger_state(ledger)
     with session_db.connect(db_path) as conn:
-        state = conn.execute(
-            "SELECT size, mtime_ns FROM ledger_state WHERE ledger = ?", (ledger.name,)
-        ).fetchone()
-        if state is not None and int(state[0]) == size and int(state[1]) == mtime:
-            return 0
+        legacy = conn.execute(f"SELECT 1 FROM {table} WHERE fingerprint NOT LIKE '%:%' LIMIT 1").fetchone()
+        if legacy is not None:
+            conn.execute(f"DELETE FROM {table}")
+            conn.execute("DELETE FROM ledger_state WHERE ledger = ?", (ledger.name,))
+            conn.commit()
+        else:
+            state = conn.execute(
+                "SELECT size, mtime_ns FROM ledger_state WHERE ledger = ?", (ledger.name,)
+            ).fetchone()
+            if state is not None and int(state[0]) == size and int(state[1]) == mtime:
+                return 0
         added = _insert_rows(conn, table, iter_rows(ledger))
         conn.execute(
             "INSERT OR REPLACE INTO ledger_state(ledger, size, mtime_ns, synced_utc) VALUES (?, ?, ?, ?)",
@@ -102,10 +118,10 @@ def _insert_rows(conn: sqlite3.Connection, table: str, rows: Iterable[Any]) -> i
         f"VALUES (?, {placeholders}, ?)"
     )
     added = 0
-    for row in rows:
+    for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        values = [_fingerprint(row)]
+        values = [_fingerprint(index, row)]
         values.extend(_scalar(row.get(column)) for column in columns)
         values.append(dump_line(row))
         cursor = conn.execute(sql, values)

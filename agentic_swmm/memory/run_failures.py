@@ -61,7 +61,7 @@ SCHEMA_VERSION = "1.1"
 # ``lesson_type`` enum — these describe how the *runtime* broke, not what
 # the *model* got wrong.
 FAILURE_CLASSES = frozenset(
-    {"mcp_transport", "path_resolution", "swmm_error", "tool_error"}
+    {"mcp_transport", "path_resolution", "swmm_error", "tool_error", "policy_refusal"}
 )
 
 # Cap stored summaries so one pathological error string cannot bloat the
@@ -74,13 +74,19 @@ _SUMMARY_CAP = 300
 # three-digit SWMM error codes survive.
 _PATTERN_CAP = 120
 _PATH_TOKEN_RE = re.compile(r"\S*[/\\]\S*")
+# A path with spaces becomes several <path> tokens; one is the pattern.
+_PATH_RUN_RE = re.compile(r"<path>(?:\s+<path>)+")
 _LONG_NUMBER_RE = re.compile(r"\d{4,}")
 _WS_RE = re.compile(r"\s+")
 
-# A fix names the arguments that changed; values are shortened so one
-# long patch or path cannot bloat the row.
+# A fix names the arguments that changed; a changed value is described
+# by the part that differs (the shared prefix and, when still too long,
+# the shared suffix replaced by "..."), then shortened so one long patch
+# or path cannot bloat the row. Live finding F-174: the cap used to hit
+# first and cut off the useful tail ("06_runner/model.rpt").
 _ARG_VALUE_CAP = 80
 _FIX_CAP = 300
+_BOUNDARY_CHARS = frozenset("/\\ \t\n")
 
 _SWMM_ERROR_RE = re.compile(r"\bERROR\s+\d{3}\b")
 
@@ -90,6 +96,16 @@ _PATH_MARKERS = (
     "must exist inside repository",
     "directory must exist",
     "file not found",
+)
+
+# Refusals by design: the allowlist, the product tree, the evidence
+# paths. They are recorded and hinted like any failure, but a "fix" for
+# one is a detour around a guardrail, so they are never evidence for a
+# proposal (skill refinement loop, ADR-0014).
+_POLICY_MARKERS = (
+    "command is not allowlisted",
+    "writes code into the product tree",
+    "modifies evidence/generated memory path",
 )
 
 
@@ -120,6 +136,14 @@ def classify_failure(result: dict[str, Any]) -> str | None:
     summary = str(result.get("summary", ""))
     low = summary.lower()
 
+    if any(marker in low for marker in _POLICY_MARKERS):
+        return "policy_refusal"
+
+    # Before the transport markers: a SWMM error that arrives through the
+    # runner's MCP server carries both (live finding F-176).
+    if _SWMM_ERROR_RE.search(summary):
+        return "swmm_error"
+
     if "mcp" in low and (
         "transport" in low
         or "process ended" in low
@@ -136,25 +160,58 @@ def classify_failure(result: dict[str, Any]) -> str | None:
     ):
         return "path_resolution"
 
-    if _SWMM_ERROR_RE.search(summary):
-        return "swmm_error"
-
     return "tool_error"
 
 
 def failure_pattern(tool: str, failure_class: str, summary: str) -> str:
     """The key a failure is matched on across runs."""
     text = _PATH_TOKEN_RE.sub("<path>", str(summary))
+    text = _PATH_RUN_RE.sub("<path>", text)
     text = _LONG_NUMBER_RE.sub("#", text)
     text = _WS_RE.sub(" ", text).strip().lower()[:_PATTERN_CAP]
     return f"{tool}:{failure_class}:{text}"
 
 
+def _text(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False)
+
+
 def _short(value: Any) -> str:
-    text = value if isinstance(value, str) else json.dumps(value, sort_keys=True, ensure_ascii=False)
+    text = _text(value)
     if len(text) > _ARG_VALUE_CAP:
         return text[: _ARG_VALUE_CAP - 3] + "..."
     return text
+
+
+def _differing(old: str, new: str) -> tuple[str, str]:
+    """The parts of ``old`` and ``new`` that differ, cut at path or word boundaries.
+
+    The shared prefix becomes "..." (a long run directory must not hide
+    the segment that changed). The shared suffix is kept while the rest
+    fits the value cap, and becomes "..." too when it does not.
+    """
+    n = 0
+    while n < min(len(old), len(new)) and old[n] == new[n]:
+        n += 1
+    cut = n
+    while cut > 0 and old[cut - 1] not in _BOUNDARY_CHARS:
+        cut -= 1
+    if cut > 0:
+        cut -= 1  # keep the boundary character with the differing part
+    old_rest, new_rest = old[cut:], new[cut:]
+    m = 0
+    while m < min(len(old_rest), len(new_rest)) and old_rest[-1 - m] == new_rest[-1 - m]:
+        m += 1
+    if m and (len(old_rest) > _ARG_VALUE_CAP or len(new_rest) > _ARG_VALUE_CAP):
+        suffix = old_rest[len(old_rest) - m :]
+        boundary = next((i for i, ch in enumerate(suffix) if ch in _BOUNDARY_CHARS), None)
+        if boundary is not None:
+            keep = m - boundary
+            old_rest = old_rest[: len(old_rest) - keep] + "..."
+            new_rest = new_rest[: len(new_rest) - keep] + "..."
+    if cut > 0:
+        old_rest, new_rest = "..." + old_rest, "..." + new_rest
+    return old_rest, new_rest
 
 
 def describe_fix(failed: dict[str, Any], fixed: dict[str, Any]) -> tuple[str, str]:
@@ -175,7 +232,8 @@ def describe_fix(failed: dict[str, Any], fixed: dict[str, Any]) -> tuple[str, st
             elif key not in before:
                 parts.append(f"{key}={_short(after[key])} added")
             elif before[key] != after[key]:
-                parts.append(f"{key}: {_short(before[key])} -> {_short(after[key])}")
+                old, new = _differing(_text(before[key]), _text(after[key]))
+                parts.append(f"{key}: {_short(old)} -> {_short(new)}")
         text = f"{tool} again with " + ("; ".join(parts) if parts else "the same arguments")
     else:
         args = ", ".join(f"{key}={_short(value)}" for key, value in sorted(after.items()))
@@ -451,8 +509,14 @@ def read_run_failures(store: Path) -> list[RunFailure]:
 
     for row in ledger_rows(store):
         tool = str(row.get("tool", ""))
-        failure_class = str(row.get("failure_class", ""))
         summary = str(row.get("summary", ""))
+        # The class and the pattern are derived from the stored summary
+        # on every read, so a row written before a classification or a
+        # normalisation fix (F-176, F-174) reads back the way the same
+        # failure would be recorded today and matches it.
+        failure_class = (classify_failure({"ok": False, "summary": summary}) if summary else None) or str(
+            row.get("failure_class", "")
+        )
         out.append(
             RunFailure(
                 run_id=str(row.get("run_id", "")),
@@ -460,9 +524,7 @@ def read_run_failures(store: Path) -> list[RunFailure]:
                 failure_class=failure_class,
                 summary=summary,
                 recorded_at=row.get("recorded_at"),
-                # Rows written before 1.1 carry no pattern; derive it so
-                # they count as "seen" for the hint.
-                pattern=str(row.get("pattern") or failure_pattern(tool, failure_class, summary)),
+                pattern=failure_pattern(tool, failure_class, summary),
                 fix=str(row.get("fix") or ""),
                 fix_tool=str(row.get("fix_tool") or ""),
             )
