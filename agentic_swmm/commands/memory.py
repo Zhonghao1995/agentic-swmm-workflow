@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -44,6 +45,9 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     proposals.add_argument("--json", action="store_true", help="Emit the list as JSON.")
     proposals.add_argument("--refresh", action="store_true", help="Run the evidence gate over the store first (the session end and the audit do this too).")
     proposals.add_argument("proposal_id", nargs="?", default=None, help="Print one proposal in full instead of the list.")
+    proposals.add_argument("--draft", metavar="ID", default=None, help="Draft (again) one proposal's body through the configured model.")
+    proposals.add_argument("--no-draft", action="store_true", help="List without drafting the undrafted proposals.")
+    proposals.add_argument("--model", default=None, help="The model for this listing's drafts (default: the configured one).")
     proposals.set_defaults(func=proposals_main)
 
     promote = sub.add_parser(
@@ -195,6 +199,26 @@ def proposals_main(args: argparse.Namespace) -> int:
                 return 0
         print(f"no proposal {wanted.zfill(3)} under {proposals_dir()}", file=sys.stderr)
         return 1
+    only = str(getattr(args, "draft", None) or "").strip() or None
+    # AISWMM_NO_DRAFT=1 turns drafting off for every listing (the test suite
+    # sets it, so a test never reaches a real model); --draft <id> is explicit.
+    guarded = os.environ.get("AISWMM_NO_DRAFT", "").strip() in ("1", "true", "yes")
+    if (only or not (getattr(args, "no_draft", False) or guarded)) and not getattr(args, "json", False):
+        from agentic_swmm.memory import proposal_draft
+
+        model = getattr(args, "model", None)
+        try:
+            drafts = proposal_draft.draft_pending(
+                resolve_memory_dir(), provider_factory=lambda: proposal_draft.configured_provider(model), only_id=only
+            )
+        except Exception as exc:  # noqa: BLE001 - the list must come out even when no model is reachable
+            print(f"drafting skipped: {exc}", file=sys.stderr)
+            drafts = []
+        for draft in drafts:
+            if draft.ok:
+                print(f"drafted {draft.proposal_id} with {draft.model or 'the configured model'} (confidence {draft.confidence:.2f})")
+            else:
+                print(f"draft failed for {draft.proposal_id}: {draft.reason}", file=sys.stderr)
     rows = list_proposals(include_decided=bool(getattr(args, "all", False)))
     if getattr(args, "json", False):
         print(json.dumps(
@@ -215,7 +239,10 @@ def proposals_main(args: argparse.Namespace) -> int:
     print(f"{'id':<4} {'status':<10} {'kind':<6} {'evidence':<18} target")
     for p in rows:
         print(f"{p.id:<4} {p.status:<10} {p.kind:<6} {_evidence_summary(p):<18} {p.target}")
-        print(f"     {_one_line(p)[:120]}")
+        from agentic_swmm.memory.proposal_draft import WEAK_CONFIDENCE
+
+        weak = f"[weak {p.confidence:.1f}] " if p.drafted_by and p.confidence < WEAK_CONFIDENCE else ""
+        print(f"     {weak}{_one_line(p)[:120]}")
     print("decide with: aiswmm memory promote <id> [--dry-run] | aiswmm memory reject <id> --reason ... [--until N] | aiswmm memory proposals <id>")
     return 0
 

@@ -49,6 +49,8 @@ MEMORY_SUBMODULE_RATCHET = {
     "memory_archive",
     "memory_outcomes",
     "parametric_memory",
+    # The memory command drafts proposal bodies at review time (#564).
+    "proposal_draft",
     "proposals",
     "reference_benchmarks",
     "run_failures",

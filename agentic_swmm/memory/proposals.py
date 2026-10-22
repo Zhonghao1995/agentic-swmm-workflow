@@ -98,6 +98,14 @@ class Proposal:
     verify: list[str] = field(default_factory=list)
     dedupe: dict[str, Any] = field(default_factory=dict)
     section: str = ""
+    #: Drafting (#564): the template text is kept when a model drafts the body.
+    template_addition: str = ""
+    drafted_by: str = ""
+    drafted_utc: str = ""
+    confidence: float = 0.0
+    verdict: str = ""
+    why: str = ""
+    draft_failed: str = ""
     path: Path | None = None
 
     @property
@@ -231,6 +239,13 @@ def _render(proposal: Proposal, title: str, evidence_lines: list[str]) -> str:
             f"evidence_json: {json.dumps(proposal.evidence, ensure_ascii=False, sort_keys=True)}",
             f"verify_json: {json.dumps(proposal.verify, ensure_ascii=False)}",
             f"dedupe_json: {json.dumps(proposal.dedupe, ensure_ascii=False, sort_keys=True)}",
+            f"template_addition_json: {json.dumps(proposal.template_addition, ensure_ascii=False)}",
+            f"drafted_by: {proposal.drafted_by}",
+            f"drafted_utc: {proposal.drafted_utc}",
+            f"confidence: {proposal.confidence:.2f}",
+            f"verdict: {proposal.verdict}",
+            f"why: {proposal.why}",
+            f"draft_failed: {proposal.draft_failed}",
             "---",
         ]
     )
@@ -246,6 +261,14 @@ def _render(proposal: Proposal, title: str, evidence_lines: list[str]) -> str:
         else:
             body += ["", "Written, but not where the planner reads at the moment it matters; this proposal puts it in the target instead of duplicating prose."]
     body += ["", f"## Proposed addition ({where})", "", proposal.addition.rstrip("\n")]
+    if proposal.drafted_by:
+        body += ["", f"Drafted by {proposal.drafted_by} (confidence {proposal.confidence:.2f}): {proposal.verdict}".rstrip()]
+        if proposal.why:
+            body += ["", "## Why", "", proposal.why]
+        if proposal.template_addition and proposal.template_addition != proposal.addition:
+            body += ["", "## Template addition (written without a model)", "", proposal.template_addition.rstrip("\n")]
+    elif proposal.draft_failed:
+        body += ["", f"Drafting failed ({proposal.draft_failed}); this is the template text."]
     if proposal.diff.strip():
         body += ["", "## Diff", "", "```diff", proposal.diff.rstrip("\n"), "```"]
     if proposal.verify:
@@ -272,8 +295,13 @@ def _parse(path: Path) -> Proposal | None:
         evidence = json.loads(fields.get("evidence_json") or "{}")
         verify = json.loads(fields.get("verify_json") or "[]")
         dedupe = json.loads(fields.get("dedupe_json") or "{}")
+        template_addition = json.loads(fields.get("template_addition_json") or '""')
     except json.JSONDecodeError:
         return None
+    try:
+        confidence = float(fields.get("confidence") or 0.0)
+    except ValueError:
+        confidence = 0.0
     diff_match = re.search(r"```diff\n(.*?)\n```", text, re.S)
     return Proposal(
         id=fields.get("id", path.name[:3]),
@@ -288,6 +316,13 @@ def _parse(path: Path) -> Proposal | None:
         decided_utc=fields.get("decided_utc", ""),
         reason=fields.get("reason", ""),
         section=fields.get("section", ""),
+        template_addition=str(template_addition),
+        drafted_by=fields.get("drafted_by", ""),
+        drafted_utc=fields.get("drafted_utc", ""),
+        confidence=confidence,
+        verdict=fields.get("verdict", ""),
+        why=fields.get("why", ""),
+        draft_failed=fields.get("draft_failed", ""),
         until=_int(fields.get("until")),
         baseline=_int(fields.get("baseline_60d")),
         verify=[str(item) for item in verify] if isinstance(verify, list) else [],
@@ -359,6 +394,20 @@ def _rewrite(proposal: Proposal) -> None:
     ):
         front = re.sub(rf"^{name}:.*$", f"{name}: {value}", front, count=1, flags=re.M)
     proposal.path.write_text("---\n" + front + "\n---\n" + text[match.end():], encoding="utf-8")
+
+
+_TITLE_RE = re.compile(r"^# Proposal \d{3}: (.+)$", re.M)
+_EVIDENCE_RE = re.compile(r"^## Evidence\n\n(.*?)(?=\n\n## |\n\nDecide with|\Z)", re.S | re.M)
+
+
+def rerender(proposal: Proposal) -> None:
+    """Write the proposal file again from the object, keeping its title and evidence lines."""
+    assert proposal.path is not None
+    text = proposal.path.read_text(encoding="utf-8")
+    title = (_TITLE_RE.search(text) or [None, "proposal"])[1]
+    evidence = _EVIDENCE_RE.search(text)
+    evidence_lines = evidence.group(1).splitlines() if evidence else []
+    proposal.path.write_text(_render(proposal, title, evidence_lines), encoding="utf-8")
 
 
 # --- source one: the failure loop ------------------------------------------

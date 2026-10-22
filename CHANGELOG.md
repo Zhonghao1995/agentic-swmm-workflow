@@ -4,6 +4,20 @@ All notable changes to Agentic SWMM Workflow are documented here.
 
 ## Unreleased
 
+### Memory: a drafted body at review time (2026-10-21)
+
+- `aiswmm memory proposals` drafts the undrafted open proposals through the
+  configured model route before listing (at most five per listing;
+  `--no-draft` skips, `--draft <id>` drafts one again, `--model` picks
+  the model for this listing). The model sees the evidence, excerpts of
+  the evidence sessions, the target's current text and the dedupe
+  finding, and returns the condition, the action, the why, the finished
+  addition and a confidence; a SKILL.md target may receive a strict
+  in-place diff. The template stays in the proposal as fallback and
+  comparison; a draft that fails validation is dropped with its reason;
+  the call's transcript and cost go to a `.draft.json` sidecar. The
+  session end never drafts.
+
 ### Memory: the review surface and the rule budget guard (2026-10-21)
 
 - `aiswmm memory proposals` prints one line per open proposal (id, status,

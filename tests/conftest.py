@@ -426,3 +426,11 @@ def _every_turn_introspects(monkeypatch):
     tests that clear the variable on purpose.
     """
     monkeypatch.setenv("AISWMM_ALWAYS_INTROSPECT", "1")
+
+@pytest.fixture(autouse=True)
+def _never_draft_for_real(monkeypatch):
+    """No test reaches a real model through the proposal drafter (#564):
+    `aiswmm memory proposals` drafts unless AISWMM_NO_DRAFT is set, and the
+    one test file that exercises drafting injects a fake provider and clears
+    the guard itself."""
+    monkeypatch.setenv("AISWMM_NO_DRAFT", "1")
