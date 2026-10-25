@@ -48,9 +48,9 @@ class TestRunDirHandoff:
             mapped = _run_swmm_inp_args(call, tmp_path)
 
             assert mapped.get("ok") is not False, mapped
-            assert mapped["inp"] == str(inp)
+            assert mapped["inp"] == str(inp.resolve())  # runs/ may be a symlink onto another disk
             expected_runner = run_layout.stage_dir(run_dir, run_layout.RUNNER)
-            assert mapped["runDir"] == str(expected_runner)
+            assert mapped["runDir"] == str(expected_runner.resolve())
             assert mapped.get("node")
         finally:
             shutil.rmtree(run_dir, ignore_errors=True)

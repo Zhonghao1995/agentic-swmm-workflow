@@ -42,7 +42,7 @@ def test_a_requested_report_json_is_honoured():
     target = repo_root() / rel
     try:
         result = handler(ToolCall(name="network_qa", args={"inp_path": "x.inp", "report_json": rel}), repo_root() / "runs" / "f68_tmp_run")
-        assert Path(result["report_json"]) == target
+        assert Path(result["report_json"]) == target.resolve()  # runs/ may be a symlink onto another disk
         assert target.exists()
     finally:
         import shutil

@@ -90,6 +90,31 @@ def resolve_runs_dir(explicit: Path | None = None) -> Path:
     return Path.cwd().resolve() / "runs"
 
 
+def checkout_relative(path: Path, root: Path | None = None) -> Path | None:
+    """``path`` relative to the checkout, or ``None`` when it lies outside.
+
+    ``root`` is the caller's ``repo_root()`` (handlers pass their own so
+    tests that patch it keep working); the default is ours.
+
+    A relocated runs root (``AISWMM_RUNS_ROOT``, or ``<repo>/runs`` as a
+    symlink onto another disk) maps back under ``runs/``, so callers that
+    read the parts of the result keep seeing the canonical layout. Before
+    2026-10-25 the policy checks computed every path relative to
+    ``repo_root()`` alone, and a run on another disk stopped counting as
+    evidence.
+    """
+    primary = (repo_root() if root is None else root).resolve()
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(primary)
+    except ValueError:
+        pass
+    try:
+        return Path("runs") / resolved.relative_to(resolve_runs_dir().resolve())
+    except ValueError:
+        return None
+
+
 def is_checkout(root: Path | None = None) -> bool:
     """True when ``root`` (default ``repo_root()``) is a source checkout, not
     the site-packages directory a wheel resolves ``repo_root()`` to."""
@@ -127,7 +152,7 @@ def workspace_roots(root: Path | None = None) -> list[Path]:
     """
     primary = (repo_root() if root is None else root).resolve()
     roots: list[Path] = [primary]
-    extras = [resolve_runs_dir(), resource_root().resolve()]
+    extras = [resolve_runs_dir().resolve(), resource_root().resolve()]
     if not is_checkout(primary):
         extras.append(Path.cwd().resolve())
     for candidate in (*extras, *_EXTRA_WORKSPACE_ROOTS):

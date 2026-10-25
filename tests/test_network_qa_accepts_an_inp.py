@@ -29,7 +29,7 @@ def test_a_network_json_still_maps_as_before(tmp_path):
     try:
         target.write_text("{}")
         mapped = _network_qa_args(ToolCall(name="network_qa", args={"network_json": "runs/f67b_tmp/network.json"}), tmp_path)
-        assert mapped == {"networkJsonPath": str(target)}
+        assert mapped == {"networkJsonPath": str(target.resolve())}  # runs/ may be a symlink onto another disk
     finally:
         import shutil
 

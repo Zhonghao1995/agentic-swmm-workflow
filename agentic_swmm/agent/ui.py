@@ -9,7 +9,7 @@ from typing import IO, Any
 
 from agentic_swmm.agent import tui_chrome as _chrome
 from agentic_swmm.agent import ui_colors
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import checkout_relative
 
 
 _PROMPT = "aiswmm>"
@@ -92,10 +92,8 @@ def say_wrn(msg: str, *, stream: IO[str] | None = None) -> None:
 
 
 def display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(repo_root().resolve()))
-    except ValueError:
-        return str(path)
+    relative = checkout_relative(path)
+    return str(relative) if relative is not None else str(path)
 
 
 def compact_plan(plan: list[Any]) -> str:
