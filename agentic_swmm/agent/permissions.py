@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentic_swmm.utils.paths import repo_root, resolve_workspace_path, resource_root
+from agentic_swmm.utils.paths import checkout_relative, repo_root, resolve_workspace_path, resource_root
 
 
 BLOCKED_PARTS = {".git", ".venv", "__pycache__", ".pytest_cache"}
@@ -56,9 +56,8 @@ def is_agent_scratch_path(path: Path) -> bool:
     the calibration search space landed at the run root, which the
     canonical layout reserves for the product's own files.
     """
-    try:
-        relative = path.resolve().relative_to(repo_root().resolve())
-    except ValueError:
+    relative = checkout_relative(path, root=repo_root())
+    if relative is None:
         return False
     parts = relative.parts
     if parts[:1] != ("runs",):
@@ -161,9 +160,8 @@ def is_code_write_into_product_tree(path: Path) -> bool:
 
 
 def is_allowed_write_path(path: Path) -> bool:
-    try:
-        relative = path.resolve().relative_to(repo_root().resolve())
-    except ValueError:
+    relative = checkout_relative(path, root=repo_root())
+    if relative is None:
         return False
     if any(part in BLOCKED_PARTS for part in relative.parts):
         return False
@@ -201,9 +199,8 @@ def audited_run_edits_allowed() -> bool:
 
 
 def is_evidence_path(path: Path) -> bool:
-    try:
-        relative = path.resolve().relative_to(repo_root().resolve())
-    except ValueError:
+    relative = checkout_relative(path, root=repo_root())
+    if relative is None:
         return False
     return relative.parts[:1] == ("runs",) or relative.parts[:2] == ("memory", "modeling-memory")
 

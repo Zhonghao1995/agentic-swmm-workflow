@@ -27,7 +27,7 @@ from agentic_swmm.agent.session_header import environment_fingerprint
 from agentic_swmm.agent.swmm_runtime import run_layout
 
 from agentic_swmm.utils.hashing import sha256_of_file
-from agentic_swmm.utils.paths import repo_root
+from agentic_swmm.utils.paths import checkout_relative
 
 
 def now_utc() -> str:
@@ -35,11 +35,9 @@ def now_utc() -> str:
 
 
 def rel_to_repo(path: Path) -> str:
-    """Repo-relative string when inside the repo; absolute otherwise."""
-    try:
-        return str(path.resolve().relative_to(repo_root().resolve()))
-    except ValueError:
-        return str(path.resolve())
+    """Repo-relative string when inside the repo or its runs root; absolute otherwise."""
+    relative = checkout_relative(path)
+    return str(relative) if relative is not None else str(path.resolve())
 
 
 sha256_of = sha256_of_file
@@ -47,9 +45,7 @@ sha256_of = sha256_of_file
 
 def source_type_of(path: Path) -> str:
     """``repository_inp`` for in-repo INPs, ``external_inp_import`` otherwise."""
-    try:
-        path.resolve().relative_to(repo_root().resolve())
-    except ValueError:
+    if checkout_relative(path) is None:
         return "external_inp_import"
     return "repository_inp"
 

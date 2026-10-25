@@ -67,7 +67,7 @@ class SessionDirTaxonomyTests(unittest.TestCase):
     def test_default_lands_in_date_scheme(self) -> None:
         """Pre-change: runs/agent/agent-<unixtime>."""
         session = self._resolved_dir(_args())
-        rel = session.relative_to(repo_root() / "runs")
+        rel = session.relative_to((repo_root() / "runs").resolve())  # runs/ may be a symlink onto another disk
         self.assertRegex(str(rel.parts[0]), r"^\d{4}-\d{2}-\d{2}$")
         self.assertRegex(rel.parts[1], r"^\d{6}_[a-z0-9-]+_run(_\d+)?$")
         # Best-effort cleanup of the empty scaffold this test created.

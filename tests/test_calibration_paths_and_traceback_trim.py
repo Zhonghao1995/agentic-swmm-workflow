@@ -30,7 +30,7 @@ class TestAbsolutePaths:
         assert mapped["patchMap"] == str((repo_root() / "examples/calibration/patch_map.json").resolve())
         assert mapped["observed"].startswith(str(repo_root().resolve()))
         assert mapped["searchSpace"].endswith("examples/calibration/search_space.json")
-        assert mapped["runRoot"].startswith(str(repo_root().resolve()))
+        assert mapped["runRoot"] == str((repo_root() / "runs/_cal").resolve())  # runs/ may be a symlink onto another disk
         assert mapped["iterations"] == 8
 
     def test_absolute_paths_pass_through(self, tmp_path):
