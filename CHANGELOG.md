@@ -2,7 +2,31 @@
 
 All notable changes to Agentic SWMM Workflow are documented here.
 
-## Unreleased
+## v0.9.5 - Memory that learns, and a human who decides (2026-10-27)
+
+42 commits since v0.9.4. The test suite grew from 4,067 to 4,143.
+
+The memory layer is now one folder with three kinds of content: the shipped
+initial memory (hand-written, changed only through a pull request), the
+workspace's own store (append-only ledgers and one SQLite database, rebuilt
+from the ledgers on demand) and the proposals awaiting a human decision.
+Every tool failure is recorded with the fix that worked, and the planner is
+handed that fix the next time the same failure happens.
+
+What runs teach can now change the product, but only through a proposal
+and a human decision: a fix seen in three runs across two cases becomes a
+proposal, the configured model drafts its body when the user lists the
+proposals, `aiswmm memory promote` applies it to a tool note, a skill or the
+operating memory, and a paired session on an empty store measures the
+change. The first promoted tool note ships in this release.
+
+Breaking for users of earlier versions: the `swmm-modeling-memory` and
+`swmm-rag-memory` skills, their MCP server and the `summarize_memory`,
+`retrieve_memory` and `recall_memory_search` tools are retired; the memory
+store moved from the installed package to the workspace (`memory/store/`,
+next to `runs/`), so an older store under site-packages is not read. The
+runs root may live outside the checkout (a symlinked `runs/` keeps every
+policy check working).
 
 ### Docs: the skill refinement loop as shipped (2026-10-21)
 
